@@ -92,10 +92,11 @@
 #                             in every reader: `parse()` here, `marker --author`, and
 #                             gate-pr-review-state.py. Without it, anyone who can comment on the
 #                             pull request can post an invisible PASSED marker, because the marker
-#                             is an HTML comment and every comment is scanned. A list that parses
-#                             to no login at all (for example a lone comma) accepts no marker,
-#                             which reads as not reviewed. Unset or empty: every comment is
-#                             scanned, exactly as before the variable existed.
+#                             is an HTML comment and every comment is scanned. The list must name
+#                             at least one login: unset, empty, whitespace and a lone comma all
+#                             make `status`, `publish`, `budget`, `extend`, `export-audit` refuse.
+#                             Only the bare `marker` subcommand still reads with the list unset.
+#                             A comment edited after it was created is never read (pr-json.py).
 #     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
 #                             Default 5. Read by `budget` and `extend`.
 #     MAX_REVIEW_CYCLES_HARD  Absolute ceiling no answer passes. Default 10, clamped to 1..10.

@@ -74,7 +74,7 @@ user or read project settings when unset, and fall back to the safe default.
 | `max_attempts_per_concern` | Correction attempts for one concern | `2` |
 | `flaky_rerun_limit` | Check re-runs before treating a failure as genuine | `1` |
 | `verify_commands` | Project verification to run before pushing | discover from project |
-| `REVIEW_MARKER_AUTHORS` | Comma-separated GitHub logins whose comments may supply a verdict, closure or extension marker (env var, read by `review-cycle.sh` and applied by the agent when it reads comments) | Set it to the login `gh` publishes as (`gh api user --jq .login`). Unset means no filter and anyone who can comment can forge a verdict |
+| `REVIEW_MARKER_AUTHORS` | Comma-separated GitHub logins whose comments may supply a verdict, closure or extension marker (env var, read by `review-cycle.sh` and applied by the agent when it reads comments) | Set it to the login `gh` publishes as (`gh api user --jq .login`). Unset, empty or login-less makes the scripts and the gate refuse, since anyone who can comment could forge a verdict |
 
 **Regeneration example**: if a conflict lands in a configured generated path (e.g.
 `generated/**`), run its configured regeneration command and re-stage the regenerated files instead

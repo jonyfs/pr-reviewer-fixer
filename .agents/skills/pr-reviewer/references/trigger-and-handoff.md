@@ -56,8 +56,9 @@ environment variables of the session.
    created. `publish`, `start` and `fix` fail on a label the repository lacks.
 3. Set `REVIEW_MARKER_AUTHORS` to the login the harness publishes as, in the shell of the session
    and as a repository variable for the gate. Only comments by those logins (compared without case)
-   may supply a verdict, closure or extension marker; unset means no filter, and then anyone who
-   can comment can forge a PASSED.
+   may supply a verdict, closure or extension marker. Unset, empty or login-less makes the scripts and
+   the gate refuse, because then anyone who can comment could forge a PASSED. A comment edited
+   after it was created is ignored.
 4. Optional: copy `templates/review-gate.yml` to `.github/workflows/review-gate.yml` and mark the
    `review-gate` job as a required status check. It runs no model. It checks out the base commit
    and runs `review-cycle.sh status <n>` from there, so a PR that edits the script cannot pass its

@@ -169,9 +169,9 @@ MARKER = re.compile(
 # session publishes as). The marker is an HTML comment, so without a list anyone who can comment
 # can post an invisible PASSED one. The rules are the same three `review-cycle.sh` applies: the
 # list is active when the variable holds anything other than whitespace, each entry has all
-# whitespace removed, and the compare ignores case. Active with no login left after that (a lone
-# comma) accepts no marker, which reads as not reviewed. Unset or empty: every comment counts, as
-# before the variable existed.
+# whitespace removed, and the compare ignores case. With no login left after that (unset, empty,
+# whitespace or a lone comma) the gate has nobody to trust and answers inconclusive, which is never
+# the same as approved.
 def allowlist() -> set:
     """The normalised logins. Empty means the gate has nobody to trust and must not guess."""
     raw = os.environ.get("REVIEW_MARKER_AUTHORS", "")
