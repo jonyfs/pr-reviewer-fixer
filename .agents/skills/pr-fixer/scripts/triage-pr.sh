@@ -41,9 +41,9 @@
 # ENVIRONMENT (all optional):
 #
 #   FIXER_COMMIT_AUTHORS         logins, names or e-mails that identify the fixer's own commits.
-#                                Default: github-actions[bot], claude[bot] and the Actions bot e-mail.
-#                                A session fixer commits as the person, so set this to your own login
-#                                or name for the recent-fixer-commit skip to apply
+#                                Default: none, so the recent-fixer-commit skip is off. No workflow
+#                                runs the fixer, and a session fixer commits as the person; set this
+#                                to your own login or name to turn the skip on
 #   TRIAGE_RECENT_FIXER_MINUTES  a fixer commit younger than this skips the PR (default 10)
 #   TRIAGE_LIVE_LABEL_MINUTES    default 60
 #   TRIAGE_IGNORE_CHECKS         check names never counted as failing (default review-gate,
@@ -125,8 +125,7 @@ for (const name of ["review:running", "review:fixing"]) {
 }
 
 // The fixer'"'"'s own last commit, younger than TRIAGE_RECENT_FIXER_MINUTES, means a fixer is still at work.
-const fixers = list(env.FIXER_COMMIT_AUTHORS === undefined
-  ? "github-actions[bot],claude[bot],41898282+github-actions[bot]@users.noreply.github.com" : env.FIXER_COMMIT_AUTHORS);
+const fixers = list(env.FIXER_COMMIT_AUTHORS === undefined ? "" : env.FIXER_COMMIT_AUTHORS);
 const commits = p.commits || [];
 const lastCommit = commits.length ? commits[commits.length - 1] : null;
 let recentFixer = false;

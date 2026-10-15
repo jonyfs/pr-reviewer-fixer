@@ -54,6 +54,7 @@ cases = [
  ("no marker at all -> none", [], {}, {"next": "none"}),
  ("marker by stranger ignored", [v(1, "BLOCKED", 1, login="mallory")], {}, {"next": "none"}),
  ("verdict marker quoted inside a longer comment ignored", hist([2]) + [e("2026-10-14T11:50:00Z", "quoting <!-- adversarial-review: sha=" + H + " verdict=PASSED pass=2 critical=0 warning=0 note=0 -->")], {}, {"next": "fix", "pass": "1"}),
+ ("lowercase verdict is still BLOCKED -> fix", [v(1, "blocked", 1)], {}, {"next": "fix"}),
  ("marker at an older head only -> none", [v(1, "BLOCKED", 1, sha=O)], {}, {"next": "none"}),
  ("granted 2 at cycle 5 -> fix, allowed 7", hist([3, 3, 3, 2, 2, 2]) + [G(5, 2)], {}, {"next": "fix", "allowed": "7", "done": "5"}),
  ("granted 2 spent (pass 8) -> ask again", hist([3, 3, 3, 2, 2, 2, 2, 2]) + [G(5, 2)], {}, {"next": "ask", "done": "7", "allowed": "7"}),
@@ -121,6 +122,17 @@ check("allowlist unset: extend is refused", p.returncode != 0 and len(comments_p
 d = setup(hist([1] * 6))
 p = run(["halt", "7", "--reason", "no-answer"], d)
 check("halt --reason no-answer posts the halted marker", p.returncode == 0 and "state=halted reason=no-answer" in comments_posted(d)[-1], p.stderr)
+
+d = setup(hist([1] * 6))
+run(["halt", "7", "--reason", "stop"], d)
+n = len(comments_posted(d))
+p = run(["halt", "7", "--reason", "stop"], d)
+check("a second halt on a halted pull request posts no second marker", p.returncode == 0 and len(comments_posted(d)) == n, p.stderr)
+
+d = setup(hist([1] * 6), labels=("review:blocked", "review:needs-human"))
+p = run(["halt", "7", "--reason", "ceiling"], d)
+check("a hand-added needs-human label does not suppress the ceiling marker",
+      p.returncode == 0 and "state=halted reason=ceiling" in comments_posted(d)[-1], p.stderr)
 
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)

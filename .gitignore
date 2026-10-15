@@ -11,3 +11,4 @@ tests/fake-gh/report.md
 tests/version/state/
 tests/**/xdg-state/
 docs/designs/*.review.*/
+tests/fake-gh/err
