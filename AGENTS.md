@@ -16,6 +16,8 @@ bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-versi
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt
 ```
 
+`tests/run-all.sh` runs the suites at the same time. Each run uses its own scratch directory, named by `TEST_TAG` (`work-*/` and `state-*/`, both gitignored), so set a different `TEST_TAG` when you start two runs of the same suite together.
+
 The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` (`tests/*/bin/gh`, backed by `fakegh.py`), so nothing touches GitHub. There is no build or lint step. Workflows and templates are checked with `actionlint`, which is run by hand.
 
 ## Architecture

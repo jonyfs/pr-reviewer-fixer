@@ -21,7 +21,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   same reason, the reading `budget` makes. The refusal text no longer claims no label was added.
 - `parse()` exits 2 with "could not read the pull request fields" when no number can be read, for
   instance when a field holds the unit separator it uses between fields. Before, `start` went on
-  with empty fields.
+  with empty fields. `stale` now exits 2 on an unreadable payload too, where it carried on with
+  empty fields.
 
 ## 0.4.0
 

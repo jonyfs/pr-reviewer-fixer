@@ -109,7 +109,7 @@
 # **The 2 of `cmd_status` carries seven meanings, and saying so is what keeps it harmless.** The
 # subject is the FUNCTION and not the file, and the difference is not pedantry: the count a test
 # checks against this sentence is `return 2` inside `cmd_status`, while the file also exits 2 in
-# two places outside it, counted by their own sentence further down, which is where they belong.
+# several places outside it, counted by their own sentence further down, which is where they belong.
 # A sentence whose subject is wider than what it counts reads as a total and is not one.
 #
 # The gate this function calls was split precisely because one integer meant two things; the same
@@ -142,10 +142,12 @@
 # sentence and `three` two lines below it, about the same set of branches. Whoever edits either
 # sentence counts those lines again.
 #
-# Three more 2s live outside `cmd_status` and belong in the same list: the `command -v gh` check
-# at the top of the file exits 2 when `gh` is not installed, `cmd_stale` returns 2 when there is
-# no pull request to read, and `cmd_ensure_labels` returns 2 when `gh` could not create a label
-# (offline, no token, no permission). None of them is a decision about a review either.
+# Four more 2s live outside `cmd_status` and belong in the same list: the `command -v gh` check
+# at the top of the file exits 2 when `gh` is not installed, `parse()` exits 2 when the payload
+# holds no readable pull request number (so every subcommand that parses, `stale` included, ends
+# there on an unreadable payload), `cmd_stale` returns 2 when there is no pull request to read,
+# and `cmd_ensure_labels` returns 2 when `gh` could not create a label (offline, no token, no
+# permission). None of them is a decision about a review either.
 #
 # Today nothing branches on the difference: the callers speak only at rc=1 and treat every
 # 2 as silence, so the conflation is inert. It stays inert by being declared, not by luck: the
@@ -379,7 +381,7 @@ parse() {
   IFS=$'\x1f' read -r NUMBER HEAD STATE IS_DRAFT LABEL HALTED <<<"$fields"
   # No number means the payload was unreadable (or held the separator). Every caller treats the
   # variables as facts, so stop here, with the code `status` uses for "could not read".
-  [ -n "$NUMBER" ] || { echo "review-cycle: could not read the pull request fields" >&2; exit 2; }
+  [ -n "$NUMBER" ] || { echo "review-cycle: could not read the pull request fields — INCONCLUSIVE" >&2; exit 2; }
   # `review:needs-human` is a SIXTH label and deliberately not one of the five states: the states
   # are a cycle position (exactly one at a time) and this one is a modifier of `review:blocked`
   # that says the loop paused or stopped and a person has to decide. Keeping it out of $LABEL is what lets

@@ -15,8 +15,8 @@ start "review-cycle.sh and gate (fixer copy)"    env TEST_TAG=fix bash "$HERE/fa
 start "triage-pr.sh"                             bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "cycle budget and extend (reviewer copy)"  env TEST_TAG=rev python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "cycle budget and extend (fixer copy)"     env TEST_TAG=fix python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
-start "check-version.sh (reviewer copy)"         bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
-start "check-version.sh (fixer copy)"            bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "check-version.sh (reviewer copy)"         env TEST_TAG=rev bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "check-version.sh (fixer copy)"            env TEST_TAG=fix bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 wait "${pids[@]}"
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]}"; tail -n 3 "$OUT/$n.log"
