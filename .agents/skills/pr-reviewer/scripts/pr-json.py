@@ -13,8 +13,10 @@ prints nothing and exits 1. Callers read that as "could not read the pull reques
 the same as approved.
 
 Usage: pr-json.py [<pr-number>]
-Output: one JSON object with number, headRefOid, labels, comments, state, isDraft, url and
-`commentsDroppedEdited` (how many comments were removed for having been edited).
+Output: one JSON object with number, headRefOid, labels, comments, state, isDraft, url,
+`commentsDroppedEdited` (how many comments were removed for having been edited) and
+`editedComments` (those comments, author and body only, kept so an edit cannot erase a BLOCKED
+marker from the history; never read as a verdict).
 """
 import json
 import re
@@ -94,6 +96,10 @@ def main():
     kept = [c for c in comments if isinstance(c, dict) and c.get("id") not in edited]
     pr["comments"] = kept
     pr["commentsDroppedEdited"] = len(comments) - len(kept)
+    # An edited comment is never read as a verdict. It is kept aside, author and body only, for one
+    # purpose: an edit may hide a BLOCKED marker, and BLOCKED history only ever tightens a rule.
+    pr["editedComments"] = [{"author": c.get("author"), "body": c.get("body")}
+                          for c in comments if isinstance(c, dict) and c.get("id") in edited]
     sys.stdout.write(json.dumps(pr))
     return 0
 

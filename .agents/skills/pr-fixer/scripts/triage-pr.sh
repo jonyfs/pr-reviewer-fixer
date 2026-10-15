@@ -40,8 +40,6 @@
 #
 # ENVIRONMENT (all optional):
 #
-#   REVIEW_MARKER_AUTHORS        logins whose pr-skill-extension markers count (same rule as
-#                                review-cycle.sh: comma-separated, case-insensitive, unset = all)
 #   FIXER_COMMIT_AUTHORS         logins, names or e-mails that identify the fixer's own commits.
 #                                Default: github-actions[bot], claude[bot] and the Actions bot e-mail.
 #                                A session fixer commits as the person, so set this to your own login
@@ -70,7 +68,7 @@ WAIT_S=$(digits "${TRIAGE_UNKNOWN_WAIT_S:-}" 10)
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/triage-pr.XXXXXX") || exit 2
 trap 'rm -rf "$TMP"' EXIT
 
-FIELDS=number,state,isDraft,headRefOid,headRefName,baseRefOid,baseRefName,mergeable,mergeStateStatus,isCrossRepository,maintainerCanModify,labels,comments,commits,statusCheckRollup
+FIELDS=number,state,isDraft,headRefOid,headRefName,baseRefOid,baseRefName,mergeable,mergeStateStatus,isCrossRepository,maintainerCanModify,labels,commits,statusCheckRollup
 read_pr() { gh pr view "$PR" --json "$FIELDS" > "$TMP/pr.json" 2>"$TMP/err" && [ -s "$TMP/pr.json" ]; }
 mergeable() { node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mergeable||""))}catch(e){}' "$TMP/pr.json"; }
 
@@ -99,11 +97,6 @@ const env = process.env;
 const num = (v, d) => /^[0-9]+$/.test(v || "") ? Number(v) : d;
 const now = env.TRIAGE_NOW ? Date.parse(env.TRIAGE_NOW) : Date.now();
 const list = v => String(v || "").split(",").map(s => s.replace(/\s+/g, "").toLowerCase()).filter(Boolean);
-
-// Trusted marker authors: the same three rules as review-cycle.sh.
-const authorsActive = /\S/.test(env.REVIEW_MARKER_AUTHORS || "");
-const allow = list(env.REVIEW_MARKER_AUTHORS);
-const trusted = c => !authorsActive || allow.includes(String((c.author || {}).login || "").toLowerCase());
 
 const conflicts = p.mergeable === "CONFLICTING" || p.mergeStateStatus === "DIRTY";
 const headWritable = !p.isCrossRepository || !!p.maintainerCanModify;

@@ -365,6 +365,14 @@ def main() -> int:
             m = MARKER.match(c.get("body", "") or "")
             if m:
                 markers.append(m.groups())
+        # An edited comment is never read as a verdict, but an edit must not be able to erase a BLOCKED
+        # marker from the history: BLOCKED history only tightens a rule.
+        edited_blocked = False
+        for c in pr.get("editedComments", []) or []:
+            if marker_author_allowed(c):
+                em = MARKER.match(c.get("body", "") or "")
+                if em and em.group(2).upper() == "BLOCKED":
+                    edited_blocked = True
         if not markers:
             errors.append(
                 f"pull request #{number} is labelled `review:passed` and carries no reviewer "
@@ -393,7 +401,7 @@ def main() -> int:
             # number left it with no publishable verdict at all. So the bar applies where a BLOCKED
             # marker stands on this pull request and nowhere else. This is the third reader of the
             # format; all three answer the question the same way, or the marker means two things.
-            elif int(passes) < 2 and any(m[1].upper() == "BLOCKED" for m in markers):
+            elif int(passes) < 2 and (any(m[1].upper() == "BLOCKED" for m in markers) or edited_blocked):
                 errors.append(
                     f"pull request #{number} is labelled `review:passed` after pass {passes}, and "
                     f"pull request #{number} carries an earlier `verdict=BLOCKED` marker. A "

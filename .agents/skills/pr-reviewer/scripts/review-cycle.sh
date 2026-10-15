@@ -83,7 +83,7 @@
 #
 # ENVIRONMENT:
 #
-#     REVIEW_MARKER_AUTHORS   Optional comma-separated allowlist of GitHub logins, as `gh pr view
+#     REVIEW_MARKER_AUTHORS   Required comma-separated allowlist of GitHub logins, as `gh pr view
 #                             --json comments` prints them in `author.login`. Set it to the
 #                             login the harness session publishes as (`gh api user --jq .login`).
 #                             When this variable
@@ -409,8 +409,14 @@ parse() {
       if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
       const mm=re.exec(c.body||"");
       if(mm){last=mm;if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    for(const c of (JSON.parse(s).editedComments||[])){
+      if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
+      const mm=re.exec(c.body||"");
+      if(mm&&mm[2].toUpperCase()==="BLOCKED")blocked="yes";}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
-      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-"].join(" "):"")
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-"].join(" "):
+      // No readable marker, but a BLOCKED one was seen (it may have been edited): keep the history.
+      (blocked==="yes"?["","","","-","-","-",blocked,"-","-"].join(" "):""))
   }catch(e){}})')
   MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
   MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
@@ -776,7 +782,9 @@ trusted = [c for c in data.get("comments", [])
 
 verdicts = []
 for c in trusted:
-    m = re.match(r"\s*<!-- adversarial-review: (sha=[0-9a-f]{7,40} [^>]*)-->", c.get("body") or "", re.I)
+    m = re.match(r"\s*<!--\s*adversarial-review:\s*(sha=[0-9a-f]{7,40}\s+verdict=(?:PASSED|BLOCKED)\s+pass=\d+"
+                 r"(?:\s+critical=\d+\s+warning=\d+\s+note=\d+)?"
+                 r"(?:\s+model=[A-Za-z0-9._:-]+\s+tier=(?:fast|standard|deep))?)\s*-->", c.get("body") or "", re.I)
     if not m:
         continue
     f = fields(m.group(1))
@@ -911,6 +919,8 @@ try:
     meta = json.loads(out or "")
 except ValueError:
     refuse("could not read who wrote #%s, and an unreadable author is not a trusted one" % pr)
+if not isinstance(meta.get("isCrossRepository"), bool):
+    refuse("could not tell whether #%s comes from a fork, and an unknown origin is not a trusted one" % pr)
 if meta.get("isCrossRepository"):
     refuse("#%s comes from a fork. The fixer does not edit or run code from a fork." % pr)
 principals = {}
@@ -930,6 +940,8 @@ try:
             i += 1
 except ValueError:
     refuse("the commit list of #%s was not JSON" % pr)
+if len(commits) >= 250:
+    refuse("#%s has 250 or more commits, the most this check can list, so some authors would go unchecked" % pr)
 for c in commits:
     login = ((c.get("author") or {}).get("login") or "") if isinstance(c, dict) else ""
     principals.setdefault(login, "commit %s" % str((c or {}).get("sha", "?"))[:7])
@@ -1273,16 +1285,14 @@ if m.group(1).lower() != head:
         "review, so a record would pair one commit's verdict with another head. Run the loop again."
         % (pr.get("number"), head[:12], m.group(1)[:12]))
 try:
-    events = json.loads(os.environ["X_EVENTS"] or "[]") if os.environ["X_EVENTS"].lstrip().startswith("[") else None
-    if events is None:
-        # --paginate prints one array per page
-        dec, i, raw, events = json.JSONDecoder(), 0, os.environ["X_EVENTS"].strip(), []
-        while i < len(raw):
-            part, j = dec.raw_decode(raw, i)
-            events.extend(part)
-            i = j
-            while i < len(raw) and raw[i].isspace():
-                i += 1
+    # `gh api --paginate` prints one JSON array per page, back to back, so decode them one by one.
+    dec, i, raw, events = json.JSONDecoder(), 0, os.environ["X_EVENTS"].strip(), []
+    while i < len(raw):
+        part, j = dec.raw_decode(raw, i)
+        events.extend(part if isinstance(part, list) else [part])
+        i = j
+        while i < len(raw) and raw[i].isspace():
+            i += 1
 except ValueError:
     die("the timeline of #%s was not JSON." % pr.get("number"))
 labels = [{"event": e.get("event"), "label": (e.get("label") or {}).get("name"),
@@ -1302,9 +1312,11 @@ rec = {
     "comments_dropped_for_edits": pr.get("commentsDroppedEdited", 0),
 }
 path = os.path.join(os.environ["X_OUT"], "%s-%s.json" % (pr.get("number"), m.group(3)))
-with open(path, "w") as fh:
+tmp = path + ".tmp"
+with open(tmp, "w") as fh:
     json.dump(rec, fh, indent=2, sort_keys=True)
     fh.write("\n")
+os.replace(tmp, path)
 print(path)
 PY
 }

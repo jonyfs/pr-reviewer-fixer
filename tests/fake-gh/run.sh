@@ -134,6 +134,26 @@ touch "$FAKE_DIR/events-fail"
 "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>&1; r=$?
 check "export-audit refuses when the timeline cannot be read" eval '[ $r != 0 ] && [ ! -e "$EXPORT/7-2.json" ]'
 
+# ---- review of PR #3: pagination, edited BLOCKED history, unknown origin -------------------------
+EVENTS='[{"event":"labeled","label":{"name":"review:blocked"},"actor":{"login":"jony"},"created_at":"2026-10-15T00:00:00Z"},{"event":"labeled","label":{"name":"review:passed"},"actor":{"login":"jony"},"created_at":"2026-10-15T01:00:00Z"}]'
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents; touch "$FAKE_DIR/events-split"
+rm -rf "$EXPORT"; o="$("$RC" export-audit 7 --out "$EXPORT" 2>/dev/null)"; r=$?
+check "export-audit reads a timeline split across several pages (concatenated arrays)" eval '[ $r = 0 ] && python3 -I -c "import json,sys;d=json.load(open(sys.argv[1]));sys.exit(0 if len(d[\"label_events\"])==2 else 1)" "$o"'
+BLK1="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=1 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"
+r1=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
+r2=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "an edited BLOCKED marker still counts as BLOCKED history: PASSED pass 1 refused either way" eval '[ $r1 != 0 ] && [ $r2 != 0 ]'
+reset "$(mk 7 $D '[{"name":"review:blocked"}]' '[]' OPEN)"
+python3 -I - <<'PY'
+import json, os
+p = os.environ["FAKE_DIR"] + "/pr.json"
+d = json.load(open(p)); del d["isCrossRepository"]; json.dump(d, open(p, "w"))
+PY
+"$RC" fix 7 >"$T/out" 2>&1; r=$?
+check "fix: a missing isCrossRepository is an unknown origin and is refused" eval '[ $r != 0 ] && hasnt review:fixing && grep -q "unknown origin" "$T/out"'
+
 # ---- fix guard: fork, non-collaborator and unlinked authors are refused before any label moves --
 fixpr() { # json-extras  -> reset a blocked PR carrying the given extra top-level fields
   python3 -I - "$1" <<'PY' >"$FAKE_DIR/pr.json"

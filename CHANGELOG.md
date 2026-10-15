@@ -25,7 +25,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Breaking for installs that relied on it:** with `REVIEW_MARKER_AUTHORS` unset, empty or listing
   no login (a lone comma), `status`, `publish`, `budget`, `extend` and the gate refuse instead of
   reading every comment. Set it to the login the harness publishes as.
-- A marker comment that was edited after it was created is ignored by every reader.
+- A marker comment that was edited after it was created is ignored by every reader. An edited
+  BLOCKED marker still counts as BLOCKED history, so an edit cannot unlock a pass-1 PASSED.
+- `export-audit` reads a timeline split over several pages, writes atomically, and `fix` treats a
+  missing `isCrossRepository` or a commit list of 250 or more as unknown and refuses.
+- `budget` reads a marker with exactly the grammar the other readers use.
 - Removed the dead extension-marker loop from `triage-pr.sh`.
 
 ## 0.2.0
