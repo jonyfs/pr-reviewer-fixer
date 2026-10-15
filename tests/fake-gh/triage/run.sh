@@ -92,10 +92,13 @@ reset; pr '{"labels": [{"name": "review:fixing"}]}'; touch "$FAKE_DIR/events-fai
 expect "label events unreadable: counts as live" '.skip_reason == "live-label"'
 
 reset; pr "{\"commits\": [$FIXC], \"mergeable\": \"CONFLICTING\"}"
-expect "fixer commit 5 min ago: skip recent-fixer-commit" '.skip_reason == "recent-fixer-commit"'
+expect "fixer commit 5 min ago, no FIXER_COMMIT_AUTHORS: no skip" '.skip_reason == null'
+export FIXER_COMMIT_AUTHORS="github-actions[bot]"
+expect "fixer commit 5 min ago, author configured: skip recent-fixer-commit" '.skip_reason == "recent-fixer-commit"'
 
 reset; pr "{\"commits\": [${FIXC/11:55:00Z/11:40:00Z}]}"
 expect "fixer commit 20 min ago: no skip" '.skip_reason == null'
+unset FIXER_COMMIT_AUTHORS
 
 reset; pr '{"commits": [{"oid": "dddddddddddddddddddddddddddddddddddddddd", "committedDate": "2026-10-14T11:59:00Z", "authors": [{"login": "alice", "name": "Alice", "email": "a@x"}]}]}'
 expect "human commit 1 min ago: no skip" '.skip_reason == null'

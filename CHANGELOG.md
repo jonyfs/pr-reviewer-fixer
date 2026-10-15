@@ -19,6 +19,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `none`. The verdict is now upper-cased before it is compared.
 - A header comment in `parse()` still said an unset allowlist skips nothing.
 - `tests/fake-gh/err`, a test output file, is no longer tracked.
+- `review-cycle.sh halt` posted a second halted marker when the pull request already carried
+  `review:needs-human`. It now posts one.
+- `triage-pr.sh` defaulted `FIXER_COMMIT_AUTHORS` to the Actions bot names, though no workflow runs
+  the fixer. The default is empty, so the recent-fixer-commit skip is off until you set it.
 
 ## 0.3.0
 

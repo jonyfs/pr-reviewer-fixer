@@ -123,5 +123,11 @@ d = setup(hist([1] * 6))
 p = run(["halt", "7", "--reason", "no-answer"], d)
 check("halt --reason no-answer posts the halted marker", p.returncode == 0 and "state=halted reason=no-answer" in comments_posted(d)[-1], p.stderr)
 
+d = setup(hist([1] * 6))
+run(["halt", "7", "--reason", "stop"], d)
+n = len(comments_posted(d))
+p = run(["halt", "7", "--reason", "stop"], d)
+check("a second halt on a halted pull request posts no second marker", p.returncode == 0 and len(comments_posted(d)) == n, p.stderr)
+
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)

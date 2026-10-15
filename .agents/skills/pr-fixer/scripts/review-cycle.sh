@@ -730,7 +730,9 @@ cmd_halt() {
   [ "$LABEL" = "review:blocked" ] || die "review-cycle: #$NUMBER is ${LABEL:-unlabelled}, not review:blocked — only a blocked pull request can need a person"
   [ -z "${HALTED:-}" ] && { gh pr edit "$NUMBER" --add-label review:needs-human >/dev/null \
     || die "review-cycle: could not add review:needs-human on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"; }
-  if [ -n "$reason" ]; then
+  # One halted marker per halt: a pull request that already carries `review:needs-human` was halted
+  # before, and posting the marker again only repeats the comment.
+  if [ -n "$reason" ] && [ -z "${HALTED:-}" ]; then
     printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on #%s (reason: %s). The pull request stays review:blocked and a person decides.\n' \
       "$reason" "$NUMBER" "$reason" | gh pr comment "$NUMBER" --body-file - >/dev/null \
       || die "review-cycle: label added but the halted marker could not be posted on #$NUMBER"
