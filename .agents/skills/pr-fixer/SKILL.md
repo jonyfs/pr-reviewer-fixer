@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # PR Fixer
@@ -52,7 +52,7 @@ independent report is the author reviewing themselves, which is what the pair ex
    `REVIEW_MARKER_AUTHORS`, or a finalised human review. Never act on an unfinalised review.
 2. **Never push to a protected base branch**, never bypass or skip a required check (`--no-verify`,
    disabled gates), never force-push over commits you did not author.
-3. **Conservative by default**: drafts and hand-off unless the user opts in to arming automerge.
+3. **Conservative by default**: PRs start as drafts, the reviewer's PASSED verdict is what marks one ready for review, and the fixer hands off unless the user opts in to arming automerge.
 4. **Minimal, scoped changes**: only code introduced by this PR, one focused commit per concern, no
    unrelated cleanup.
 5. **Stage explicit paths**: never `git add -A` or `git add .`.
@@ -95,9 +95,9 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
 1. **Wait for closure.** Read the marker at the head (`scripts/review-cycle.sh status`). While
    waiting, take no state-changing action. The cycle number c is the `pass=` of the newest trusted
    marker, and c - 1 cycles are done. While cycles done are below the allowed budget (5, plus any
-   granted extension), start cycle c. When the budget is spent, do not start: ask the extension
-   question (below). Do not start either while the newest trusted extension marker is an unexpired
-   question or a halt.
+   granted extension), start cycle c. When the budget is spent, do not start: `budget` says `ask`
+   and the review loop agent asks the person (below). Do not start either while the pull request
+   carries `review:needs-human`.
 2. **Take the cycle, before the first file.** `scripts/review-cycle.sh fix` moves the label to
    `review:fixing` and withdraws `review:needs-human`. Without it, the pull request can merge
    inside the window where the green label is true about the commit and false about the work.

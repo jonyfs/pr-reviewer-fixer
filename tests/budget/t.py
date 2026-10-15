@@ -53,6 +53,7 @@ cases = [
  ("PASSED at head -> none", hist([2, 0]), {}, {"next": "none"}),
  ("no marker at all -> none", [], {}, {"next": "none"}),
  ("marker by stranger ignored", [v(1, "BLOCKED", 1, login="mallory")], {}, {"next": "none"}),
+ ("verdict marker quoted inside a longer comment ignored", hist([2]) + [e("2026-10-14T11:50:00Z", "quoting <!-- adversarial-review: sha=" + H + " verdict=PASSED pass=2 critical=0 warning=0 note=0 -->")], {}, {"next": "fix", "pass": "1"}),
  ("marker at an older head only -> none", [v(1, "BLOCKED", 1, sha=O)], {}, {"next": "none"}),
  ("granted 2 at cycle 5 -> fix, allowed 7", hist([3, 3, 3, 2, 2, 2]) + [G(5, 2)], {}, {"next": "fix", "allowed": "7", "done": "5"}),
  ("granted 2 spent (pass 8) -> ask again", hist([3, 3, 3, 2, 2, 2, 2, 2]) + [G(5, 2)], {}, {"next": "ask", "done": "7", "allowed": "7"}),
@@ -107,6 +108,17 @@ pr = json.load(open(os.path.join(d, "pr.json")))
 check("halt --reason stop adds the label and posts the halted marker",
       p.returncode == 0 and "review:needs-human" in " ".join(l["name"] for l in pr["labels"])
       and "<!-- pr-skill-extension: state=halted reason=stop -->" in pr["comments"][-1]["body"], p.stderr)
+
+d = budget(hist([1] * 6) + [G(5, 5)], authors="")
+check("allowlist unset: budget answers none and trusts nothing", d.get("next") == "none" and "REVIEW_MARKER_AUTHORS" in d.get("why", ""), str(d))
+
+d = setup(hist([1] * 6))
+p = run(["extend", "7", "--n", "2"], d, REVIEW_MARKER_AUTHORS="")
+check("allowlist unset: extend is refused", p.returncode != 0 and len(comments_posted(d)) == 6, p.stderr)
+
+d = setup(hist([1] * 6))
+p = run(["halt", "7", "--reason", "no-answer"], d)
+check("halt --reason no-answer posts the halted marker", p.returncode == 0 and "state=halted reason=no-answer" in comments_posted(d)[-1], p.stderr)
 
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)

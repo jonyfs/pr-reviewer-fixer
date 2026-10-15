@@ -93,6 +93,7 @@ Trigger: green checks and all comments resolved.
    - Opt-in → arm automerge (`gh pr merge <n> --squash --auto --delete-branch`, strategy from
      `merge_strategy`).
    - Default → leave **ready for human review** and hand off.
-3. Only mark ready (`gh pr ready`) if the user wants ready-for-review now.
+3. The fixer never marks a PR ready. `review-cycle.sh publish --verdict PASSED` does, when the
+   reviewer approves a draft ([pr-protocol.md](pr-protocol.md)).
 
 Guardrails: never arm automerge while any blocking feedback remains; never skip the queue via check bypass.

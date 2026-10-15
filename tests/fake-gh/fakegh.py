@@ -28,6 +28,10 @@ if args[:2] == ["pr", "comment"]:
     pr = load()
     pr["comments"].append({"body": body, "author": {"login": os.environ.get("FAKE_LOGIN", "github-actions")}})
     save(pr); sys.exit(0)
+if args[:2] == ["pr", "ready"]:
+    if os.path.exists(os.path.join(d, "no-ready")):
+        print("could not mark ready: not permitted", file=sys.stderr); sys.exit(1)
+    pr = load(); pr["isDraft"] = False; save(pr); sys.exit(0)
 if args[:2] == ["label", "create"]:
     sys.exit(0)
 print("fake gh: unhandled " + " ".join(args), file=sys.stderr); sys.exit(1)

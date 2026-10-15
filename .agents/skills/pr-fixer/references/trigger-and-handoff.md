@@ -24,8 +24,9 @@ The fixer starts when any of these holds at the **current head**:
    same-repository PR and `scripts/triage-pr.sh <n>` returned lanes and no `skip_reason`.
    Playbooks: [conflicts.md](conflicts.md), [ci-failures.md](ci-failures.md).
 
-Nothing starts while the newest trusted extension marker is a halted marker with a reason other
-than a person's later `continue`: a halted PR waits for a person.
+Nothing starts while the pull request carries `review:needs-human`: a halted PR waits for a person.
+The next run of the loop asks again (`budget` says `ask`), and a `continue N` answer resumes it.
+`start`, `fix` and any `publish` withdraw the label.
 
 "Trusted" means the comment's author is in `REVIEW_MARKER_AUTHORS` and the marker's `sha=` equals
 the current head. Find it with filter F1 in [pr-protocol.md](pr-protocol.md), which applies the same
@@ -79,7 +80,7 @@ Each step that touches the PR follows [pr-protocol.md](pr-protocol.md).
 | BLOCKED and cycles done reached `max_review_cycles_hard` (10) | No question. `halt --reason ceiling` |
 | The fix or re-review sub-agent failed | The loop agent stops and tells the person which step failed |
 | No progress (same failure, same lane state) | Halt, name the next action |
-| Invalidator (review reopened, PR closed, converted to draft, base retargeted) | Halt and report |
+| Invalidator (review reopened, PR closed, converted back to draft after it was ready, base retargeted) | Halt and report |
 | Budget (`max_wall_time`) | Halt and report |
 
 Automerge is armed only when `automerge_optin` is true and the marker is PASSED at the head with no

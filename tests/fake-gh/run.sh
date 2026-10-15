@@ -24,8 +24,9 @@ eq() { [ "$1" = "$2" ]; }
 calls() { grep -c -- "$1" "$FAKE_DIR/calls.log"; }
 REP="$T/report.md"; printf '## findings\n- one\n' >"$REP"
 pub() { "$RC" publish 7 --report "$REP" "$@" >"$T/out" 2>&1; echo $?; }
-mk() { # number head labels(json) comments(json) state
-  printf '{"number":%s,"headRefOid":"%s","labels":%s,"comments":%s,"state":"%s"}' "$1" "$2" "$3" "$4" "$5"; }
+mk() { # number head labels(json) comments(json) state [isDraft true|false]
+  printf '{"number":%s,"headRefOid":"%s","labels":%s,"comments":%s,"state":"%s","isDraft":%s}' "$1" "$2" "$3" "$4" "$5" "${6:-false}"; }
+isdraft() { python3 -I -c 'import json,sys;print("yes" if json.load(open(sys.argv[1])).get("isDraft") else "no")' "$FAKE_DIR/pr.json"; }
 mc() { # login body
   python3 -I -c 'import json,sys;print(json.dumps({"body":sys.argv[2],"author":{"login":sys.argv[1]}}))' "$1" "$2"; }
 
@@ -77,6 +78,20 @@ check "fix with missing label -> dies with ensure-labels hint" eval '[ $r = 1 ] 
 echo "review:pending review:running" >"$FAKE_DIR/known-labels"; "$RC" start 7 >/dev/null 2>&1
 r=$(pub --verdict PASSED --pass 1 --sha $A --critical 0 --warning 0 --note 0)
 check "publish with missing label -> comment posted first, then hint" eval '[ $r = 1 ] && [ $(ncomments) = 1 ] && grep -q "marker posted but the label did not move" "$T/out" && grep -q "ensure-labels" "$T/out"'
+
+# ---- draft pull requests: PASSED marks ready for review -------------------------------------
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN true)"
+r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "publish PASSED on a draft -> marked ready for review" eval '[ $r = 0 ] && has review:passed && [ "$(isdraft)" = no ] && [ $(calls "pr ready 7") = 1 ]'
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN true)"
+r=$(pub --verdict BLOCKED --pass 1 --sha $D --critical 1 --warning 0 --note 0)
+check "publish BLOCKED on a draft -> stays a draft, no ready call" eval '[ $r = 0 ] && has review:blocked && [ "$(isdraft)" = yes ] && [ $(calls "pr ready") = 0 ]'
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN false)"
+r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "publish PASSED on a ready PR -> no ready call" eval '[ $r = 0 ] && has review:passed && [ $(calls "pr ready") = 0 ]'
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN true)"; touch "$FAKE_DIR/no-ready"
+r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "ready fails -> verdict still published, exit 0, warning names the command" eval '[ $r = 0 ] && has review:passed && [ "$(isdraft)" = yes ] && grep -q "gh pr ready 7" "$T/out"'
 
 # ---- halt (review:needs-human) ------------------------------------------------------------
 BLK="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=1 warning=0 note=0 -->")"

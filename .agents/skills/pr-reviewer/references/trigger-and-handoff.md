@@ -24,7 +24,7 @@ PR opened / pushed to (by the session's agent) or a person asks
                        -> continue N -> `extend`, N more cycles
                        -> stop, or no answer -> `halt`, review:blocked + review:needs-human
   -> PASSED with debt -> pr-fixer debt-only (owners into the pr-debt block, one closure comment)
-  -> PASSED    -> hand off to the person, who merges
+  -> PASSED    -> publish marks a draft PR ready for review; hand off to the person, who merges
 ```
 
 Termination: **`max_review_cycles` (5) automatic cycles, then ask, then halt.** After cycle 5 ends

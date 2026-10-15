@@ -35,6 +35,10 @@ check with `cmp`.
 | `review:fixing` | `review-cycle.sh fix` | A correction is in flight; the head is about to move |
 | `review:needs-human` | `review-cycle.sh halt`, only over `review:blocked`; withdrawn by `start`, `fix`, `stale` and any `publish` | The loop paused or stopped (budget spent, stop, or no answer) and a person has to decide |
 
+`review-cycle.sh publish --verdict PASSED` also marks a draft pull request ready for review
+(`gh pr ready`), after the marker and the label. BLOCKED leaves it a draft. A failure to mark it
+ready is reported and does not undo the verdict.
+
 No label at all reads as "not reviewed", never as "approved". `review-cycle.sh ensure-labels`
 creates the six labels and is safe to run again; it needs no PR number and exits 2 if any label
 could not be created. Run it once per repository, at install. The marker is the authority and the label is its projection.
@@ -44,8 +48,9 @@ When they disagree, `review-cycle.sh status` reports it and exits non-zero.
 
 A marker is only a string, and anyone who can comment can type one. Set `REVIEW_MARKER_AUTHORS` to
 a comma-separated list of GitHub logins. `review-cycle.sh` then accepts a verdict or closure marker
-only from comments written by those logins, compared without case. Unset means no filter, which is acceptable only on a
-repository where every commenter is trusted. The agents publish with `gh` under the account the
+only from comments written by those logins, compared without case. Unset means no filter for `status` and the gate, which is acceptable only on a
+repository where every commenter is trusted. `budget` and `extend` fail closed instead: with the
+variable unset they trust nothing, because they decide whether agents keep editing the branch. The agents publish with `gh` under the account the
 person is signed in to, so the value is that login: `gh api user --jq .login`. Add the login of
 anyone else who publishes reviews. The markers then carry the person's own login, which means the
 gate cannot tell a marker the agent wrote from one the person typed. It checks that a trusted

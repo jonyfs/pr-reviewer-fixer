@@ -1,7 +1,7 @@
 flowchart TD
     A([Pull request opened or updated]) --> B[pr-reviewer<br/>read-only agents review the diff]
     B --> C{Any CRITICAL<br/>finding?}
-    C -- No --> D[Verdict PASSED<br/>label review:passed]
+    C -- No --> D[Verdict PASSED<br/>label review:passed<br/>draft marked ready]
     C -- Yes --> E[Verdict BLOCKED<br/>label review:blocked]
     D --> F{Warnings or notes<br/>left?}
     F -- Yes --> G[pr-fixer in debt-only mode<br/>writes an owner for each item]

@@ -63,14 +63,16 @@
 #                          paused or stopped and a person has to decide. With --reason, also posts
 #                          the `state=halted` extension marker.
 #     budget [pr]          the cycle budget read from the trusted markers: what the loop does
-#                          next (fix, ask, ceiling or none) as B_<KEY>='<value>' lines
+#                          next (fix, ask, ceiling or none) as B_<KEY>='<value>' lines. With
+#                          REVIEW_MARKER_AUTHORS unset it answers none and trusts nothing.
 #     extend [pr] --n <n>  records that a person granted n more cycles (`state=granted` marker)
 #     stale [pr]           a marker-backed state whose head moved goes back to review:pending
 #     marker [file] [--author <login>]
 #                          reads one marker from a file or stdin
 #     publish [pr] --verdict PASSED|BLOCKED --pass <n> --sha <40hex> --report <file>
 #             --critical <n> --warning <n> --note <n>
-#                          posts the marker comment, then moves the label
+#                          posts the marker comment, then moves the label. On PASSED, a draft
+#                          pull request is marked ready for review (`gh pr ready`).
 #     ensure-labels        creates or updates the six review:* labels in the current repository
 #                          (gh resolves the repository from the working directory or GH_REPO)
 #
@@ -335,8 +337,8 @@ command -v gh >/dev/null 2>&1 || { echo "review-cycle: gh is not installed — I
 # Reads the pull request once. $1 is an optional explicit number; without it, the branch's own.
 pr_json() {
   local n="${1:-}"
-  if [ -n "$n" ]; then gh pr view "$n" --json number,headRefOid,labels,comments,state 2>/dev/null
-  else gh pr view --json number,headRefOid,labels,comments,state 2>/dev/null; fi
+  if [ -n "$n" ]; then gh pr view "$n" --json number,headRefOid,labels,comments,state,isDraft 2>/dev/null
+  else gh pr view --json number,headRefOid,labels,comments,state,isDraft 2>/dev/null; fi
 }
 
 # Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS.
@@ -345,6 +347,7 @@ parse() {
   NUMBER=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).number||""))}catch(e){}})')
   HEAD=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).headRefOid||"").toLowerCase())}catch(e){}})')
   STATE=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).state||""))}catch(e){}})')
+  IS_DRAFT=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).isDraft===true?"yes":"")}catch(e){}})')
   # The alternation comes from `STATES_RE` through the environment, never retyped here. A second
   # copy of the vocabulary is a second thing to forget, and forgetting it in THIS reader is the
   # expensive direction: an unlisted state leaves `$LABEL` empty, and every caller downstream reads
@@ -677,9 +680,8 @@ cmd_status() {
   return 1
 }
 
-# The loop paused or stopped (the cycle budget is spent and the question is open, `/pr-skill stop`, or
-# no answer in time) and what is left is a
-# person's decision. `review:blocked` alone cannot say that: it is also the state a pull request is in
+# The loop paused or stopped (the cycle budget is spent and the question is open, `stop`, or no
+# answer) and what is left is a person's decision. `review:blocked` alone cannot say that: it is also the state a pull request is in
 # while the fixer is about to run. This adds a modifier and moves nothing else. It refuses anything
 # but an OPEN pull request in `review:blocked`, because a halt over any other state would be a claim
 # the cycle does not back.
@@ -723,6 +725,13 @@ cmd_halt() {
 # is lower than at pass 1 but did not keep falling, 0 otherwise, never more than what remains.
 cmd_budget() {
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read a budget from"
+  # Fail closed. With no author allowlist every commenter would be trusted, and a stranger's
+  # `state=granted` comment would raise the budget. Unlike `status`, which only reads a verdict, the
+  # budget decides whether agents keep editing the branch, so it refuses to guess.
+  if ! marker_authors_active; then
+    printf "B_NEXT='none'\nB_WHY='REVIEW_MARKER_AUTHORS is not set, so no marker is trusted and the budget is not read'\n"
+    return 0
+  fi
   printf '%s' "$json" | BUDGET_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
     BUDGET_HARD="${MAX_REVIEW_CYCLES_HARD:-10}" python3 -I -c '
 import json, os, re, shlex, sys
@@ -743,7 +752,7 @@ trusted = [c for c in data.get("comments", [])
 
 verdicts = []
 for c in trusted:
-    m = re.search(r"<!-- adversarial-review: (sha=[0-9a-f]{7,40} [^>]*)-->", c.get("body") or "")
+    m = re.match(r"\s*<!-- adversarial-review: (sha=[0-9a-f]{7,40} [^>]*)-->", c.get("body") or "", re.I)
     if not m:
         continue
     f = fields(m.group(1))
@@ -1054,6 +1063,17 @@ cmd_publish() {
       $( [ -n "$LABEL" ] && [ "$LABEL" != "$label" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
     || die "review-cycle: marker posted but the label did not move on #$NUMBER; fix by hand; labels may be missing: run review-cycle.sh ensure-labels, then move the label to $label"
   echo "#$NUMBER → $label${halted_rm:+, review:needs-human withdrawn}, marker bound to ${HEAD:0:12}, pass $passno, critical=$crit warning=$warn note=$note"
+  # An approved pull request stops being a draft. This is the one thing publish does beyond the
+  # marker and the label, and only after both are written, so the gate (which starts on
+  # ready_for_review) already finds the marker. A failure here is reported and does not undo the
+  # verdict: the marker is the authority, the draft flag is a convenience.
+  if [ "$verdict" = "PASSED" ] && [ -n "${IS_DRAFT:-}" ]; then
+    if gh pr ready "$NUMBER" >/dev/null 2>&1; then
+      echo "  #$NUMBER was a draft: marked ready for review"
+    else
+      echo "review-cycle: verdict published, but #$NUMBER could not be marked ready for review; run: gh pr ready $NUMBER" >&2
+    fi
+  fi
   [ "$verdict" = "PASSED" ] && { positivo "$warn" || positivo "$note"; } && \
     echo "  declared debt: $warn warning, $note note — name an owner for each in the pull request body; passed means nothing blocks, not that nothing was found"
   return 0

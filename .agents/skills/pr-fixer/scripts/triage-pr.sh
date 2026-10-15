@@ -4,7 +4,8 @@
 #
 # Usage: triage-pr.sh <pr-number>
 #
-# It never writes anything: no label, no comment, no push. It answers one question for the
+# It never writes anything: no label, no comment, no push. A draft that nobody named is skipped;
+# the review loop names its own pull requests, so it is not affected by that skip. It answers one question for the
 # review loop agent and for a person: is there conflict or
 # failing-check work on this pull request, and is it safe to start it now?
 #
@@ -42,7 +43,9 @@
 #   REVIEW_MARKER_AUTHORS        logins whose pr-skill-extension markers count (same rule as
 #                                review-cycle.sh: comma-separated, case-insensitive, unset = all)
 #   FIXER_COMMIT_AUTHORS         logins, names or e-mails that identify the fixer's own commits.
-#                                Default: github-actions[bot], claude[bot] and the Actions bot e-mail
+#                                Default: github-actions[bot], claude[bot] and the Actions bot e-mail.
+#                                A session fixer commits as the person, so set this to your own login
+#                                or name for the recent-fixer-commit skip to apply
 #   TRIAGE_RECENT_FIXER_MINUTES  a fixer commit younger than this skips the PR (default 10)
 #   TRIAGE_LIVE_LABEL_MINUTES    default 60
 #   TRIAGE_IGNORE_CHECKS         check names never counted as failing (default review-gate,
@@ -156,7 +159,7 @@ let skip = null;
 if (p.state !== "OPEN") skip = "closed";
 else if (p.isDraft) skip = "draft";
 else if (!headWritable) skip = "fork-without-edit";
-else if (ext && ext.state === "halted") skip = "extension-halted";
+else if ((p.labels || []).some(l => l.name === "review:needs-human")) skip = "extension-halted";
 else if (liveLabel) skip = "live-label";
 else if (recentFixer) skip = "recent-fixer-commit";
 

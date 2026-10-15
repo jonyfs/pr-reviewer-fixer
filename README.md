@@ -44,7 +44,7 @@ finding blocks the merge never ends. These skills are built around those two fai
 flowchart TD
     A([Pull request opened or updated]) --> B[pr-reviewer<br/>read-only agents review the diff]
     B --> C{Any CRITICAL<br/>finding?}
-    C -- No --> D[Verdict PASSED<br/>label review:passed]
+    C -- No --> D[Verdict PASSED<br/>label review:passed<br/>draft marked ready]
     C -- Yes --> E[Verdict BLOCKED<br/>label review:blocked]
     D --> F{Warnings or notes<br/>left?}
     F -- Yes --> G[pr-fixer in debt-only mode<br/>writes an owner for each item]
@@ -114,7 +114,8 @@ sequenceDiagram
 - Verifies each finding against the code before reporting it, and merges duplicates.
 - Splits large diffs into units, reviews the seams between them, and reports what was and was not
   read in depth.
-- Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit.
+- Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
+  the verdict is `PASSED` and the pull request is a draft, the script marks it ready for review.
 
 ### pr-fixer
 

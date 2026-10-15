@@ -4,6 +4,26 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.2.0
+
+### Added
+
+- `review-cycle.sh publish --verdict PASSED` marks a draft pull request ready for review, after
+  the marker and the label. A failure there is reported and does not undo the verdict. Agents open
+  pull requests as drafts.
+
+### Changed
+
+- `review-cycle.sh budget` and `extend` fail closed when `REVIEW_MARKER_AUTHORS` is unset: they
+  trust no marker, so a stranger's comment cannot raise the cycle budget.
+- `budget` reads a verdict marker only from the start of a comment, as `status` and the gate do.
+- `triage-pr.sh` skips a halted pull request by the `review:needs-human` label, not by the newest
+  halted marker, so a pull request a person fixed is no longer skipped.
+- A draft pull request is reviewed, not skipped. Converting a ready pull request back to draft is
+  what invalidates a cycle.
+- Wording left over from the removed extension-question comments is gone from both `SKILL.md`
+  files and the script header.
+
 ## 0.1.0
 
 First tracked release.
