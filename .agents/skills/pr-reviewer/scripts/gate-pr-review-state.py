@@ -171,12 +171,18 @@ MARKER = re.compile(
 # whitespace removed, and the compare ignores case. Active with no login left after that (a lone
 # comma) accepts no marker, which reads as not reviewed. Unset or empty: every comment counts, as
 # before the variable existed.
-def marker_author_allowed(comment: dict) -> bool:
+def allowlist() -> set:
+    """The normalised logins. Empty means the gate has nobody to trust and must not guess."""
     raw = os.environ.get("REVIEW_MARKER_AUTHORS", "")
-    if not raw.strip():
-        return True
     allow = {re.sub(r"\s+", "", x).lower() for x in raw.split(",")}
     allow.discard("")
+    return allow
+
+
+def marker_author_allowed(comment: dict) -> bool:
+    allow = allowlist()
+    if not allow:
+        return False
     author = comment.get("author") or {}
     login = (author.get("login") or "").lower() if isinstance(author, dict) else ""
     return bool(login) and login in allow
@@ -189,6 +195,16 @@ def gh(*args: str) -> "str | None":
     except (OSError, subprocess.TimeoutExpired):
         return None
     return r.stdout if r.returncode == 0 else None
+
+
+def pr_json(explicit: list) -> "str | None":
+    helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pr-json.py")
+    try:
+        r = subprocess.run([sys.executable, "-I", helper] + explicit, capture_output=True,
+                           text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 and r.stdout.strip() else None
 
 
 def main() -> int:
@@ -206,7 +222,15 @@ def main() -> int:
     # that is not the one carrying it. Without it, the only way to see red would be to open a
     # deliberately broken pull request, and what matters is seeing the red, not staging theatre.
     explicit = [a for a in sys.argv[1:] if a.isdigit()]
-    out = gh("pr", "view", *explicit, "--json", "number,headRefOid,labels,comments,state")
+    # Fail closed. With no login to trust, every marker is forgeable, and a gate that reads them anyway
+    # answers a question it cannot answer. Inconclusive is not approved: in strict mode it is a failure.
+    if not allowlist():
+        print("  ⚠️  REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be "
+              "trusted — gate INCONCLUSIVE, which is not the same as approved")
+        return INCONCLUSIVE
+    # The pull request is read through pr-json.py, which drops every comment edited after creation
+    # and fails closed when edits cannot be checked.
+    out = pr_json(explicit)
     if out is None:
         # The two causes are DIFFERENT and the first version said the same sentence for both. With an
         # explicit number, "not found" means `gh` could not read ONE pull request that

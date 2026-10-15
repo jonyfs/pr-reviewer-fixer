@@ -57,7 +57,9 @@
 #     status [pr]          what the cycle owes, and the next command (exit codes below)
 #     debt [pr]            the same answer as an exit code only, for hooks and CI
 #     start [pr]           review:running, and review:needs-human withdrawn
-#     fix [pr]             review:fixing, and review:needs-human withdrawn
+#     fix [pr]             review:fixing, and review:needs-human withdrawn. Refused first when the
+#                          pull request is from a fork or any author is not a collaborator with
+#                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup)
 #     halt [pr] [--reason R]
 #                          review:needs-human added to a review:blocked pull request: the loop
 #                          paused or stopped and a person has to decide. With --reason, also posts
@@ -320,6 +322,19 @@ positivo() { case "${1:-}" in ''|-|*[!0-9]*) return 1 ;; *[!0]*) return 0 ;; *) 
 # same three rules: the list is active when the variable holds anything other than whitespace, each
 # entry has all whitespace removed (a login never contains any), and the compare ignores case.
 marker_authors_active() { case "${REVIEW_MARKER_AUTHORS:-}" in *[![:space:]]*) return 0 ;; *) return 1 ;; esac; }
+# READY is stricter than active: at least one login must survive the normalisation. Unset, empty,
+# whitespace and a lone comma are all not ready, and every command that decides from markers
+# (`status`, `publish`, `budget`, and so `extend`) refuses to guess in that case. The marker reader
+# applies the same rule, so the commands cannot disagree about what "," means.
+marker_authors_ready() {
+  local entry list=()
+  IFS=, read -r -a list <<<"${REVIEW_MARKER_AUTHORS:-}"
+  for entry in ${list[@]+"${list[@]}"}; do
+    [ -n "$(printf '%s' "$entry" | tr -d '[:space:]')" ] && return 0
+  done
+  return 1
+}
+NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
 marker_author_allowed() {
   local want entry list=()
   want="$(printf '%s' "${1:-}" | tr -d '[:space:]' | tr 'A-Z' 'a-z')"
@@ -337,8 +352,9 @@ command -v gh >/dev/null 2>&1 || { echo "review-cycle: gh is not installed — I
 # Reads the pull request once. $1 is an optional explicit number; without it, the branch's own.
 pr_json() {
   local n="${1:-}"
-  if [ -n "$n" ]; then gh pr view "$n" --json number,headRefOid,labels,comments,state,isDraft 2>/dev/null
-  else gh pr view --json number,headRefOid,labels,comments,state,isDraft 2>/dev/null; fi
+  # Read through pr-json.py, which drops every comment edited after it was created and fails closed
+  # when edits cannot be checked. Nothing here reads comments from `gh pr view` directly.
+  python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"} 2>/dev/null
 }
 
 # Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS.
@@ -464,8 +480,9 @@ cmd_marker() {
 
 # Says, in one line, what the cycle owes, and the exact next command, never a description of one.
 cmd_status() {
+  marker_authors_ready || { echo "review-cycle: $NOT_READY_MSG — INCONCLUSIVE"; return 2; }
   local json; json="$(pr_json "${1:-}")"
-  [ -n "$json" ] || { echo "review-cycle: no open pull request for this branch, or gh is offline — INCONCLUSIVE"; return 2; }
+  [ -n "$json" ] || { echo "review-cycle: no open pull request for this branch, gh is offline, or comment edits could not be checked — INCONCLUSIVE"; return 2; }
   parse "$json"
   # CLOSED without merge shipped nothing. MERGED shipped, and the first version of this line treated the
   # two the same, so **merging switched off the Stop hook**, which is the half the gate had already
@@ -728,8 +745,8 @@ cmd_budget() {
   # Fail closed. With no author allowlist every commenter would be trusted, and a stranger's
   # `state=granted` comment would raise the budget. Unlike `status`, which only reads a verdict, the
   # budget decides whether agents keep editing the branch, so it refuses to guess.
-  if ! marker_authors_active; then
-    printf "B_NEXT='none'\nB_WHY='REVIEW_MARKER_AUTHORS is not set, so no marker is trusted and the budget is not read'\n"
+  if ! marker_authors_ready; then
+    printf "B_NEXT='none'\nB_WHY='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker is trusted and the budget is not read'\n"
     return 0
   fi
   printf '%s' "$json" | BUDGET_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
@@ -853,6 +870,77 @@ cmd_start() {
   echo "#$NUMBER → review:running (head ${HEAD:0:12})"
 }
 
+# The mechanical barrier in front of the fixer's writes (ISO 27001 A.8.28, task B). A script cannot
+# sandbox the agent's own tool calls: isolation of the tests the fixer runs belongs to the harness.
+# What a script CAN do is refuse to start a correction on code the person did not write or accept.
+#
+# It builds the set of principals (the pull request author and the author of every commit on the
+# pull request) and refuses unless each one is a collaborator with `write`, `maintain` or `admin`
+# permission on the repository. Fail closed: a fork, a commit with no linked GitHub login, a
+# lookup that errors, a bot, or any lower permission refuses. `FIXER_TRUSTED_LOGINS` (comma
+# separated) names logins allowed without a lookup, for a bot the repository owns. Base-branch merge
+# commits are covered because their authors are resolved like any other.
+fix_guard() {
+  FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - <<'PY'
+import json, os, subprocess, sys
+
+pr = os.environ["FG_PR"]
+trusted = {x.strip().lower() for x in os.environ["FG_TRUSTED"].split(",") if x.strip()}
+OK = {"admin", "maintain", "write"}
+
+def gh(*args):
+    try:
+        r = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+def refuse(msg):
+    print("review-cycle: REFUSED. " + msg, file=sys.stderr)
+    sys.exit(1)
+
+out = gh("pr", "view", pr, "--json", "isCrossRepository,author")
+try:
+    meta = json.loads(out or "")
+except ValueError:
+    refuse("could not read who wrote #%s, and an unreadable author is not a trusted one" % pr)
+if meta.get("isCrossRepository"):
+    refuse("#%s comes from a fork. The fixer does not edit or run code from a fork." % pr)
+principals = {}
+author = ((meta.get("author") or {}).get("login") or "")
+principals[author] = "the pull request author"
+raw = gh("api", "repos/{owner}/{repo}/pulls/%s/commits" % pr, "--paginate")
+if raw is None:
+    refuse("could not list the commits of #%s, so their authors cannot be checked" % pr)
+dec, i, commits = json.JSONDecoder(), 0, []
+raw = raw.strip()
+try:
+    while i < len(raw):
+        part, j = dec.raw_decode(raw, i)
+        commits.extend(part if isinstance(part, list) else [part])
+        i = j
+        while i < len(raw) and raw[i].isspace():
+            i += 1
+except ValueError:
+    refuse("the commit list of #%s was not JSON" % pr)
+for c in commits:
+    login = ((c.get("author") or {}).get("login") or "") if isinstance(c, dict) else ""
+    principals.setdefault(login, "commit %s" % str((c or {}).get("sha", "?"))[:7])
+for login, why in principals.items():
+    if not login:
+        refuse("%s has no linked GitHub login, so the fixer cannot tell who wrote it." % why)
+    if login.lower() in trusted:
+        continue
+    perm = gh("api", "repos/{owner}/{repo}/collaborators/%s/permission" % login, "--jq", ".permission")
+    if perm is None:
+        refuse("could not confirm that %s (%s) is a collaborator with write access. A bot or an "
+               "outside contributor is refused; list a bot you own in FIXER_TRUSTED_LOGINS." % (login, why))
+    if perm.strip() not in OK:
+        refuse("%s (%s) has permission '%s' here, and the fixer only edits code written by "
+               "collaborators with write access or higher." % (login, why, perm.strip()))
+PY
+}
+
 # The corrector's `start`, and the two writes are the same two writes for the same reason.
 #
 # **WHY IT EXISTS, measured.** `cmd_start` takes the cycle for the reviewer and drops
@@ -882,6 +970,8 @@ cmd_fix() {
   # for corrections that never landed", a specific, false forensic trail about a correction that
   # never existed, produced by a label applied by mistake after the fact.
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no cycle to claim on a pull request that already merged or closed"
+  # Before any label moves: a refused correction leaves the pull request exactly as it was.
+  fix_guard "$NUMBER" || die "review-cycle: #$NUMBER was not claimed for correction"
   gh pr edit "$NUMBER" --add-label review:fixing ${HALTED:+--remove-label review:needs-human} \
       $( [ -n "$LABEL" ] && [ "$LABEL" != "review:fixing" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
     || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
@@ -973,6 +1063,7 @@ cmd_publish() {
    Only a CRITICAL blocks, so a passing verdict beside one is the verdict contradicting the
    arithmetic that produced it. Close them with /pr-fixer and review the correction."
 
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
   local json; json="$(pr_json "$number")"; [ -n "$json" ] || die "review-cycle: no pull request to publish on"
   parse "$json"
 

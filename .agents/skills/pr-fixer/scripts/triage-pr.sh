@@ -4,10 +4,10 @@
 #
 # Usage: triage-pr.sh <pr-number>
 #
-# It never writes anything: no label, no comment, no push. A draft that nobody named is skipped;
-# the review loop names its own pull requests, so it is not affected by that skip. It answers one question for the
-# review loop agent and for a person: is there conflict or
-# failing-check work on this pull request, and is it safe to start it now?
+# It never writes anything: no label, no comment, no push. It answers one question for the review
+# loop agent and for a person: is there conflict or failing-check work on this pull request, and is
+# it safe to start it now? A draft that nobody named is skipped; the review loop names its own pull
+# requests, so it is not affected by that skip.
 #
 # OUTPUT. One JSON object on stdout:
 #
@@ -119,18 +119,6 @@ for (const c of p.statusCheckRollup || []) {
   } else if (["FAILURE", "TIMED_OUT", "STARTUP_FAILURE"].includes(c.conclusion) && !ignore.includes(String(c.name).toLowerCase())) {
     failing.push({ name: c.name, workflow: c.workflowName || null, conclusion: c.conclusion, run_id: runId(c.detailsUrl), url: c.detailsUrl || null });
   }
-}
-
-// Newest trusted pr-skill-extension marker. It counts only at the very start of a comment, so a
-// marker quoted inside a report, a claim or a log excerpt is never one.
-let ext = null;
-for (const c of p.comments || []) {
-  if (!trusted(c)) continue;
-  const m = /^<!-- pr-skill-extension: (state=[^>]*)-->/.exec(c.body || "");
-  if (!m) continue;
-  const f = {};
-  for (const kv of m[1].trim().split(/\s+/)) { const i = kv.indexOf("="); if (i > 0) f[kv.slice(0, i)] = kv.slice(i + 1); }
-  ext = f;
 }
 
 // A pass-in-flight label is live when it was applied less than TRIAGE_LIVE_LABEL_MINUTES ago.
