@@ -2,7 +2,7 @@
 # Drives triage-pr.sh against a fake gh. Prints a pass/fail table.
 set -u
 T="$(cd "$(dirname "$0")" && pwd)"
-SRC="${1:-$T/../../../pr-fixer/scripts}"
+SRC="${1:-$T/../../../.agents/skills/pr-fixer/scripts}"
 TR="$SRC/triage-pr.sh"
 export PATH="$T/bin:$PATH" FAKE_DIR="$T/state" TRIAGE_NOW=2026-10-14T12:00:00Z TRIAGE_UNKNOWN_WAIT_S=0
 export REVIEW_MARKER_AUTHORS=github-actions
@@ -75,8 +75,6 @@ expect "marker quoted inside a trusted comment: ignored" '.skip_reason == null'
 reset; pr "{\"comments\": [$HALT, {\"author\": {\"login\": \"github-actions\"}, \"body\": \"<!-- pr-skill-extension: state=granted n=2 -->\"}]}"
 expect "granted after halted: newest wins, no skip" '.skip_reason == null'
 
-reset; pr '{"comments": [{"author": {"login": "github-actions"}, "body": "<!-- pr-skill-extension: state=asked cycle=5 asked_at=2026-10-14T11:58:00Z expires_at=2026-10-14T12:03:00Z suggested=1 -->"}]}'
-expect "open extension question: skip extension-question-open" '.skip_reason == "extension-question-open"'
 
 reset; pr '{"labels": [{"name": "review:fixing"}]}'; printf 'review:fixing\t2026-10-14T11:50:00Z\n' >"$FAKE_DIR/events.tsv"
 expect "live review:fixing label (10 min old): skip live-label" '.skip_reason == "live-label" and .live_label == "review:fixing"'

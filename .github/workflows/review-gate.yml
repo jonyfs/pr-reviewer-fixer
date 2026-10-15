@@ -1,0 +1,62 @@
+# Required status check for the review loop. Copy to .github/workflows/review-gate.yml.
+#
+# This workflow runs no model, holds no provider key and writes nothing. It asks one question of
+# the pull request: does the newest trusted verdict marker at the head say PASSED? Reviews and
+# corrections are done by agents in a person's own harness session, which publish their marker
+# comments with `gh`. See references/harness-loop.md.
+#
+# Mark the `review-gate` job as a required check in branch protection or a ruleset.
+#
+# It runs review-cycle.sh from the BASE commit, never from the pull request tree, so a pull request
+# cannot edit its own gate. The base branch must already contain the skills before the gate can
+# pass, so merge the install pull request with an admin override. For pull_request events the
+# workflow file itself comes from the pull request: protect `.github/workflows/**` and
+# `.agents/skills/**` with CODEOWNERS and require code owner review.
+#
+# TIMING. The job runs when the pull request is opened or pushed to, before the harness has
+# published a verdict, so it fails then (absence reads as not reviewed). A comment does not start a
+# pull_request workflow, so after `review-cycle.sh publish` the agent re-runs this check:
+#   gh run list --workflow review-gate.yml --branch <head branch> --limit 1 --json databaseId --jq '.[0].databaseId'
+#   gh run rerun <that id>
+#
+# MARKER AUTHORS. The repository variable REVIEW_MARKER_AUTHORS must list the GitHub login or logins
+# the harness publishes as (the account `gh` is authenticated as, for example `jonyfs`). With it
+# unset, anyone who can comment could forge a PASSED marker, so the job refuses to run.
+name: review-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Marker at the head must say PASSED (script from the base commit)
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REVIEW_MARKER_AUTHORS: ${{ vars.REVIEW_MARKER_AUTHORS }}
+        run: |
+          if [ -z "${REVIEW_MARKER_AUTHORS//[[:space:]]/}" ]; then
+            echo "::error::Set the repository variable REVIEW_MARKER_AUTHORS to the login the harness publishes verdicts as. Without it any commenter could forge a PASSED marker."
+            exit 1
+          fi
+          .agents/skills/pr-reviewer/scripts/review-cycle.sh status "$PR"

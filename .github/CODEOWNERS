@@ -1,0 +1,5 @@
+# The skills and the workflows that run them are controlled configuration.
+/.agents/skills/   @jonyfs
+/.github/          @jonyfs
+/VERSION           @jonyfs
+/CHANGELOG.md      @jonyfs
