@@ -61,6 +61,16 @@ Harnesses without per-subagent model control (Aider, Cline, Roo, Zed) run the wh
 `standard` setting and treat `deep` units as a second sequential pass with the effort raised.
 Copilot's native code review has no model choice (Lite or Balanced); use Balanced.
 
+## Reporting model and tier
+
+When the reviewer publishes, it passes the model id the harness reports for the run and the tier it
+used for the verdict-bearing units, as `review-cycle.sh publish ... --model <id> --tier
+fast|standard|deep`. Use the id exactly as the harness prints it (letters, digits, dot, colon, dash,
+underscore, at most 64 characters). If the run mixed tiers, report the highest tier that produced a
+finding. If the harness does not report a model id, leave both flags out rather than guess: the
+marker stays valid and the export shows them as absent. These values are self-attested and are
+not checked by any script.
+
 ## Applying a profile
 
 Pass `model` and `effort` as call parameters on every dispatch. Frontmatter that declares them does

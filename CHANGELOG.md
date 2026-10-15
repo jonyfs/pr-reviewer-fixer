@@ -4,6 +4,34 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.3.0
+
+### Added
+
+- `review-cycle.sh fix` refuses a pull request from a fork, and one whose author or any commit
+  author is not a collaborator with `write`, `maintain` or `admin` permission, before any label
+  moves. `FIXER_TRUSTED_LOGINS` allows a bot the repository owns.
+- `scripts/pr-json.py` in both skills: reads the pull request through GraphQL, drops every comment
+  edited after it was created, and fails closed when edits cannot be checked.
+- `publish --model <id> --tier fast|standard|deep` writes optional, self-attested `model=` and
+  `tier=` into the marker. Older markers stay valid.
+- `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` from the
+  trusted marker and the PR's label events, and refuses when the head moved after the marker.
+- `publish` appends one line to a per-machine `audit.jsonl` as a convenience copy.
+- `docs/compliance-records/README.md` and the design record `docs/designs/iso-alignment-0.3.0.md`.
+
+### Changed
+
+- **Breaking for installs that relied on it:** with `REVIEW_MARKER_AUTHORS` unset, empty or listing
+  no login (a lone comma), `status`, `publish`, `budget`, `extend` and the gate refuse instead of
+  reading every comment. Set it to the login the harness publishes as.
+- A marker comment that was edited after it was created is ignored by every reader. An edited
+  BLOCKED marker still counts as BLOCKED history, so an edit cannot unlock a pass-1 PASSED.
+- `export-audit` reads a timeline split over several pages, writes atomically, and `fix` treats a
+  missing `isCrossRepository` or a commit list of 250 or more as unknown and refuses.
+- `budget` reads a marker with exactly the grammar the other readers use.
+- Removed the dead extension-marker loop from `triage-pr.sh`.
+
 ## 0.2.0
 
 ### Added

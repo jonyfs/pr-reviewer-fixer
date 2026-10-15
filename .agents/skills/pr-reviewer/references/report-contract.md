@@ -112,8 +112,11 @@ severity whose status is `open` or `refused-rejected`; `verified`, `refused-acce
 Published only through `scripts/review-cycle.sh publish`, which writes
 
 ```
-<!-- adversarial-review: sha=<40hex> verdict=PASSED|BLOCKED pass=<n> critical=<n> warning=<n> note=<n> -->
+<!-- adversarial-review: sha=<40hex> verdict=PASSED|BLOCKED pass=<n> critical=<n> warning=<n> note=<n> [model=<id> tier=fast|standard|deep] -->
 ```
+
+`model` and `tier` are optional, come as a pair, and are self-attested by the publishing session. A
+marker without them is still valid.
 
 and moves the label (`review:passed` or `review:blocked`). The marker is the authority and the label
 is its projection. The marker string keeps its original prefix so existing gates still parse it.

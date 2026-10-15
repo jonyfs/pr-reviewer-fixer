@@ -4,10 +4,10 @@
 #
 # Usage: triage-pr.sh <pr-number>
 #
-# It never writes anything: no label, no comment, no push. A draft that nobody named is skipped;
-# the review loop names its own pull requests, so it is not affected by that skip. It answers one question for the
-# review loop agent and for a person: is there conflict or
-# failing-check work on this pull request, and is it safe to start it now?
+# It never writes anything: no label, no comment, no push. It answers one question for the review
+# loop agent and for a person: is there conflict or failing-check work on this pull request, and is
+# it safe to start it now? A draft that nobody named is skipped; the review loop names its own pull
+# requests, so it is not affected by that skip.
 #
 # OUTPUT. One JSON object on stdout:
 #
@@ -40,8 +40,6 @@
 #
 # ENVIRONMENT (all optional):
 #
-#   REVIEW_MARKER_AUTHORS        logins whose pr-skill-extension markers count (same rule as
-#                                review-cycle.sh: comma-separated, case-insensitive, unset = all)
 #   FIXER_COMMIT_AUTHORS         logins, names or e-mails that identify the fixer's own commits.
 #                                Default: github-actions[bot], claude[bot] and the Actions bot e-mail.
 #                                A session fixer commits as the person, so set this to your own login
@@ -70,7 +68,7 @@ WAIT_S=$(digits "${TRIAGE_UNKNOWN_WAIT_S:-}" 10)
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/triage-pr.XXXXXX") || exit 2
 trap 'rm -rf "$TMP"' EXIT
 
-FIELDS=number,state,isDraft,headRefOid,headRefName,baseRefOid,baseRefName,mergeable,mergeStateStatus,isCrossRepository,maintainerCanModify,labels,comments,commits,statusCheckRollup
+FIELDS=number,state,isDraft,headRefOid,headRefName,baseRefOid,baseRefName,mergeable,mergeStateStatus,isCrossRepository,maintainerCanModify,labels,commits,statusCheckRollup
 read_pr() { gh pr view "$PR" --json "$FIELDS" > "$TMP/pr.json" 2>"$TMP/err" && [ -s "$TMP/pr.json" ]; }
 mergeable() { node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mergeable||""))}catch(e){}' "$TMP/pr.json"; }
 
@@ -100,11 +98,6 @@ const num = (v, d) => /^[0-9]+$/.test(v || "") ? Number(v) : d;
 const now = env.TRIAGE_NOW ? Date.parse(env.TRIAGE_NOW) : Date.now();
 const list = v => String(v || "").split(",").map(s => s.replace(/\s+/g, "").toLowerCase()).filter(Boolean);
 
-// Trusted marker authors: the same three rules as review-cycle.sh.
-const authorsActive = /\S/.test(env.REVIEW_MARKER_AUTHORS || "");
-const allow = list(env.REVIEW_MARKER_AUTHORS);
-const trusted = c => !authorsActive || allow.includes(String((c.author || {}).login || "").toLowerCase());
-
 const conflicts = p.mergeable === "CONFLICTING" || p.mergeStateStatus === "DIRTY";
 const headWritable = !p.isCrossRepository || !!p.maintainerCanModify;
 
@@ -119,18 +112,6 @@ for (const c of p.statusCheckRollup || []) {
   } else if (["FAILURE", "TIMED_OUT", "STARTUP_FAILURE"].includes(c.conclusion) && !ignore.includes(String(c.name).toLowerCase())) {
     failing.push({ name: c.name, workflow: c.workflowName || null, conclusion: c.conclusion, run_id: runId(c.detailsUrl), url: c.detailsUrl || null });
   }
-}
-
-// Newest trusted pr-skill-extension marker. It counts only at the very start of a comment, so a
-// marker quoted inside a report, a claim or a log excerpt is never one.
-let ext = null;
-for (const c of p.comments || []) {
-  if (!trusted(c)) continue;
-  const m = /^<!-- pr-skill-extension: (state=[^>]*)-->/.exec(c.body || "");
-  if (!m) continue;
-  const f = {};
-  for (const kv of m[1].trim().split(/\s+/)) { const i = kv.indexOf("="); if (i > 0) f[kv.slice(0, i)] = kv.slice(i + 1); }
-  ext = f;
 }
 
 // A pass-in-flight label is live when it was applied less than TRIAGE_LIVE_LABEL_MINUTES ago.

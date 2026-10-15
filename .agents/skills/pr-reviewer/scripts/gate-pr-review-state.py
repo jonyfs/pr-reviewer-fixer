@@ -159,7 +159,8 @@ NEEDS_HUMAN = "review:needs-human"
 # one whose leftover field is silently ignored.
 MARKER = re.compile(
     r"^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
-    r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?\s*-->",
+    r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
+    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->",
     re.I,
 )
 
@@ -168,15 +169,21 @@ MARKER = re.compile(
 # session publishes as). The marker is an HTML comment, so without a list anyone who can comment
 # can post an invisible PASSED one. The rules are the same three `review-cycle.sh` applies: the
 # list is active when the variable holds anything other than whitespace, each entry has all
-# whitespace removed, and the compare ignores case. Active with no login left after that (a lone
-# comma) accepts no marker, which reads as not reviewed. Unset or empty: every comment counts, as
-# before the variable existed.
-def marker_author_allowed(comment: dict) -> bool:
+# whitespace removed, and the compare ignores case. With no login left after that (unset, empty,
+# whitespace or a lone comma) the gate has nobody to trust and answers inconclusive, which is never
+# the same as approved.
+def allowlist() -> set:
+    """The normalised logins. Empty means the gate has nobody to trust and must not guess."""
     raw = os.environ.get("REVIEW_MARKER_AUTHORS", "")
-    if not raw.strip():
-        return True
     allow = {re.sub(r"\s+", "", x).lower() for x in raw.split(",")}
     allow.discard("")
+    return allow
+
+
+def marker_author_allowed(comment: dict) -> bool:
+    allow = allowlist()
+    if not allow:
+        return False
     author = comment.get("author") or {}
     login = (author.get("login") or "").lower() if isinstance(author, dict) else ""
     return bool(login) and login in allow
@@ -189,6 +196,16 @@ def gh(*args: str) -> "str | None":
     except (OSError, subprocess.TimeoutExpired):
         return None
     return r.stdout if r.returncode == 0 else None
+
+
+def pr_json(explicit: list) -> "str | None":
+    helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pr-json.py")
+    try:
+        r = subprocess.run([sys.executable, "-I", helper] + explicit, capture_output=True,
+                           text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 and r.stdout.strip() else None
 
 
 def main() -> int:
@@ -206,7 +223,15 @@ def main() -> int:
     # that is not the one carrying it. Without it, the only way to see red would be to open a
     # deliberately broken pull request, and what matters is seeing the red, not staging theatre.
     explicit = [a for a in sys.argv[1:] if a.isdigit()]
-    out = gh("pr", "view", *explicit, "--json", "number,headRefOid,labels,comments,state")
+    # Fail closed. With no login to trust, every marker is forgeable, and a gate that reads them anyway
+    # answers a question it cannot answer. Inconclusive is not approved: in strict mode it is a failure.
+    if not allowlist():
+        print("  ⚠️  REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be "
+              "trusted — gate INCONCLUSIVE, which is not the same as approved")
+        return INCONCLUSIVE
+    # The pull request is read through pr-json.py, which drops every comment edited after creation
+    # and fails closed when edits cannot be checked.
+    out = pr_json(explicit)
     if out is None:
         # The two causes are DIFFERENT and the first version said the same sentence for both. With an
         # explicit number, "not found" means `gh` could not read ONE pull request that
@@ -340,6 +365,14 @@ def main() -> int:
             m = MARKER.match(c.get("body", "") or "")
             if m:
                 markers.append(m.groups())
+        # An edited comment is never read as a verdict, but an edit must not be able to erase a BLOCKED
+        # marker from the history: BLOCKED history only tightens a rule.
+        edited_blocked = False
+        for c in pr.get("editedComments", []) or []:
+            if marker_author_allowed(c):
+                em = MARKER.match(c.get("body", "") or "")
+                if em and em.group(2).upper() == "BLOCKED":
+                    edited_blocked = True
         if not markers:
             errors.append(
                 f"pull request #{number} is labelled `review:passed` and carries no reviewer "
@@ -347,7 +380,9 @@ def main() -> int:
                 "claim standing alone"
             )
         else:
-            sha, verdict, passes, criticals, _warnings, _notes = markers[-1]
+            # The last two groups are the optional, self-attested model and tier; the gate decides
+            # from the first six and never from them.
+            sha, verdict, passes, criticals, _warnings, _notes = markers[-1][:6]
             sha = sha.lower()
             if verdict.upper() != "PASSED":
                 errors.append(
@@ -366,7 +401,7 @@ def main() -> int:
             # number left it with no publishable verdict at all. So the bar applies where a BLOCKED
             # marker stands on this pull request and nowhere else. This is the third reader of the
             # format; all three answer the question the same way, or the marker means two things.
-            elif int(passes) < 2 and any(m[1].upper() == "BLOCKED" for m in markers):
+            elif int(passes) < 2 and (any(m[1].upper() == "BLOCKED" for m in markers) or edited_blocked):
                 errors.append(
                     f"pull request #{number} is labelled `review:passed` after pass {passes}, and "
                     f"pull request #{number} carries an earlier `verdict=BLOCKED` marker. A "

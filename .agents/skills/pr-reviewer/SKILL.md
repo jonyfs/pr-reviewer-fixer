@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # PR Reviewer
@@ -144,7 +144,9 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
 7. **Count and decide.** `critical`, `warning`, `note`. The verdict follows the arithmetic.
 8. **Publish.** Write the report (format and size rule in
    [references/report-contract.md](references/report-contract.md)) and run
-   `scripts/review-cycle.sh publish --verdict V --pass N --sha <head> --report FILE --critical C --warning W --note N`.
+   `scripts/review-cycle.sh publish --verdict V --pass N --sha <head> --report FILE --critical C --warning W --note N [--model <id> --tier fast|standard|deep]`.
+   Pass `--model` and `--tier` when the harness reports the model; they are self-attested
+   ([references/execution-profiles.md](references/execution-profiles.md)).
    The script re-reads the head, refuses a stale `--sha`, and refuses a marker plus report over
    60000 bytes. On PASSED it also marks a draft pull request ready for review (`gh pr ready`),
    after the marker and the label are written. Never post the marker with `gh pr comment`. What the verdict comment, inline

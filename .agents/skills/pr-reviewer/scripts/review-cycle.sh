@@ -57,7 +57,9 @@
 #     status [pr]          what the cycle owes, and the next command (exit codes below)
 #     debt [pr]            the same answer as an exit code only, for hooks and CI
 #     start [pr]           review:running, and review:needs-human withdrawn
-#     fix [pr]             review:fixing, and review:needs-human withdrawn
+#     fix [pr]             review:fixing, and review:needs-human withdrawn. Refused first when the
+#                          pull request is from a fork or any author is not a collaborator with
+#                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup)
 #     halt [pr] [--reason R]
 #                          review:needs-human added to a review:blocked pull request: the loop
 #                          paused or stopped and a person has to decide. With --reason, also posts
@@ -66,11 +68,14 @@
 #                          next (fix, ask, ceiling or none) as B_<KEY>='<value>' lines. With
 #                          REVIEW_MARKER_AUTHORS unset it answers none and trusts nothing.
 #     extend [pr] --n <n>  records that a person granted n more cycles (`state=granted` marker)
+#     export-audit [pr] [--out <dir>]
+#                          writes <dir>/<pr>-<pass>.json (default docs/compliance-records) from
+#                          the trusted marker and the PR timeline; refuses when the head moved
 #     stale [pr]           a marker-backed state whose head moved goes back to review:pending
 #     marker [file] [--author <login>]
 #                          reads one marker from a file or stdin
 #     publish [pr] --verdict PASSED|BLOCKED --pass <n> --sha <40hex> --report <file>
-#             --critical <n> --warning <n> --note <n>
+#             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
 #                          posts the marker comment, then moves the label. On PASSED, a draft
 #                          pull request is marked ready for review (`gh pr ready`).
 #     ensure-labels        creates or updates the six review:* labels in the current repository
@@ -78,7 +83,7 @@
 #
 # ENVIRONMENT:
 #
-#     REVIEW_MARKER_AUTHORS   Optional comma-separated allowlist of GitHub logins, as `gh pr view
+#     REVIEW_MARKER_AUTHORS   Required comma-separated allowlist of GitHub logins, as `gh pr view
 #                             --json comments` prints them in `author.login`. Set it to the
 #                             login the harness session publishes as (`gh api user --jq .login`).
 #                             When this variable
@@ -87,10 +92,11 @@
 #                             in every reader: `parse()` here, `marker --author`, and
 #                             gate-pr-review-state.py. Without it, anyone who can comment on the
 #                             pull request can post an invisible PASSED marker, because the marker
-#                             is an HTML comment and every comment is scanned. A list that parses
-#                             to no login at all (for example a lone comma) accepts no marker,
-#                             which reads as not reviewed. Unset or empty: every comment is
-#                             scanned, exactly as before the variable existed.
+#                             is an HTML comment and every comment is scanned. The list must name
+#                             at least one login: unset, empty, whitespace and a lone comma all
+#                             make `status`, `publish`, `budget`, `extend`, `export-audit` refuse.
+#                             Only the bare `marker` subcommand still reads with the list unset.
+#                             A comment edited after it was created is never read (pr-json.py).
 #     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
 #                             Default 5. Read by `budget` and `extend`.
 #     MAX_REVIEW_CYCLES_HARD  Absolute ceiling no answer passes. Default 10, clamped to 1..10.
@@ -291,7 +297,7 @@ STATES_RE='review:(pending|running|fixing|blocked|passed)'
 # The shell reader. It had no caller at first, a third reader of the marker format that read
 # nothing, which is why no test could ever see it drift from the other two. `marker` is its
 # caller now, and a test can drive both forms through it.
-MARKER_RE='<!--[[:space:]]*adversarial-review:[[:space:]]*sha=([0-9a-f]{7,40})[[:space:]]+verdict=(PASSED|BLOCKED)[[:space:]]+pass=([0-9]+)([[:space:]]+critical=([0-9]+)[[:space:]]+warning=([0-9]+)[[:space:]]+note=([0-9]+))?[[:space:]]*-->'
+MARKER_RE='<!--[[:space:]]*adversarial-review:[[:space:]]*sha=([0-9a-f]{7,40})[[:space:]]+verdict=(PASSED|BLOCKED)[[:space:]]+pass=([0-9]+)([[:space:]]+critical=([0-9]+)[[:space:]]+warning=([0-9]+)[[:space:]]+note=([0-9]+))?([[:space:]]+model=([A-Za-z0-9._:-]+)[[:space:]]+tier=(fast|standard|deep))?[[:space:]]*-->'
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
@@ -320,6 +326,19 @@ positivo() { case "${1:-}" in ''|-|*[!0-9]*) return 1 ;; *[!0]*) return 0 ;; *) 
 # same three rules: the list is active when the variable holds anything other than whitespace, each
 # entry has all whitespace removed (a login never contains any), and the compare ignores case.
 marker_authors_active() { case "${REVIEW_MARKER_AUTHORS:-}" in *[![:space:]]*) return 0 ;; *) return 1 ;; esac; }
+# READY is stricter than active: at least one login must survive the normalisation. Unset, empty,
+# whitespace and a lone comma are all not ready, and every command that decides from markers
+# (`status`, `publish`, `budget`, and so `extend`) refuses to guess in that case. The marker reader
+# applies the same rule, so the commands cannot disagree about what "," means.
+marker_authors_ready() {
+  local entry list=()
+  IFS=, read -r -a list <<<"${REVIEW_MARKER_AUTHORS:-}"
+  for entry in ${list[@]+"${list[@]}"}; do
+    [ -n "$(printf '%s' "$entry" | tr -d '[:space:]')" ] && return 0
+  done
+  return 1
+}
+NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
 marker_author_allowed() {
   local want entry list=()
   want="$(printf '%s' "${1:-}" | tr -d '[:space:]' | tr 'A-Z' 'a-z')"
@@ -337,8 +356,9 @@ command -v gh >/dev/null 2>&1 || { echo "review-cycle: gh is not installed — I
 # Reads the pull request once. $1 is an optional explicit number; without it, the branch's own.
 pr_json() {
   local n="${1:-}"
-  if [ -n "$n" ]; then gh pr view "$n" --json number,headRefOid,labels,comments,state,isDraft 2>/dev/null
-  else gh pr view --json number,headRefOid,labels,comments,state,isDraft 2>/dev/null; fi
+  # Read through pr-json.py, which drops every comment edited after it was created and fails closed
+  # when edits cannot be checked. Nothing here reads comments from `gh pr view` directly.
+  python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"} 2>/dev/null
 }
 
 # Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS.
@@ -381,7 +401,7 @@ parse() {
   # nothing is skipped.
   local m
   m=$(printf '%s' "$json" | REVIEW_MARKER_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
-    const re=/^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?\s*-->/i;
+    const re=/^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->/i;
     const env=process.env.REVIEW_MARKER_AUTHORS||"",active=/\S/.test(env);
     const allow=env.split(",").map(x=>x.replace(/\s+/g,"").toLowerCase()).filter(Boolean);
     let last=null,blocked="no";
@@ -389,8 +409,14 @@ parse() {
       if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
       const mm=re.exec(c.body||"");
       if(mm){last=mm;if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    for(const c of (JSON.parse(s).editedComments||[])){
+      if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
+      const mm=re.exec(c.body||"");
+      if(mm&&mm[2].toUpperCase()==="BLOCKED")blocked="yes";}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
-      last[4]||"-",last[5]||"-",last[6]||"-",blocked].join(" "):"")
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-"].join(" "):
+      // No readable marker, but a BLOCKED one was seen (it may have been edited): keep the history.
+      (blocked==="yes"?["","","","-","-","-",blocked,"-","-"].join(" "):""))
   }catch(e){}})')
   MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
   MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
@@ -404,6 +430,9 @@ parse() {
   # else. Reading only the last marker cannot answer it: a BLOCKED at pass 1 is precisely the
   # marker a later PASSED overwrites as "current".
   MARKER_BLOCKED_SEEN=$(printf '%s' "$m" | cut -d' ' -f7)
+  # Self-attested by the publishing session, never verified. `-` when the marker carries none.
+  MARKER_MODEL=$(printf '%s' "$m" | cut -d' ' -f8)
+  MARKER_TIER=$(printf '%s' "$m" | cut -d' ' -f9)
 }
 
 # Reads ONE marker, through `MARKER_RE`, from a file or from stdin, and prints
@@ -464,8 +493,9 @@ cmd_marker() {
 
 # Says, in one line, what the cycle owes, and the exact next command, never a description of one.
 cmd_status() {
+  marker_authors_ready || { echo "review-cycle: $NOT_READY_MSG — INCONCLUSIVE"; return 2; }
   local json; json="$(pr_json "${1:-}")"
-  [ -n "$json" ] || { echo "review-cycle: no open pull request for this branch, or gh is offline — INCONCLUSIVE"; return 2; }
+  [ -n "$json" ] || { echo "review-cycle: no open pull request for this branch, gh is offline, or comment edits could not be checked — INCONCLUSIVE"; return 2; }
   parse "$json"
   # CLOSED without merge shipped nothing. MERGED shipped, and the first version of this line treated the
   # two the same, so **merging switched off the Stop hook**, which is the half the gate had already
@@ -728,8 +758,8 @@ cmd_budget() {
   # Fail closed. With no author allowlist every commenter would be trusted, and a stranger's
   # `state=granted` comment would raise the budget. Unlike `status`, which only reads a verdict, the
   # budget decides whether agents keep editing the branch, so it refuses to guess.
-  if ! marker_authors_active; then
-    printf "B_NEXT='none'\nB_WHY='REVIEW_MARKER_AUTHORS is not set, so no marker is trusted and the budget is not read'\n"
+  if ! marker_authors_ready; then
+    printf "B_NEXT='none'\nB_WHY='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker is trusted and the budget is not read'\n"
     return 0
   fi
   printf '%s' "$json" | BUDGET_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
@@ -752,7 +782,9 @@ trusted = [c for c in data.get("comments", [])
 
 verdicts = []
 for c in trusted:
-    m = re.match(r"\s*<!-- adversarial-review: (sha=[0-9a-f]{7,40} [^>]*)-->", c.get("body") or "", re.I)
+    m = re.match(r"\s*<!--\s*adversarial-review:\s*(sha=[0-9a-f]{7,40}\s+verdict=(?:PASSED|BLOCKED)\s+pass=\d+"
+                 r"(?:\s+critical=\d+\s+warning=\d+\s+note=\d+)?"
+                 r"(?:\s+model=[A-Za-z0-9._:-]+\s+tier=(?:fast|standard|deep))?)\s*-->", c.get("body") or "", re.I)
     if not m:
         continue
     f = fields(m.group(1))
@@ -853,6 +885,81 @@ cmd_start() {
   echo "#$NUMBER → review:running (head ${HEAD:0:12})"
 }
 
+# The mechanical barrier in front of the fixer's writes (ISO 27001 A.8.28, task B). A script cannot
+# sandbox the agent's own tool calls: isolation of the tests the fixer runs belongs to the harness.
+# What a script CAN do is refuse to start a correction on code the person did not write or accept.
+#
+# It builds the set of principals (the pull request author and the author of every commit on the
+# pull request) and refuses unless each one is a collaborator with `write`, `maintain` or `admin`
+# permission on the repository. Fail closed: a fork, a commit with no linked GitHub login, a
+# lookup that errors, a bot, or any lower permission refuses. `FIXER_TRUSTED_LOGINS` (comma
+# separated) names logins allowed without a lookup, for a bot the repository owns. Base-branch merge
+# commits are covered because their authors are resolved like any other.
+fix_guard() {
+  FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - <<'PY'
+import json, os, subprocess, sys
+
+pr = os.environ["FG_PR"]
+trusted = {x.strip().lower() for x in os.environ["FG_TRUSTED"].split(",") if x.strip()}
+OK = {"admin", "maintain", "write"}
+
+def gh(*args):
+    try:
+        r = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+def refuse(msg):
+    print("review-cycle: REFUSED. " + msg, file=sys.stderr)
+    sys.exit(1)
+
+out = gh("pr", "view", pr, "--json", "isCrossRepository,author")
+try:
+    meta = json.loads(out or "")
+except ValueError:
+    refuse("could not read who wrote #%s, and an unreadable author is not a trusted one" % pr)
+if not isinstance(meta.get("isCrossRepository"), bool):
+    refuse("could not tell whether #%s comes from a fork, and an unknown origin is not a trusted one" % pr)
+if meta.get("isCrossRepository"):
+    refuse("#%s comes from a fork. The fixer does not edit or run code from a fork." % pr)
+principals = {}
+author = ((meta.get("author") or {}).get("login") or "")
+principals[author] = "the pull request author"
+raw = gh("api", "repos/{owner}/{repo}/pulls/%s/commits" % pr, "--paginate")
+if raw is None:
+    refuse("could not list the commits of #%s, so their authors cannot be checked" % pr)
+dec, i, commits = json.JSONDecoder(), 0, []
+raw = raw.strip()
+try:
+    while i < len(raw):
+        part, j = dec.raw_decode(raw, i)
+        commits.extend(part if isinstance(part, list) else [part])
+        i = j
+        while i < len(raw) and raw[i].isspace():
+            i += 1
+except ValueError:
+    refuse("the commit list of #%s was not JSON" % pr)
+if len(commits) >= 250:
+    refuse("#%s has 250 or more commits, the most this check can list, so some authors would go unchecked" % pr)
+for c in commits:
+    login = ((c.get("author") or {}).get("login") or "") if isinstance(c, dict) else ""
+    principals.setdefault(login, "commit %s" % str((c or {}).get("sha", "?"))[:7])
+for login, why in principals.items():
+    if not login:
+        refuse("%s has no linked GitHub login, so the fixer cannot tell who wrote it." % why)
+    if login.lower() in trusted:
+        continue
+    perm = gh("api", "repos/{owner}/{repo}/collaborators/%s/permission" % login, "--jq", ".permission")
+    if perm is None:
+        refuse("could not confirm that %s (%s) is a collaborator with write access. A bot or an "
+               "outside contributor is refused; list a bot you own in FIXER_TRUSTED_LOGINS." % (login, why))
+    if perm.strip() not in OK:
+        refuse("%s (%s) has permission '%s' here, and the fixer only edits code written by "
+               "collaborators with write access or higher." % (login, why, perm.strip()))
+PY
+}
+
 # The corrector's `start`, and the two writes are the same two writes for the same reason.
 #
 # **WHY IT EXISTS, measured.** `cmd_start` takes the cycle for the reviewer and drops
@@ -882,6 +989,8 @@ cmd_fix() {
   # for corrections that never landed", a specific, false forensic trail about a correction that
   # never existed, produced by a label applied by mistake after the fact.
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no cycle to claim on a pull request that already merged or closed"
+  # Before any label moves: a refused correction leaves the pull request exactly as it was.
+  fix_guard "$NUMBER" || die "review-cycle: #$NUMBER was not claimed for correction"
   gh pr edit "$NUMBER" --add-label review:fixing ${HALTED:+--remove-label review:needs-human} \
       $( [ -n "$LABEL" ] && [ "$LABEL" != "review:fixing" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
     || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
@@ -917,7 +1026,7 @@ cmd_stale() {
 }
 
 cmd_publish() {
-  local verdict="" passno="" sha="" report="" number="" crit="" warn="" note=""
+  local verdict="" passno="" sha="" report="" number="" crit="" warn="" note="" model="" tier=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --verdict)  verdict="$2"; shift 2 ;;
@@ -927,6 +1036,8 @@ cmd_publish() {
       --critical) crit="$2";    shift 2 ;;
       --warning)  warn="$2";    shift 2 ;;
       --note)     note="$2";    shift 2 ;;
+      --model)    model="$2";   shift 2 ;;
+      --tier)     tier="$2";    shift 2 ;;
       *)          number="$1";  shift ;;
     esac
   done
@@ -973,6 +1084,7 @@ cmd_publish() {
    Only a CRITICAL blocks, so a passing verdict beside one is the verdict contradicting the
    arithmetic that produced it. Close them with /pr-fixer and review the correction."
 
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
   local json; json="$(pr_json "$number")"; [ -n "$json" ] || die "review-cycle: no pull request to publish on"
   parse "$json"
 
@@ -1041,9 +1153,19 @@ cmd_publish() {
   # so a rejected body leaves the pull request at `review:running` with no marker, a pass that looks
   # like it died in flight. Measured in bytes, which are never fewer than characters, so the count
   # can only overstate the length; the bar sits at 60000 to keep a margin below the hard limit.
+  # Model id and tier are self-attested by the publishing session and are never verified here. They
+  # are optional and come as a pair, so an old marker (without them) and a new one both read.
+  local model_part=""
+  if [ -n "$model$tier" ]; then
+    [ -n "$model" ] && [ -n "$tier" ] || die "review-cycle: --model and --tier go together"
+    case "$model" in ''|*[!A-Za-z0-9._:-]*) die "review-cycle: --model takes letters, digits, dot, colon, dash and underscore only" ;; esac
+    [ "${#model}" -le 64 ] || die "review-cycle: --model is longer than 64 characters"
+    case "$tier" in fast|standard|deep) ;; *) die "review-cycle: --tier is one of fast, standard, deep" ;; esac
+    model_part=" model=$model tier=$tier"
+  fi
   local marker_line body_bytes
-  marker_line="$(printf '<!-- adversarial-review: sha=%s verdict=%s pass=%s critical=%s warning=%s note=%s -->' \
-      "$HEAD" "$verdict" "$passno" "$crit" "$warn" "$note")"
+  marker_line="$(printf '<!-- adversarial-review: sha=%s verdict=%s pass=%s critical=%s warning=%s note=%s%s -->' \
+      "$HEAD" "$verdict" "$passno" "$crit" "$warn" "$note" "$model_part")"
   body_bytes=$(( $(printf '%s\n\n' "$marker_line" | wc -c) + $(wc -c <"$report") ))
   if [ "$body_bytes" -gt 60000 ]; then
     die "review-cycle: REFUSED. The marker plus the report is $body_bytes bytes, and the limit here is 60000.
@@ -1076,7 +1198,127 @@ cmd_publish() {
   fi
   [ "$verdict" = "PASSED" ] && { positivo "$warn" || positivo "$note"; } && \
     echo "  declared debt: $warn warning, $note note — name an owner for each in the pull request body; passed means nothing blocks, not that nothing was found"
+  audit_append "$NUMBER" "$passno" "$HEAD" "$verdict" "$crit" "$warn" "$note" "${model:--}" "${tier:--}"
   return 0
+}
+
+# A convenience copy of what was just published, one JSON line per verdict, on this machine only:
+# `${XDG_STATE_HOME:-$HOME/.local/state}/pr-reviewer-fixer/audit.jsonl`. It is NOT evidence. The
+# marker on the pull request is the authority, and this file can be edited or lost with the laptop.
+# A failure to write it is a warning and never undoes the verdict.
+audit_append() {
+  local dir file who ts
+  dir="${XDG_STATE_HOME:-${HOME:-}/.local/state}/pr-reviewer-fixer"
+  file="$dir/audit.jsonl"
+  who="$(gh api user --jq .login 2>/dev/null)" || who=""
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if ! { mkdir -p "$dir" && A_PR="$1" A_PASS="$2" A_SHA="$3" A_VERDICT="$4" A_CRIT="$5" A_WARN="$6" A_NOTE="$7" \
+         A_MODEL="$8" A_TIER="$9" A_WHO="$who" A_TS="$ts" python3 -I -c '
+import json, os
+e = os.environ
+n = lambda k: None if e[k] in ("", "-") else e[k]
+print(json.dumps({"pr": int(e["A_PR"]), "pass": int(e["A_PASS"]), "sha": e["A_SHA"],
+    "verdict": e["A_VERDICT"], "critical": int(e["A_CRIT"]), "warning": int(e["A_WARN"]),
+    "note": int(e["A_NOTE"]), "model": n("A_MODEL"), "tier": n("A_TIER"),
+    "publisher": n("A_WHO"), "published_at": e["A_TS"]}, sort_keys=True))' >>"$file"; } 2>/dev/null; then
+    echo "review-cycle: warning: the local audit copy could not be written to $file; the marker on #$1 is the record" >&2
+  fi
+}
+
+# Exports what the pull request itself says about one review, as a JSON file a person commits
+# through a pull request (`docs/compliance-records/<pr>-<pass>.json`). It decides from the same
+# trust rules as `status` and the gate: an author on `REVIEW_MARKER_AUTHORS`, a comment never edited
+# after it was created (pr-json.py), and a refusal when the allowlist is empty or lists no login. It
+# REFUSES when no trusted marker remains, and when the head moved after the last trusted marker,
+# so a record never pairs one commit's verdict with another head. Markers that were posted by
+# someone off the list are listed under `ignored`, with the reason, and never used.
+#
+# Model id and tier are copied from the marker as they are: self-attested by the publishing
+# session, never verified. Everything else (sha, counts, publisher, timestamps, label events)
+# comes from GitHub.
+cmd_export_audit() {
+  local pr="" out="docs/compliance-records"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --out) out="${2:-}"; shift 2 ;;
+      *) pr="$1"; shift ;;
+    esac
+  done
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: could not read the pull request, or its comment edits could not be checked"
+  parse "$json"
+  local events
+  events="$(gh api "repos/{owner}/{repo}/issues/$NUMBER/events" --paginate 2>/dev/null)" \
+    || die "review-cycle: could not read the timeline of #$NUMBER, and an export without it would be incomplete"
+  mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
+  X_JSON="$json" X_EVENTS="$events" X_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" X_OUT="$out" python3 -I - <<'PY' || exit 1
+import json, os, re, sys
+
+MARK = re.compile(
+    r"^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
+    r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
+    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->", re.I)
+
+def die(msg):
+    print("review-cycle: REFUSED. " + msg, file=sys.stderr)
+    sys.exit(1)
+
+pr = json.loads(os.environ["X_JSON"])
+allow = {re.sub(r"\s+", "", x).lower() for x in os.environ["X_AUTHORS"].split(",")} - {""}
+head = (pr.get("headRefOid") or "").lower()
+trusted, ignored = [], []
+for c in pr.get("comments", []):
+    m = MARK.match(c.get("body") or "")
+    if not m:
+        continue
+    who = ((c.get("author") or {}).get("login") or "")
+    if who.lower() in allow:
+        trusted.append((c, m))
+    else:
+        ignored.append({"reason": "author is not in REVIEW_MARKER_AUTHORS", "author": who or None,
+                        "created_at": c.get("createdAt"), "url": c.get("url")})
+if not trusted:
+    die("no trusted marker remains on #%s, so there is nothing to export." % pr.get("number"))
+c, m = trusted[-1]
+if m.group(1).lower() != head:
+    die("the head of #%s is %s but the last trusted marker names %s: the head moved after the "
+        "review, so a record would pair one commit's verdict with another head. Run the loop again."
+        % (pr.get("number"), head[:12], m.group(1)[:12]))
+try:
+    # `gh api --paginate` prints one JSON array per page, back to back, so decode them one by one.
+    dec, i, raw, events = json.JSONDecoder(), 0, os.environ["X_EVENTS"].strip(), []
+    while i < len(raw):
+        part, j = dec.raw_decode(raw, i)
+        events.extend(part if isinstance(part, list) else [part])
+        i = j
+        while i < len(raw) and raw[i].isspace():
+            i += 1
+except ValueError:
+    die("the timeline of #%s was not JSON." % pr.get("number"))
+labels = [{"event": e.get("event"), "label": (e.get("label") or {}).get("name"),
+           "actor": (e.get("actor") or {}).get("login"), "at": e.get("created_at")}
+          for e in events if e.get("event") in ("labeled", "unlabeled")]
+rec = {
+    "schema": 1,
+    "pr": pr.get("number"), "head": head, "pass": int(m.group(3)), "verdict": m.group(2).upper(),
+    "critical": int(m.group(4)) if m.group(4) else None,
+    "warning": int(m.group(5)) if m.group(5) else None,
+    "note": int(m.group(6)) if m.group(6) else None,
+    "model": m.group(7), "tier": m.group(8), "model_and_tier_self_attested": True,
+    "publisher": (c.get("author") or {}).get("login"), "published_at": c.get("createdAt"),
+    "marker_url": c.get("url"),
+    "label_events": labels,
+    "ignored": ignored,
+    "comments_dropped_for_edits": pr.get("commentsDroppedEdited", 0),
+}
+path = os.path.join(os.environ["X_OUT"], "%s-%s.json" % (pr.get("number"), m.group(3)))
+tmp = path + ".tmp"
+with open(tmp, "w") as fh:
+    json.dump(rec, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+os.replace(tmp, path)
+print(path)
+PY
 }
 
 # Creates the six labels, or updates them in place: `--force` makes `gh label create` overwrite the
@@ -1118,9 +1360,10 @@ case "${1:-status}" in
   halt)    shift || true; cmd_halt    "$@" ;;
   budget)  shift || true; cmd_budget  "${1:-}" ;;
   extend)  shift || true; cmd_extend  "$@" ;;
+  export-audit) shift || true; cmd_export_audit "$@" ;;
   stale)   shift || true; cmd_stale   "${1:-}" ;;
   marker)  shift || true; cmd_marker  "$@" ;;
   publish) shift || true; cmd_publish "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|stale|marker|publish|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|ensure-labels} [pr]" ;;
 esac
