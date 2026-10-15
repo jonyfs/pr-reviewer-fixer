@@ -23,11 +23,12 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 **The two skills never call each other.** They communicate only through the pull request: `review:*` labels, a verdict comment carrying `<!-- adversarial-review: sha=... verdict=... pass=... -->`, a fixer closure comment, a `pr-debt` block in the PR body, and extension answer comments. The artifact table in `README.md` lists each one, and `.agents/skills/pr-reviewer/references/pr-protocol.md` has the exact `gh` command to find it. Changing a marker or label format means updating both skills and the scripts.
 
 **Mechanism lives in scripts, judgement lives in prose.**
-- `scripts/review-cycle.sh` is the state machine: it owns labels, publishes the verdict bound to the head SHA (it re-reads the head from GitHub and refuses a stale `--sha`), refuses inconsistent verdict arithmetic (a `BLOCKED` with no CRITICAL, a `PASSED` with one), and computes the cycle budget (`budget`, `extend`, `halt`).
+- `scripts/review-cycle.sh` is the state machine: it owns labels, publishes the verdict bound to the head SHA (it re-reads the head from GitHub and refuses a stale `--sha`), refuses inconsistent verdict arithmetic (a `BLOCKED` with no CRITICAL, a `PASSED` with one), computes the cycle budget (`budget`, `extend`, `halt`), refuses to start a correction on code from a fork or a non-collaborator (`fix`), and exports audit records (`export-audit`).
 - `scripts/gate-pr-review-state.py` is the check the `review-gate` required job runs.
+- `scripts/pr-json.py` is the only way the scripts read a pull request. It drops comments edited after creation and fails closed. Every marker rule (allowlist must name a login, edited comments ignored) is decided on its output.
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
 
-**Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `check-version.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
+**Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `check-version.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
 
 **Who runs the loop.** The review and the fix run as sub-agents of the session's own agent, never in GitHub Actions. `.agents/skills/*/references/harness-loop.md` is the procedure. The only workflows are `templates/review-gate.yml` (a status check that runs no model) and `.github/workflows/release.yml`.
 
@@ -71,7 +72,7 @@ Decide what to update from what the change touches:
 
 | The change touches | Update |
 |---|---|
-| A label, a state, a marker field or a `review-cycle.sh` subcommand | `README.md` (the artifact table, the label state diagram, the cycle budget text), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
+| A label, a state, a marker field, a trust rule or a `review-cycle.sh` subcommand | `README.md` (the artifact table, the label state diagram, the cycle budget text), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
 | Budget settings (`MAX_REVIEW_CYCLES`, `MAX_REVIEW_CYCLES_HARD`) | `README.md` budget table and text, the defaults in `review-cycle.sh budget`, `references/harness-loop.md` and `references/posture-and-config.md`, and the `Cycle budget` paragraph in this file |
 | A script, a test or a workflow (added, renamed, removed) | `README.md` (layout, install, tests), the `Commands` and `Architecture` sections of this file, and `tests/run-all.sh` |
 | An install path, a harness or a model name | the `README.md` install table and its date, and `references/harness-matrix.md` and `references/execution-profiles.md` (both skills) |

@@ -50,8 +50,9 @@ export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"
 
 `REVIEW_MARKER_AUTHORS` names the login the markers are published as: the account `gh` is signed in
 to. Set the same value as the repository variable of that name, for the `review-gate` check. With
-it unset, anyone who can comment can forge a verdict marker, so `review-cycle.sh budget` answers
-`none` and `extend` refuses until it is set.
+it unset, or listing no login (a lone comma), anyone who can comment could forge a verdict marker,
+so `status`, `publish`, `budget`, `extend`, `export-audit` and the gate all refuse until it is set.
+A marker comment that was edited after it was created is ignored by all of them.
 
 ## The loop
 
@@ -101,6 +102,15 @@ request `review:blocked` with `review:needs-human`. A later session that runs th
 asked again.
 
 ## Hard rules
+
+- `review-cycle.sh fix` refuses before any label moves when the pull request comes from a fork or
+  when its author or any commit author is not a collaborator with write access or higher. Do not
+  work around it: tell the person which login was refused. A bot the repository owns is allowed
+  with `FIXER_TRUSTED_LOGINS`.
+- The reviewer passes `--model` and `--tier` to `publish` when the harness reports them. They are
+  self-attested.
+- A person, not the loop, exports evidence: `review-cycle.sh export-audit <n>` writes
+  `docs/compliance-records/<n>-<pass>.json`, and a person commits it through a pull request.
 
 - No provider API key, token for a model, or `*-action` that runs a model, in a workflow, a script,
   a hook or a prompt. Authentication is the harness's.

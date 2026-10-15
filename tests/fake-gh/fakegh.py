@@ -15,6 +15,11 @@ def with_ids(pr):
 if args[:2] == ["pr", "view"]:
     if not os.path.exists(p): sys.exit(1)
     sys.stdout.write(json.dumps(with_ids(load()))); sys.exit(0)
+if args[:2] == ["api", "user"]:
+    print(os.environ.get("FAKE_LOGIN", "github-actions")); sys.exit(0)
+if args[:1] == ["api"] and len(args) > 1 and args[1].endswith("/events"):
+    if not os.path.exists(p) or os.path.exists(os.path.join(d, "events-fail")): sys.exit(1)
+    print(json.dumps(load().get("apiEvents", []))); sys.exit(0)
 if args[:1] == ["api"] and len(args) > 1 and args[1].endswith("/commits"):
     if not os.path.exists(p): sys.exit(1)
     print(json.dumps(load().get("apiCommits", []))); sys.exit(0)

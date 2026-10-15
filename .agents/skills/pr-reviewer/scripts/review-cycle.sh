@@ -68,11 +68,14 @@
 #                          next (fix, ask, ceiling or none) as B_<KEY>='<value>' lines. With
 #                          REVIEW_MARKER_AUTHORS unset it answers none and trusts nothing.
 #     extend [pr] --n <n>  records that a person granted n more cycles (`state=granted` marker)
+#     export-audit [pr] [--out <dir>]
+#                          writes <dir>/<pr>-<pass>.json (default docs/compliance-records) from
+#                          the trusted marker and the PR timeline; refuses when the head moved
 #     stale [pr]           a marker-backed state whose head moved goes back to review:pending
 #     marker [file] [--author <login>]
 #                          reads one marker from a file or stdin
 #     publish [pr] --verdict PASSED|BLOCKED --pass <n> --sha <40hex> --report <file>
-#             --critical <n> --warning <n> --note <n>
+#             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
 #                          posts the marker comment, then moves the label. On PASSED, a draft
 #                          pull request is marked ready for review (`gh pr ready`).
 #     ensure-labels        creates or updates the six review:* labels in the current repository
@@ -293,7 +296,7 @@ STATES_RE='review:(pending|running|fixing|blocked|passed)'
 # The shell reader. It had no caller at first, a third reader of the marker format that read
 # nothing, which is why no test could ever see it drift from the other two. `marker` is its
 # caller now, and a test can drive both forms through it.
-MARKER_RE='<!--[[:space:]]*adversarial-review:[[:space:]]*sha=([0-9a-f]{7,40})[[:space:]]+verdict=(PASSED|BLOCKED)[[:space:]]+pass=([0-9]+)([[:space:]]+critical=([0-9]+)[[:space:]]+warning=([0-9]+)[[:space:]]+note=([0-9]+))?[[:space:]]*-->'
+MARKER_RE='<!--[[:space:]]*adversarial-review:[[:space:]]*sha=([0-9a-f]{7,40})[[:space:]]+verdict=(PASSED|BLOCKED)[[:space:]]+pass=([0-9]+)([[:space:]]+critical=([0-9]+)[[:space:]]+warning=([0-9]+)[[:space:]]+note=([0-9]+))?([[:space:]]+model=([A-Za-z0-9._:-]+)[[:space:]]+tier=(fast|standard|deep))?[[:space:]]*-->'
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
@@ -397,7 +400,7 @@ parse() {
   # nothing is skipped.
   local m
   m=$(printf '%s' "$json" | REVIEW_MARKER_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
-    const re=/^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?\s*-->/i;
+    const re=/^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->/i;
     const env=process.env.REVIEW_MARKER_AUTHORS||"",active=/\S/.test(env);
     const allow=env.split(",").map(x=>x.replace(/\s+/g,"").toLowerCase()).filter(Boolean);
     let last=null,blocked="no";
@@ -406,7 +409,7 @@ parse() {
       const mm=re.exec(c.body||"");
       if(mm){last=mm;if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
-      last[4]||"-",last[5]||"-",last[6]||"-",blocked].join(" "):"")
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-"].join(" "):"")
   }catch(e){}})')
   MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
   MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
@@ -420,6 +423,9 @@ parse() {
   # else. Reading only the last marker cannot answer it: a BLOCKED at pass 1 is precisely the
   # marker a later PASSED overwrites as "current".
   MARKER_BLOCKED_SEEN=$(printf '%s' "$m" | cut -d' ' -f7)
+  # Self-attested by the publishing session, never verified. `-` when the marker carries none.
+  MARKER_MODEL=$(printf '%s' "$m" | cut -d' ' -f8)
+  MARKER_TIER=$(printf '%s' "$m" | cut -d' ' -f9)
 }
 
 # Reads ONE marker, through `MARKER_RE`, from a file or from stdin, and prints
@@ -1007,7 +1013,7 @@ cmd_stale() {
 }
 
 cmd_publish() {
-  local verdict="" passno="" sha="" report="" number="" crit="" warn="" note=""
+  local verdict="" passno="" sha="" report="" number="" crit="" warn="" note="" model="" tier=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --verdict)  verdict="$2"; shift 2 ;;
@@ -1017,6 +1023,8 @@ cmd_publish() {
       --critical) crit="$2";    shift 2 ;;
       --warning)  warn="$2";    shift 2 ;;
       --note)     note="$2";    shift 2 ;;
+      --model)    model="$2";   shift 2 ;;
+      --tier)     tier="$2";    shift 2 ;;
       *)          number="$1";  shift ;;
     esac
   done
@@ -1132,9 +1140,19 @@ cmd_publish() {
   # so a rejected body leaves the pull request at `review:running` with no marker, a pass that looks
   # like it died in flight. Measured in bytes, which are never fewer than characters, so the count
   # can only overstate the length; the bar sits at 60000 to keep a margin below the hard limit.
+  # Model id and tier are self-attested by the publishing session and are never verified here. They
+  # are optional and come as a pair, so an old marker (without them) and a new one both read.
+  local model_part=""
+  if [ -n "$model$tier" ]; then
+    [ -n "$model" ] && [ -n "$tier" ] || die "review-cycle: --model and --tier go together"
+    case "$model" in ''|*[!A-Za-z0-9._:-]*) die "review-cycle: --model takes letters, digits, dot, colon, dash and underscore only" ;; esac
+    [ "${#model}" -le 64 ] || die "review-cycle: --model is longer than 64 characters"
+    case "$tier" in fast|standard|deep) ;; *) die "review-cycle: --tier is one of fast, standard, deep" ;; esac
+    model_part=" model=$model tier=$tier"
+  fi
   local marker_line body_bytes
-  marker_line="$(printf '<!-- adversarial-review: sha=%s verdict=%s pass=%s critical=%s warning=%s note=%s -->' \
-      "$HEAD" "$verdict" "$passno" "$crit" "$warn" "$note")"
+  marker_line="$(printf '<!-- adversarial-review: sha=%s verdict=%s pass=%s critical=%s warning=%s note=%s%s -->' \
+      "$HEAD" "$verdict" "$passno" "$crit" "$warn" "$note" "$model_part")"
   body_bytes=$(( $(printf '%s\n\n' "$marker_line" | wc -c) + $(wc -c <"$report") ))
   if [ "$body_bytes" -gt 60000 ]; then
     die "review-cycle: REFUSED. The marker plus the report is $body_bytes bytes, and the limit here is 60000.
@@ -1167,7 +1185,127 @@ cmd_publish() {
   fi
   [ "$verdict" = "PASSED" ] && { positivo "$warn" || positivo "$note"; } && \
     echo "  declared debt: $warn warning, $note note — name an owner for each in the pull request body; passed means nothing blocks, not that nothing was found"
+  audit_append "$NUMBER" "$passno" "$HEAD" "$verdict" "$crit" "$warn" "$note" "${model:--}" "${tier:--}"
   return 0
+}
+
+# A convenience copy of what was just published, one JSON line per verdict, on this machine only:
+# `${XDG_STATE_HOME:-$HOME/.local/state}/pr-reviewer-fixer/audit.jsonl`. It is NOT evidence. The
+# marker on the pull request is the authority, and this file can be edited or lost with the laptop.
+# A failure to write it is a warning and never undoes the verdict.
+audit_append() {
+  local dir file who ts
+  dir="${XDG_STATE_HOME:-${HOME:-}/.local/state}/pr-reviewer-fixer"
+  file="$dir/audit.jsonl"
+  who="$(gh api user --jq .login 2>/dev/null)" || who=""
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if ! { mkdir -p "$dir" && A_PR="$1" A_PASS="$2" A_SHA="$3" A_VERDICT="$4" A_CRIT="$5" A_WARN="$6" A_NOTE="$7" \
+         A_MODEL="$8" A_TIER="$9" A_WHO="$who" A_TS="$ts" python3 -I -c '
+import json, os
+e = os.environ
+n = lambda k: None if e[k] in ("", "-") else e[k]
+print(json.dumps({"pr": int(e["A_PR"]), "pass": int(e["A_PASS"]), "sha": e["A_SHA"],
+    "verdict": e["A_VERDICT"], "critical": int(e["A_CRIT"]), "warning": int(e["A_WARN"]),
+    "note": int(e["A_NOTE"]), "model": n("A_MODEL"), "tier": n("A_TIER"),
+    "publisher": n("A_WHO"), "published_at": e["A_TS"]}, sort_keys=True))' >>"$file"; } 2>/dev/null; then
+    echo "review-cycle: warning: the local audit copy could not be written to $file; the marker on #$1 is the record" >&2
+  fi
+}
+
+# Exports what the pull request itself says about one review, as a JSON file a person commits
+# through a pull request (`docs/compliance-records/<pr>-<pass>.json`). It decides from the same
+# trust rules as `status` and the gate: an author on `REVIEW_MARKER_AUTHORS`, a comment never edited
+# after it was created (pr-json.py), and a refusal when the allowlist is empty or lists no login. It
+# REFUSES when no trusted marker remains, and when the head moved after the last trusted marker,
+# so a record never pairs one commit's verdict with another head. Markers that were posted by
+# someone off the list are listed under `ignored`, with the reason, and never used.
+#
+# Model id and tier are copied from the marker as they are: self-attested by the publishing
+# session, never verified. Everything else (sha, counts, publisher, timestamps, label events)
+# comes from GitHub.
+cmd_export_audit() {
+  local pr="" out="docs/compliance-records"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --out) out="${2:-}"; shift 2 ;;
+      *) pr="$1"; shift ;;
+    esac
+  done
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: could not read the pull request, or its comment edits could not be checked"
+  parse "$json"
+  local events
+  events="$(gh api "repos/{owner}/{repo}/issues/$NUMBER/events" --paginate 2>/dev/null)" \
+    || die "review-cycle: could not read the timeline of #$NUMBER, and an export without it would be incomplete"
+  mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
+  X_JSON="$json" X_EVENTS="$events" X_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" X_OUT="$out" python3 -I - <<'PY' || exit 1
+import json, os, re, sys
+
+MARK = re.compile(
+    r"^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
+    r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
+    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->", re.I)
+
+def die(msg):
+    print("review-cycle: REFUSED. " + msg, file=sys.stderr)
+    sys.exit(1)
+
+pr = json.loads(os.environ["X_JSON"])
+allow = {re.sub(r"\s+", "", x).lower() for x in os.environ["X_AUTHORS"].split(",")} - {""}
+head = (pr.get("headRefOid") or "").lower()
+trusted, ignored = [], []
+for c in pr.get("comments", []):
+    m = MARK.match(c.get("body") or "")
+    if not m:
+        continue
+    who = ((c.get("author") or {}).get("login") or "")
+    if who.lower() in allow:
+        trusted.append((c, m))
+    else:
+        ignored.append({"reason": "author is not in REVIEW_MARKER_AUTHORS", "author": who or None,
+                        "created_at": c.get("createdAt"), "url": c.get("url")})
+if not trusted:
+    die("no trusted marker remains on #%s, so there is nothing to export." % pr.get("number"))
+c, m = trusted[-1]
+if m.group(1).lower() != head:
+    die("the head of #%s is %s but the last trusted marker names %s: the head moved after the "
+        "review, so a record would pair one commit's verdict with another head. Run the loop again."
+        % (pr.get("number"), head[:12], m.group(1)[:12]))
+try:
+    events = json.loads(os.environ["X_EVENTS"] or "[]") if os.environ["X_EVENTS"].lstrip().startswith("[") else None
+    if events is None:
+        # --paginate prints one array per page
+        dec, i, raw, events = json.JSONDecoder(), 0, os.environ["X_EVENTS"].strip(), []
+        while i < len(raw):
+            part, j = dec.raw_decode(raw, i)
+            events.extend(part)
+            i = j
+            while i < len(raw) and raw[i].isspace():
+                i += 1
+except ValueError:
+    die("the timeline of #%s was not JSON." % pr.get("number"))
+labels = [{"event": e.get("event"), "label": (e.get("label") or {}).get("name"),
+           "actor": (e.get("actor") or {}).get("login"), "at": e.get("created_at")}
+          for e in events if e.get("event") in ("labeled", "unlabeled")]
+rec = {
+    "schema": 1,
+    "pr": pr.get("number"), "head": head, "pass": int(m.group(3)), "verdict": m.group(2).upper(),
+    "critical": int(m.group(4)) if m.group(4) else None,
+    "warning": int(m.group(5)) if m.group(5) else None,
+    "note": int(m.group(6)) if m.group(6) else None,
+    "model": m.group(7), "tier": m.group(8), "model_and_tier_self_attested": True,
+    "publisher": (c.get("author") or {}).get("login"), "published_at": c.get("createdAt"),
+    "marker_url": c.get("url"),
+    "label_events": labels,
+    "ignored": ignored,
+    "comments_dropped_for_edits": pr.get("commentsDroppedEdited", 0),
+}
+path = os.path.join(os.environ["X_OUT"], "%s-%s.json" % (pr.get("number"), m.group(3)))
+with open(path, "w") as fh:
+    json.dump(rec, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+print(path)
+PY
 }
 
 # Creates the six labels, or updates them in place: `--force` makes `gh label create` overwrite the
@@ -1209,9 +1347,10 @@ case "${1:-status}" in
   halt)    shift || true; cmd_halt    "$@" ;;
   budget)  shift || true; cmd_budget  "${1:-}" ;;
   extend)  shift || true; cmd_extend  "$@" ;;
+  export-audit) shift || true; cmd_export_audit "$@" ;;
   stale)   shift || true; cmd_stale   "${1:-}" ;;
   marker)  shift || true; cmd_marker  "$@" ;;
   publish) shift || true; cmd_publish "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|stale|marker|publish|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|ensure-labels} [pr]" ;;
 esac

@@ -292,8 +292,10 @@ starts a review, and nothing uses a provider API key.
 
 1. Create the labels once: `review-cycle.sh ensure-labels`.
 2. Set `REVIEW_MARKER_AUTHORS` to the login the agent publishes as, the account `gh` is signed in
-   to (`gh api user --jq .login`). Without it, any commenter could post a forged verdict marker.
-   Set the same value as a repository variable for the gate.
+   to (`gh api user --jq .login`). Without it, any commenter could post a forged verdict marker, so
+   `status`, `publish`, `budget`, `extend`, `export-audit` and the gate refuse to run when it is
+   unset or names no login. A marker comment edited after it was created is ignored. Set the same
+   value as a repository variable for the gate.
 3. Optional: copy `templates/review-gate.yml` to `.github/workflows/review-gate.yml` and mark the
    `review-gate` job as a required check in branch protection or a ruleset. It runs no model and
    holds no secret. It runs from the base branch, not from the pull request, so a pull request
@@ -308,7 +310,21 @@ A push from your session uses your own credentials, so your required CI starts o
 commit with no extra token.
 
 The fixer runs your project's tests, which execute repository code, in your own checkout. Use it on
-branches you trust.
+branches you trust. `review-cycle.sh fix` enforces part of that: it refuses a pull request from a
+fork, and one whose author or any commit author is not a collaborator with write access, before it
+moves any label. A bot the repository owns can be allowed with `FIXER_TRUSTED_LOGINS`. A script
+cannot sandbox the agent's own tool calls: isolating the test run is the harness's job (its own
+sandbox and permission allowlist), and this project does not simulate it.
+
+### Audit evidence
+
+`review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
+the verdict marker. They are self-attested by the publishing session and nothing verifies them.
+`review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
+publisher, timestamps, label events, model and tier) from the trusted marker and the pull
+request's own timeline, for a person to commit through a pull request. See
+[`docs/compliance-records/README.md`](docs/compliance-records/README.md) for what a record does and
+does not prove.
 
 ## Model and effort
 
@@ -377,7 +393,10 @@ flowchart TD
 - The markers are published under your own login. The gate checks that a trusted account published
   the verdict. It cannot tell that the agent wrote it and not you.
 - Labels and comments are not tamper-evident. Anyone with the right permission can edit them.
-  The author filter and the gate raise the cost of forgery. They do not make a legal record.
+  The author filter, the edited-comment check and the gate raise the cost of forgery. They do not
+  stop the author of a marker from deleting it and posting another. Signing the marker would, and
+  it is on the backlog. They do not make a legal record.
+- Model id and tier in the marker and in the compliance records are self-attested.
 - An AI verdict is not a human review. It reduces the chance that an obvious defect reaches the
   merge. It does not replace accountable review for high-risk changes.
 - Model names and harness paths change. The data here is dated 2026-10-14.
@@ -393,13 +412,15 @@ flowchart TD
 .github/workflows/      the review-gate check and the release workflow. No workflow calls a model
 docs/
   ISO-27001-AND-42001.md
+  compliance-records/   exported audit records, one JSON per reviewed pass
+  designs/              design records written before larger changes
   diagrams/             the Mermaid sources used in this README
 tests/                  fake-gh tests: run tests/run-all.sh
 VERSION, CHANGELOG.md   the release version and its history
 ```
 
 Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py`,
-`scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
+`scripts/pr-json.py`, `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
 `references/harness-matrix.md` and `templates/review-gate.yml`. The copies are identical on
 purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 
@@ -411,5 +432,6 @@ bash tests/run-all.sh
 
 The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a forged marker),
-triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`) and the version check. It also
+triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
+checks, the `fix` guard, `export-audit` and the version check. It also
 fails if any workflow, template, script or test names a model action or a provider API key.

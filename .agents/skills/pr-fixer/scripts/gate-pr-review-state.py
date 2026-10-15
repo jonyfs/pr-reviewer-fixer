@@ -159,7 +159,8 @@ NEEDS_HUMAN = "review:needs-human"
 # one whose leftover field is silently ignored.
 MARKER = re.compile(
     r"^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
-    r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?\s*-->",
+    r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
+    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->",
     re.I,
 )
 
@@ -371,7 +372,9 @@ def main() -> int:
                 "claim standing alone"
             )
         else:
-            sha, verdict, passes, criticals, _warnings, _notes = markers[-1]
+            # The last two groups are the optional, self-attested model and tier; the gate decides
+            # from the first six and never from them.
+            sha, verdict, passes, criticals, _warnings, _notes = markers[-1][:6]
             sha = sha.lower()
             if verdict.upper() != "PASSED":
                 errors.append(

@@ -7,6 +7,8 @@ RC="$SRC/review-cycle.sh"; GATE="$SRC/gate-pr-review-state.py"
 export PATH="$T/bin:$PATH"
 export FAKE_DIR="$T/state"
 export REVIEW_MARKER_AUTHORS=github-actions
+export XDG_STATE_HOME="$T/xdg-state"
+rm -rf "$XDG_STATE_HOME"
 A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 C=cccccccccccccccccccccccccccccccccccccccc
@@ -78,6 +80,59 @@ check "fix with missing label -> dies with ensure-labels hint" eval '[ $r = 1 ] 
 echo "review:pending review:running" >"$FAKE_DIR/known-labels"; "$RC" start 7 >/dev/null 2>&1
 r=$(pub --verdict PASSED --pass 1 --sha $A --critical 0 --warning 0 --note 0)
 check "publish with missing label -> comment posted first, then hint" eval '[ $r = 1 ] && [ $(ncomments) = 1 ] && grep -q "marker posted but the label did not move" "$T/out" && grep -q "ensure-labels" "$T/out"'
+
+# ---- marker fields model and tier, local audit copy, export-audit ------------------------------
+MP="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=PASSED pass=2 critical=0 warning=1 note=0 model=claude-opus-5-5 tier=deep -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"
+"$RC" status 7 >/dev/null 2>&1; r0=$?
+python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
+check "marker with model and tier is read by status and the gate (0, 0)" eval '[ $r0 = 0 ] && [ $g0 = 0 ]'
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"
+r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0 --model claude-opus-5-5 --tier deep)
+check "publish --model --tier writes both into the marker" eval '[ $r = 0 ] && python3 -I -c "import json,sys;print(json.load(open(sys.argv[1]))[\"comments\"][-1][\"body\"])" "$FAKE_DIR/pr.json" | head -1 | grep -q "note=0 model=claude-opus-5-5 tier=deep -->"'
+check "publish appends one audit line with model, tier and counts" eval '[ $(wc -l <"$XDG_STATE_HOME/pr-reviewer-fixer/audit.jsonl") -ge 1 ] && tail -1 "$XDG_STATE_HOME/pr-reviewer-fixer/audit.jsonl" | python3 -I -c "import json,sys;d=json.load(sys.stdin);sys.exit(0 if d[\"model\"]==\"claude-opus-5-5\" and d[\"tier\"]==\"deep\" and d[\"critical\"]==0 and d[\"pr\"]==7 else 1)"'
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"
+r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0 --model claude-opus-5-5)
+check "publish --model without --tier -> refused, nothing posted" eval '[ $r != 0 ] && [ $(ncomments) = 0 ]'
+r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0 --model "bad model" --tier deep)
+check "publish with a model id containing a space -> refused" eval '[ $r != 0 ] && [ $(ncomments) = 0 ]'
+r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0 --model m --tier turbo)
+check "publish with an unknown tier -> refused" eval '[ $r != 0 ] && [ $(ncomments) = 0 ]'
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"
+XDG_STATE_HOME=/dev/null/nope r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "unwritable audit copy -> warning, publish still succeeds" eval '[ $r = 0 ] && has review:passed && grep -q "local audit copy could not be written" "$T/out"'
+
+EXPORT="$T/export-out"
+rm -rf "$EXPORT"
+EVENTS='[{"event":"labeled","label":{"name":"review:passed"},"actor":{"login":"jony"},"created_at":"2026-10-15T01:00:00Z"}]'
+withevents() { python3 -I - "$EVENTS" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[0] if False else __import__("os").environ["FAKE_DIR"] + "/pr.json"))
+p["apiEvents"] = json.loads(sys.argv[1])
+json.dump(p, open(__import__("os").environ["FAKE_DIR"] + "/pr.json", "w"))
+PY
+}
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
+o="$("$RC" export-audit 7 --out "$EXPORT" 2>"$T/err")"; r=$?
+check "export-audit writes <pr>-<pass>.json with sha, counts, model, tier, publisher and label events" eval '[ $r = 0 ] && [ "$o" = "$EXPORT/7-2.json" ] && python3 -I -c "import json,sys;d=json.load(open(sys.argv[1]));sys.exit(0 if d[\"head\"]==sys.argv[2] and d[\"model\"]==\"claude-opus-5-5\" and d[\"tier\"]==\"deep\" and d[\"warning\"]==1 and d[\"publisher\"]==\"github-actions\" and d[\"label_events\"][0][\"label\"]==\"review:passed\" and d[\"model_and_tier_self_attested\"] is True else 1)" "$o" "$D"'
+STALE="$(mc github-actions "<!-- adversarial-review: sha=$B verdict=PASSED pass=2 critical=0 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$STALE]" OPEN)"; withevents
+rm -rf "$EXPORT"; "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$T/err"; r=$?
+check "export-audit refuses when the head moved after the last trusted marker" eval '[ $r != 0 ] && grep -q "head moved" "$T/err" && [ ! -e "$EXPORT/7-2.json" ]'
+MALLORY="$(mc mallory "<!-- adversarial-review: sha=$D verdict=PASSED pass=3 critical=0 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP,$MALLORY]" OPEN)"; withevents
+rm -rf "$EXPORT"; o="$("$RC" export-audit 7 --out "$EXPORT" 2>/dev/null)"; r=$?
+check "export-audit: mixed trusted and untrusted markers -> exports the trusted one, lists the other under ignored" eval '[ $r = 0 ] && python3 -I -c "import json,sys;d=json.load(open(sys.argv[1]));sys.exit(0 if d[\"pass\"]==2 and len(d[\"ignored\"])==1 and d[\"ignored\"][0][\"author\"]==\"mallory\" else 1)" "$o"'
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents; echo IC_0 >"$FAKE_DIR/edited-ids"
+rm -rf "$EXPORT"; "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$T/err"; r=$?
+check "export-audit: the only marker was edited -> refused, nothing written" eval '[ $r != 0 ] && grep -q "no trusted marker" "$T/err"'
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
+rm -rf "$EXPORT"; env -u REVIEW_MARKER_AUTHORS "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$T/err"; r1=$?
+REVIEW_MARKER_AUTHORS="," "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>&1; r2=$?
+check "export-audit refuses with an unset or login-less allowlist" eval '[ $r1 != 0 ] && [ $r2 != 0 ] && [ ! -e "$EXPORT/7-2.json" ]'
+touch "$FAKE_DIR/events-fail"
+"$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>&1; r=$?
+check "export-audit refuses when the timeline cannot be read" eval '[ $r != 0 ] && [ ! -e "$EXPORT/7-2.json" ]'
 
 # ---- fix guard: fork, non-collaborator and unlinked authors are refused before any label moves --
 fixpr() { # json-extras  -> reset a blocked PR carrying the given extra top-level fields

@@ -9,3 +9,5 @@ tests/fake-gh/m.txt
 tests/fake-gh/out
 tests/fake-gh/report.md
 tests/version/state/
+tests/**/xdg-state/
+docs/designs/*.review.*/

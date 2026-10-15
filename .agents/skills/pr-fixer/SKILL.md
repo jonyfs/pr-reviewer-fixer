@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # PR Fixer
@@ -98,7 +98,9 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    granted extension), start cycle c. When the budget is spent, do not start: `budget` says `ask`
    and the review loop agent asks the person (below). Do not start either while the pull request
    carries `review:needs-human`.
-2. **Take the cycle, before the first file.** `scripts/review-cycle.sh fix` moves the label to
+2. **Take the cycle, before the first file.** `scripts/review-cycle.sh fix` first refuses a fork and
+   any pull request whose author or commit author is not a collaborator with write access (it
+   moves nothing when it refuses; tell the person which login). Then it moves the label to
    `review:fixing` and withdraws `review:needs-human`. Without it, the pull request can merge
    inside the window where the green label is true about the commit and false about the work.
 3. **Load state.** Head, base, draft, head writability (fork, maintainer edits, write access),

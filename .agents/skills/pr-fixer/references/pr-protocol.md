@@ -16,7 +16,7 @@ check with `cmp`.
 | Artifact | Writer | Reader | Marker or format | Locate with | Lifecycle |
 |---|---|---|---|---|---|
 | Labels | `scripts/review-cycle.sh` only, never by hand (table below) | Both skills, the `review-gate` check, people in the PR list | `review:pending`, `review:running`, `review:passed`, `review:blocked`, `review:fixing`, `review:needs-human` | `gh pr view <n> --json labels --jq '.labels[].name'` | Moves with every script call. Absence of any `review:*` label reads as "not reviewed" |
-| Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-- adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> -->`, then the report, ending with the fenced `findings` block | `gh pr view <n> --json headRefOid,comments` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
+| Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-- adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> [model=<id> tier=fast\|standard\|deep] -->`, then the report, ending with the fenced `findings` block | `gh pr view <n> --json headRefOid,comments` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
 | Inline review comments | `pr-reviewer`, only in a run a person invoked | `pr-fixer` comment lane | Body starts with the finding id in brackets: `[C1] <claim>` | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed by a thread reply, then resolved. The automatic run posts none |
 | Fixer closure comment | `pr-fixer`, once per cycle, as its finish message | `pr-reviewer` pass c+1 (Understand the change) | `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `gh pr view <n> --json comments` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
 | Debt block | `pr-fixer` (Declare debt) | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-- pr-debt:start -->` and `<!-- pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
@@ -46,11 +46,23 @@ When they disagree, `review-cycle.sh status` reports it and exits non-zero.
 
 ## Trust: who may supply a marker
 
-A marker is only a string, and anyone who can comment can type one. Set `REVIEW_MARKER_AUTHORS` to
-a comma-separated list of GitHub logins. `review-cycle.sh` then accepts a verdict or closure marker
-only from comments written by those logins, compared without case. Unset means no filter for `status` and the gate, which is acceptable only on a
-repository where every commenter is trusted. `budget` and `extend` fail closed instead: with the
-variable unset they trust nothing, because they decide whether agents keep editing the branch. The agents publish with `gh` under the account the
+A marker is only a string, and anyone who can comment can type one, or edit one they typed. Two
+rules decide whether a marker counts, in `status`, `publish`, `budget`, `extend`, `export-audit`
+and the gate alike:
+
+1. The author is on `REVIEW_MARKER_AUTHORS`, a comma-separated list of GitHub logins compared
+   without case. The list must name at least one login. **Unset, empty, whitespace and a lone
+   comma all fail closed**: those commands refuse (`status` and the gate answer inconclusive, exit
+   2) instead of reading every comment. Only the bare `marker` subcommand, which reads a text you
+   hand it, still accepts an unset list.
+2. The comment was never edited after it was created. `gh pr view --json comments` carries no edit
+   time, so `scripts/pr-json.py` asks GraphQL (`IssueComment.lastEditedAt`), pages through all
+   comments, drops every edited one, and fails closed when edits cannot be checked or a page is
+   truncated. Read comments through `pr-json.py`, as the filters below do, not through
+   `gh pr view`.
+
+Rule 2 stops an edit. It does not stop a delete and a repost by the same login; signing the marker
+would, and it is on the backlog. The agents publish with `gh` under the account the
 person is signed in to, so the value is that login: `gh api user --jq .login`. Add the login of
 anyone else who publishes reviews. The markers then carry the person's own login, which means the
 gate cannot tell a marker the agent wrote from one the person typed. It checks that a trusted
@@ -91,7 +103,7 @@ that reads a marker carries the same allowlist line, built from `$authors`.
 **F1. Newest trusted verdict comment at the current head.** Prints the whole body, or nothing.
 
 ```bash
-gh pr view <n> --json headRefOid,comments \
+python3 .agents/skills/pr-reviewer/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" '
     .headRefOid as $head
     | ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
@@ -114,7 +126,7 @@ F1 without the `$head | startswith($s)` line. Its `pass=` is the latest pass.
 **F3. The closure comment for cycle `<c>`:**
 
 ```bash
-gh pr view <n> --json comments \
+python3 .agents/skills/pr-reviewer/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" --arg cycle "<c>" '
     ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
     | [ .comments[]
@@ -132,7 +144,7 @@ gh pr view <n> --json body --jq .body | awk '/<!-- pr-debt:start -->/,/<!-- pr-d
 **F5. The id of a status comment** (to edit it after a restart):
 
 ```bash
-gh pr view <n> --json comments \
+python3 .agents/skills/pr-reviewer/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" --arg skill "<name>" '
     ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
     | [ .comments[]
@@ -146,7 +158,7 @@ A run that created the comment keeps the id it got back instead of searching.
 **F6. The newest trusted extension marker** (granted or halted):
 
 ```bash
-gh pr view <n> --json comments \
+python3 .agents/skills/pr-reviewer/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" '
     ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
     | [ .comments[]
@@ -252,6 +264,21 @@ comment serves the whole run of a skill.
 honour. They publish from the login `gh` is signed in to, which must be in
 `REVIEW_MARKER_AUTHORS`, otherwise no reader trusts the marker. Nobody types an extension marker by
 hand.
+
+## Audit trail
+
+`review-cycle.sh publish --model <id> --tier fast|standard|deep` writes `model=` and `tier=` into
+the marker. They are optional and come as a pair; an older marker without them stays valid and
+readers that do not know them ignore them. **Both are self-attested by the publishing session and
+are not verified.** Only the sha, the counts, the publisher and the timestamps come from GitHub.
+
+`review-cycle.sh export-audit <n> [--out <dir>]` writes `<dir>/<n>-<pass>.json` (default
+`docs/compliance-records/`) from the newest trusted marker and the PR's label events. It applies the
+trust rules above, lists markers by logins off the allowlist under `ignored`, refuses when no
+trusted marker remains, and refuses when the head moved after that marker. A person commits the file
+through a pull request. `publish` also appends one line to a per-machine
+`${XDG_STATE_HOME:-$HOME/.local/state}/pr-reviewer-fixer/audit.jsonl`; that copy is a convenience,
+never the evidence.
 
 ## Comment budget
 
