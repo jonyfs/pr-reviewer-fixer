@@ -5,6 +5,11 @@ Tags: [#pr #fix #catalog #reference]
 
 # Improvements Catalog (pr-fixer)
 
+> Note (0.1.0): this catalog was researched when a GitHub Actions design was in scope. The review and
+> the fix now run as agents in the person's harness session, with no workflow that calls a model and
+> no provider API key. Items about workflow triggers, Action inputs, tokens or job summaries are
+> history, not options. See `references/harness-loop.md`.
+
 Researched 2026-10-14. `Target` says where an item belongs: SKILL (core rule), reference (detail file), backlog (needs tooling that does not exist). Sources marked `unverified` were not confirmed by an opened page. Resolved conflicts: items on blocking comments and force-push are settled in [posture-and-config.md](posture-and-config.md) and [cycles-and-races.md](cycles-and-races.md).
 
 # pr-fixer: 100 improvements

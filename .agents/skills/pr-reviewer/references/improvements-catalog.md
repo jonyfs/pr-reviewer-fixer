@@ -5,6 +5,11 @@ Tags: [#pr #review #catalog #reference]
 
 # Improvements Catalog (pr-reviewer)
 
+> Note (0.1.0): this catalog was researched when a GitHub Actions design was in scope. The review and
+> the fix now run as agents in the person's harness session, with no workflow that calls a model and
+> no provider API key. Items about workflow triggers, Action inputs, tokens or job summaries are
+> history, not options. See `references/harness-loop.md`.
+
 Researched 2026-10-14. `Target` says where an item belongs: SKILL (core rule), reference (detail file), backlog (needs tooling that does not exist). Decisions taken on the conflicts the research surfaced: severity maps to CRITICAL/WARNING/NOTE ([severity-and-verdict.md](severity-and-verdict.md)); the automatic run posts `--comment` and never auto-approves; the 13 dimensions stay, grouped by stance and batched by size ([agents-and-dispatch.md](agents-and-dispatch.md)) instead of collapsing to 5 lenses.
 
 # pr-reviewer: 100 improvements

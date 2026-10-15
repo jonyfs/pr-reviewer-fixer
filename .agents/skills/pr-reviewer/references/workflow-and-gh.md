@@ -49,10 +49,10 @@ The verdict comment, the fixer's closure comment and the debt block are found wi
 The verdict is always the marker comment, published by `scripts/review-cycle.sh publish`. What else
 is posted depends on who started the run.
 
-**Automatic run (CI, a hook, a schedule).** Post no GitHub review event at all: never
+**Automatic run (the review loop agent, a hook).** Post no GitHub review event at all: never
 `--request-changes`, never `--approve`, and no `--comment` review either, since the verdict comment
-already carries the report. The workflow templates leave `gh pr review` and `gh api` out of the
-reviewer's allowlist, so inline comments are not available there; findings live in the verdict
+already carries the report. The reviewer sub-agent is not given `gh pr review` or `gh api`, so
+inline comments are not available there; findings live in the verdict
 comment with their ids.
 
 **A person invoked the review by hand.** The marker comment is still the verdict. The person may
@@ -78,7 +78,7 @@ fixes.
 
 A later COMMENT review does not clear an earlier CHANGES_REQUESTED review from the same identity,
 so a bot change request would outlive the CRITICAL it named. In the automatic run, BLOCKED is
-enforced by the `review:blocked` label and the required `review-gate` status check in the workflow
-templates. Bias toward PASSED once the change definitively improves code health, but never pass
+enforced by the `review:blocked` label and the required `review-gate` status check
+(`templates/review-gate.yml`). Bias toward PASSED once the change definitively improves code health, but never pass
 over an unaddressed CRITICAL or an unexplained failing required check. See
 [severity-and-verdict.md](severity-and-verdict.md).

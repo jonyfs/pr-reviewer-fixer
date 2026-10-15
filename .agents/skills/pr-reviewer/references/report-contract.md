@@ -123,36 +123,31 @@ PR artifacts: [pr-protocol.md](pr-protocol.md).
 ## When the loop halts
 
 The verdict comment of the last pass does not change: it is an ordinary BLOCKED report with its
-marker and its `findings` block, and it stays the authority. What a halted loop adds is two
-comments written by the `extension-wait` job (or the skill in a local session), each with its
-marker as the first line ([pr-protocol.md](pr-protocol.md)):
+marker and its `findings` block, and it stays the authority. The question to the person is asked
+in the session, not on the PR, with the open CRITICAL ids and one-line claims (from the `findings`
+block of the verdict at the head), the open count per pass (`pass 1: 3, pass 2: 3, ..., pass 6:
+1`, from the `critical=` of each marker, printed by `review-cycle.sh budget`), the suggestion with
+its reason, and the choices `continue N` or `stop`.
 
-1. The question, after the budget is spent:
+The answer is one comment with its marker as the first line ([pr-protocol.md](pr-protocol.md)),
+written by `review-cycle.sh`:
 
-   ```
-   <!-- pr-skill-extension: state=asked cycle=5 asked_at=2026-10-14T12:00:00Z expires_at=2026-10-14T12:05:00Z suggested=1 -->
-   pr-skill: @author, 5 review-fix cycles ran on PR #7 with 1 CRITICAL still open. The loop is paused until 2026-10-14T12:05:00Z.
-   ```
+```
+<!-- pr-skill-extension: state=granted cycle=5 n=2 -->
+pr-skill: 2 more review-fix cycles granted on #7 after cycle 5.
+```
 
-   followed by the open CRITICAL ids with one-line claims (from the `findings` block of the
-   verdict at the head), the open count per pass (`pass 1: 3, pass 2: 3, ..., pass 6: 1`, from
-   the `critical=` of each marker), the suggestion with its reason, and the exact reply grammar.
+or, on `stop`, no answer, or the ceiling:
 
-2. The answer. On `stop`, silence or the ceiling:
+```
+<!-- pr-skill-extension: state=halted reason=stop -->
+pr-skill: halted on #7 (reason: stop). The pull request stays review:blocked and a person decides.
+```
 
-   ```
-   <!-- pr-skill-extension: state=halted reason=no-answer-in-300s -->
-   pr-skill: halted on PR #7. No answer within 5 minutes after cycle 5. 1 CRITICAL still open: C1: <claim>. The pull request stays review:blocked and needs a person.
-   ```
-
-   `reason=stop` names who stopped it; `reason=ceiling` says the hard ceiling was reached and
-   comes with no question. When the label is not `review:blocked`, the halted line adds what it
-   found and what `review-cycle.sh status` said; nothing is relabelled by hand. On
-   `/pr-skill continue N` the answer is `<!-- pr-skill-extension: state=granted n=<N> -->` with
-   one line naming who granted how many cycles.
-
-The session and the CI job summary print the same lines, and the halt always sends a push
-notification ([progress-and-notifications.md](progress-and-notifications.md)).
+`reason=ceiling` says the hard ceiling was reached and comes with no question. A halt also adds
+`review:needs-human` to the pull request; nothing else is relabelled by hand. The session prints
+the same lines, and the halt always sends a push notification
+([progress-and-notifications.md](progress-and-notifications.md)).
 
 ## Size
 
@@ -163,8 +158,8 @@ plus report over 60000 bytes. Check the size before publishing and trim to fit:
    the escalation step and the gate read.
 2. Keep the header, acceptance conditions and CRITICAL findings in full.
 3. Shorten WARNING and NOTE prose to one line each; the findings block already carries their fields.
-4. Move long prose, per-file depth maps and the coverage note to a second comment or to a CI
-   artifact, and link it from the verdict comment. That second comment carries no marker.
+4. Move long prose, per-file depth maps and the coverage note to a second comment or to a file
+   attached elsewhere, and link it from the verdict comment. That second comment carries no marker.
 
 ```bash
 wc -c < .pr-skill/review.md   # bytes; keep well under 60000, the marker is added on top

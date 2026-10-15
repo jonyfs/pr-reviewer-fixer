@@ -11,6 +11,6 @@ flowchart TD
     I --> J[Push to the PR branch]
     J --> K[pr-reviewer pass 2<br/>conditions fixed at pass 1 + any new CRITICAL]
     K --> C
-    K -. cycle budget spent .-> L{Ask a person<br/>5 minute window}
+    K -. cycle budget spent .-> L{Ask a person<br/>in the session}
     L -- continue N --> I
     L -- stop or no answer --> M([review:blocked + review:needs-human<br/>a person decides])

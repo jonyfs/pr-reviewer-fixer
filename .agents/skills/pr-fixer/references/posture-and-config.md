@@ -66,17 +66,14 @@ user or read project settings when unset, and fall back to the safe default.
 | `ci_triage` | Where to send failing checks that are outside this PR's scope (skill/command/human) | human |
 | `delete_branch_on_merge` | Clean up head branch after merge | `true` |
 | `max_cycles` | Loop iterations per fixer pass | `5` |
-| `max_review_cycles` | Automatic review-fix-review cycles. When they are spent with a CRITICAL still open, the loop asks one extension question instead of starting the next cycle (repository variable `MAX_REVIEW_CYCLES` in the templates) | `5` |
-| `max_review_cycles_hard` | Absolute ceiling on cycles. No extension can pass it; reaching it halts with `reason=ceiling` (`MAX_REVIEW_CYCLES_HARD`; the templates clamp it to 10) | `10` |
-| `extension_wait_seconds` | How long the extension question waits for a valid `/pr-skill continue N` or `/pr-skill stop` before the loop halts (`EXTENSION_WAIT_SECONDS`) | `300` |
+| `max_review_cycles` | Automatic review-fix-review cycles. When they are spent with a CRITICAL still open, the loop agent asks the person in the session instead of starting the next cycle (environment variable `MAX_REVIEW_CYCLES`) | `5` |
+| `max_review_cycles_hard` | Absolute ceiling on cycles. No answer can pass it; reaching it halts with `reason=ceiling` (`MAX_REVIEW_CYCLES_HARD`, clamped to 10) | `10` |
 | `max_conflict_files` | Conflicted files above which the conflict lane escalates instead of resolving ([conflicts.md](conflicts.md); `MAX_CONFLICT_FILES`) | `15` |
-| `ci_workflows` | CI workflows whose failed runs start the proactive fixer (`CI_WORKFLOWS` plus the literal `on.workflow_run.workflows` list, kept equal) | `CI` |
 | `max_wall_time` | Total pass duration before halting | `60 min` |
 | `max_attempts_per_concern` | Correction attempts for one concern | `2` |
 | `flaky_rerun_limit` | Check re-runs before treating a failure as genuine | `1` |
 | `verify_commands` | Project verification to run before pushing | discover from project |
-| `REVIEW_MARKER_AUTHORS` | Comma-separated GitHub logins whose comments may supply a verdict or closure marker (env var, read by `review-cycle.sh` and applied by the agent when it reads comments) | Set it. Unset means no filter. In Actions, the default token comments as `github-actions` |
-| `FIXER_PUSH_TOKEN` | Secret with a GitHub App or PAT token for the fix job's checkout and push, so CI runs on the fixer's commit | unset (default `GITHUB_TOKEN` push starts no CI; re-trigger by hand) |
+| `REVIEW_MARKER_AUTHORS` | Comma-separated GitHub logins whose comments may supply a verdict, closure or extension marker (env var, read by `review-cycle.sh` and applied by the agent when it reads comments) | Set it to the login `gh` publishes as (`gh api user --jq .login`). Unset means no filter and anyone who can comment can forge a verdict |
 
 **Regeneration example**: if a conflict lands in a configured generated path (e.g.
 `generated/**`), run its configured regeneration command and re-stage the regenerated files instead

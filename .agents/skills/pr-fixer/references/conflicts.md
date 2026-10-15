@@ -6,7 +6,7 @@ Tags: [#pr #fix #conflict #merge #reference]
 # Conflict Playbook
 
 Trigger: `mergeable` is `CONFLICTING` or `mergeStateStatus` is `DIRTY`, found by a person or by
-`scripts/triage-pr.sh` in the proactive workflow. The conflict lane runs first and alone, because
+`scripts/triage-pr.sh` when the review loop agent scans a PR. The conflict lane runs first and alone, because
 it moves history and every other lane must build on its result.
 
 ## 1. Take the cycle and look before touching anything
@@ -14,7 +14,7 @@ it moves history and every other lane must build on its result.
 1. Run `scripts/review-cycle.sh fix` right before the first edit.
 2. Bring the base in: `git fetch origin <base>` then `git merge origin/<base>`. This is the default
    strategy, and it needs no force. Rebase only where the project requires linear history, under
-   the force rules in [cycles-and-races.md](cycles-and-races.md); the proactive workflow never
+   the force rules in [cycles-and-races.md](cycles-and-races.md); the review loop agent never
    rebases.
 3. List the conflicted files: `git diff --name-only --diff-filter=U`. More than
    `max_conflict_files` (default 15): `git merge --abort` and escalate.

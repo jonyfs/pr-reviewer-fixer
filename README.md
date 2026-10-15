@@ -14,9 +14,10 @@ Each skill is a folder with a `SKILL.md`, so the same files work in Claude Code,
 Cursor, Gemini CLI, OpenCode and other harnesses that read that format (see
 [Install](#install)).
 
-> Status: the scripts are covered by tests that run against a fake `gh`. The GitHub Actions
-> templates pass `actionlint` and load as YAML, but they have not run on a live repository yet. Try
-> them on a scratch repository first. See [Limits](#limits-and-honest-caveats).
+> Status: the scripts are covered by tests that run against a fake `gh`. The review and the fix run
+> as agents in your own harness session. No GitHub Actions workflow calls a model and no provider
+> API key is used. The one workflow template, the `review-gate` check, has not run on a live
+> repository yet. See [Limits](#limits-and-honest-caveats).
 
 ## Why these skills exist
 
@@ -31,8 +32,8 @@ finding blocks the merge never ends. These skills are built around those two fai
    named owner and never hold the merge.
 3. Every finding is tested before it is fixed. The fixer must reproduce the problem, see a test
    fail, fix it, and see the test pass. A finding that does not reproduce is refused with evidence.
-4. The loop stops. After five automatic cycles the skills ask a person whether to continue. No
-   answer within five minutes leaves the pull request `review:blocked` with `review:needs-human` added.
+4. The loop stops. After five automatic cycles the agent asks the person in the session whether
+   to continue. No answer leaves the pull request `review:blocked` with `review:needs-human` added.
 5. The verdict is arithmetic, and a script checks it. The counts of critical findings, warnings
    and notes go into a marker comment. The script refuses a `BLOCKED` with no CRITICAL and a
    `PASSED` with one.
@@ -53,7 +54,7 @@ flowchart TD
     I --> J[Push to the PR branch]
     J --> K[pr-reviewer pass 2<br/>conditions fixed at pass 1 + any new CRITICAL]
     K --> C
-    K -. cycle budget spent .-> L{Ask a person<br/>5 minute window}
+    K -. cycle budget spent .-> L{Ask a person<br/>in the session}
     L -- continue N --> I
     L -- stop or no answer --> M([review:blocked + review:needs-human<br/>a person decides])
 ```
@@ -62,32 +63,39 @@ The two skills never talk to each other directly. They talk through the pull req
 verdict comment with a machine-readable marker, a closure comment, and a debt block in the PR body.
 Because of that, either skill can run in a different harness, on a different model, or by hand.
 
+A third role, the review loop agent, is the session's own agent. It starts the loop when the
+agent opens or pushes to a pull request, dispatches the reviewer and the fixer as fresh-context
+sub-agents, reads the cycle budget from the markers, and asks you when the budget is spent. It
+neither reviews nor edits code. The procedure is in
+[`harness-loop.md`](.agents/skills/pr-reviewer/references/harness-loop.md).
+
 ```mermaid
 sequenceDiagram
     autonumber
     participant Dev as Author
+    participant L as Review loop agent (session)
+    participant R as pr-reviewer sub-agent
+    participant F as pr-fixer sub-agent
     participant GH as GitHub PR
-    participant R as pr-reviewer
-    participant F as pr-fixer
     participant P as Person
-    Dev->>GH: Open pull request
-    GH->>R: Workflow starts
-    R->>GH: Label review:running, status comment
+    Dev->>GH: Open pull request or push
+    L->>GH: Label review:running
+    L->>R: Dispatch, fresh context, read-only
     R->>R: Read-only agents review in parallel
     R->>GH: Verdict comment with marker and findings block
     R->>GH: Label review:blocked or review:passed
     alt CRITICAL found
-        GH->>F: Fix job starts
+        L->>F: Dispatch with the PR number
         F->>GH: Label review:fixing
         F->>F: Reproduce, write failing test, fix, run suite
         F->>GH: Push commits, closure comment, debt block
-        F->>R: Head moved, label back to review:pending
+        L->>R: Pass 2 on the new head
         R->>GH: Pass 2 verdict
     end
     alt Budget spent, CRITICAL still open
-        R->>GH: Extension question with suggestion
-        P-->>GH: /pr-skill continue N or stop
-        GH-->>F: Continue N cycles or halt
+        L->>P: Question in the session, with a suggestion
+        P-->>L: continue N or stop
+        L->>GH: Granted or halted marker
     end
     P->>GH: Review and merge
 ```
@@ -154,7 +162,7 @@ flowchart LR
 | `findings` block at the end of the verdict | reviewer | The fixer's work list |
 | Closure comment with `<!-- pr-fixer-closure: ... -->` | fixer | Reproduction, test, red, fix, green, suite counts per finding |
 | `pr-debt` block in the PR body | fixer | Owner for every warning and note |
-| Extension question and answer | workflow and a person | Continue or stop after the cycle budget |
+| Extension answer (`state=granted` or `state=halted`) | `review-cycle.sh extend` or `halt`, after a person answered in the session | Continue or stop after the cycle budget |
 
 The full list, with the exact `gh` command to find each one, is in
 [`pr-reviewer/references/pr-protocol.md`](.agents/skills/pr-reviewer/references/pr-protocol.md). The same file ships
@@ -183,19 +191,19 @@ stateDiagram-v2
 |---|---|---|
 | `MAX_REVIEW_CYCLES` | 5 | Automatic review, fix, re-review rounds |
 | `MAX_REVIEW_CYCLES_HARD` | 10 | Absolute ceiling. No answer can pass it |
-| `EXTENSION_WAIT_SECONDS` | 300 | How long the question waits |
 
-After the fifth cycle, if a CRITICAL is still open, the workflow posts one question. It lists what
-is open, the open count at each pass, and a suggestion:
+After the fifth cycle, if a CRITICAL is still open, `review-cycle.sh budget` says `ask` and the
+review loop agent asks you in the session. It lists what is open, the open count at each pass,
+and a suggestion:
 
 - if the open count fell in the last two cycles, it suggests up to three more;
 - if it fell once and then stalled, it suggests one more;
 - if there was no progress, it suggests none and recommends that a person decides.
 
-A person with write access replies with a comment whose first line is exactly
-`/pr-skill continue N` or `/pr-skill stop`. Replies from anyone else are ignored. The wait is a plain
-workflow step with no model in it. With no valid reply in time, the pull request stays
-`review:blocked`, now with `review:needs-human`, and a comment states why.
+You answer `continue N` or `stop`. `continue N` runs `review-cycle.sh extend`, which records the
+grant in a marker comment so it survives the session. `stop`, or no answer in a headless session,
+runs `review-cycle.sh halt`: the pull request stays `review:blocked`, now with
+`review:needs-human`, and a comment states why. A comment on the pull request cannot grant cycles.
 
 ## Install
 
@@ -224,7 +232,7 @@ Two practical notes:
 
 - The skill frontmatter uses `name` and `description`, plus `metadata.version`, which the
   specification allows as free-form metadata. The `templates/` folder is not part of the Agent
-  Skills specification. It works because `SKILL.md` points to it by path.
+  Skills specification. It works because the references point to it by path.
 - The scripts need `gh` (authenticated), `python3` 3.9 or newer, and `node`. The test suite also
   needs `jq` and PyYAML.
 
@@ -237,14 +245,14 @@ mkdir -p .agents/skills
 cp -R <clone>/.agents/skills/pr-reviewer <clone>/.agents/skills/pr-fixer .agents/skills/
 ```
 
-The workflow templates call the scripts at `.agents/skills/pr-reviewer/scripts/` and
-`.agents/skills/pr-fixer/scripts/`, and their prompts tell the agent to read the `SKILL.md` there.
-If you install elsewhere, replace that prefix in the workflow files you copy.
+The `review-gate` template and the references call the scripts at
+`.agents/skills/pr-reviewer/scripts/`. If you install elsewhere, replace that prefix in the files
+you copy.
 
-Claude Code reads `.claude/skills/`, not `.agents/skills/`. To use the skills interactively in
-Claude Code, link them in your own repository: `mkdir -p .claude/skills && ln -s
-../../.agents/skills/pr-reviewer .claude/skills/pr-reviewer`, and the same for `pr-fixer`. The
-workflows do not need the link.
+Claude Code reads `.claude/skills/`, not `.agents/skills/`. To use the skills in Claude Code, link
+them in your own repository: `mkdir -p .claude/skills && ln -s
+../../.agents/skills/pr-reviewer .claude/skills/pr-reviewer`, and the same for `pr-fixer`. Without
+the link, tell the agent to read `.agents/skills/<skill>/SKILL.md`.
 
 ### Versions and updates
 
@@ -276,25 +284,30 @@ You can also call the state machine directly:
 
 ## Run it on every pull request
 
-1. Create the labels once: `review-cycle.sh ensure-labels`.
-2. Copy the workflow templates for your model provider into `.github/workflows/`:
-   - `pr-review.claude.yml` and `pr-review-cycle.claude.yml` (needs secret `ANTHROPIC_API_KEY`), or
-   - `pr-review.codex.yml` and `pr-review-cycle.codex.yml` (needs secret `OPENAI_API_KEY`).
-   - Optional: `pr-fixer-proactive.*.yml` to react to failed CI and to base-branch conflicts.
-3. Create a token for the fixer's pushes and store it as `FIXER_PUSH_TOKEN`. A push made with the
-   default `GITHUB_TOKEN` does not start other workflows, so your required CI would never run on the
-   fixer's commit.
-4. Set the repository variable `REVIEW_MARKER_AUTHORS` to the login that publishes verdicts. For
-   the default Actions token that login is `github-actions`. Without it, any commenter could post a
-   forged verdict marker.
-5. In branch protection or a ruleset, mark the `review-gate` job as a required check. It runs from
-   the base branch, not from the pull request, so a pull request cannot edit its own gate.
-6. Add CODEOWNERS entries for `.agents/skills/**` and `.github/workflows/**`.
-7. Pin each third-party action in the templates to a full commit SHA. The templates ship with the
-   SHAs resolved on 2026-10-14. Keep them current with Dependabot.
+The loop starts inside your session, without being asked. When the agent opens a pull request or
+pushes to its branch, it runs the review loop before the turn ends, as described in
+[`harness-loop.md`](.agents/skills/pr-reviewer/references/harness-loop.md). Nothing in GitHub
+starts a review, and nothing uses a provider API key.
 
-The `review` and `fix` jobs run code from the pull request with the provider's API key available,
-so they are limited to branches in the same repository. The gate is what protects the merge.
+1. Create the labels once: `review-cycle.sh ensure-labels`.
+2. Set `REVIEW_MARKER_AUTHORS` to the login the agent publishes as, the account `gh` is signed in
+   to (`gh api user --jq .login`). Without it, any commenter could post a forged verdict marker.
+   Set the same value as a repository variable for the gate.
+3. Optional: copy `templates/review-gate.yml` to `.github/workflows/review-gate.yml` and mark the
+   `review-gate` job as a required check in branch protection or a ruleset. It runs no model and
+   holds no secret. It runs from the base branch, not from the pull request, so a pull request
+   cannot edit its own gate. A comment does not start a `pull_request` workflow, so the agent
+   re-runs the check after it publishes a verdict.
+4. Add CODEOWNERS entries for `.agents/skills/**` and `.github/workflows/**`.
+5. Pin each third-party action in your workflows to a full commit SHA.
+6. Optional, Claude Code: a Stop hook that runs `review-cycle.sh debt` and refuses to end a turn
+   while a review is owed.
+
+A push from your session uses your own credentials, so your required CI starts on the fixer's
+commit with no extra token.
+
+The fixer runs your project's tests, which execute repository code, in your own checkout. Use it on
+branches you trust.
 
 ## Model and effort
 
@@ -319,8 +332,8 @@ The short version of how to use them in line with both standards:
 
 - Keep a person accountable for the merge. Configure branch protection so the AI verdict is
   advisory and a named human approves. Write that rule into your procedure.
-- Give the two bots different rights. The reviewer is read-only. The fixer cannot approve or
-  merge its own change.
+- Give the two agents different rights. The reviewer sub-agent is read-only. The fixer cannot
+  approve or merge its own change.
 - Treat the model provider as a supplier. Assess it, sign the agreement, check retention and
   training terms, and record the model and version in use.
 - Treat prompts and skills as controlled configuration. A change to a skill, a prompt, a model
@@ -343,21 +356,25 @@ flowchart TD
     D[AI fixer pushes] --> E{Required CI gate<br/>from trusted code}
     E -- fails --> F[Merge blocked]
     E -- passes --> B
-    G[Cycle budget spent] --> H{Person answers<br/>within 5 minutes}
+    G[Cycle budget spent] --> H{Person answers<br/>in the session}
     H -- continue N --> D
-    H -- stop or silence --> I[review:blocked + review:needs-human<br/>until a person decides]
+    H -- stop or no answer --> I[review:blocked + review:needs-human<br/>until a person decides]
     J[Refused finding] --> K{Reviewer accepts<br/>or rejects the refusal}
     K --> A
 ```
 
 ## Limits and honest caveats
 
-- Not run on live GitHub Actions yet. The workflow templates pass `actionlint` and their shell
-  steps are tested against a fake `gh`. Reusable-workflow call limits and runner behaviour are
-  untested. Use a scratch repository first.
-- The fix job executes your tests. It gives an agent file-write tools and also runs
+- The `review-gate` workflow has not run on a live repository yet. It passes `actionlint`, and the
+  script it calls is tested against a fake `gh`. Use a scratch repository first.
+- The loop itself is instructions for agents plus scripts. The scripts are tested. Whether a given
+  harness dispatches a fresh-context sub-agent and follows the loop is not something a test here
+  can prove.
+- The fixer executes your tests. It gives an agent file-write tools and also runs
   repository-defined scripts. That is needed to prove a fix, and it is a real risk on untrusted
-  input. The templates restrict it to same-repository branches and exact tool allowlists.
+  input. It runs in your own checkout, so use it on branches you trust.
+- The markers are published under your own login. The gate checks that a trusted account published
+  the verdict. It cannot tell that the agent wrote it and not you.
 - Labels and comments are not tamper-evident. Anyone with the right permission can edit them.
   The author filter and the gate raise the cost of forgery. They do not make a legal record.
 - An AI verdict is not a human review. It reduces the chance that an obvious defect reaches the
@@ -372,7 +389,7 @@ flowchart TD
 .agents/skills/
   pr-reviewer/          the reviewer skill (SKILL.md, references/, scripts/, templates/)
   pr-fixer/             the fixer skill (SKILL.md, references/, scripts/, templates/)
-.github/workflows/      this repository's own review loop and the release workflow
+.github/workflows/      the review-gate check and the release workflow. No workflow calls a model
 docs/
   ISO-27001-AND-42001.md
   diagrams/             the Mermaid sources used in this README
@@ -380,9 +397,10 @@ tests/                  fake-gh tests: run tests/run-all.sh
 VERSION, CHANGELOG.md   the release version and its history
 ```
 
-Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py` and
-`scripts/check-version.sh`. The copies are identical on purpose, so each skill works alone.
-`tests/run-all.sh` checks that they match.
+Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py`,
+`scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
+`references/harness-matrix.md` and `templates/review-gate.yml`. The copies are identical on
+purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 
 ## Tests
 
@@ -392,4 +410,5 @@ bash tests/run-all.sh
 
 The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a forged marker),
-triage decisions, the extension-wait step, the cycle-budget logic and the version check.
+triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`) and the version check. It also
+fails if any workflow, template, script or test names a model action or a provider API key.

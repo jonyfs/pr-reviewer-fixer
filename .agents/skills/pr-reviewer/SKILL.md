@@ -3,7 +3,7 @@ name: pr-reviewer
 description: >
   Use when a GitHub pull request needs a rigorous, adversarial, evidence-based review: the user says
   "review PR #X", "is this diff mergeable?", "second opinion on this change", or a pull request was
-  just opened or updated and must be reviewed automatically. Runs read-only parallel dimension agents
+  just opened or pushed to by the session's agent and must be reviewed before the turn ends. Runs read-only parallel dimension agents
   under three hostile stances, verifies every finding, and publishes a script-enforced verdict
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
@@ -25,8 +25,10 @@ author reviewing themselves.
 ## When to Use
 
 - "Review PR #X", "is this mergeable?", "give me a critical review of this diff".
-- A pull request was opened, updated, or marked ready, and the repository wants an automatic review
-  (see [references/trigger-and-handoff.md](references/trigger-and-handoff.md)).
+- A pull request was opened or pushed to in this session, so the review loop agent dispatches this
+  skill as a fresh-context sub-agent (see
+  [references/harness-loop.md](references/harness-loop.md) and
+  [references/trigger-and-handoff.md](references/trigger-and-handoff.md)).
 - After `pr-fixer` pushes corrections: this skill runs the second pass.
 - Also works on a local branch diff, the working tree, or a pasted diff; state which checks are
   unavailable for that target ([references/targets-and-context.md](references/targets-and-context.md)).
@@ -85,7 +87,7 @@ neither closed nor refused stays open and counted.
 ## Announce and Adapt
 
 The skill runs unattended, so it says when it starts and when it ends, every time, in the session,
-on the PR, and in the CI job summary. Start line before the first read of the diff, as one status
+and on the PR. Start line before the first read of the diff, as one status
 comment that is edited in place at the end; one session line per phase change; exactly one finish
 or stopped line per run, with counts equal to the marker. On the PR the finish line is the first
 line of the verdict comment, not a separate comment. It also
@@ -150,15 +152,13 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
 9. **Pass 2 and later check exactly two things:** did the conditions fixed at pass 1 close, and did
    a new CRITICAL appear (including one the correction introduced). Every prior CRITICAL ends in
    one of the three states above. Everything else is declared debt and never reopens the list.
-   After `max_review_cycles` (5) cycles without converging, the next cycle does not start: one
-   extension question asks a person (`/pr-skill continue N` or `/pr-skill stop`, from a login
-   with write, maintain or admin permission) and the loop waits `extension_wait_seconds` (300).
-   Stop or silence posts the halted marker and the PR stays `review:blocked`;
-   `max_review_cycles_hard` (10) is never passed. In CI the `extension-wait` job does this with no
-   LLM. In a local session ask in the session and post the same question comment; a model cannot
-   enforce a timer, so the comment's `expires_at` is the clock, and on the next interaction after
-   it you post the halted marker. While an unexpired question is the newest extension marker, do
-   not start a pass. Rules: [references/pr-protocol.md](references/pr-protocol.md), "Numbering".
+   After `max_review_cycles` (5) cycles without converging, `scripts/review-cycle.sh budget` says
+   `ask`: the next cycle does not start, and the review loop agent asks the person in the session
+   (`continue N` or `stop`). `stop` or no answer runs `review-cycle.sh halt`, and the PR stays
+   `review:blocked` with `review:needs-human`; `max_review_cycles_hard` (10) is never passed. You
+   publish the verdict and stop: the review loop agent owns the budget and the question. Rules:
+   [references/pr-protocol.md](references/pr-protocol.md), "Numbering", and
+   [references/harness-loop.md](references/harness-loop.md).
 
 ## Persona Quota vs "Never Invent"
 
@@ -206,7 +206,8 @@ findings block for `pr-fixer`.
 - [references/agents-and-dispatch.md](references/agents-and-dispatch.md) agent roster, read-only enforcement, merge rules
 - [references/execution-profiles.md](references/execution-profiles.md) tier, model and effort per unit and per harness
 - [references/harness-matrix.md](references/harness-matrix.md) dated matrix of harness models and effort controls
-- [references/trigger-and-handoff.md](references/trigger-and-handoff.md) run on PR open, handoff to `pr-fixer`, termination
+- [references/harness-loop.md](references/harness-loop.md) the review loop agent: trigger, sub-agents, budget, the question (shared with `pr-fixer`)
+- [references/trigger-and-handoff.md](references/trigger-and-handoff.md) when the review runs, handoff to `pr-fixer`, termination
 - [references/pr-protocol.md](references/pr-protocol.md) every PR artifact both skills read or write, and how to find it (shared with `pr-fixer`)
 - [references/report-contract.md](references/report-contract.md) report layout and findings block
 - [references/operating-principles.md](references/operating-principles.md) standing rules and the failures behind them
@@ -214,5 +215,5 @@ findings block for `pr-fixer`.
 - [references/improvements-catalog.md](references/improvements-catalog.md) 100 researched improvements with status
 - `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py` the state machine and its gate
   (need `gh`, `python3` 3.9+, `node`)
-- `templates/` GitHub workflow templates: `pr-review.*.yml` with `pr-review-cycle.*.yml` (the
-  automatic loop) and `pr-fixer-proactive.*.yml` (shared with `pr-fixer`)
+- `scripts/check-version.sh` the update notice (never installs)
+- `templates/review-gate.yml` the required status check: no model, no secrets (shared with `pr-fixer`)

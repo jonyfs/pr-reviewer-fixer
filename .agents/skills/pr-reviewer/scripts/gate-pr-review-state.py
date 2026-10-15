@@ -164,8 +164,8 @@ MARKER = re.compile(
 )
 
 # The marker author allowlist, read from `REVIEW_MARKER_AUTHORS`: a comma-separated list of GitHub
-# logins as `gh pr view --json comments` prints them in `author.login` (`github-actions` for the
-# default Actions token). The marker is an HTML comment, so without a list anyone who can comment
+# logins as `gh pr view --json comments` prints them in `author.login` (the account the harness
+# session publishes as). The marker is an HTML comment, so without a list anyone who can comment
 # can post an invisible PASSED one. The rules are the same three `review-cycle.sh` applies: the
 # list is active when the variable holds anything other than whitespace, each entry has all
 # whitespace removed, and the compare ignores case. Active with no login left after that (a lone

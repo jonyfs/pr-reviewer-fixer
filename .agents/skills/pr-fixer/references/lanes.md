@@ -50,7 +50,7 @@ Guardrails: never bundle concerns into one commit; never expand scope beyond the
 
 ## Conflict Lane
 
-Trigger: mergeable state is CONFLICTING, found by a person or by the proactive workflow's
+Trigger: mergeable state is CONFLICTING, found by a person or by
 `scripts/triage-pr.sh`. Full playbook (classes, per-hunk evidence, escalation list,
 `max_conflict_files`): [conflicts.md](conflicts.md).
 
@@ -65,8 +65,8 @@ Guardrails: never push to the protected base; resolve on the PR's own branch onl
 
 ## Check Lane
 
-Trigger: one or more required/CI checks failing, named by a person or found by the proactive
-workflow. Full playbook (safe log reading, classes, fixes per failure class, escalation list):
+Trigger: one or more required/CI checks failing, named by a person or found by
+`scripts/triage-pr.sh`. Full playbook (safe log reading, classes, fixes per failure class, escalation list):
 [ci-failures.md](ci-failures.md).
 
 1. Identify the failing check and its cause (see `gh pr checks` and the run URL).

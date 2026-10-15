@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# triage-pr.sh: read-only triage of one pull request for the proactive pr-fixer.
+# triage-pr.sh: read-only triage of one pull request for pr-fixer runs with no named PR.
 #
 # Usage: triage-pr.sh <pr-number>
 #
 # It never writes anything: no label, no comment, no push. It answers one question for the
-# proactive workflow (templates/pr-fixer-proactive.*.yml) and for a person: is there conflict or
+# review loop agent and for a person: is there conflict or
 # failing-check work on this pull request, and is it safe to start it now?
 #
 # OUTPUT. One JSON object on stdout:
@@ -20,7 +20,7 @@
 #   lane_suggestions              subset of ["conflict", "check"], conflict first
 #   skip_reason                   null when it may act, otherwise one of:
 #                                   closed, draft, fork-without-edit, extension-halted,
-#                                   extension-question-open, live-label, recent-fixer-commit
+#                                   live-label, recent-fixer-commit
 #   live_label                    the review:running or review:fixing label behind live-label
 #
 # EXIT CODES. 0 whenever it printed an answer, including every skip. 2 when gh or node is missing,
@@ -157,7 +157,6 @@ if (p.state !== "OPEN") skip = "closed";
 else if (p.isDraft) skip = "draft";
 else if (!headWritable) skip = "fork-without-edit";
 else if (ext && ext.state === "halted") skip = "extension-halted";
-else if (ext && ext.state === "asked" && Date.parse(ext.expires_at || "") > now) skip = "extension-question-open";
 else if (liveLabel) skip = "live-label";
 else if (recentFixer) skip = "recent-fixer-commit";
 

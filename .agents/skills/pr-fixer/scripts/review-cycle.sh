@@ -58,8 +58,13 @@
 #     debt [pr]            the same answer as an exit code only, for hooks and CI
 #     start [pr]           review:running, and review:needs-human withdrawn
 #     fix [pr]             review:fixing, and review:needs-human withdrawn
-#     halt [pr]            review:needs-human added to a review:blocked pull request: the loop
-#                          stopped (budget spent, stop, no answer) and a person has to decide
+#     halt [pr] [--reason R]
+#                          review:needs-human added to a review:blocked pull request: the loop
+#                          paused or stopped and a person has to decide. With --reason, also posts
+#                          the `state=halted` extension marker.
+#     budget [pr]          the cycle budget read from the trusted markers: what the loop does
+#                          next (fix, ask, ceiling or none) as B_<KEY>='<value>' lines
+#     extend [pr] --n <n>  records that a person granted n more cycles (`state=granted` marker)
 #     stale [pr]           a marker-backed state whose head moved goes back to review:pending
 #     marker [file] [--author <login>]
 #                          reads one marker from a file or stdin
@@ -72,8 +77,9 @@
 # ENVIRONMENT:
 #
 #     REVIEW_MARKER_AUTHORS   Optional comma-separated allowlist of GitHub logins, as `gh pr view
-#                             --json comments` prints them in `author.login`. For the default
-#                             Actions token that login is `github-actions`. When this variable
+#                             --json comments` prints them in `author.login`. Set it to the
+#                             login the harness session publishes as (`gh api user --jq .login`).
+#                             When this variable
 #                             holds anything other than whitespace, a comment supplies a marker
 #                             only if its author is on the list (compared case-insensitively),
 #                             in every reader: `parse()` here, `marker --author`, and
@@ -83,6 +89,9 @@
 #                             to no login at all (for example a lone comma) accepts no marker,
 #                             which reads as not reviewed. Unset or empty: every comment is
 #                             scanned, exactly as before the variable existed.
+#     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
+#                             Default 5. Read by `budget` and `extend`.
+#     MAX_REVIEW_CYCLES_HARD  Absolute ceiling no answer passes. Default 10, clamped to 1..10.
 #     REVIEW_GATE_TIMEOUT_S   Seconds the gate has to answer inside `status` on a merged pull
 #                             request. Default 15; see the comment above `GATE_TIMEOUT_S`.
 #
@@ -675,13 +684,152 @@ cmd_status() {
 # but an OPEN pull request in `review:blocked`, because a halt over any other state would be a claim
 # the cycle does not back.
 cmd_halt() {
-  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to halt"
+  local reason="" pr=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --reason) reason="${2:-}"; shift 2 ;;
+      *) pr="$1"; shift ;;
+    esac
+  done
+  case "$reason" in ''|*[!A-Za-z0-9_.-]*) [ -z "$reason" ] || die "review-cycle: --reason takes letters, digits, dot, dash and underscore only" ;; esac
+  local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to halt"
   parse "$json"
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop left to halt"
   [ "$LABEL" = "review:blocked" ] || die "review-cycle: #$NUMBER is ${LABEL:-unlabelled}, not review:blocked — only a blocked pull request can need a person"
   [ -z "${HALTED:-}" ] && { gh pr edit "$NUMBER" --add-label review:needs-human >/dev/null \
     || die "review-cycle: could not add review:needs-human on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"; }
-  echo "#$NUMBER → review:needs-human (head ${HEAD:0:12})"
+  if [ -n "$reason" ]; then
+    printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on #%s (reason: %s). The pull request stays review:blocked and a person decides.\n' \
+      "$reason" "$NUMBER" "$reason" | gh pr comment "$NUMBER" --body-file - >/dev/null \
+      || die "review-cycle: label added but the halted marker could not be posted on #$NUMBER"
+  fi
+  echo "#$NUMBER → review:needs-human (head ${HEAD:0:12})${reason:+, halted marker posted ($reason)}"
+}
+
+# The cycle budget, read from the trusted markers and nothing else. Prints one `B_<KEY>='<value>'`
+# line per field. `B_NEXT` is what the loop does now:
+#
+#     fix      cycle `B_PASS` of at most `B_ALLOWED`: dispatch the fixer
+#     ask      the automatic cycles are spent and a CRITICAL is open: ask a person (`extend` or halt)
+#     ceiling  the hard ceiling was reached: halt, no answer passes it
+#     none     nothing to do: no trusted verdict at the head, or the verdict there is not BLOCKED, or
+#              the ceiling halt is already posted
+#
+# The cycle number is the `pass=` of the newest trusted marker at the head, never a constant. A
+# granted extension is the newest `state=granted` marker by a trusted login: it allows `cycle + n`
+# cycles in all, clamped to the hard ceiling. A `state=halted` marker other than the ceiling one
+# does not stop a later run from asking again. `B_SUGGESTED` is the number of further cycles the
+# progress supports: 3 when the open CRITICAL count fell in each of the last two cycles, 1 when it
+# is lower than at pass 1 but did not keep falling, 0 otherwise, never more than what remains.
+cmd_budget() {
+  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read a budget from"
+  printf '%s' "$json" | BUDGET_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
+    BUDGET_HARD="${MAX_REVIEW_CYCLES_HARD:-10}" python3 -I -c '
+import json, os, re, shlex, sys
+
+def num(v, d):
+    return int(v) if isinstance(v, str) and re.fullmatch(r"[0-9]+", v) else d
+
+def fields(text):
+    return {m.group(1): m.group(2) for m in re.finditer(r"([a-z_]+)=([^ >]+)", text)}
+
+data = json.load(sys.stdin)
+hard = min(max(num(os.environ["BUDGET_HARD"], 10), 1), 10)
+mx = min(max(num(os.environ["BUDGET_MAX"], 5), 1), hard)
+head = data.get("headRefOid") or ""
+allow = [a.strip().lower() for a in os.environ["BUDGET_AUTHORS"].split(",") if a.strip()]
+trusted = [c for c in data.get("comments", [])
+           if not allow or str((c.get("author") or {}).get("login") or "").lower() in allow]
+
+verdicts = []
+for c in trusted:
+    m = re.search(r"<!-- adversarial-review: (sha=[0-9a-f]{7,40} [^>]*)-->", c.get("body") or "")
+    if not m:
+        continue
+    f = fields(m.group(1))
+    if "pass" in f and "verdict" in f:
+        verdicts.append({"sha": f["sha"], "verdict": f["verdict"], "pass": num(f["pass"], 0),
+                         "critical": num(f["critical"], 0) if "critical" in f else None})
+at = next((v for v in reversed(verdicts) if head.startswith(v["sha"])), None)
+
+ext = []
+for c in trusted:
+    m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", c.get("body") or "")
+    if m:
+        ext.append(fields(m.group(1)))
+last_ext = ext[-1] if ext else None
+granted_marker = next((e for e in reversed(ext) if e.get("state") == "granted"), None)
+granted = num(granted_marker.get("cycle"), 0) + num(granted_marker.get("n"), 0) if granted_marker else 0
+allowed = min(max(mx, granted), hard)
+
+last_per_pass = {}
+for v in verdicts:
+    last_per_pass[v["pass"]] = v
+counts = [last_per_pass[p] for p in sorted(last_per_pass) if last_per_pass[p]["critical"] is not None]
+xs = [v["critical"] for v in counts]
+n = len(xs)
+if n >= 3 and xs[n-3] > xs[n-2] > xs[n-1]:
+    rule = 3
+elif n >= 2 and xs[n-1] < xs[0]:
+    rule = 1
+else:
+    rule = 0
+
+done = 0 if at is None else at["pass"] - 1
+remaining = max(hard - done, 0)
+if at is None:
+    nxt, why = "none", "no trusted verdict marker at the head"
+elif at["verdict"] != "BLOCKED":
+    nxt, why = "none", "verdict at the head is " + at["verdict"]
+elif done < allowed:
+    nxt, why = "fix", "cycle %d of at most %d" % (at["pass"], allowed)
+elif done >= hard:
+    if last_ext and last_ext.get("state") == "halted" and last_ext.get("reason") == "ceiling":
+        nxt, why = "none", "the ceiling halt is already posted"
+    else:
+        nxt, why = "ceiling", "%d cycles done, the hard ceiling is %d" % (done, hard)
+else:
+    nxt, why = "ask", "%d cycles done, %d allowed" % (done, allowed)
+
+out = {
+    "next": nxt, "why": why,
+    "verdict": at["verdict"] if at else "NONE", "pass": at["pass"] if at else 0,
+    "crit": "" if not at or at["critical"] is None else at["critical"],
+    "done": done, "allowed": allowed, "max": mx, "hard": hard, "remaining": remaining,
+    "suggested": min(rule, remaining), "rule": rule,
+    "progress": ", ".join("pass %d: %d" % (v["pass"], v["critical"]) for v in counts),
+    "ext_state": (last_ext or {}).get("state", ""),
+}
+for k, v in out.items():
+    print("B_%s=%s" % (k.upper(), shlex.quote(str(v))))
+'
+}
+
+# Records that a person granted `--n` more cycles. It writes the one marker `budget` reads and
+# refuses anything the budget would not honour: no CRITICAL open at the head, cycles that are not
+# spent yet, or more than the hard ceiling leaves. The question itself is asked in the session, by
+# the harness's own question tool; this only makes the answer outlive the session.
+cmd_extend() {
+  local pr="" n=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --n) n="${2:-}"; shift 2 ;;
+      *) pr="$1"; shift ;;
+    esac
+  done
+  case "$n" in ''|*[!0-9]*) die "review-cycle: extend needs --n <whole number>" ;; esac
+  local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to extend"
+  parse "$json"
+  [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop to extend"
+  local b; b="$(cmd_budget "$NUMBER")" || die "review-cycle: could not read the budget on #$NUMBER"
+  local B_NEXT="" B_DONE="" B_REMAINING="" B_HARD=""
+  eval "$b"
+  [ "$B_NEXT" = "ask" ] || die "review-cycle: #$NUMBER is not waiting for an extension (budget says: $B_NEXT)"
+  [ "$n" -ge 1 ] && [ "$n" -le "$B_REMAINING" ] || die "review-cycle: --n must be between 1 and $B_REMAINING (the hard ceiling is $B_HARD, $B_DONE cycles are done)"
+  printf '<!-- pr-skill-extension: state=granted cycle=%s n=%s -->\npr-skill: %s more review-fix cycles granted on #%s after cycle %s.\n' \
+    "$B_DONE" "$n" "$n" "$NUMBER" "$B_DONE" | gh pr comment "$NUMBER" --body-file - >/dev/null \
+    || die "review-cycle: could not post the granted marker on #$NUMBER"
+  echo "#$NUMBER → $n more cycles granted after cycle $B_DONE (allowed becomes $((B_DONE + n)))"
 }
 
 # Debt, reduced to an exit code, for hooks and CI. Prints nothing on success.
@@ -947,10 +1095,12 @@ case "${1:-status}" in
   debt)    shift || true; cmd_debt    "${1:-}" ;;
   start)   shift || true; cmd_start   "${1:-}" ;;
   fix)     shift || true; cmd_fix     "${1:-}" ;;
-  halt)    shift || true; cmd_halt    "${1:-}" ;;
+  halt)    shift || true; cmd_halt    "$@" ;;
+  budget)  shift || true; cmd_budget  "${1:-}" ;;
+  extend)  shift || true; cmd_extend  "$@" ;;
   stale)   shift || true; cmd_stale   "${1:-}" ;;
   marker)  shift || true; cmd_marker  "$@" ;;
   publish) shift || true; cmd_publish "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|stale|marker|publish|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|stale|marker|publish|ensure-labels} [pr]" ;;
 esac

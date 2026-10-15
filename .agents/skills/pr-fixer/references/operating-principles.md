@@ -41,10 +41,10 @@ false green, a merged-while-fixing pull request, or a loop that never ended.
     with a person, an issue or a feature. Unowned debt is dropped, not declared.
 12. **Only a new CRITICAL restarts the cycle.** A warning about a correction joins the debt, or
     the correction of a finding is itself a finding and the loop cannot end.
-13. **`max_review_cycles` then ask, then halt.** After the automatic cycles (5) the loop asks one
-    question with the open list and the history, waits `extension_wait_seconds` (300) for a person
-    with write access, and halts on stop or silence. `max_review_cycles_hard` (10) is never passed.
-    The ask and the halt always notify.
+13. **`max_review_cycles` then ask, then halt.** After the automatic cycles (5) the review loop
+    agent asks the person, in the session, one question with the open list and the history, and
+    halts on stop or no answer. `max_review_cycles_hard` (10) is never passed. The ask and the halt
+    always notify.
 14. **Whoever repeats a proof runs it again.** A closure report is input, not evidence. Measure a
     number before copying it into a commit message.
 15. **Name the head.** Every announcement and report states which pull request and which head it

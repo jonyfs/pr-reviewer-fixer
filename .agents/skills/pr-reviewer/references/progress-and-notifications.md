@@ -14,11 +14,10 @@ they already look, that a review is running, what it is doing, and when it is do
 |---|---|---|
 | Start | `pr-reviewer: started on PR #N (head <sha7>, pass P, <lines> lines changed). Plan: <k> agents (<deep>/<standard>/<fast>). I will report when done.` | Session output, the status comment (created now), the label, CI job summary |
 | Phase change (only these: dispatching, verifying, publishing) | `pr-reviewer: PR #N <phase>.` | Session output |
-| Finish | `pr-reviewer: finished PR #N pass P: <PASSED\|BLOCKED> critical=C warning=W note=N. Next: <pr-fixer \| ready for human review \| nothing>.` | Session output, first visible line of the verdict comment, the status comment (edited to `state=finished`), CI job summary, push notification if available |
+| Finish | `pr-reviewer: finished PR #N pass P: <PASSED\|BLOCKED> critical=C warning=W note=N. Next: <pr-fixer \| ready for human review \| nothing>.` | Session output, first visible line of the verdict comment, the status comment (edited to `state=finished`), push notification if available |
 | Nothing to do | `pr-reviewer: PR #N at <sha7> already reviewed (pass P, <verdict>). No action.` | Session output |
-| Stopped early | `pr-reviewer: stopped on PR #N: <reason>. Next action: <one action>.` | Session output, the status comment (edited in place), CI job summary, push notification |
-| Extension question (budget spent after a BLOCKED pass) | `pr-skill: @<author>, <c> review-fix cycles ran on PR #N with <k> CRITICAL still open. The loop is paused until <expires_at>.` | The question comment (marker first), session output (and the host's question tool in a local session), CI job summary and a warning annotation, push notification, always |
-| Halted | `pr-skill: halted on PR #N. <reason sentence>` | The answer comment (marker first), session output, CI job summary and a warning annotation, push notification, always |
+| Stopped early | `pr-reviewer: stopped on PR #N: <reason>. Next action: <one action>.` | Session output, the status comment (edited in place), push notification |
+| Halted | `pr-skill: halted on PR #N. <reason sentence>` | The answer comment (marker first), session output, push notification, always |
 
 Rules:
 
@@ -38,19 +37,17 @@ Rules:
    finish or stop (`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id>`). Marker:
    `<!-- pr-skill-status: skill=pr-reviewer run=P head=<sha12> state=started|finished -->`. This is
    not the verdict marker and must never be confused with it: the verdict is published only by
-   `scripts/review-cycle.sh publish`. In CI the workflow's `run:` steps own this comment and the
-   agent posts none. Never edit another author's comment.
+   `scripts/review-cycle.sh publish`. Never edit another author's comment.
 3. **Verdict comment**: carries the finish line as its first visible line, then the report and the
    `findings` block. There is no separate finish comment.
-4. **CI job summary**: when `GITHUB_STEP_SUMMARY` is set, append the same lines.
-5. **Push notification**: on finish or stop of a run longer than about two minutes, when the
+4. **Push notification**: on finish or stop of a run longer than about two minutes, when the
    harness offers one (Claude Code `PushNotification`). One per run, plus one for each extension
-   question and halt, always. In CI the PR comment mentions the PR author.
-6. The label (`review:running`, `review:passed`, `review:blocked`) is the at-a-glance state in the
+   question and halt, always.
+5. The label (`review:running`, `review:passed`, `review:blocked`) is the at-a-glance state in the
    PR list and is moved by the script, not by hand.
 
 Comment budget per run: one status comment (edited in place) and one verdict comment. Phase
-changes go to the session output and the job summary only. Full budget across both skills:
+changes go to the session output only. Full budget across both skills:
 [pr-protocol.md](pr-protocol.md).
 
 Do not put secrets, log excerpts or finding bodies in notifications. Finding detail lives in the
@@ -62,8 +59,7 @@ Decide each run from facts, and say what was decided in the start line or the co
 
 | Situation | Behaviour |
 |---|---|
-| Trigger is `opened`, `synchronize`, `ready_for_review`, `reopened`, or a manual call | Pass number from the newest marker: no marker means pass 1, `BLOCKED` marker means the next pass |
-| Newest trusted extension marker is an unexpired question | No new review starts; announce that a person is being asked |
+| Trigger is a new PR, a push to its branch, or a manual call | Pass number from the newest marker: no marker means pass 1, `BLOCKED` marker means the next pass |
 | Head already carries a trusted marker | No new review. Announce "already reviewed". Exception: a closure comment for that cycle is newer than the marker, so the next pass is owed on the same head |
 | Draft PR in an automatic run | Skip and announce, unless the user asked. Review at `ready_for_review` |
 | Actor is the fixer's own push | Pass 2 on the new head. Never start a fresh pass 1 |

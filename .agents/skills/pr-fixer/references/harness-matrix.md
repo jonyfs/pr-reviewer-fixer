@@ -53,26 +53,24 @@ Enforce read-only structurally: Claude subagent `tools: Read, Grep, Glob`; Codex
 
 Rules for all lanes: one writer per branch or worktree; run the same permission-restricted sandbox (`workspace-write` on Codex, `acceptEdits` or `dontAsk` with an allowlist on Claude Code); cap with `maxTurns` where available; escalate one tier on a second failure instead of raising effort blindly.
 
-## Triggering on PR open
+## Dispatching the review loop
 
-| Harness | Mechanism | Detail |
-|---|---|---|
-| Claude Code | GitHub Action `anthropics/claude-code-action@v1` | Example uses `on: pull_request: types: [opened, synchronize, ready_for_review, reopened]`; pass model and flags through `claude_args` (for example `--model`, `--effort`; `--effort` in claude_args is `unverified` for the Action). Source 29 |
-| Codex | `openai/codex-action@v1` | Example `on: pull_request: types: [opened]`; inputs `model`, `effort`, `permission-profile` (legacy `sandbox`), `prompt`, `prompt-file`, `output-file`. Output `final-message` posted via github-script. Also Codex cloud code review (native). Sources 5, 30 |
-| Copilot | Native automatic code review | Triggers on PR open or draft-to-open; rulesets can add pushes and drafts. No model choice (Lite or Balanced). Source 9 |
-| Copilot cloud agent | Native | Start from agents panel, chat, issue or PR; automations can run on repo events. Source 8 |
-| Gemini | Gemini CLI GitHub Action (PR review, issue triage, `@gemini-cli` mentions) per README. Gemini Code Assist for GitHub: new installs on orgs ended 2026-06-18. Antigravity: community Action wrapper only (Medium post), no official Action found | Sources 10, 11, 12 |
-| Cursor | Bugbot native (`.cursor/config/bugbot.yaml`: `triggers.frequency` everyPush or oncePerPr, `review.effort`, `autofix.mode`); or Cursor Action (needs your own `on:` trigger) | Sources 13, 14 |
-| OpenCode | `opencode github` Action | `pull_request` types opened, synchronize, reopened, ready_for_review in the PR example; `model` input required as `provider/model` | Source 21 |
-| Junie | GitHub workflow template; docs say it runs on opened or updated PRs for review, plus `@junie-agent` comment. The page I opened lists only comment/issue triggers, so PR-open is `unverified` from the primary page | Sources 27, 28 |
-| Cline, Roo, Aider, Zed, Kiro, Amp, Windsurf | None found in pages opened. Cline CLI and Amp `-x` can be run from any CI step by hand. Kiro headless mode needs API key | Sources 17, 23, 24 |
+The review loop agent runs in the person's own session and dispatches the reviewer and the fixer as
+fresh-context sub-agents, using the facility in the "Subagents and per-subagent model/effort" column
+of the matrix above (see [harness-loop.md](harness-loop.md)). No GitHub Action runs a model.
+
+| Harness capability | What the loop agent does |
+|---|---|
+| Subagents with a per-agent tool list | Dispatch the reviewer with read-only tools and the fixer with write tools |
+| Subagents without a per-agent tool list | Dispatch both, and enforce read-only on the reviewer by instruction; say the enforcement is by instruction |
+| No subagents (Aider, some Cline and Roo setups) | Run the reviewer in a new session with the same checkout, then the fixer in another, and say the contexts were separated by session, not by sub-agent |
+| Copilot native code review, Cursor Bugbot | Not part of this loop: no model choice and no marker. Treat their comments as review comments for the comment lane |
 
 ## Unverified
 
 - Exact API model ids for Copilot, Cursor, Windsurf, Kiro and Gemini entries; the pages print display names only. Verified ids: Claude Code `claude-fable-5`, `claude-fable-5-1`, `claude-opus-5-5`; Codex `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-luna`, `gpt-5.5`; Cursor `composer-2`, `composer-2.5`, `claude-opus-5`, `gpt-5.6-sol`.
-- Whether `--effort` passes through `claude_args` in the Claude Action.
 - Copilot custom-agent `model` field; Copilot cloud agent context size; per-model Codex context sizes.
-- Gemini CLI approval flags, current default model ids, and whether the Gemini CLI Action still works for consumer accounts after 2026-06-18.
+- Gemini CLI approval flags and current default model ids.
 - Amp per-mode model table (the modes page returned 404; the Dial page says to see Modes).
 - Windsurf subagents, sandbox, PR review; whether Windsurf is renamed to Devin Desktop (the page does not say).
 - Cline subagents and Action; Roo Code effort control; Aider subagents and sandbox; Zed effort and read-only profile; Junie effort and PR-open trigger; Kiro per-subagent model and permissions.
@@ -87,7 +85,7 @@ Rules for all lanes: one writer per branch or worktree; run the same permission-
 2. https://code.claude.com/docs/en/sub-agents (frontmatter, model resolution)
 3. https://learn.chatgpt.com/docs/models (redirect target of developers.openai.com/codex/models; models, retirements)
 4. https://learn.chatgpt.com/docs/agent-configuration/subagents
-5. https://learn.chatgpt.com/docs/config-file/config-reference and https://github.com/openai/codex-action (inputs)
+5. https://learn.chatgpt.com/docs/config-file/config-reference
 6. https://docs.github.com/en/copilot/reference/ai-models/supported-models
 7. https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference (permissions; effort flag and `reasoningEffort` read from search excerpt of this page)
 8. https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent
