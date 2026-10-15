@@ -1,0 +1,38 @@
+# Tags and publishes the version in VERSION when it lands on main. Runs only when VERSION changed.
+# A release is what check-version.sh compares against, so the tag must match VERSION exactly.
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Create the release if the tag does not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "VERSION is not x.y.z: $version" >&2; exit 1 ;;
+          esac
+          for skill in pr-reviewer pr-fixer; do
+            found="$(grep -m1 -E '^  version:' ".agents/skills/$skill/SKILL.md" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')"
+            [ "$found" = "$version" ] || { echo "$skill metadata.version is $found, VERSION is $version" >&2; exit 1; }
+          done
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version already released"
+            exit 0
+          fi
+          awk -v v="$version" '$0 ~ "^## \\[?" v {f=1; next} f && /^## /{exit} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --notes-file "$RUNNER_TEMP/notes.md"

@@ -13,4 +13,4 @@ flowchart TD
     K --> C
     K -. cycle budget spent .-> L{Ask a person<br/>5 minute window}
     L -- continue N --> I
-    L -- stop or no answer --> M([review:blocked<br/>a person decides])
+    L -- stop or no answer --> M([review:blocked + review:needs-human<br/>a person decides])

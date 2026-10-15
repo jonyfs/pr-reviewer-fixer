@@ -32,7 +32,7 @@ finding blocks the merge never ends. These skills are built around those two fai
 3. Every finding is tested before it is fixed. The fixer must reproduce the problem, see a test
    fail, fix it, and see the test pass. A finding that does not reproduce is refused with evidence.
 4. The loop stops. After five automatic cycles the skills ask a person whether to continue. No
-   answer within five minutes leaves the pull request `review:blocked`.
+   answer within five minutes leaves the pull request `review:blocked` with `review:needs-human` added.
 5. The verdict is arithmetic, and a script checks it. The counts of critical findings, warnings
    and notes go into a marker comment. The script refuses a `BLOCKED` with no CRITICAL and a
    `PASSED` with one.
@@ -55,7 +55,7 @@ flowchart TD
     K --> C
     K -. cycle budget spent .-> L{Ask a person<br/>5 minute window}
     L -- continue N --> I
-    L -- stop or no answer --> M([review:blocked<br/>a person decides])
+    L -- stop or no answer --> M([review:blocked + review:needs-human<br/>a person decides])
 ```
 
 The two skills never talk to each other directly. They talk through the pull request: labels, a
@@ -118,9 +118,9 @@ sequenceDiagram
 - For each CRITICAL: reproduces it, writes a test that reproduces the threat (not the
   implementation), watches it fail, fixes, watches it pass, runs the whole suite.
 - Resolves merge conflicts by merging the base into the branch, regenerating generated files and
-  never force-pushing over other people's commits. See `pr-fixer/references/conflicts.md`.
+  never force-pushing over other people's commits. See `.agents/skills/pr-fixer/references/conflicts.md`.
 - Classifies failing CI as transient, pre-existing on the base branch, or genuine, and reruns only
-  what a rerun can fix. See `pr-fixer/references/ci-failures.md`.
+  what a rerun can fix. See `.agents/skills/pr-fixer/references/ci-failures.md`.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
 
 ```mermaid
@@ -157,7 +157,7 @@ flowchart LR
 | Extension question and answer | workflow and a person | Continue or stop after the cycle budget |
 
 The full list, with the exact `gh` command to find each one, is in
-[`pr-reviewer/references/pr-protocol.md`](pr-reviewer/references/pr-protocol.md). The same file ships
+[`pr-reviewer/references/pr-protocol.md`](.agents/skills/pr-reviewer/references/pr-protocol.md). The same file ships
 in both skills.
 
 Labels move like this:
@@ -171,10 +171,10 @@ stateDiagram-v2
     blocked --> fixing: pr-fixer takes the cycle
     fixing --> pending: push moves the head
     passed --> pending: new push moves the head
-    passed --> ready_to_merge: PASSED bound to current head
-    ready_to_merge --> pending: any new pass, fix or push
-    blocked --> blocked: halted, needs a person
-    state "review:ready-to-merge" as ready_to_merge
+    blocked --> needs_human: loop halted, a person decides
+    needs_human --> running: person restarts the cycle
+    needs_human --> fixing: person or pr-fixer takes the cycle
+    state "blocked + review:needs-human" as needs_human
 ```
 
 ## Cycle budget and human control
@@ -195,12 +195,12 @@ is open, the open count at each pass, and a suggestion:
 A person with write access replies with a comment whose first line is exactly
 `/pr-skill continue N` or `/pr-skill stop`. Replies from anyone else are ignored. The wait is a plain
 workflow step with no model in it. With no valid reply in time, the pull request stays
-`review:blocked` and a comment states why.
+`review:blocked`, now with `review:needs-human`, and a comment states why.
 
 ## Install
 
-The skill folders sit at the root of this repository. Copy or symlink them to the place your harness
-reads skills from. `.agents/skills/` is the widest common path. Paths below were checked against each
+The skill folders live in `.agents/skills/` in this repository and nowhere else. Copy or symlink
+them to the place your harness reads skills from. `.agents/skills/` is the widest common path. Paths below were checked against each
 vendor's documentation on 2026-10-14. Vendors move these, so confirm against the current docs.
 
 | Harness | Project path | User path | Notes |
@@ -222,25 +222,41 @@ vendor's documentation on 2026-10-14. Vendors move these, so confirm against the
 
 Two practical notes:
 
-- The skill frontmatter uses only `name` and `description`, which is the portable core. The
-  `templates/` folder is not part of the Agent Skills specification. It works because `SKILL.md`
-  points to it by path.
+- The skill frontmatter uses `name` and `description`, plus `metadata.version`, which the
+  specification allows as free-form metadata. The `templates/` folder is not part of the Agent
+  Skills specification. It works because `SKILL.md` points to it by path.
 - The scripts need `gh` (authenticated), `python3` 3.9 or newer, and `node`. The test suite also
   needs `jq` and PyYAML.
 
 ### Quick install, project level
 
-```bash
-# Claude Code
-mkdir -p .claude/skills && cp -R pr-reviewer pr-fixer .claude/skills/
+Run these from a clone of a release tag, inside the repository you install into:
 
-# Most other harnesses
-mkdir -p .agents/skills && cp -R pr-reviewer pr-fixer .agents/skills/
+```bash
+mkdir -p .agents/skills
+cp -R <clone>/.agents/skills/pr-reviewer <clone>/.agents/skills/pr-fixer .agents/skills/
 ```
 
-The workflow templates call the scripts at `.claude/skills/pr-reviewer/scripts/` and
-`.claude/skills/pr-fixer/scripts/`. If you install elsewhere, replace that prefix in the workflow
-files you copy.
+The workflow templates call the scripts at `.agents/skills/pr-reviewer/scripts/` and
+`.agents/skills/pr-fixer/scripts/`, and their prompts tell the agent to read the `SKILL.md` there.
+If you install elsewhere, replace that prefix in the workflow files you copy.
+
+Claude Code reads `.claude/skills/`, not `.agents/skills/`. To use the skills interactively in
+Claude Code, link them in your own repository: `mkdir -p .claude/skills && ln -s
+../../.agents/skills/pr-reviewer .claude/skills/pr-reviewer`, and the same for `pr-fixer`. The
+workflows do not need the link.
+
+### Versions and updates
+
+Both skills ship under one semantic version. It is in `VERSION`, in `metadata.version` of each
+`SKILL.md`, and in the newest `CHANGELOG.md` entry. Each release is a GitHub release tagged
+`vX.Y.Z`.
+
+At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
+exists it prints one notice with the release link, and the agent asks you whether to update. The
+script never downloads or installs anything. To update, repeat the install step from the new
+release tag. The latest release answer is cached for 24 hours. Set `PR_SKILLS_NO_UPDATE_CHECK=1`
+to turn the check off. It is also skipped when `CI` or `GITHUB_ACTIONS` is `true`.
 
 ## Run it by hand
 
@@ -254,8 +270,8 @@ In any supported harness, from the branch of an open pull request:
 You can also call the state machine directly:
 
 ```bash
-.claude/skills/pr-reviewer/scripts/review-cycle.sh ensure-labels   # once per repository
-.claude/skills/pr-reviewer/scripts/review-cycle.sh status 123      # what is owed at this head
+.agents/skills/pr-reviewer/scripts/review-cycle.sh ensure-labels   # once per repository
+.agents/skills/pr-reviewer/scripts/review-cycle.sh status 123      # what is owed at this head
 ```
 
 ## Run it on every pull request
@@ -273,7 +289,7 @@ You can also call the state machine directly:
    forged verdict marker.
 5. In branch protection or a ruleset, mark the `review-gate` job as a required check. It runs from
    the base branch, not from the pull request, so a pull request cannot edit its own gate.
-6. Add CODEOWNERS entries for `.claude/skills/**` and `.github/workflows/**`.
+6. Add CODEOWNERS entries for `.agents/skills/**` and `.github/workflows/**`.
 7. Pin each third-party action in the templates to a full commit SHA. The templates ship with the
    SHAs resolved on 2026-10-14. Keep them current with Dependabot.
 
@@ -287,9 +303,9 @@ in use. Deep tier goes to security, design and correctness review and to conflic
 Standard goes to bounded analysis and scoped edits. Fast goes to pattern checks and transcription. The
 dispatcher passes `model` and `effort` on every call because declaring them in a file alone does
 nothing in most harnesses. Current mappings are in
-[`pr-reviewer/references/execution-profiles.md`](pr-reviewer/references/execution-profiles.md) and a
+[`pr-reviewer/references/execution-profiles.md`](.agents/skills/pr-reviewer/references/execution-profiles.md) and a
 dated matrix of harness options is in
-[`pr-reviewer/references/harness-matrix.md`](pr-reviewer/references/harness-matrix.md). Model names
+[`pr-reviewer/references/harness-matrix.md`](.agents/skills/pr-reviewer/references/harness-matrix.md). Model names
 change often, so check them before relying on an id.
 
 ## Using this under ISO/IEC 27001 and ISO/IEC 42001
@@ -329,7 +345,7 @@ flowchart TD
     E -- passes --> B
     G[Cycle budget spent] --> H{Person answers<br/>within 5 minutes}
     H -- continue N --> D
-    H -- stop or silence --> I[review:blocked until a person decides]
+    H -- stop or silence --> I[review:blocked + review:needs-human<br/>until a person decides]
     J[Refused finding] --> K{Reviewer accepts<br/>or rejects the refusal}
     K --> A
 ```
@@ -353,16 +369,20 @@ flowchart TD
 ## Repository layout
 
 ```text
-pr-reviewer/            the reviewer skill (SKILL.md, references/, scripts/, templates/)
-pr-fixer/               the fixer skill (SKILL.md, references/, scripts/, templates/)
+.agents/skills/
+  pr-reviewer/          the reviewer skill (SKILL.md, references/, scripts/, templates/)
+  pr-fixer/             the fixer skill (SKILL.md, references/, scripts/, templates/)
+.github/workflows/      this repository's own review loop and the release workflow
 docs/
   ISO-27001-AND-42001.md
   diagrams/             the Mermaid sources used in this README
 tests/                  fake-gh tests: run tests/run-all.sh
+VERSION, CHANGELOG.md   the release version and its history
 ```
 
-Both skills ship `scripts/review-cycle.sh` and `scripts/gate-pr-review-state.py`. The copies are
-identical on purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
+Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py` and
+`scripts/check-version.sh`. The copies are identical on purpose, so each skill works alone.
+`tests/run-all.sh` checks that they match.
 
 ## Tests
 
@@ -372,4 +392,4 @@ bash tests/run-all.sh
 
 The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a forged marker),
-triage decisions, the extension-wait step and the cycle-budget logic.
+triage decisions, the extension-wait step, the cycle-budget logic and the version check.

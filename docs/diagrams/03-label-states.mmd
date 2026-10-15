@@ -6,7 +6,7 @@ stateDiagram-v2
     blocked --> fixing: pr-fixer takes the cycle
     fixing --> pending: push moves the head
     passed --> pending: new push moves the head
-    passed --> ready_to_merge: PASSED bound to current head
-    ready_to_merge --> pending: any new pass, fix or push
-    blocked --> blocked: halted, needs a person
-    state "review:ready-to-merge" as ready_to_merge
+    blocked --> needs_human: loop halted, a person decides
+    needs_human --> running: person restarts the cycle
+    needs_human --> fixing: person or pr-fixer takes the cycle
+    state "blocked + review:needs-human" as needs_human

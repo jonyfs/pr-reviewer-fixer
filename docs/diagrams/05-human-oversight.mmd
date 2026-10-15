@@ -6,6 +6,6 @@ flowchart TD
     E -- passes --> B
     G[Cycle budget spent] --> H{Person answers<br/>within 5 minutes}
     H -- continue N --> D
-    H -- stop or silence --> I[review:blocked until a person decides]
+    H -- stop or silence --> I[review:blocked + review:needs-human<br/>until a person decides]
     J[Refused finding] --> K{Reviewer accepts<br/>or rejects the refusal}
     K --> A

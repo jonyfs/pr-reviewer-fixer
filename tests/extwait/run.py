@@ -18,7 +18,7 @@ def run(name, comments, sched, perms, labels=("review:blocked",), check=None):
     open(os.path.join(d, "clock"), "w").write(str(T0))
     json.dump({"headRefOid": H, "author": {"login": "alice"}, "labels": [{"name": l} for l in labels], "comments": comments}, open(os.path.join(d, "pr.json"), "w"))
     json.dump(sched, open(os.path.join(d, "scheduled.json"), "w")); json.dump(perms, open(os.path.join(d, "perms.json"), "w"))
-    wd = os.path.join(d, "wd"); sd = os.path.join(wd, ".claude/skills/pr-reviewer/scripts"); os.makedirs(sd)
+    wd = os.path.join(d, "wd"); sd = os.path.join(wd, ".agents/skills/pr-reviewer/scripts"); os.makedirs(sd)
     open(os.path.join(sd, "review-cycle.sh"), "w").write("#!/usr/bin/env bash\necho \"#7 at aaaaaaa: BLOCKED (review owed)\"\nexit 1\n"); os.chmod(os.path.join(sd, "review-cycle.sh"), 0o755)
     env = dict(os.environ, PATH=os.path.join(T, "bin") + ":" + os.environ["PATH"], FAKE_DIR=d, PR="7", GITHUB_REPOSITORY="o/r",
                REVIEW_MARKER_AUTHORS="github-actions", MAX_RC="5", HARD_RC="10", WAIT_S="300",
