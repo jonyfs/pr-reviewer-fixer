@@ -51,6 +51,31 @@ Every change to the skills, their scripts or their templates is a new semantic v
 
 Do not merge, tag or publish a release without a person's go-ahead.
 
+## Documentation
+
+Documentation is part of the change. A pull request that changes behavior, layout, labels, commands or paths also updates every document that describes them, in the same pull request. A change that leaves a document stating something false is not finished.
+
+Decide what to update from what the change touches:
+
+| The change touches | Update |
+|---|---|
+| A label, a state, a marker field or a `review-cycle.sh` subcommand | `README.md` (the artifact table, the label state diagram, the cycle budget text), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
+| Budget settings (`MAX_REVIEW_CYCLES`, `MAX_REVIEW_CYCLES_HARD`, `EXTENSION_WAIT_SECONDS`) | `README.md` budget table and text, the defaults in the cycle workflow, and the `Cycle budget` paragraph in this file |
+| A script, a test or a workflow (added, renamed, removed) | `README.md` (layout, install, tests), the `Commands` and `Architecture` sections of this file, and `tests/run-all.sh` |
+| An install path, a harness or a model name | the `README.md` install table and its date, and `references/harness-matrix.md` and `references/execution-profiles.md` (both skills) |
+| The version | `CHANGELOG.md` and the `Versions and updates` section of `README.md` if the mechanism changed |
+| Controls, records or roles that the ISO mapping cites | `docs/ISO-27001-AND-42001.md` and the ISO section of `README.md` |
+| This file's own subject (commands, layout, process) | this file |
+
+Rules for doing it:
+
+- A diagram exists twice, as a Mermaid block in `README.md` and as a file in `docs/diagrams/`. Change both and keep them identical.
+- Before opening the pull request, search the repository for the old name, path or label you removed or renamed, for example `grep -rn "<old name>" . --exclude-dir=.git`. Zero hits outside `CHANGELOG.md` is the goal.
+- Describe what the code does now. Put history in `CHANGELOG.md`, not in the other documents.
+- Claims in `README.md` about status and limits ("not run on live GitHub Actions", test counts) must match what is true after the change. Change them when they stop being true.
+- Run the `humanizer` skill over any Markdown you write or substantially edit, except `CHANGELOG.md`.
+- If a document could not be updated in the pull request, say which one and why in the pull request description.
+
 ## Conventions
 
 - Write everything in this project in English: code, comments, docs, commit messages, PR text and skill prose.
