@@ -109,7 +109,7 @@
 # **The 2 of `cmd_status` carries seven meanings, and saying so is what keeps it harmless.** The
 # subject is the FUNCTION and not the file, and the difference is not pedantry: the count a test
 # checks against this sentence is `return 2` inside `cmd_status`, while the file also exits 2 in
-# two places outside it, counted by their own sentence further down, which is where they belong.
+# several places outside it, counted by their own sentence further down, which is where they belong.
 # A sentence whose subject is wider than what it counts reads as a total and is not one.
 #
 # The gate this function calls was split precisely because one integer meant two things; the same
@@ -142,10 +142,12 @@
 # sentence and `three` two lines below it, about the same set of branches. Whoever edits either
 # sentence counts those lines again.
 #
-# Three more 2s live outside `cmd_status` and belong in the same list: the `command -v gh` check
-# at the top of the file exits 2 when `gh` is not installed, `cmd_stale` returns 2 when there is
-# no pull request to read, and `cmd_ensure_labels` returns 2 when `gh` could not create a label
-# (offline, no token, no permission). None of them is a decision about a review either.
+# Four more 2s live outside `cmd_status` and belong in the same list: the `command -v gh` check
+# at the top of the file exits 2 when `gh` is not installed, `parse()` exits 2 when the payload
+# holds no readable pull request number (so every subcommand that parses, `stale` included, ends
+# there on an unreadable payload), `cmd_stale` returns 2 when there is no pull request to read,
+# and `cmd_ensure_labels` returns 2 when `gh` could not create a label (offline, no token, no
+# permission). None of them is a decision about a review either.
 #
 # Today nothing branches on the difference: the callers speak only at rc=1 and treat every
 # 2 as silence, so the conflation is inert. It stays inert by being declared, not by luck: the
@@ -371,9 +373,15 @@ parse() {
   local fields
   fields=$(printf '%s' "$json" | STATES_RE="$STATES_RE" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
     const p=JSON.parse(s),re=new RegExp("^"+process.env.STATES_RE+"$"),L=(p.labels||[]).map(x=>x.name);
-    process.stdout.write([String(p.number||""),String(p.headRefOid||"").toLowerCase(),String(p.state||""),
-      p.isDraft===true?"yes":"",L.filter(n=>re.test(n)).join(" "),L.includes("review:needs-human")?"yes":""].join("\x1f"))}catch(e){}})')
+    const a=[String(p.number||""),String(p.headRefOid||"").toLowerCase(),String(p.state||""),
+      p.isDraft===true?"yes":"",L.filter(n=>re.test(n)).join(" "),L.includes("review:needs-human")?"yes":""];
+    // A field holding the separator would shift every field after it. Print nothing instead: every
+    // variable comes out empty, which callers read as "could not read the pull request".
+    if(!a.some(x=>x.includes("\x1f")))process.stdout.write(a.join("\x1f"))}catch(e){}})')
   IFS=$'\x1f' read -r NUMBER HEAD STATE IS_DRAFT LABEL HALTED <<<"$fields"
+  # No number means the payload was unreadable (or held the separator). Every caller treats the
+  # variables as facts, so stop here, with the code `status` uses for "could not read".
+  [ -n "$NUMBER" ] || { echo "review-cycle: could not read the pull request fields — INCONCLUSIVE" >&2; exit 2; }
   # `review:needs-human` is a SIXTH label and deliberately not one of the five states: the states
   # are a cycle position (exactly one at a time) and this one is a modifier of `review:blocked`
   # that says the loop paused or stopped and a person has to decide. Keeping it out of $LABEL is what lets
@@ -724,34 +732,38 @@ cmd_halt() {
     esac
   done
   case "$reason" in ''|*[!A-Za-z0-9_.-]*) [ -z "$reason" ] || die "review-cycle: --reason takes letters, digits, dot, dash and underscore only" ;; esac
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
   local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to halt"
   parse "$json"
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop left to halt"
   [ "$LABEL" = "review:blocked" ] || die "review-cycle: #$NUMBER is ${LABEL:-unlabelled}, not review:blocked — only a blocked pull request can need a person"
   # The marker goes first and the label second: a failed comment then leaves no label behind, so a
-  # retry posts the marker again. The marker is skipped only when a TRUSTED halted marker with this
-  # reason already stands, because `budget` reads that marker for the ceiling and a label alone is
-  # not evidence of it (a person can add the label by hand).
+  # retry posts the marker again. The marker is skipped only when the newest TRUSTED extension marker
+  # is already a halted one with this reason, which is the exact reading `budget` makes for the
+  # ceiling; a label alone is not evidence of it (a person can add the label by hand).
   local posted=""
   if [ -n "$reason" ]; then
     local have
     have="$(printf '%s' "$json" | R="$reason" A="${REVIEW_MARKER_AUTHORS:-}" python3 -I -c '
-import json, os, sys
+import json, os, re, sys
 allow = {x.strip().lower() for x in os.environ["A"].split(",") if x.strip()}
-want = "<!-- pr-skill-extension: state=halted reason=%s -->" % os.environ["R"]
 try:
     comments = json.load(sys.stdin).get("comments") or []
 except ValueError:
     comments = []
+last = None
 for c in comments:
     who = str(((c or {}).get("author") or {}).get("login") or "").lower()
-    if who in allow and (c.get("body") or "").lstrip().startswith(want):
-        print("yes"); break
+    m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", (c or {}).get("body") or "")
+    if who in allow and m:
+        last = dict(re.findall(r"([a-z_]+)=([^ >]+)", m.group(1)))
+if last and last.get("state") == "halted" and last.get("reason") == os.environ["R"]:
+    print("yes")
 ' 2>/dev/null)"
     if [ "$have" != "yes" ]; then
       printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on #%s (reason: %s). The pull request stays review:blocked and a person decides.\n' \
         "$reason" "$NUMBER" "$reason" | gh pr comment "$NUMBER" --body-file - >/dev/null \
-        || die "review-cycle: the halted marker could not be posted on #$NUMBER, so no label was added; run it again"
+        || die "review-cycle: the halted marker could not be posted on #$NUMBER; run it again"
       posted="yes"
     fi
   fi
@@ -1270,7 +1282,7 @@ cmd_export_audit() {
   local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: could not read the pull request, or its comment edits could not be checked"
   parse "$json"
   local events
-  events="$(gh api "repos/{owner}/{repo}/issues/$NUMBER/events" --paginate 2>/dev/null)" \
+  events="$(gh api "repos/{owner}/{repo}/issues/$NUMBER/events?per_page=100" --paginate 2>/dev/null)" \
     || die "review-cycle: could not read the timeline of #$NUMBER, and an export without it would be incomplete"
   mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
   X_JSON="$json" X_EVENTS="$events" X_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" X_OUT="$out" python3 -I - <<'PY' || exit 1

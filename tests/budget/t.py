@@ -20,7 +20,7 @@ def hist(counts):  # passes 1..n, last at head, the others at an older sha
     return [v(i + 1, "BLOCKED" if c else "PASSED", c, sha=(H if i == len(counts) - 1 else O)) for i, c in enumerate(counts)]
 
 def setup(comments, labels=("review:blocked",), state="OPEN"):
-    d = os.path.join(FAKE, "state"); shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
+    d = os.path.join(HERE, "state-" + os.environ.get("TEST_TAG", "main")); shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
     open(os.path.join(d, "calls.log"), "w").close()
     json.dump({"number": 7, "headRefOid": H, "labels": [{"name": l} for l in labels],
                "comments": comments, "state": state}, open(os.path.join(d, "pr.json"), "w"))
@@ -133,6 +133,14 @@ d = setup(hist([1] * 6), labels=("review:blocked", "review:needs-human"))
 p = run(["halt", "7", "--reason", "ceiling"], d)
 check("a hand-added needs-human label does not suppress the ceiling marker",
       p.returncode == 0 and "state=halted reason=ceiling" in comments_posted(d)[-1], p.stderr)
+
+d = setup(hist([1] * 6), labels=("review:blocked",), state="OPEN\x1f")
+p = run(["start", "7"], d)
+check("a field holding the separator is refused, not shifted", p.returncode == 2 and "could not read the pull request fields" in p.stderr and "review:running" not in open(os.path.join(d, "pr.json")).read(), p.stderr)
+
+d = setup(hist([1] * 6))
+p = run(["halt", "7", "--reason", "stop"], d, REVIEW_MARKER_AUTHORS=",")
+check("halt with a login-less allowlist is refused and posts nothing", p.returncode != 0 and len(comments_posted(d)) == 6, p.stderr)
 
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)

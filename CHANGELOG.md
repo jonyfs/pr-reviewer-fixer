@@ -4,6 +4,26 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.4.1
+
+### Changed
+
+- The test suites run at the same time, each in its own scratch directory (`TEST_TAG`). The whole
+  suite takes about two and a half minutes instead of four and a half.
+- The label events request asks for 100 events a page, so a long pull request needs a third of the
+  round-trips (`review-cycle.sh export-audit`, `triage-pr.sh`).
+
+### Fixed
+
+- `review-cycle.sh halt` refuses an unset or login-less `REVIEW_MARKER_AUTHORS`, as the other
+  decision subcommands do, instead of posting a duplicate halted marker on every call.
+- `halt` skips the marker only when the newest trusted extension marker is a halted one with the
+  same reason, the reading `budget` makes. The refusal text no longer claims no label was added.
+- `parse()` exits 2 with "could not read the pull request fields" when no number can be read, for
+  instance when a field holds the unit separator it uses between fields. Before, `start` went on
+  with empty fields. `stale` now exits 2 on an unreadable payload too, where it carried on with
+  empty fields.
+
 ## 0.4.0
 
 ### Changed

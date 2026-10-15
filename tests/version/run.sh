@@ -5,7 +5,8 @@ set -u
 T="$(cd "$(dirname "$0")" && pwd)"
 SRC="${1:?scripts dir}"
 S="$SRC/check-version.sh"
-W="$T/state"; rm -rf "$W"; mkdir -p "$W"
+# A directory per run so two runs can go at the same time (TEST_TAG names it).
+W="$T/state-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W"
 PASS=0; FAIL=0
 check() { local name="$1"; shift; if "$@"; then PASS=$((PASS+1)); echo "PASS | $name"; else FAIL=$((FAIL+1)); echo "FAIL | $name"; fi; }
 

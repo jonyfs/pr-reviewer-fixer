@@ -3,4 +3,4 @@
 D="${FAKE_DIR:?}"
 printf '%s\n' "gh $*" >>"$D/calls.log"
 [ -f "$D/offline" ] && { echo "fake gh: offline" >&2; exit 1; }
-exec python3 -I "$D/../fakegh.py" "$D" "$@"
+exec python3 -I "$(cd "$(dirname "$0")/.." && pwd)/fakegh.py" "$D" "$@"

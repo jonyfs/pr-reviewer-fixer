@@ -433,5 +433,7 @@ bash tests/run-all.sh
 The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit` and the version check. It also
+checks, the `fix` guard, `export-audit` and the version check. The suites run at the same time,
+each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
+start two runs of one suite with different `TEST_TAG` values. It also
 fails if any workflow, template, script or test names a model action or a provider API key.
