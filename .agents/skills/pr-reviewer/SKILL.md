@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # PR Reviewer
@@ -111,7 +111,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    rule is never a finding; an existing comment is never restated as new.
    [references/targets-and-context.md](references/targets-and-context.md)
 1. **Take the cycle.** `scripts/review-cycle.sh start` moves the label to `review:running` and
-   withdraws `review:needs-human`. Do this before reading files for review.
+   withdraws `review:needs-human`. Do this before reading files for review, unless the review loop
+   agent already did (the label is `review:running` at this head).
 2. **Pass 1 only: fix the acceptance conditions.** Before any agent runs, write the numbered list of
    conditions that would make this pull request pass, from the change's own stated purpose, each
    checkable by someone else. On pass 2 and later read the list from the pass-1 report and carry it
@@ -145,7 +146,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    [references/report-contract.md](references/report-contract.md)) and run
    `scripts/review-cycle.sh publish --verdict V --pass N --sha <head> --report FILE --critical C --warning W --note N`.
    The script re-reads the head, refuses a stale `--sha`, and refuses a marker plus report over
-   60000 bytes. Never post the marker with `gh pr comment`. What the verdict comment, inline
+   60000 bytes. On PASSED it also marks a draft pull request ready for review (`gh pr ready`),
+   after the marker and the label are written. Never post the marker with `gh pr comment`. What the verdict comment, inline
    comments and status comment look like, and the comment budget:
    [references/pr-protocol.md](references/pr-protocol.md). In the automatic run, post no GitHub
    review event at all.
@@ -189,9 +191,9 @@ findings block for `pr-fixer`.
 - [ ] Marker published through the script at the current head; marker plus report under 60000 bytes
 - [ ] Every prior CRITICAL is verified, refusal accepted, or refusal rejected (pass 2+)
 - [ ] Automatic run: no `--request-changes`, no `--approve`
-- [ ] No pass started while an unexpired extension question was the newest extension marker
-- [ ] Budget spent with a CRITICAL open: exactly one extension question, then granted or halted,
-      and both notified; never a pass beyond `max_review_cycles_hard`
+- [ ] Budget spent with a CRITICAL open: no pass started, the review loop agent asked the person
+      once, and the answer recorded as granted or halted and notified; never a pass beyond
+      `max_review_cycles_hard`
 - [ ] Start line announced before reading the diff; one finish or stopped line, counts equal to the marker
 
 ## References

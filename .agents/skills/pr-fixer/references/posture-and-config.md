@@ -13,8 +13,9 @@ Tags: [#pr #github #safety #reference]
 2. **No direct push to a protected base branch.** Only an explicitly configured bypass team may
    bypass required checks, and never from a fixer session. Never use `--no-verify` or disable a
    required check to force a merge.
-3. **Conservative default posture.** Create PRs as drafts (`gh pr create --draft`) and hand off
-   rather than merge, unless the user explicitly asked for ready-for-review / arm-automerge.
+3. **Conservative default posture.** Create PRs as drafts (`gh pr create --draft`). The reviewer's
+   PASSED verdict marks the PR ready for review; the fixer never does. Hand off rather than merge,
+   unless the user explicitly asked to arm automerge.
 4. **Minimal, scoped changes.** Apply changes only to code introduced by the current PR. One
    focused commit per concern. Do not bundle unrelated cleanup, and do not widen the PR into
    platform-wide or pre-existing-code enforcement.

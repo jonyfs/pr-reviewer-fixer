@@ -61,7 +61,7 @@ Decide each run from facts, and say what was decided in the start line or the co
 |---|---|
 | Trigger is a new PR, a push to its branch, or a manual call | Pass number from the newest marker: no marker means pass 1, `BLOCKED` marker means the next pass |
 | Head already carries a trusted marker | No new review. Announce "already reviewed". Exception: a closure comment for that cycle is newer than the marker, so the next pass is owed on the same head |
-| Draft PR in an automatic run | Skip and announce, unless the user asked. Review at `ready_for_review` |
+| Draft PR | Review it. The agent opens PRs as drafts, and `review-cycle.sh publish --verdict PASSED` marks the PR ready for review |
 | Actor is the fixer's own push | Pass 2 on the new head. Never start a fresh pass 1 |
 | Tiny change (under about 150 lines) | Batch fast and standard units, dispatch deep units separately |
 | Large change (over about 400 lines) | Partition, depth map, recommend a split |

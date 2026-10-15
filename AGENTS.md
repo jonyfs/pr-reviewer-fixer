@@ -20,7 +20,7 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 
 ## Architecture
 
-**The two skills never call each other.** They communicate only through the pull request: `review:*` labels, a verdict comment carrying `<!-- adversarial-review: sha=... verdict=... pass=... -->`, a fixer closure comment, a `pr-debt` block in the PR body, and extension question and answer comments. The artifact table in `README.md` lists each one, and `.agents/skills/pr-reviewer/references/pr-protocol.md` has the exact `gh` command to find it. Changing a marker or label format means updating both skills and the scripts.
+**The two skills never call each other.** They communicate only through the pull request: `review:*` labels, a verdict comment carrying `<!-- adversarial-review: sha=... verdict=... pass=... -->`, a fixer closure comment, a `pr-debt` block in the PR body, and extension answer comments. The artifact table in `README.md` lists each one, and `.agents/skills/pr-reviewer/references/pr-protocol.md` has the exact `gh` command to find it. Changing a marker or label format means updating both skills and the scripts.
 
 **Mechanism lives in scripts, judgement lives in prose.**
 - `scripts/review-cycle.sh` is the state machine: it owns labels, publishes the verdict bound to the head SHA (it re-reads the head from GitHub and refuses a stale `--sha`), refuses inconsistent verdict arithmetic (a `BLOCKED` with no CRITICAL, a `PASSED` with one), and computes the cycle budget (`budget`, `extend`, `halt`).
@@ -39,6 +39,7 @@ Review and correction are done by agents in the harness session you are running 
 
 - After you open a pull request (`gh pr create`) or push to the branch of an open one, and before the turn ends, run the loop in `.agents/skills/pr-reviewer/references/harness-loop.md`. Do not wait to be asked.
 - You are the review loop agent. You do not review or edit the code yourself in the loop. Dispatch the reviewer as a fresh-context, read-only sub-agent that follows `.agents/skills/pr-reviewer/SKILL.md`, and the fixer as a fresh-context sub-agent that follows `.agents/skills/pr-fixer/SKILL.md`. Drive the loop from `review-cycle.sh budget`.
+- Open pull requests as drafts (`gh pr create --draft`). `review-cycle.sh publish --verdict PASSED` marks the pull request ready for review when the reviewer approves it. Do not run `gh pr ready` yourself.
 - Set `REVIEW_MARKER_AUTHORS` to your `gh` login (`gh api user --jq .login`) and run `review-cycle.sh ensure-labels` once per repository.
 - When the budget is spent, ask the person in the session. Never read an answer from a PR comment.
 - Never merge, approve, tag or publish a release. A person does that.

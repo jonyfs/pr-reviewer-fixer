@@ -72,7 +72,7 @@ Notifications carry no secrets, no log excerpts and no finding bodies.
 | Harness lacks subagents | Run lanes sequentially in one agent, deep lanes first |
 | Harness cannot set effort per call | Run at the session setting and say which lanes lost their tier |
 | Budget or rate limit reached | Stop at a lane boundary with a clean branch, report the remaining lanes |
-| Invalidator (review reopened, PR closed, converted to draft, base retargeted) | Stop and report; do not continue on stale state |
+| Invalidator (review reopened, PR closed, converted back to draft after it was ready, base retargeted) | Stop and report; do not continue on stale state |
 
 ## Failure honesty
 

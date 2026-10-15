@@ -21,7 +21,7 @@ Halt on exactly one of:
 | **Terminal** | Armed for automerge, or handed off ready for human review |
 | **Budget** | `max_cycles` or `max_wall_time` exhausted |
 | **No progress** | The same failure/lane state repeats across cycles with no net change |
-| **Invalidator** | Review reopened, PR closed, converted to draft, or base retargeted |
+| **Invalidator** | Review reopened, PR closed, converted back to draft after it was ready, or base retargeted |
 | **Escalation** | A concern needs unsafe, ambiguous, or architectural work |
 
 Always report the halt reason, what remains, and the single next action.
@@ -42,7 +42,8 @@ State loaded at cycle start can be stale by cycle end. Before acting each cycle,
 - The trusted verdict marker you are working from still names the head you planned against, and
   the label has not moved back to `review:running` (a new review pass started). If either changed,
   stop acting on findings and return to waiting.
-- The PR is still open and not converted to draft.
+- The PR is still open, and was not converted back to draft after it was ready. A draft that was
+  already a draft at cycle start is the normal working state, not an invalidator.
 - `baseRefName` is unchanged: a retarget invalidates conflict work.
 - The head SHA is what you planned against.
 

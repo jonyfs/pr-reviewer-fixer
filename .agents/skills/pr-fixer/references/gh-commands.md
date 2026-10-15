@@ -118,7 +118,7 @@ threads whose comment has a recorded `fixed` outcome (or a `declined` the review
 ## Approval Lane
 
 ```bash
-gh pr ready <n>                                   # mark ready (only if user wants it now)
+gh pr ready <n>                                   # run by review-cycle.sh publish on PASSED; the fixer does not run it
 gh pr merge <n> --squash --auto --delete-branch   # arm automerge (strategy from config)
 ```
 
