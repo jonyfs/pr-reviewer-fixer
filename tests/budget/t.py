@@ -129,5 +129,10 @@ n = len(comments_posted(d))
 p = run(["halt", "7", "--reason", "stop"], d)
 check("a second halt on a halted pull request posts no second marker", p.returncode == 0 and len(comments_posted(d)) == n, p.stderr)
 
+d = setup(hist([1] * 6), labels=("review:blocked", "review:needs-human"))
+p = run(["halt", "7", "--reason", "ceiling"], d)
+check("a hand-added needs-human label does not suppress the ceiling marker",
+      p.returncode == 0 and "state=halted reason=ceiling" in comments_posted(d)[-1], p.stderr)
+
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)

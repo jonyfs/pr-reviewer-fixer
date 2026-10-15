@@ -728,16 +728,36 @@ cmd_halt() {
   parse "$json"
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop left to halt"
   [ "$LABEL" = "review:blocked" ] || die "review-cycle: #$NUMBER is ${LABEL:-unlabelled}, not review:blocked — only a blocked pull request can need a person"
-  [ -z "${HALTED:-}" ] && { gh pr edit "$NUMBER" --add-label review:needs-human >/dev/null \
-    || die "review-cycle: could not add review:needs-human on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"; }
-  # One halted marker per halt: a pull request that already carries `review:needs-human` was halted
-  # before, and posting the marker again only repeats the comment.
-  if [ -n "$reason" ] && [ -z "${HALTED:-}" ]; then
-    printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on #%s (reason: %s). The pull request stays review:blocked and a person decides.\n' \
-      "$reason" "$NUMBER" "$reason" | gh pr comment "$NUMBER" --body-file - >/dev/null \
-      || die "review-cycle: label added but the halted marker could not be posted on #$NUMBER"
+  # The marker goes first and the label second: a failed comment then leaves no label behind, so a
+  # retry posts the marker again. The marker is skipped only when a TRUSTED halted marker with this
+  # reason already stands, because `budget` reads that marker for the ceiling and a label alone is
+  # not evidence of it (a person can add the label by hand).
+  local posted=""
+  if [ -n "$reason" ]; then
+    local have
+    have="$(printf '%s' "$json" | R="$reason" A="${REVIEW_MARKER_AUTHORS:-}" python3 -I -c '
+import json, os, sys
+allow = {x.strip().lower() for x in os.environ["A"].split(",") if x.strip()}
+want = "<!-- pr-skill-extension: state=halted reason=%s -->" % os.environ["R"]
+try:
+    comments = json.load(sys.stdin).get("comments") or []
+except ValueError:
+    comments = []
+for c in comments:
+    who = str(((c or {}).get("author") or {}).get("login") or "").lower()
+    if who in allow and (c.get("body") or "").lstrip().startswith(want):
+        print("yes"); break
+' 2>/dev/null)"
+    if [ "$have" != "yes" ]; then
+      printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on #%s (reason: %s). The pull request stays review:blocked and a person decides.\n' \
+        "$reason" "$NUMBER" "$reason" | gh pr comment "$NUMBER" --body-file - >/dev/null \
+        || die "review-cycle: the halted marker could not be posted on #$NUMBER, so no label was added; run it again"
+      posted="yes"
+    fi
   fi
-  echo "#$NUMBER → review:needs-human (head ${HEAD:0:12})${reason:+, halted marker posted ($reason)}"
+  [ -z "${HALTED:-}" ] && { gh pr edit "$NUMBER" --add-label review:needs-human >/dev/null \
+    || die "review-cycle: ${posted:+halted marker posted, but }could not add review:needs-human on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"; }
+  echo "#$NUMBER → review:needs-human (head ${HEAD:0:12})${posted:+, halted marker posted ($reason)}"
 }
 
 # The cycle budget, read from the trusted markers and nothing else. Prints one `B_<KEY>='<value>'`
