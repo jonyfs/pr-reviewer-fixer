@@ -4,6 +4,22 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.4.0
+
+### Changed
+
+- `review-cycle.sh` reads the six simple pull request fields with one `node` process instead of
+  six, so each subcommand starts fewer processes.
+- The reviewer brief in `references/harness-loop.md` names the fenced `findings` block, so the
+  fixer reads CRITICAL ids and claims from it.
+
+### Fixed
+
+- `review-cycle.sh budget` read a marker written as `verdict=blocked` as not BLOCKED and answered
+  `none`. The verdict is now upper-cased before it is compared.
+- A header comment in `parse()` still said an unset allowlist skips nothing.
+- `tests/fake-gh/err`, a test output file, is no longer tracked.
+
 ## 0.3.0
 
 ### Added

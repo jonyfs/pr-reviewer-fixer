@@ -364,21 +364,20 @@ pr_json() {
 # Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS.
 parse() {
   local json="$1"
-  NUMBER=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).number||""))}catch(e){}})')
-  HEAD=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).headRefOid||"").toLowerCase())}catch(e){}})')
-  STATE=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).state||""))}catch(e){}})')
-  IS_DRAFT=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).isDraft===true?"yes":"")}catch(e){}})')
-  # The alternation comes from `STATES_RE` through the environment, never retyped here. A second
-  # copy of the vocabulary is a second thing to forget, and forgetting it in THIS reader is the
-  # expensive direction: an unlisted state leaves `$LABEL` empty, and every caller downstream reads
-  # empty as "no label at all", which is the sentence for *nobody reviewed this*.
-  LABEL=$(printf '%s' "$json" | STATES_RE="$STATES_RE" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const re=new RegExp("^"+process.env.STATES_RE+"$");const l=(JSON.parse(s).labels||[]).map(x=>x.name).filter(n=>re.test(n));process.stdout.write(l.join(" "))}catch(e){}})')
+  # One node process reads the six simple fields (a fork per field was the cost of every call).
+  # The unit separator keeps an empty field empty. `$STATES_RE` comes through the environment,
+  # never retyped here: a second copy of the vocabulary is a second thing to forget, and an unlisted
+  # state leaves `$LABEL` empty, which every caller reads as "nobody reviewed this".
+  local fields
+  fields=$(printf '%s' "$json" | STATES_RE="$STATES_RE" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
+    const p=JSON.parse(s),re=new RegExp("^"+process.env.STATES_RE+"$"),L=(p.labels||[]).map(x=>x.name);
+    process.stdout.write([String(p.number||""),String(p.headRefOid||"").toLowerCase(),String(p.state||""),
+      p.isDraft===true?"yes":"",L.filter(n=>re.test(n)).join(" "),L.includes("review:needs-human")?"yes":""].join("\x1f"))}catch(e){}})')
+  IFS=$'\x1f' read -r NUMBER HEAD STATE IS_DRAFT LABEL HALTED <<<"$fields"
   # `review:needs-human` is a SIXTH label and deliberately not one of the five states: the states
   # are a cycle position (exactly one at a time) and this one is a modifier of `review:blocked`
   # that says the loop paused or stopped and a person has to decide. Keeping it out of $LABEL is what lets
   # both live on the pull request without the CI check reading them as "two review states at once".
-  HALTED=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
-    process.stdout.write((JSON.parse(s).labels||[]).some(x=>x.name==="review:needs-human")?"yes":"")}catch(e){}})')
 
   # The marker is whatever OPENS a comment, never the last thing that happens to match inside one.
   # `publish` always writes `<!-- marker -->\n\n<report>`, so a genuine marker sits at position 0
@@ -397,8 +396,9 @@ parse() {
   # The author filter. With `REVIEW_MARKER_AUTHORS` active (see the header), a comment whose
   # `author.login` is not on the list is skipped before the regex runs, so it can supply neither
   # the current verdict nor the BLOCKED history below. Both answers come out of this one loop,
-  # which is why the filter lives here and not in a second pass. Unset, the list is empty and
-  # nothing is skipped.
+  # which is why the filter lives here and not in a second pass. Callers that decide
+  # (`status`, `publish`, `budget`, `extend`, `export-audit`) refuse an unset or login-less list
+  # before they get here; an empty list skips nothing.
   local m
   m=$(printf '%s' "$json" | REVIEW_MARKER_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
     const re=/^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->/i;
@@ -789,7 +789,7 @@ for c in trusted:
         continue
     f = fields(m.group(1))
     if "pass" in f and "verdict" in f:
-        verdicts.append({"sha": f["sha"], "verdict": f["verdict"], "pass": num(f["pass"], 0),
+        verdicts.append({"sha": f["sha"], "verdict": f["verdict"].upper(), "pass": num(f["pass"], 0),
                          "critical": num(f["critical"], 0) if "critical" in f else None})
 at = next((v for v in reversed(verdicts) if head.startswith(v["sha"])), None)
 
