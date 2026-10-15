@@ -1,0 +1,19 @@
+flowchart LR
+    subgraph REV[pr-reviewer: read-only]
+        direction TB
+        S1[Security Auditor<br/>security, dependencies, API]
+        S2[Saboteur<br/>correctness, errors, concurrency,<br/>performance, observability]
+        S3[New Hire<br/>readability, complexity, docs, tests]
+        S4[Architect<br/>design]
+    end
+    subgraph FIX[pr-fixer: one writing lane at a time]
+        direction TB
+        L1[Conflict lane]
+        L2[Finding lane]
+        L3[Comment lane]
+        L4[Check lane]
+        L5[Approval lane]
+    end
+    REV -->|findings block| M[Merge, verify,<br/>count, publish marker]
+    M -->|BLOCKED| FIX
+    FIX -->|push| REV

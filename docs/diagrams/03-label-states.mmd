@@ -1,0 +1,12 @@
+stateDiagram-v2
+    [*] --> pending: PR opened
+    pending --> running: review starts
+    running --> passed: verdict PASSED
+    running --> blocked: verdict BLOCKED
+    blocked --> fixing: pr-fixer takes the cycle
+    fixing --> pending: push moves the head
+    passed --> pending: new push moves the head
+    passed --> ready_to_merge: PASSED bound to current head
+    ready_to_merge --> pending: any new pass, fix or push
+    blocked --> blocked: halted, needs a person
+    state "review:ready-to-merge" as ready_to_merge

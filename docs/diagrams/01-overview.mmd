@@ -1,0 +1,16 @@
+flowchart TD
+    A([Pull request opened or updated]) --> B[pr-reviewer<br/>read-only agents review the diff]
+    B --> C{Any CRITICAL<br/>finding?}
+    C -- No --> D[Verdict PASSED<br/>label review:passed]
+    C -- Yes --> E[Verdict BLOCKED<br/>label review:blocked]
+    D --> F{Warnings or notes<br/>left?}
+    F -- Yes --> G[pr-fixer in debt-only mode<br/>writes an owner for each item]
+    F -- No --> H([A person merges])
+    G --> H
+    E --> I[pr-fixer<br/>falsify, test red, fix, test green]
+    I --> J[Push to the PR branch]
+    J --> K[pr-reviewer pass 2<br/>conditions fixed at pass 1 + any new CRITICAL]
+    K --> C
+    K -. cycle budget spent .-> L{Ask a person<br/>5 minute window}
+    L -- continue N --> I
+    L -- stop or no answer --> M([review:blocked<br/>a person decides])

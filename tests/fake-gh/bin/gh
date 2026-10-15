@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Fake gh: logs every call, serves `pr view` from $FAKE_DIR/pr.json, mutates it on edit/comment.
+D="${FAKE_DIR:?}"
+printf '%s\n' "gh $*" >>"$D/calls.log"
+[ -f "$D/offline" ] && { echo "fake gh: offline" >&2; exit 1; }
+exec python3 -I "$D/../fakegh.py" "$D" "$@"

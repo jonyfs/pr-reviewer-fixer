@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+c=$(cat "$FAKE_DIR/clock"); echo $((c + $1)) > "$FAKE_DIR/clock"

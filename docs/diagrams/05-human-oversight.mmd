@@ -1,0 +1,11 @@
+flowchart TD
+    A[AI reviewer posts verdict] --> B{Person reads<br/>the report}
+    B --> C[Person merges]
+    D[AI fixer pushes] --> E{Required CI gate<br/>from trusted code}
+    E -- fails --> F[Merge blocked]
+    E -- passes --> B
+    G[Cycle budget spent] --> H{Person answers<br/>within 5 minutes}
+    H -- continue N --> D
+    H -- stop or silence --> I[review:blocked until a person decides]
+    J[Refused finding] --> K{Reviewer accepts<br/>or rejects the refusal}
+    K --> A

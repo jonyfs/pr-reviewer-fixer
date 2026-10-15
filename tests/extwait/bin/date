@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Fake clock: "now" comes from $FAKE_DIR/clock; -d is delegated to GNU date.
+now=$(cat "$FAKE_DIR/clock")
+if [ "${1:-}" = -u ] && [ "${2:-}" = -d ]; then exec gdate -u -d "$3" "${@:4}"; fi
+exec gdate -u -d "@$now" "${@:2}"

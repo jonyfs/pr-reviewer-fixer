@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant Dev as Author
+    participant GH as GitHub PR
+    participant R as pr-reviewer
+    participant F as pr-fixer
+    participant P as Person
+    Dev->>GH: Open pull request
+    GH->>R: Workflow starts
+    R->>GH: Label review:running, status comment
+    R->>R: Read-only agents review in parallel
+    R->>GH: Verdict comment with marker and findings block
+    R->>GH: Label review:blocked or review:passed
+    alt CRITICAL found
+        GH->>F: Fix job starts
+        F->>GH: Label review:fixing
+        F->>F: Reproduce, write failing test, fix, run suite
+        F->>GH: Push commits, closure comment, debt block
+        F->>R: Head moved, label back to review:pending
+        R->>GH: Pass 2 verdict
+    end
+    alt Budget spent, CRITICAL still open
+        R->>GH: Extension question with suggestion
+        P-->>GH: /pr-skill continue N or stop
+        GH-->>F: Continue N cycles or halt
+    end
+    P->>GH: Review and merge

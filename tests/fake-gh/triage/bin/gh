@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Fake gh for triage-pr.sh: serves `pr view` from $FAKE_DIR/pr.json (or pr.<n>.json in sequence
+# for re-reads), and the label events from $FAKE_DIR/events.tsv (already in --jq output form).
+D="${FAKE_DIR:?}"
+printf '%s\n' "gh $*" >>"$D/calls.log"
+[ -f "$D/offline" ] && { echo "fake gh: offline" >&2; exit 1; }
+case "$1 $2" in
+  "pr view")
+    n=$(grep -c '^gh pr view' "$D/calls.log")
+    if [ -f "$D/pr.$n.json" ]; then cat "$D/pr.$n.json"; else cat "$D/pr.json"; fi ;;
+  "api repos/{owner}/{repo}/issues/"*)
+    [ -f "$D/events-fail" ] && exit 1
+    cat "$D/events.tsv" 2>/dev/null ;;
+  *) echo "fake gh: unhandled $*" >&2; exit 1 ;;
+esac
