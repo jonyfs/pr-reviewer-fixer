@@ -14,7 +14,7 @@ First tracked release.
   never installs anything. Opt out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
 - `metadata.version` in each `SKILL.md`, a root `VERSION` file and this changelog.
 - `review-cycle.sh halt` and the `review:needs-human` label, set over `review:blocked` when the
-  loop stops and a person has to decide.
+  loop pauses or stops and a person has to decide.
 
 ### Changed
 

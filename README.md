@@ -171,7 +171,7 @@ stateDiagram-v2
     blocked --> fixing: pr-fixer takes the cycle
     fixing --> pending: push moves the head
     passed --> pending: new push moves the head
-    blocked --> needs_human: loop halted, a person decides
+    blocked --> needs_human: loop paused or halted, a person decides
     needs_human --> running: person restarts the cycle
     needs_human --> fixing: person or pr-fixer takes the cycle
     state "blocked + review:needs-human" as needs_human

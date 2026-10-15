@@ -343,7 +343,7 @@ parse() {
   LABEL=$(printf '%s' "$json" | STATES_RE="$STATES_RE" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const re=new RegExp("^"+process.env.STATES_RE+"$");const l=(JSON.parse(s).labels||[]).map(x=>x.name).filter(n=>re.test(n));process.stdout.write(l.join(" "))}catch(e){}})')
   # `review:needs-human` is a SIXTH label and deliberately not one of the five states: the states
   # are a cycle position (exactly one at a time) and this one is a modifier of `review:blocked`
-  # that says the loop stopped and a person has to decide. Keeping it out of $LABEL is what lets
+  # that says the loop paused or stopped and a person has to decide. Keeping it out of $LABEL is what lets
   # both live on the pull request without the CI check reading them as "two review states at once".
   HALTED=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
     process.stdout.write((JSON.parse(s).labels||[]).some(x=>x.name==="review:needs-human")?"yes":"")}catch(e){}})')
@@ -668,7 +668,8 @@ cmd_status() {
   return 1
 }
 
-# The loop stopped (cycle budget spent, `/pr-skill stop`, or no answer in time) and what is left is a
+# The loop paused or stopped (the cycle budget is spent and the question is open, `/pr-skill stop`, or
+# no answer in time) and what is left is a
 # person's decision. `review:blocked` alone cannot say that: it is also the state a pull request is in
 # while the fixer is about to run. This adds a modifier and moves nothing else. It refuses anything
 # but an OPEN pull request in `review:blocked`, because a halt over any other state would be a claim
@@ -705,8 +706,8 @@ cmd_start() {
 # INTENTION. `cmd_stale`, the one thing that retires a claim the head outgrew, cannot help: it acts
 # only after a push, and the whole window is before the push.
 #
-# **Pull requests merged inside that window**, carrying `review:passed` +
-# `review:passed` while correctors were working, and the corrections stayed on disk and
+# **Pull requests merged inside that window**, carrying `review:passed`
+# while correctors were working, and the corrections stayed on disk and
 # never reached the base branch: among them a security guard and a defect that locked users out.
 # Each needed a rescue pull request, which is the expensive way to discover that a label was
 # answering a question about a commit while the reader was asking one about the work.
@@ -926,7 +927,7 @@ cmd_ensure_labels() {
     "review:fixing|d876e3|A correction is in flight; the head is about to move" \
     "review:blocked|b60205|The review found at least one CRITICAL" \
     "review:passed|0e8a16|Nothing blocks at this head; the marker comment is the evidence" \
-    "review:needs-human|d93f0b|The loop stopped and a person has to decide; set only with review:blocked"; do
+    "review:needs-human|d93f0b|The loop paused or stopped and a person has to decide; only with review:blocked"; do
     name="${spec%%|*}"; desc="${spec##*|}"; color="${spec#*|}"; color="${color%%|*}"
     if gh label create "$name" --force --color "$color" --description "$desc" >/dev/null 2>&1; then
       echo "label $name ok"

@@ -39,7 +39,7 @@ document behind it.
 10. **Absence reads as not reviewed.** A pull request with no review label fails open to "owed",
     never to "approved".
 11. **`review:needs-human` is a halt, not a verdict.** Only `review-cycle.sh halt` raises it, and only
-    over `review:blocked`, when the loop stopped. A new pass, a correction starting or a push retires it.
+    over `review:blocked`, when the loop paused or stopped for a person. A new pass, a correction starting or a push retires it.
 12. **No check passes vacuously.** A review over zero files, a unit that read nothing, or a gate
     that found nothing to test reports that it found nothing. "0 problems over 0 files" is a green
     light that means nothing. Say "nothing to review" and publish no marker.

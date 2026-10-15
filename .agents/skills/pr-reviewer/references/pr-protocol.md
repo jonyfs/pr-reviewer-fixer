@@ -36,7 +36,7 @@ check with `cmp`.
 | `review:passed` | `review-cycle.sh publish --verdict PASSED` | Marker at the head says PASSED |
 | `review:blocked` | `review-cycle.sh publish --verdict BLOCKED` | Marker at the head says BLOCKED |
 | `review:fixing` | `review-cycle.sh fix` | A correction is in flight; the head is about to move |
-| `review:needs-human` | `review-cycle.sh halt`, only over `review:blocked`; withdrawn by `start`, `fix`, `stale` and any `publish` | The loop stopped (budget spent, stop, or no answer) and a person has to decide |
+| `review:needs-human` | `review-cycle.sh halt`, only over `review:blocked`; withdrawn by `start`, `fix`, `stale` and any `publish` | The loop paused or stopped (budget spent, stop, or no answer) and a person has to decide |
 
 No label at all reads as "not reviewed", never as "approved". `review-cycle.sh ensure-labels`
 creates the six labels and is safe to run again; it needs no PR number and exits 2 if any label

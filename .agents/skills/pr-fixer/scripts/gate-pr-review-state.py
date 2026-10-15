@@ -144,7 +144,7 @@ if sys.version_info < MINIMUM:
 STATES = ("review:pending", "review:running", "review:fixing", "review:blocked", "review:passed")
 # A sixth label, and deliberately NOT a sixth state. The five above are a position in the cycle and
 # exactly one may hold at a time; this one is a modifier of `review:blocked` that says the loop
-# stopped and a person has to decide. It is only ever valid beside `review:blocked`.
+# paused or stopped and a person has to decide. It is only ever valid beside `review:blocked`.
 NEEDS_HUMAN = "review:needs-human"
 # Anchored at the START of a comment, never a search anywhere inside its body, and this is the
 # SAME rule `review-cycle.sh`'s `parse()` applies, on purpose. `publish` always writes

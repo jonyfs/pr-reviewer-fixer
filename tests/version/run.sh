@@ -56,5 +56,11 @@ printf '{"tag_name":"nightly","html_url":"x"}' >"$W/release.json"; fresh
 out="$(run)"; rc=$?
 check "non-semver tag: silent, exit 0" eval '[ $rc = 0 ] && [ -z "$out" ]'
 
+out="$(env -i PATH="$PATH" PR_SKILLS_RELEASE_URL="file://$W/release.json" bash "$S" 2>&1)"; rc=$?
+check "no HOME and no XDG_CACHE_HOME: silent, exit 0, no stderr" eval '[ $rc = 0 ] && [ -z "$out" ]'
+rel "v99.0.0"
+out="$(env -i PATH="$PATH" PR_SKILLS_RELEASE_URL="file://$W/release.json" bash "$S" 2>&1)"; rc=$?
+check "no HOME: notice still printed, exit 0" eval '[ $rc = 0 ] && printf %s "$out" | grep -q "99.0.0 is available"'
+
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

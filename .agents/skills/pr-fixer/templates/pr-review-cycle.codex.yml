@@ -224,7 +224,8 @@ jobs:
             note=$(label_note)
             body=$(printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on PR #%s. %s%s\n\n@%s' "$1" "$PR" "$2" "$note" "$author")
             post "$body"
-            .agents/skills/pr-reviewer/scripts/review-cycle.sh halt "$PR" >/dev/null 2>&1 || true
+            .agents/skills/pr-reviewer/scripts/review-cycle.sh halt "$PR" >/dev/null 2>&1 \
+              || echo "::warning::review:needs-human was not applied on PR #$PR (the base checkout may predate the halt subcommand, or the label is missing)"
             echo "::warning::pr-skill halted on PR #$PR: $2"
             printf 'pr-skill: halted on PR #%s (reason %s). %s\n' "$PR" "$1" "$2" >> "$GITHUB_STEP_SUMMARY"
             { echo "granted=false"; echo "allowed=$B_ALLOWED"; } >> "$GITHUB_OUTPUT"
@@ -249,7 +250,8 @@ jobs:
                 "${open_list:-see the newest verdict comment}" "${B_PROGRESS:-no counts in the markers}" "$cmd" "$why" "$span" \
                 "$remaining" "$B_HARD" "$expires_at")
               post "$body"
-              .agents/skills/pr-reviewer/scripts/review-cycle.sh halt "$PR" >/dev/null 2>&1 || true
+              .agents/skills/pr-reviewer/scripts/review-cycle.sh halt "$PR" >/dev/null 2>&1 \
+              || echo "::warning::review:needs-human was not applied on PR #$PR (the base checkout may predate the halt subcommand, or the label is missing)"
               echo "::warning::pr-skill asked for an extension on PR #$PR (until $expires_at)"
               printf 'pr-skill: asked for an extension on PR #%s after cycle %s, waiting until %s.\n' "$PR" "$cycle" "$expires_at" >> "$GITHUB_STEP_SUMMARY" ;;
             settle)

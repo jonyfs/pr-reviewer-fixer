@@ -56,12 +56,16 @@ fi
 [ "${GITHUB_ACTIONS:-}" = "true" ] && exit 0
 
 URL="${PR_SKILLS_RELEASE_URL:-$UPSTREAM}"
-CACHE_DIR="${PR_SKILLS_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/pr-reviewer-fixer}"
-CACHE="$CACHE_DIR/latest"
+# No HOME and no XDG_CACHE_HOME (a bare container): run without a cache instead of failing.
+if [ -n "${PR_SKILLS_CACHE_DIR:-}" ]; then CACHE_DIR="$PR_SKILLS_CACHE_DIR"
+elif [ -n "${XDG_CACHE_HOME:-}" ]; then CACHE_DIR="$XDG_CACHE_HOME/pr-reviewer-fixer"
+elif [ -n "${HOME:-}" ]; then CACHE_DIR="$HOME/.cache/pr-reviewer-fixer"
+else CACHE_DIR=""; fi
+CACHE="${CACHE_DIR:+$CACHE_DIR/latest}"
 
 latest=""
 now="$(date +%s)"
-if [ -r "$CACHE" ]; then
+if [ -n "$CACHE" ] && [ -r "$CACHE" ]; then
   read -r stamp tag link <"$CACHE" 2>/dev/null || stamp=0
   case "$stamp" in ''|*[!0-9]*) stamp=0 ;; esac
   if [ $((now - stamp)) -lt "$TTL" ] && [ -n "${tag:-}" ]; then latest="$tag"; page="${link:-}"; fi
@@ -81,7 +85,7 @@ except Exception:
   latest="${parsed%% *}"
   page="${parsed#* }"
   [ -n "$latest" ] || exit 0
-  mkdir -p "$CACHE_DIR" 2>/dev/null && printf '%s %s %s\n' "$now" "$latest" "$page" >"$CACHE" 2>/dev/null
+  [ -n "$CACHE" ] && mkdir -p "$CACHE_DIR" 2>/dev/null && printf '%s %s %s\n' "$now" "$latest" "$page" >"$CACHE" 2>/dev/null
 fi
 
 newer="$(python3 -I - "$installed" "$latest" <<'PY' 2>/dev/null

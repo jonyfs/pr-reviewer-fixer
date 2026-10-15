@@ -34,5 +34,6 @@ jobs:
             echo "v$version already released"
             exit 0
           fi
-          awk -v v="$version" '$0 ~ "^## \\[?" v {f=1; next} f && /^## /{exit} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          awk -v v="$version" '$1 == "##" && ($2 == v || $2 == "[" v "]") {f=1; next} f && /^## /{exit} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          [ -s "$RUNNER_TEMP/notes.md" ] || { echo "CHANGELOG.md has no entry for $version" >&2; exit 1; }
           gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --notes-file "$RUNNER_TEMP/notes.md"
