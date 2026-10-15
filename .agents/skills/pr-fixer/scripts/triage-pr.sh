@@ -85,7 +85,7 @@ done
 : > "$TMP/events.tsv"
 EVENTS_OK=1
 if node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit((p.labels||[]).some(l=>l.name==="review:running"||l.name==="review:fixing")?0:1)' "$TMP/pr.json"; then
-  gh api "repos/{owner}/{repo}/issues/$PR/events" --paginate \
+  gh api "repos/{owner}/{repo}/issues/$PR/events?per_page=100" --paginate \
     --jq '.[] | select(.event == "labeled") | "\(.label.name)\t\(.created_at)"' > "$TMP/events.tsv" 2>/dev/null || EVENTS_OK=0
 fi
 

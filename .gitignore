@@ -12,3 +12,5 @@ tests/version/state/
 tests/**/xdg-state/
 docs/designs/*.review.*/
 tests/fake-gh/err
+tests/fake-gh/work-*/
+tests/budget/state-*/

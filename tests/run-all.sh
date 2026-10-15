@@ -5,15 +5,23 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 fail=0
-run() { echo "== $1"; shift; "$@" 2>&1 | tail -n 3; [ "${PIPESTATUS[0]}" -eq 0 ] || fail=1; }
-
-run "review-cycle.sh and gate (reviewer copy)" bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
-run "review-cycle.sh and gate (fixer copy)"    bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
-run "triage-pr.sh"                             bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
-run "cycle budget and extend (reviewer copy)" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
-run "cycle budget and extend (fixer copy)"    python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
-run "check-version.sh (reviewer copy)"         bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
-run "check-version.sh (fixer copy)"            bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+# The independent suites run at the same time, each with its own scratch directory (TEST_TAG), and
+# print in a fixed order afterwards.
+OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
+names=(); pids=()
+start() { local n="$1"; shift; names+=("$n"); ( "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc" ) & pids+=($!); }
+start "review-cycle.sh and gate (reviewer copy)" env TEST_TAG=rev bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "review-cycle.sh and gate (fixer copy)"    env TEST_TAG=fix bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "triage-pr.sh"                             bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "cycle budget and extend (reviewer copy)"  env TEST_TAG=rev python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "cycle budget and extend (fixer copy)"     env TEST_TAG=fix python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "check-version.sh (reviewer copy)"         bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "check-version.sh (fixer copy)"            bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+wait "${pids[@]}"
+for i in "${!names[@]}"; do
+  n=$((i + 1)); echo "== ${names[$i]}"; tail -n 3 "$OUT/$n.log"
+  [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -eq 0 ] || fail=1
+done
 # One version for both skills: VERSION, each SKILL.md metadata.version and the newest CHANGELOG entry.
 v_root="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 v_rev="$("$ROOT/.agents/skills/pr-reviewer/scripts/check-version.sh" --installed)"
