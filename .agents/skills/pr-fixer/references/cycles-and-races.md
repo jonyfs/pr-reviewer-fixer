@@ -60,6 +60,11 @@ remote_sha=$(git rev-parse "origin/$HEAD_REF")
 [ "$remote_sha" = "$PLANNED_SHA" ] || echo "head moved: re-sync and re-plan"
 ```
 
+`scripts/push-guard.sh <pr> --findings FILE` runs this check and three more in one call: the
+checked-out branch is the pull request's head branch, the head is not on a fork, and every file a
+new commit touches is named by a finding, passed with `--allow`, or a test file. It posts nothing
+and exits 1 with every reason when any check fails.
+
 Rules:
 
 - Head moved: re-fetch, merge the new head into your work (or rebase only your own commits), re-verify,

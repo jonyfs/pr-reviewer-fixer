@@ -10,6 +10,8 @@ Tags: [#pr #review #catalog #reference]
 > no provider API key. Items about workflow triggers, Action inputs, tokens or job summaries are
 > history, not options. See `references/harness-loop.md`.
 
+Adopted since: #52 (base-branch rules) in 0.5.0.
+
 Researched 2026-10-14. `Target` says where an item belongs: SKILL (core rule), reference (detail file), backlog (needs tooling that does not exist). Decisions taken on the conflicts the research surfaced: severity maps to CRITICAL/WARNING/NOTE ([severity-and-verdict.md](severity-and-verdict.md)); the automatic run posts `--comment` and never auto-approves; the 13 dimensions stay, grouped by stance and batched by size ([agents-and-dispatch.md](agents-and-dispatch.md)) instead of collapsing to 5 lenses.
 
 # pr-reviewer: 100 improvements

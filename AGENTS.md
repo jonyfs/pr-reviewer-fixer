@@ -12,6 +12,9 @@ Two Agent Skills, `pr-reviewer` and `pr-fixer`, plus the scripts that enforce th
 bash tests/run-all.sh                                   # whole suite, no network
 bash tests/fake-gh/run.sh .agents/skills/pr-reviewer/scripts       # review-cycle.sh + gate, one copy
 bash tests/fake-gh/triage/run.sh .agents/skills/pr-fixer/scripts   # triage-pr.sh
+bash tests/push-guard/run.sh .agents/skills/pr-fixer/scripts       # push-guard.sh, in a scratch git repo
+bash tests/install/run.sh                                          # install.sh, in scratch directories
+bash tests/eval/selftest.sh                                        # the review eval scorer, on canned reports
 bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-version.sh
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt
 ```
@@ -29,6 +32,9 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 - `scripts/gate-pr-review-state.py` is the check the `review-gate` required job runs.
 - `scripts/pr-json.py` is the only way the scripts read a pull request. It drops comments edited after creation and fails closed. Every marker rule (allowlist must name a login, edited comments ignored) is decided on its output.
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
+- `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope. The reviewer has no copy.
+- `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.
+- `tests/eval/` holds seeded review cases and `score.py`, which prints recall and precision for reports a person produced in a harness session. `tests/run-all.sh` runs only the scorer's own tests, never a model.
 
 **Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `check-version.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
 
@@ -77,7 +83,7 @@ Decide what to update from what the change touches:
 | A label, a state, a marker field, a trust rule or a `review-cycle.sh` subcommand | `README.md` (the artifact table, the label state diagram, the cycle budget text), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
 | Budget settings (`MAX_REVIEW_CYCLES`, `MAX_REVIEW_CYCLES_HARD`) | `README.md` budget table and text, the defaults in `review-cycle.sh budget`, `references/harness-loop.md` and `references/posture-and-config.md`, and the `Cycle budget` paragraph in this file |
 | A script, a test or a workflow (added, renamed, removed) | `README.md` (layout, install, tests), the `Commands` and `Architecture` sections of this file, and `tests/run-all.sh` |
-| An install path, a harness or a model name | the `README.md` install table and its date, and `references/harness-matrix.md` and `references/execution-profiles.md` (both skills) |
+| An install path, a harness or a model name | the `README.md` install table and its date, the harness table in `install.sh`, and `references/harness-matrix.md` and `references/execution-profiles.md` (both skills) |
 | The version | `CHANGELOG.md` and the `Versions and updates` section of `README.md` if the mechanism changed |
 | Controls, records or roles that the ISO mapping cites | `docs/ISO-27001-AND-42001.md` and the ISO section of `README.md` |
 | This file's own subject (commands, layout, process) | this file |

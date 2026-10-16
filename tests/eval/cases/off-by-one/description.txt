@@ -1,0 +1,1 @@
+Add `lastN` for the "recent activity" list. It returns the last n entries of the array, in order.

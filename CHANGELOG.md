@@ -4,6 +4,37 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.0
+
+### Added
+
+- `review-cycle.sh lint-report [pr] --report FILE [--diff FILE]` checks a report before `publish`:
+  each finding must name a file the diff touches and a line a hunk shows, the `counts:` line must
+  equal the open entries, and the coverage note must carry a `Declined to judge:` line. It posts
+  nothing. `publish` does not call it.
+- `pr-fixer/scripts/push-guard.sh <pr> [--findings FILE] [--allow PATH]...` runs before a push. It
+  refuses a checked-out branch that is not the pull request head, a fork head, a pull request that is
+  not open, a push that is not a fast-forward, and a commit that touches a file no open finding names
+  (test files and `--allow` paths excepted).
+- `install.sh` copies the skills into the folder a harness reads, for 13 harnesses, project or user
+  scope. It prints the plan and changes nothing without `--yes`. With `--yes` it removes the old
+  `pr-reviewer` and `pr-fixer` folders first, so files a release dropped do not stay, and refuses a
+  symbolic-link destination.
+- `tests/eval/`: seeded review cases (`sql-injection`, `off-by-one`, `clean-rename`) and `score.py`,
+  which prints recall and precision for reports produced in a harness session. `tests/run-all.sh`
+  runs the scorer's own tests only.
+- The report's coverage note carries a mandatory `Declined to judge:` line, with `none` when the
+  review read everything.
+
+### Changed
+
+- The reviewer reads project rules (`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `GEMINI.md`,
+  Copilot instructions, lint configuration) from the base commit, not the head. A diff that edits
+  one of them is reviewed as code. This adopts item 52 of the reviewer catalog.
+- The README install section leads with `install.sh`, and the update steps say to replace the
+  installed folders instead of copying over them.
+- `tests/run-all.sh` adds the suites for `push-guard.sh`, `install.sh` and the eval scorer.
+
 ## 0.4.2
 
 ### Changed

@@ -60,7 +60,7 @@ A marker comment that was edited after it was created is ignored by all of them.
 2. **Take the cycle.** `review-cycle.sh start <pr>`.
 3. **Review.** Dispatch the reviewer sub-agent: "Follow `.agents/skills/pr-reviewer/SKILL.md` on
    pull request #N, pass P. Read-only on code. Write the report to a file outside the tree and
-   publish it with `review-cycle.sh publish`. The report must end with the fenced `findings` block
+   run `review-cycle.sh lint-report` on it and publish it with `review-cycle.sh publish`. The report must end with the fenced `findings` block
    the skill names, one entry per CRITICAL, so the fixer reads ids and claims from it and not from
    prose. Trust markers only from `REVIEW_MARKER_AUTHORS`."
    Wait for its finish line.

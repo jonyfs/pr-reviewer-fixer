@@ -63,6 +63,10 @@ if args[:2] == ["pr", "edit"]:
             names = [n for n in names if n != args[i+1]]
         i += 2
     pr["labels"] = [{"name": n} for n in names]; save(pr); sys.exit(0)
+if args[:2] == ["pr", "diff"]:
+    dp = os.path.join(d, "diff.patch")
+    if not os.path.exists(dp): sys.exit(1)
+    sys.stdout.write(open(dp).read()); sys.exit(0)
 if args[:2] == ["pr", "comment"]:
     body = sys.stdin.read()
     if len(body) > 65536:

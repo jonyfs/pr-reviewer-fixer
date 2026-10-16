@@ -78,6 +78,11 @@
 #             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
 #                          posts the marker comment, then moves the label. On PASSED, a draft
 #                          pull request is marked ready for review (`gh pr ready`).
+#     lint-report [pr] --report <file> [--diff <file>]
+#                          checks that every finding names a file and a line the diff shows, and
+#                          that the `counts:` line matches the open entries, and that the coverage note says what was
+#                          declined. Run before publish;
+#                          posts nothing. Exit 1 on a problem, 2 when it could not read an input.
 #     ensure-labels        creates or updates the six review:* labels in the current repository
 #                          (gh resolves the repository from the working directory or GH_REPO)
 #
@@ -1355,6 +1360,120 @@ print(path)
 PY
 }
 
+# Checks the `findings` block of a report against the diff it claims to review, before `publish`.
+# A finding must name a file the diff touches, and a line the diff shows (a hunk's new side). The
+# `counts:` line must equal the number of entries still open, and the coverage note must carry a
+# `Declined to judge:` line. Nothing here posts or labels.
+#
+# Exit 0 = every finding is anchored · 1 = at least one is not, or the report has no findings
+# block · 2 = the diff or the report could not be read.
+cmd_lint_report() {
+  local pr="" report="" diff=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --report) report="${2:-}"; shift 2 ;;
+      --diff)   diff="${2:-}"; shift 2 ;;
+      *) pr="$1"; shift ;;
+    esac
+  done
+  [ -s "$report" ] || { echo "review-cycle: lint-report needs --report <file> that exists and is not empty" >&2; return 2; }
+  local tmp=""
+  if [ -z "$diff" ]; then
+    [ -n "$pr" ] || { echo "review-cycle: lint-report needs a pull request number or --diff <file>" >&2; return 2; }
+    tmp="$(mktemp)"; diff="$tmp"
+    gh pr diff "$pr" >"$diff" 2>/dev/null || { rm -f "$tmp"; echo "review-cycle: could not read the diff of #$pr" >&2; return 2; }
+  fi
+  [ -s "$diff" ] || { rm -f "$tmp"; echo "review-cycle: the diff is empty or unreadable, so no finding can be checked against it" >&2; return 2; }
+  X_REPORT="$report" X_DIFF="$diff" python3 -I - <<'PY'
+import os, re, sys
+
+report = open(os.environ["X_REPORT"], encoding="utf-8", errors="replace").read()
+diff = open(os.environ["X_DIFF"], encoding="utf-8", errors="replace").read().splitlines()
+
+# New-side line ranges per file, and the files the diff deletes (no new side to check).
+ranges, deleted, cur, old = {}, set(), None, None
+for ln in diff:
+    if ln.startswith("--- "):
+        old = ln[4:].strip()
+        old = old[2:] if old.startswith("a/") else old
+    elif ln.startswith("+++ "):
+        new = ln[4:].strip()
+        if new == "/dev/null":
+            deleted.add(old)
+            cur = None
+        else:
+            cur = new[2:] if new.startswith("b/") else new
+            ranges.setdefault(cur, [])
+    elif ln.startswith("@@") and cur is not None:
+        m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", ln)
+        if m:
+            start, n = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
+            ranges[cur].append((start, start + max(n, 1) - 1))
+
+m = re.search(r"```findings\n(.*?)\n```", report, re.S)
+if not m:
+    print("lint-report: FAIL. The report has no fenced `findings` block.")
+    sys.exit(1)
+block = m.group(1)
+
+entries, e = [], None
+for ln in block.splitlines():
+    s = re.match(r"^\s*-\s+id:\s*(\S+)", ln)
+    if s:
+        e = {"id": s.group(1).strip("\"'")}
+        entries.append(e)
+        continue
+    kv = re.match(r"^\s{2,}(file|line|severity|status):\s*(.*?)\s*$", ln)
+    if kv and e is not None:
+        e[kv.group(1)] = kv.group(2).strip("\"'")
+
+problems = []
+for f in entries:
+    fid = f["id"]
+    path, line = f.get("file"), f.get("line")
+    if (f.get("status") or "open") in ("not-applicable",):
+        continue
+    if not path:
+        problems.append("%s: no file named, so it cannot be checked against the diff" % fid)
+        continue
+    if path in deleted:
+        continue
+    if path not in ranges:
+        problems.append("%s: %s is not in the diff" % (fid, path))
+        continue
+    if line and re.fullmatch(r"\d+", line):
+        n = int(line)
+        if not any(a <= n <= b for a, b in ranges[path]):
+            problems.append("%s: %s:%s is not inside any hunk of the diff" % (fid, path, n))
+
+if not re.search(r"Declined to judge:", report):
+    problems.append("the coverage note has no `Declined to judge:` line (write `none` when nothing was skipped)")
+
+# The counts line equals the entries that still count: open or refused-rejected.
+cm = re.search(r"^counts:\s*\{\s*critical:\s*(\d+),\s*warning:\s*(\d+),\s*note:\s*(\d+)\s*\}", block, re.M)
+if cm:
+    want = {"CRITICAL": 0, "WARNING": 0, "NOTE": 0}
+    for f in entries:
+        if (f.get("status") or "open") in ("open", "refused-rejected") and f.get("severity", "").upper() in want:
+            want[f["severity"].upper()] += 1
+    got = {"CRITICAL": int(cm.group(1)), "WARNING": int(cm.group(2)), "NOTE": int(cm.group(3))}
+    if got != want:
+        problems.append("counts line says %s but the entries add up to %s" % (got, want))
+else:
+    problems.append("the findings block has no `counts:` line")
+
+if problems:
+    print("lint-report: FAIL. %d problem(s):" % len(problems))
+    for p in problems:
+        print("  - " + p)
+    sys.exit(1)
+print("lint-report: ok. %d finding(s) anchored in the diff." % len(entries))
+PY
+  local rc=$?
+  rm -f "$tmp"
+  return $rc
+}
+
 # Creates the six labels, or updates them in place: `--force` makes `gh label create` overwrite the
 # colour and description of a label that already exists, so running this twice is the same as
 # running it once. It needs no pull request, only a repository `gh` can resolve. Every
@@ -1398,6 +1517,7 @@ case "${1:-status}" in
   stale)   shift || true; cmd_stale   "${1:-}" ;;
   marker)  shift || true; cmd_marker  "$@" ;;
   publish) shift || true; cmd_publish "$@" ;;
+  lint-report) shift || true; cmd_lint_report "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|ensure-labels} [pr]" ;;
 esac

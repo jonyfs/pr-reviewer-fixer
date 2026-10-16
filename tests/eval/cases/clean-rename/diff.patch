@@ -1,0 +1,13 @@
+diff --git a/src/util.ts b/src/util.ts
+--- a/src/util.ts
++++ b/src/util.ts
+@@ -1,5 +1,5 @@
+-export function total(xs: number[]): number {
+-  let t = 0;
+-  for (const x of xs) t += x;
+-  return t;
++export function sum(values: number[]): number {
++  let acc = 0;
++  for (const v of values) acc += v;
++  return acc;
+ }

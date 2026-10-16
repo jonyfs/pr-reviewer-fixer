@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.4.2"
+  version: "0.5.0"
 ---
 
 # PR Reviewer
@@ -105,7 +105,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
 ## Workflow
 
 0. **Resolve the target and load context.** PR, branch diff, working tree or pasted diff. Read the
-   project's own rules (contributor and agent guides, constitution, lint config), prior review
+   project's own rules (contributor and agent guides, constitution, lint config) as they are on the
+   base commit, never the head, prior review
    comments, automated check results, and the PR's current cycle state:
    `scripts/review-cycle.sh status`. A documented project rule beats generic practice; a linter-owned
    rule is never a finding; an existing comment is never restated as new.
@@ -143,7 +144,10 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    become a `question:` with stated confidence, or are dropped.
 7. **Count and decide.** `critical`, `warning`, `note`. The verdict follows the arithmetic.
 8. **Publish.** Write the report (format and size rule in
-   [references/report-contract.md](references/report-contract.md)) and run
+   [references/report-contract.md](references/report-contract.md)), run
+   `scripts/review-cycle.sh lint-report <pr> --report FILE` and fix every problem it prints (a
+   finding whose file or line the diff does not show, or a `counts:` line that disagrees with the
+   entries), then run
    `scripts/review-cycle.sh publish --verdict V --pass N --sha <head> --report FILE --critical C --warning W --note N [--model <id> --tier fast|standard|deep]`.
    Pass `--model` and `--tier` when the harness reports the model; they are self-attested
    ([references/execution-profiles.md](references/execution-profiles.md)).
@@ -190,6 +194,9 @@ findings block for `pr-fixer`.
 - [ ] Failing required check read; no PASSED over an unexplained one
 - [ ] Review agents made no write of any kind
 - [ ] Large changes: size warning, partitioned review, depth map, split recommended
+- [ ] Coverage note carries a `Declined to judge:` line, even when it says `none`; a PASSED never
+      hides a region the review did not read
+- [ ] `lint-report` exits 0: every finding names a file and line the diff shows
 - [ ] Marker published through the script at the current head; marker plus report under 60000 bytes
 - [ ] Every prior CRITICAL is verified, refusal accepted, or refusal rejected (pass 2+)
 - [ ] Automatic run: no `--request-changes`, no `--approve`
