@@ -4,6 +4,18 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.4.2
+
+### Changed
+
+- The README install section starts with requirements and a quick install, gives the `git clone`
+  command for a release tag, shows the Claude Code links as a command block, and adds a user-level
+  install note and a check step. The harness table follows as a reference.
+- "Run it by hand" names the invocation prefix per harness (`/pr-reviewer`, `$pr-reviewer`).
+- "Run it on every pull request" separates the two required steps from the recommended ones, and
+  shows how to set `REVIEW_MARKER_AUTHORS` in the shell and as a repository variable.
+- The update instructions name the command to repeat.
+
 ## 0.4.1
 
 ### Changed
