@@ -80,7 +80,7 @@ Decide what to update from what the change touches:
 
 | The change touches | Update |
 |---|---|
-| A label, a state, a marker field, a trust rule or a `review-cycle.sh` subcommand | `README.md` (the artifact table, the label state diagram, the cycle budget text), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
+| A label, a state, a marker field, a trust rule or a `review-cycle.sh` subcommand | `README.md` (the artifact table, the label state diagram, the cycle budget text), `docs/HOW-IT-WORKS.md` (its own diagrams, which are not in `docs/diagrams/`), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
 | Budget settings (`MAX_REVIEW_CYCLES`, `MAX_REVIEW_CYCLES_HARD`) | `README.md` budget table and text, the defaults in `review-cycle.sh budget`, `references/harness-loop.md` and `references/posture-and-config.md`, and the `Cycle budget` paragraph in this file |
 | A script, a test or a workflow (added, renamed, removed) | `README.md` (layout, install, tests), the `Commands` and `Architecture` sections of this file, and `tests/run-all.sh` |
 | An install path, a harness or a model name | the `README.md` install table and its date, the harness table in `install.sh`, and `references/harness-matrix.md` and `references/execution-profiles.md` (both skills) |

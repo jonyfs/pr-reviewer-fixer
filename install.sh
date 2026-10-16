@@ -6,9 +6,10 @@
 #                   [--target <dir>] [--source <dir>] [--yes]
 #
 # Without --yes it only prints what it would do and changes nothing. With --yes it replaces each
-# installed skill folder: the old folder is removed first, so a file the new release dropped does
-# not stay behind. Only the two folders named pr-reviewer and pr-fixer are ever removed, and only
-# inside the skills directory it resolved.
+# installed skill folder: the new copy is made next to the old one and swapped in, so a failed copy
+# leaves that skill's old install in place and a file the new release dropped does not stay behind.
+# With --skill both the swap is per skill. Only the two folders named pr-reviewer and pr-fixer are
+# ever replaced, and only inside the skills directory it resolved.
 #
 # --harness  claude-code | codex | copilot | gemini | cursor | opencode | amp | roo | cline |
 #            kiro | windsurf | zed | junie. The table below mirrors the install table in README.md.
@@ -91,7 +92,7 @@ echo "install: skills  ${SKILLS[*]}"
 echo "install: from    $SOURCE"
 echo "install: to      $DEST_ROOT"
 for s in "${SKILLS[@]}"; do
-  if [ -e "$DEST_ROOT/$s" ]; then echo "install: will REMOVE $DEST_ROOT/$s, then copy the new one"
+  if [ -e "$DEST_ROOT/$s" ]; then echo "install: will REPLACE $DEST_ROOT/$s with the new copy"
   else echo "install: will create $DEST_ROOT/$s"; fi
 done
 [ -z "$REL" ] || [ "$REL" = ".agents/skills" ] || echo "install: will point templates/review-gate.yml at $REL/pr-reviewer/scripts/"
@@ -116,8 +117,11 @@ for s in "${SKILLS[@]}"; do
   stage="$DEST_ROOT/.$s.new.$$"
   rm -rf -- "$stage"
   cp -R "$SOURCE/$s" "$stage" || { rm -rf -- "$stage"; die "copy of $s failed; the old install is untouched"; }
-  rm -rf -- "$dest"
-  mv "$stage" "$dest" || die "could not move the new $s into place"
+  old="$DEST_ROOT/.$s.old.$$"
+  rm -rf -- "$old"
+  if [ -e "$dest" ]; then mv "$dest" "$old" || { rm -rf -- "$stage"; die "could not set the old $s aside; it is untouched"; }; fi
+  mv "$stage" "$dest" || { [ ! -e "$old" ] || mv "$old" "$dest"; rm -rf -- "$stage"; die "could not move the new $s into place; the old one is back"; }
+  rm -rf -- "$old"
   if [ -n "$REL" ] && [ "$REL" != ".agents/skills" ] && [ -f "$dest/templates/review-gate.yml" ]; then
     tmp="$dest/templates/review-gate.yml.tmp"
     sed "s|\.agents/skills/pr-reviewer/scripts/|$REL/pr-reviewer/scripts/|g" "$dest/templates/review-gate.yml" >"$tmp" \

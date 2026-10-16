@@ -1461,10 +1461,9 @@ for f in entries:
     if not lm:
         problems.append("%s: line '%s' is not a line number or a range, so it cannot be checked" % (fid, line or ""))
         continue
-    for n in {int(lm.group(1)), int(lm.group(2) or lm.group(1))}:
-        if not any(a <= n <= b for a, b in ranges[path]):
-            problems.append("%s: %s:%s is not inside any hunk of the diff" % (fid, path, n))
-            break
+    lo, hi = int(lm.group(1)), int(lm.group(2) or lm.group(1))
+    if not any(a <= lo and hi <= b for a, b in ranges[path]):
+        problems.append("%s: %s:%s is not inside any hunk of the diff" % (fid, path, line))
 
 if not re.search(r"Declined to judge:", report):
     problems.append("the coverage note has no `Declined to judge:` line (write `none` when nothing was skipped)")
