@@ -19,6 +19,9 @@ Cursor, Gemini CLI, OpenCode and other harnesses that read that format (see
 > API key is used. The one workflow template, the `review-gate` check, has not run on a live
 > repository yet. See [Limits](#limits-and-honest-caveats).
 
+For a plain-language walk through everything the two skills do, with diagrams, read
+[`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md).
+
 ## Why these skills exist
 
 An AI that reviews its own code shares the author's blind spots, so it tends to approve. A reviewer
@@ -236,8 +239,9 @@ cd <your-repository>
 `cline`, `kiro`, `windsurf`, `zed` or `junie`. `--scope user` installs under your home directory,
 `--skill pr-reviewer` or `--skill pr-fixer` installs one of the two, and `--target <dir>` names a
 skills folder directly. Without `--yes` it only prints the plan. With `--yes` it removes each
-installed `pr-reviewer` and `pr-fixer` folder before copying, so a file a newer release dropped
-does not stay behind; it refuses a destination that is a symbolic link. For a project install
+installed `pr-reviewer` and `pr-fixer` folder with a fresh copy, made next to the old one and
+swapped in, so a failed copy keeps the old install and a file a newer release dropped does not stay
+behind; it refuses a destination that is a symbolic link before it changes anything. For a project install
 into a folder other than `.agents/skills`, it points the installed `templates/review-gate.yml` at
 the new script path.
 
@@ -449,6 +453,11 @@ flowchart TD
 
 - The `review-gate` workflow has not run on a live repository yet. It passes `actionlint`, and the
   script it calls is tested against a fake `gh`. Use a scratch repository first.
+- A review starts only inside an agent session: when the agent opens a pull request, pushes to an
+  open one, or a person asks. A pull request opened by someone else on GitHub, with no session
+  running, is not reviewed by itself. The `review-gate` check stays red until a session runs the
+  loop. To cover those pull requests, run a scheduled or webhook-driven session of your own harness
+  that applies `review-cycle.sh status` to open pull requests.
 - The loop itself is instructions for agents plus scripts. The scripts are tested. Whether a given
   harness dispatches a fresh-context sub-agent and follows the loop is not something a test here
   can prove.
@@ -476,6 +485,7 @@ flowchart TD
   pr-fixer/             the fixer skill (SKILL.md, references/, scripts/, templates/)
 .github/workflows/      the review-gate check and the release workflow. No workflow calls a model
 docs/
+  HOW-IT-WORKS.md       what the two skills do, step by step, with diagrams
   ISO-27001-AND-42001.md
   compliance-records/   exported audit records, one JSON per reviewed pass
   designs/              design records written before larger changes
