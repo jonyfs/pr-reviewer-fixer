@@ -37,6 +37,12 @@ r=$(run --findings "$W/rep.md"); check "touches a file no finding names -> refus
 r=$(run --findings "$W/rep.md" --allow src/b.ts); check "same file with --allow -> ok" eq "$r" 0
 r=$(run); check "no --findings and no --allow -> refused" eq "$r" 1
 
+mkdir -p "$W/repo/src/test_cases_not_tests"; echo g >"$W/repo/src/test_cases_not_tests/deploy.ts"
+g add -A; g commit -q -m "lookalikes"
+r=$(run --findings "$W/rep.md" --allow src/b.ts); check "names that only look like tests -> refused" eval '[ $r = 1 ] && grep -q "src/test_cases_not_tests/deploy.ts" "$W/out"'
+r=$(run --findings "$W/rep.md" --allow '../x'); check "--allow with .. -> refused" eq "$r" 1
+r=$(run --findings "$W/rep.md" --allow 'src/*'); check "--allow with a glob -> refused" eq "$r" 1
+g reset -q --hard HEAD~1
 g checkout -q -b other
 r=$(run --findings "$W/rep.md" --allow src/b.ts); check "wrong branch checked out -> refused" eval '[ $r = 1 ] && grep -q "checked-out branch is .other." "$W/out"'
 g checkout -q feat/x

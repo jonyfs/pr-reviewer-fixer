@@ -15,7 +15,9 @@
 #   3. the local HEAD contains the pull request's head commit, so the push is a fast-forward and
 #      no commit by someone else is overwritten;
 #   4. every file touched by a commit made on top of that head is in scope: named by a `file:` entry
-#      in the report's `findings` block (--findings), given with --allow, or a test file. A merge
+#      in an open entry of the report's `findings` block (--findings), given with --allow (plain
+#      relative paths, no globs), or a test file (under a test, tests, spec or __tests__ directory,
+#      or named x_test.*, x.test.*, x.spec.* or test_x.*). A merge
 #      commit is not scope-checked, and neither is a commit the base branch already holds, since a
 #      conflict merge brings in the base's files; pass the conflicted files with --allow and read the
 #      merge yourself. When the base commit is not in the clone, the base's own commits are checked
@@ -69,12 +71,35 @@ if [ -n "$FINDINGS" ]; then
     const t = require("fs").readFileSync(process.argv[1], "utf8");
     const m = /```findings\n([\s\S]*?)\n```/.exec(t);
     if (!m) process.exit(3);
-    for (const l of m[1].split("\n")) { const k = /^\s{2,}file:\s*(.+?)\s*$/.exec(l); if (k) console.log(k[1].replace(/^["\x27]|["\x27]$/g, "")); }
+    let cur = null; const out = [];
+    const flush = () => { if (cur && cur.file && ["open", "refused-rejected"].includes(cur.status || "open")) out.push(cur.file); };
+    for (const l of m[1].split("\n")) {
+      if (/^\s*-\s+id:/.test(l)) { flush(); cur = {}; continue; }
+      const k = /^\s{2,}(file|status):\s*(.+?)\s*$/.exec(l);
+      if (k && cur) cur[k[1]] = k[2].replace(/^["\x27]|["\x27]$/g, "");
+    }
+    flush();
+    for (const f of out) {
+      const p = f.replace(/^\.\//, "");
+      if (p.startsWith("/") || p.split("/").includes("..") || /[*?\[\]\n]/.test(p)) continue;
+      console.log(p);
+    }
   ' "$FINDINGS" >>"$SCOPE" || { echo "push-guard: --findings has no fenced findings block, INCONCLUSIVE" >&2; exit 2; }
 fi
-for a in "${ALLOW[@]+"${ALLOW[@]}"}"; do printf '%s\n' "$a" >>"$SCOPE"; done
-is_test() { case "$1" in
-  test/*|tests/*|*/test/*|*/tests/*|*/__tests__/*|*/spec/*|spec/*|*_test.*|*.test.*|*.spec.*|*/test_*|test_*) return 0 ;; *) return 1 ;; esac; }
+for a in "${ALLOW[@]+"${ALLOW[@]}"}"; do
+  a="${a#./}"
+  case "$a" in ''|/*|..|../*|*/..|*/../*|*[\*\?\[]*) echo "push-guard: --allow '$a' must be a plain relative path, REFUSED" >&2; exit 1 ;; esac
+  printf '%s\n' "$a" >>"$SCOPE"
+done
+# A test file lives under a test, tests, spec or __tests__ directory, or its own name says so
+# (x_test.ext, x.test.ext, x.spec.ext, test_x.ext). The name is the last path segment only.
+is_test() {
+  local p="$1" base="${1##*/}" dir
+  dir="/${p%/*}/"; [ "$p" = "$base" ] && dir="/"
+  case "$dir" in */test/*|*/tests/*|*/spec/*|*/__tests__/*) return 0 ;; esac
+  case "$base" in *_test.*|*.test.*|*.spec.*|test_*) return 0 ;; esac
+  return 1
+}
 
 OUT=()
 # Commits the base branch already holds came in through a merge of the base; they are not the fixer's.
@@ -83,12 +108,12 @@ if [ -n "$BASE_OID" ] && git cat-file -e "$BASE_OID^{commit}" 2>/dev/null; then 
 if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
   while IFS= read -r c; do
     [ -n "$c" ] || continue
-    while IFS= read -r f; do
+    while IFS= read -r -d '' f; do
       [ -n "$f" ] || continue
       grep -Fxq -- "$f" "$SCOPE" && continue
       is_test "$f" && continue
       OUT+=("$f")
-    done < <(git show --name-only --format= "$c" 2>/dev/null)
+    done < <(git show --name-only -z --format= "$c" 2>/dev/null)
   done < <(git rev-list --no-merges "$HEAD_OID..HEAD" ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null)
 fi
 if [ "${#OUT[@]}" -gt 0 ]; then
