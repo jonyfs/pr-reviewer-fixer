@@ -52,8 +52,9 @@ and the gate alike:
 
 1. The author is on `REVIEW_MARKER_AUTHORS`, a comma-separated list of GitHub logins compared
    without case. The list must name at least one login. **Unset, empty, whitespace and a lone
-   comma all fail closed**: those commands refuse (`status` and the gate answer inconclusive, exit
-   2) instead of reading every comment. Only the bare `marker` subcommand, which reads a text you
+   comma all fail closed**: `publish`, `extend`, `export-audit` and `halt` refuse, `status` and the
+   gate answer inconclusive (exit 2), and `budget` prints `B_NEXT='none'` and exits 0, instead of
+   reading every comment. Only the bare `marker` subcommand, which reads a text you
    hand it, still accepts an unset list.
 2. The comment was never edited after it was created. `gh pr view --json comments` carries no edit
    time, so `scripts/pr-json.py` asks GraphQL (`IssueComment.lastEditedAt`), pages through all
