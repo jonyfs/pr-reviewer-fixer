@@ -133,6 +133,8 @@ sequenceDiagram
   never force-pushing over other people's commits. See `.agents/skills/pr-fixer/references/conflicts.md`.
 - Classifies failing CI as transient, pre-existing on the base branch, or genuine, and reruns only
   what a rerun can fix. See `.agents/skills/pr-fixer/references/ci-failures.md`.
+- Runs `scripts/push-guard.sh` before every push. It refuses a wrong branch, a fork, a push that is
+  not a fast-forward and a commit that touches a file no finding names.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
 
 ```mermaid
@@ -461,7 +463,7 @@ docs/
   compliance-records/   exported audit records, one JSON per reviewed pass
   designs/              design records written before larger changes
   diagrams/             the Mermaid sources used in this README
-tests/                  fake-gh tests: run tests/run-all.sh
+tests/                  fake-gh and git tests: run tests/run-all.sh
 VERSION, CHANGELOG.md   the release version and its history
 ```
 
@@ -479,7 +481,7 @@ bash tests/run-all.sh
 The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report` and the version check. The suites run at the same time,
+checks, the `fix` guard, `export-audit`, `lint-report`, `push-guard.sh` and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also
 fails if any workflow, template, script or test names a model action or a provider API key.

@@ -12,6 +12,7 @@ Two Agent Skills, `pr-reviewer` and `pr-fixer`, plus the scripts that enforce th
 bash tests/run-all.sh                                   # whole suite, no network
 bash tests/fake-gh/run.sh .agents/skills/pr-reviewer/scripts       # review-cycle.sh + gate, one copy
 bash tests/fake-gh/triage/run.sh .agents/skills/pr-fixer/scripts   # triage-pr.sh
+bash tests/push-guard/run.sh .agents/skills/pr-fixer/scripts       # push-guard.sh, in a scratch git repo
 bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-version.sh
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt
 ```
@@ -29,6 +30,7 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 - `scripts/gate-pr-review-state.py` is the check the `review-gate` required job runs.
 - `scripts/pr-json.py` is the only way the scripts read a pull request. It drops comments edited after creation and fails closed. Every marker rule (allowlist must name a login, edited comments ignored) is decided on its output.
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
+- `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope. The reviewer has no copy.
 
 **Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `check-version.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
 
