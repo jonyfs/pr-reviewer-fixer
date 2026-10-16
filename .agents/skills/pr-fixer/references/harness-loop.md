@@ -51,7 +51,8 @@ export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"
 `REVIEW_MARKER_AUTHORS` names the login the markers are published as: the account `gh` is signed in
 to. Set the same value as the repository variable of that name, for the `review-gate` check. With
 it unset, or listing no login (a lone comma), anyone who can comment could forge a verdict marker,
-so `status`, `publish`, `budget`, `extend`, `export-audit` and the gate all refuse until it is set.
+so `status`, `publish`, `extend`, `export-audit` and the gate all refuse until it is set, and
+`budget` prints `B_NEXT='none'` without reading the budget.
 A marker comment that was edited after it was created is ignored by all of them.
 
 ## The loop

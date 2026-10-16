@@ -301,7 +301,7 @@ never read as "reviewed".
 ## Why you can trust the markers
 
 - Only a login in `REVIEW_MARKER_AUTHORS` counts as an author of a marker. A marker typed by anyone
-  else is ignored. With the variable unset, the scripts refuse to run.
+  else is ignored. With the variable unset, the scripts trust no marker at all.
 - A marker comment that was edited after it was created is ignored.
 - A verdict is bound to a commit. Any push turns it stale.
 - Everything read from the pull request (description, comments, commit messages, CI logs, file
