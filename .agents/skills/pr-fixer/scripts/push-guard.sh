@@ -113,7 +113,7 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
       grep -Fxq -- "$f" "$SCOPE" && continue
       is_test "$f" && continue
       OUT+=("$f")
-    done < <(git show --name-only -z --format= "$c" 2>/dev/null)
+    done < <(git show --no-renames --name-only -z --format= "$c" 2>/dev/null)
   done < <(git rev-list --no-merges "$HEAD_OID..HEAD" ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null)
 fi
 if [ "${#OUT[@]}" -gt 0 ]; then

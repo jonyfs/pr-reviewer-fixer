@@ -1392,7 +1392,18 @@ diff = open(os.environ["X_DIFF"], encoding="utf-8", errors="replace").read().spl
 
 # New-side line ranges per file, and the files the diff deletes (no new side to check).
 ranges, deleted, cur, old = {}, set(), None, None
+rem_old = rem_new = 0
 for ln in diff:
+    if rem_old > 0 or rem_new > 0:
+        # Inside a hunk: a removed line that reads "-- x" shows as "--- x", so only count lines here.
+        if ln.startswith("+"):
+            rem_new -= 1
+        elif ln.startswith("-"):
+            rem_old -= 1
+        elif not ln.startswith("\\"):
+            rem_old -= 1
+            rem_new -= 1
+        continue
     if ln.startswith("--- "):
         old = ln[4:].strip()
         old = old[2:] if old.startswith("a/") else old
@@ -1409,6 +1420,11 @@ for ln in diff:
         if m:
             start, n = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
             ranges[cur].append((start, start + max(n, 1) - 1))
+    if ln.startswith("@@"):
+        h = re.match(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@", ln)
+        if h:
+            rem_old = int(h.group(1)) if h.group(1) is not None else 1
+            rem_new = int(h.group(2)) if h.group(2) is not None else 1
 
 m = re.search(r"```findings\n(.*?)\n```", report, re.S)
 if not m:
@@ -1441,10 +1457,14 @@ for f in entries:
     if path not in ranges:
         problems.append("%s: %s is not in the diff" % (fid, path))
         continue
-    if line and re.fullmatch(r"\d+", line):
-        n = int(line)
+    lm = re.fullmatch(r"(\d+)(?:-(\d+))?", line or "")
+    if not lm:
+        problems.append("%s: line '%s' is not a line number or a range, so it cannot be checked" % (fid, line or ""))
+        continue
+    for n in {int(lm.group(1)), int(lm.group(2) or lm.group(1))}:
         if not any(a <= n <= b for a, b in ranges[path]):
             problems.append("%s: %s:%s is not inside any hunk of the diff" % (fid, path, n))
+            break
 
 if not re.search(r"Declined to judge:", report):
     problems.append("the coverage note has no `Declined to judge:` line (write `none` when nothing was skipped)")

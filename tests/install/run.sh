@@ -33,6 +33,10 @@ r=$(ins); check "no harness and no target -> refused" eq "$r" 1
 r=$(ins --harness codex --source "$W/empty" --yes); check "source without skills -> refused" eq "$r" 1
 mkdir -p "$W/linked-target" "$W/elsewhere"; ln -s "$W/elsewhere" "$W/linked-target/pr-fixer"
 r=$(ins --target "$W/linked-target" --skill pr-fixer --yes); check "destination that is a symlink -> refused, target kept" eval '[ $r = 1 ] && [ -d "$W/elsewhere" ]'
+mkdir -p "$W/half" "$W/elsewhere2"; ln -s "$W/elsewhere2" "$W/half/pr-fixer"; mkdir -p "$W/half/pr-reviewer"; echo keep >"$W/half/pr-reviewer/old.md"
+r=$(ins --target "$W/half" --yes); check "both skills, second is a symlink -> refused before any removal" eval '[ $r = 1 ] && [ -f "$W/half/pr-reviewer/old.md" ]'
+r=$(ins --target "$W/half"); check "the symlink is refused in the dry run too" eq "$r" 1
+r=$(ins --help); check "--help does not print the shell options line" eval '[ $r = 0 ] && ! grep -q "set -uo" "$W/out"'
 r=$(ins --target "$SRC" --yes); check "source equals destination -> refused" eval '[ $r = 1 ] && grep -q "same folder" "$W/out"'
 
 printf '%s\n' "${ROWS[@]}"

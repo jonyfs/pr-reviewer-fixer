@@ -4,6 +4,19 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.1
+
+### Fixed
+
+- `push-guard.sh` lists both paths of a rename (`git show --no-renames`), so moving an
+  out-of-scope file to a test name no longer hides the deleted source.
+- `install.sh` checks every destination (symbolic link, unknown name) before it removes anything,
+  also in the dry run. It copies each skill to a sibling folder and moves it into place, so a failed
+  copy leaves the old install untouched. `--help` no longer prints the `set` line.
+- `review-cycle.sh lint-report` stops reading file headers inside a hunk, so a line such as
+  `-- comment` or `++ x` is no longer taken as a file. A finding whose `line` is missing or not a
+  number or a `A-B` range is now reported instead of skipped.
+
 ## 0.5.0
 
 ### Added

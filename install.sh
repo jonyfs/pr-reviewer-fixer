@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
     --target)  TARGET="${2:-}"; shift 2 ;;
     --source)  SOURCE="${2:-}"; shift 2 ;;
     --yes)     YES=1; shift ;;
-    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     *) die "unknown argument '$1' (try --help)" ;;
   esac
 done
@@ -96,6 +96,14 @@ for s in "${SKILLS[@]}"; do
 done
 [ -z "$REL" ] || [ "$REL" = ".agents/skills" ] || echo "install: will point templates/review-gate.yml at $REL/pr-reviewer/scripts/"
 
+# Refuse before the first removal: a destination that is a symbolic link, or a name this script
+# does not own, stops the whole run, in the dry run too.
+for s in "${SKILLS[@]}"; do
+  dest="$DEST_ROOT/$s"
+  case "$dest" in */pr-reviewer|*/pr-fixer) ;; *) die "refusing to replace '$dest'" ;; esac
+  if [ -L "$dest" ]; then die "$dest is a symbolic link; remove it yourself first"; fi
+done
+
 if [ "$YES" -ne 1 ]; then
   echo "install: dry run. Nothing changed. Run again with --yes to install."
   exit 0
@@ -104,10 +112,12 @@ fi
 mkdir -p "$DEST_ROOT" || die "cannot create $DEST_ROOT"
 for s in "${SKILLS[@]}"; do
   dest="$DEST_ROOT/$s"
-  case "$dest" in */pr-reviewer|*/pr-fixer) ;; *) die "refusing to replace '$dest'" ;; esac
-  if [ -L "$dest" ]; then die "$dest is a symbolic link; remove it yourself first"; fi
+  # Copy to a sibling first and move it into place, so a failed copy leaves the old install alone.
+  stage="$DEST_ROOT/.$s.new.$$"
+  rm -rf -- "$stage"
+  cp -R "$SOURCE/$s" "$stage" || { rm -rf -- "$stage"; die "copy of $s failed; the old install is untouched"; }
   rm -rf -- "$dest"
-  cp -R "$SOURCE/$s" "$dest" || die "copy of $s failed"
+  mv "$stage" "$dest" || die "could not move the new $s into place"
   if [ -n "$REL" ] && [ "$REL" != ".agents/skills" ] && [ -f "$dest/templates/review-gate.yml" ]; then
     tmp="$dest/templates/review-gate.yml.tmp"
     sed "s|\.agents/skills/pr-reviewer/scripts/|$REL/pr-reviewer/scripts/|g" "$dest/templates/review-gate.yml" >"$tmp" \

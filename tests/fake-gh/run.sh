@@ -375,6 +375,18 @@ check "lint-report diff unreadable -> 2" eq "$r" 2
 lr 1 src/a.ts 11; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11 @@\n x\n' >"$W/d.patch"
 "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >/dev/null 2>&1; r=$?
 check "lint-report --diff file, no pull request -> 0" eq "$r" 0
+lr 1 src/a.ts 11-12; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11,2 @@\n x\n+y\n' >"$W/d.patch"
+"$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >/dev/null 2>&1; r=$?
+check "lint-report line range inside a hunk -> 0" eq "$r" 0
+lr 1 src/a.ts 11-40; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+check "lint-report range end outside the hunk -> 1" eq "$r" 1
+lr 1 src/a.ts abc; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+check "lint-report line that is not a number -> 1" eval '[ $r = 1 ] && grep -q "not a line number" "$W/out"'
+printf 'diff --git a/src/s.sql b/src/s.sql\n--- a/src/s.sql\n+++ b/src/s.sql\n@@ -1,1 +1,3 @@\n a\n+++ evil\n+b\n' >"$W/d.patch"
+lr 1 src/s.sql 3; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+check "lint-report added line that looks like a file header -> 0" eq "$r" 0
+lr 1 evil 1; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+check "lint-report does not take that line as a file -> 1" eq "$r" 1
 REVIEW_GATE_TIMEOUT_S=7 bash -c 'grep -q "REVIEW_GATE_TIMEOUT_S:-15" "$0"' "$RC"; check "REVIEW_GATE_TIMEOUT_S read with default 15" eq "$?" 0
 "$RC" bogus >"$W/out" 2>&1; check "usage lists ensure-labels" eval 'grep -q "ensure-labels" "$W/out"'
 
