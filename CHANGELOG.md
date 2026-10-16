@@ -4,6 +4,21 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.3
+
+### Fixed
+
+- `pr-protocol.md` (both copies) listed `budget` among the commands that refuse without
+  `REVIEW_MARKER_AUTHORS`. It now says `budget` prints `B_NEXT='none'` and exits 0.
+- The install test prints a SKIP row when it skips the failed-copy case as root.
+
+### Added
+
+- README and the ISO guide tell operators to dismiss stale approvals when new commits are pushed,
+  so a human approval is tied to the head it was given on. A PR comment is never an approval.
+- `harness-matrix.md` (both copies) has a section on isolating the fixer's test run, built from
+  the controls already recorded there; harnesses with no verified control say so.
+
 ## 0.5.2
 
 ### Fixed

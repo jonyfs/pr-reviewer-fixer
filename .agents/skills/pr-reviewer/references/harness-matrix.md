@@ -53,6 +53,22 @@ Enforce read-only structurally: Claude subagent `tools: Read, Grep, Glob`; Codex
 
 Rules for all lanes: one writer per branch or worktree; run the same permission-restricted sandbox (`workspace-write` on Codex, `acceptEdits` or `dontAsk` with an allowlist on Claude Code); cap with `maxTurns` where available; escalate one tier on a second failure instead of raising effort blindly.
 
+## Isolating the fixer's test run
+
+The fixer runs the project's tests, which execute repository code. A script cannot sandbox the
+agent's own tool calls, so the harness has to. These are the controls this file already records
+(retrieved 2026-10-14); nothing here was re-tested.
+
+| Harness | Control | Notes |
+|---|---|---|
+| Claude Code | `acceptEdits` or `dontAsk` permission mode with an allowlist; `isolation: worktree` for a subagent | The allowlist should name the project's test command and nothing broader. |
+| Codex CLI | `sandbox_mode = "workspace-write"`, `approval_policy` set to `on-request` | Subagents inherit the parent's sandbox and cannot set their own. In the action, `permission-profile: ":workspace"`. |
+| Copilot CLI, Cursor, OpenCode | `unverified` | Check the harness's own permission settings before running the fixer. |
+| Gemini CLI | `unverified` | The page did not cover approval flags. |
+
+Whatever the harness, run the fixer on branches you trust, in a checkout without long-lived
+credentials.
+
 ## Dispatching the review loop
 
 The review loop agent runs in the person's own session and dispatches the reviewer and the fixer as

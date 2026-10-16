@@ -384,7 +384,7 @@ branches you trust. `review-cycle.sh fix` enforces part of that: it refuses a pu
 fork, and one whose author or any commit author is not a collaborator with write access, before it
 moves any label. A bot the repository owns can be allowed with `FIXER_TRUSTED_LOGINS`. A script
 cannot sandbox the agent's own tool calls: isolating the test run is the harness's job (its own
-sandbox and permission allowlist), and this project does not simulate it.
+sandbox and permission allowlist), and this project does not simulate it. `references/harness-matrix.md` lists the controls per harness.
 
 ### Audit evidence
 
@@ -419,6 +419,9 @@ The short version of how to use them in line with both standards:
 
 - Keep a person accountable for the merge. Configure branch protection so the AI verdict is
   advisory and a named human approves. Write that rule into your procedure.
+  Turn on "Dismiss stale pull request approvals when new commits are pushed", so an approval
+  is tied to the head it was given on. A comment such as `/approve` is not an approval, and the
+  skills never read one as such.
 - Give the two agents different rights. The reviewer sub-agent is read-only. The fixer cannot
   approve or merge its own change.
 - Treat the model provider as a supplier. Assess it, sign the agreement, check retention and
