@@ -37,9 +37,12 @@ mkdir -p "$W/half" "$W/elsewhere2"; ln -s "$W/elsewhere2" "$W/half/pr-fixer"; mk
 r=$(ins --target "$W/half" --yes); check "both skills, second is a symlink -> refused before any removal" eval '[ $r = 1 ] && [ -f "$W/half/pr-reviewer/old.md" ]'
 r=$(ins --target "$W/half"); check "the symlink is refused in the dry run too" eq "$r" 1
 r=$(ins --help); check "--help does not print the shell options line" eval '[ $r = 0 ] && ! grep -q "set -uo" "$W/out"'
+# chmod 000 does not stop root from reading, so this case only runs for other users.
+if [ "$(id -u)" != 0 ]; then
 cp -R "$SRC" "$W/badsrc"; chmod 000 "$W/badsrc/pr-fixer/SKILL.md"; mkdir -p "$W/keep/pr-fixer"; echo keep >"$W/keep/pr-fixer/old.md"
 r=$(ins --source "$W/badsrc" --target "$W/keep" --skill pr-fixer --yes); check "failed copy -> refused, old install untouched, no stage left" eval '[ $r = 1 ] && [ -f "$W/keep/pr-fixer/old.md" ] && [ -z "$(ls -A "$W/keep" | grep "^\.")" ]'
 chmod 644 "$W/badsrc/pr-fixer/SKILL.md"
+fi
 r=$(ins --target "$SRC" --yes); check "source equals destination -> refused" eval '[ $r = 1 ] && grep -q "same folder" "$W/out"'
 
 printf '%s\n' "${ROWS[@]}"

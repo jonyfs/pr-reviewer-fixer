@@ -4,6 +4,17 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.2
+
+### Fixed
+
+- `docs/HOW-IT-WORKS.md` said the scripts refuse to run without `REVIEW_MARKER_AUTHORS`. They
+  trust no marker instead (`budget` prints `B_NEXT='none'` and exits 0).
+- `harness-loop.md` listed `budget` among the commands that refuse without `REVIEW_MARKER_AUTHORS`.
+  It prints `B_NEXT='none'` and exits 0, so the text now says that.
+- The install test for a failed copy relies on `chmod 000`, which root ignores, so it now runs
+  only for other users.
+
 ## 0.5.1
 
 ### Fixed
