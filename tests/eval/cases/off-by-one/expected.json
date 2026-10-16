@@ -1,0 +1,7 @@
+{
+  "description": "The loop bound is inclusive, so it reads one past the end and returns an undefined entry; it also starts below zero when n exceeds the length.",
+  "defects": [
+    {"id": "D1", "file": "src/page.js", "line": 3, "tolerance": 1, "min_severity": "WARNING", "note": "loop runs to items.length inclusive and can start below zero"}
+  ],
+  "decoys": []
+}

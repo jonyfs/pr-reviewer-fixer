@@ -1,0 +1,2 @@
+Rename `total` to `sum` and give its variables clearer names. No behavior change. The only caller
+was updated in the same commit, in a file this diff does not show.

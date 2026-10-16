@@ -481,6 +481,7 @@ docs/
   designs/              design records written before larger changes
   diagrams/             the Mermaid sources used in this README
 tests/                  fake-gh and git tests: run tests/run-all.sh
+tests/eval/             seeded review cases and a scorer for recall and precision
 install.sh              copies the two skills into the folder a harness reads
 VERSION, CHANGELOG.md   the release version and its history
 ```
@@ -499,7 +500,13 @@ bash tests/run-all.sh
 The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `push-guard.sh`, `install.sh` and the version check. The suites run at the same time,
+checks, the `fix` guard, `export-audit`, `lint-report`, `push-guard.sh`, `install.sh`, the review
+eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also
 fails if any workflow, template, script or test names a model action or a provider API key.
+
+The suite tests the scripts, not the quality of a review. `tests/eval/` measures that: seeded cases
+with known defects and `score.py`, which prints recall and precision for reports you produce in your
+own harness session. `tests/run-all.sh` never runs a model, so it checks only the scorer. See
+`tests/eval/README.md`.

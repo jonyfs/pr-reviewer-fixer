@@ -1,0 +1,12 @@
+diff --git a/src/page.js b/src/page.js
+new file mode 100644
+--- /dev/null
++++ b/src/page.js
+@@ -0,0 +1,7 @@
++function lastN(items, n) {
++  const out = [];
++  for (let i = items.length - n; i <= items.length; i++) {
++    out.push(items[i]);
++  }
++  return out;
++}

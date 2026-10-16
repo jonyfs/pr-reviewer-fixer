@@ -1,0 +1,7 @@
+{
+  "description": "A pure rename. Any CRITICAL or WARNING here is a false positive.",
+  "defects": [],
+  "decoys": [
+    {"file": "src/util.ts", "line": 3, "tolerance": 3, "note": "the whole function is the decoy"}
+  ]
+}

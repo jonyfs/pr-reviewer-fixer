@@ -1,0 +1,2 @@
+Add user lookup helpers for the account page. `find_user` is called with the name typed in the
+search box. `find_user_by_id` is called with the id from the session.

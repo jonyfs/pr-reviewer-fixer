@@ -4,7 +4,8 @@ set -u
 T="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$T/../.." && pwd)"
 IN="${1:-$ROOT/install.sh}"
-W="$T/work-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W/proj" "$W/home"
+# The scratch tree holds copies of the skills, so it lives outside tests/ (run-all.sh greps tests/).
+W="$(mktemp -d "${TMPDIR:-/tmp}/install-test.XXXXXX")"; trap 'rm -rf "$W"' EXIT; mkdir -p "$W/proj" "$W/home"
 PASS=0; FAIL=0; ROWS=()
 row() { if [ "$2" = ok ]; then PASS=$((PASS+1)); ROWS+=("PASS | $1"); else FAIL=$((FAIL+1)); ROWS+=("FAIL | $1 ($3)"); fi; }
 eq() { [ "$1" = "$2" ]; }

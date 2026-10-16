@@ -14,6 +14,7 @@ bash tests/fake-gh/run.sh .agents/skills/pr-reviewer/scripts       # review-cycl
 bash tests/fake-gh/triage/run.sh .agents/skills/pr-fixer/scripts   # triage-pr.sh
 bash tests/push-guard/run.sh .agents/skills/pr-fixer/scripts       # push-guard.sh, in a scratch git repo
 bash tests/install/run.sh                                          # install.sh, in scratch directories
+bash tests/eval/selftest.sh                                        # the review eval scorer, on canned reports
 bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-version.sh
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt
 ```
@@ -33,6 +34,7 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope. The reviewer has no copy.
 - `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.
+- `tests/eval/` holds seeded review cases and `score.py`, which prints recall and precision for reports a person produced in a harness session. `tests/run-all.sh` runs only the scorer's own tests, never a model.
 
 **Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `check-version.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
 
