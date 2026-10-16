@@ -30,7 +30,10 @@ Tags: [#pr #review #contract #reference]
 
 ### Coverage note
 <Large changes: depth map. Dimensions not applicable. Checks unavailable for this target.
- Agents dispatched with tier, and any substitution in force.>
+ Agents dispatched with tier, and any substitution in force.
+ Declined to judge: files or regions the review did not assess, each with the reason (too large,
+ generated, binary, context missing, tool unavailable). Write `Declined to judge: none` when it
+ read everything. Never leave the line out.>
 
 ### Prior findings
 <Re-review only. Each earlier finding with one status: verified (closed, red and green re-run by

@@ -105,7 +105,8 @@ sequenceDiagram
 ### pr-reviewer
 
 - Reads the pull request description and linked issue, then the project's own rules (contributor
-  guide, `CLAUDE.md`, `AGENTS.md`, lint configuration), prior comments and CI results.
+  guide, `CLAUDE.md`, `AGENTS.md`, lint configuration) as they are on the base commit, so a pull
+  request cannot rewrite the rules it is judged by, then prior comments and CI results.
 - Fixes the acceptance conditions at pass 1, before looking for defects. Later passes check only
   those conditions and any new CRITICAL, so the target does not move.
 - Dispatches one read-only agent per applicable review dimension (thirteen dimensions: correctness,
@@ -114,6 +115,8 @@ sequenceDiagram
 - Verifies each finding against the code before reporting it, and merges duplicates.
 - Splits large diffs into units, reviews the seams between them, and reports what was and was not
   read in depth.
+- Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
+  file and a line the diff shows, and the counts must match the open entries.
 - Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
   the verdict is `PASSED` and the pull request is a draft, the script marks it ready for review.
 
@@ -476,7 +479,7 @@ bash tests/run-all.sh
 The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit` and the version check. The suites run at the same time,
+checks, the `fix` guard, `export-audit`, `lint-report` and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also
 fails if any workflow, template, script or test names a model action or a provider API key.

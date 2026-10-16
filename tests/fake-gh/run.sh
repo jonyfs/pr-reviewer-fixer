@@ -336,6 +336,45 @@ check "status MERGED without passed -> 2 (recorded)" eval '[ $s2 = 2 ] && grep -
 reset "$(mk 7 $A '[{"name":"review:passed"}]' "[$GP]" OPEN)"
 "$RC" status 7 >/dev/null 2>&1; s0=$?
 check "status OPEN passed at head -> 0" eq "$s0" 0
+
+# ---- lint-report ----------------------------------------------------------------------------
+reset "$(mk 7 $A '[]' '[]' OPEN)"
+cat >"$FAKE_DIR/diff.patch" <<'DIFF'
+diff --git a/src/a.ts b/src/a.ts
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -10,3 +10,4 @@ fn
+ ctx
++added
+ ctx
+ ctx
+diff --git a/old.txt b/old.txt
+--- a/old.txt
++++ /dev/null
+@@ -1,2 +0,0 @@
+-gone
+-gone
+DIFF
+lr() { printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: %s, warning: 0, note: 0}\nfindings:\n  - id: C1\n    severity: CRITICAL\n    file: %s\n    line: %s\n    claim: "x"\n```\n' "$1" "$2" "$3" >"$W/lr.md"; }
+lr 1 src/a.ts 11; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
+check "lint-report anchored finding -> 0" eval '[ $r = 0 ] && grep -q "ok. 1 finding" "$W/out"'
+lr 1 src/b.ts 11; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
+check "lint-report file not in diff -> 1" eval '[ $r = 1 ] && grep -q "src/b.ts is not in the diff" "$W/out"'
+lr 1 src/a.ts 99; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
+check "lint-report line outside every hunk -> 1" eval '[ $r = 1 ] && grep -q "not inside any hunk" "$W/out"'
+lr 0 src/a.ts 11; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
+check "lint-report counts line disagrees with entries -> 1" eval '[ $r = 1 ] && grep -q "counts line says" "$W/out"'
+lr 1 old.txt 1; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
+check "lint-report finding on a deleted file -> 0" eq "$r" 0
+printf 'Declined to judge: none\nno block here\n' >"$W/lr.md"; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
+check "lint-report no findings block -> 1" eq "$r" 1
+lr 1 src/a.ts 11; sed -i.bak '/Declined to judge/d' "$W/lr.md"; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
+check "lint-report no Declined to judge line -> 1" eval '[ $r = 1 ] && grep -q "Declined to judge" "$W/out"'
+lr 1 src/a.ts 11; rm -f "$FAKE_DIR/diff.patch"; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
+check "lint-report diff unreadable -> 2" eq "$r" 2
+lr 1 src/a.ts 11; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11 @@\n x\n' >"$W/d.patch"
+"$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >/dev/null 2>&1; r=$?
+check "lint-report --diff file, no pull request -> 0" eq "$r" 0
 REVIEW_GATE_TIMEOUT_S=7 bash -c 'grep -q "REVIEW_GATE_TIMEOUT_S:-15" "$0"' "$RC"; check "REVIEW_GATE_TIMEOUT_S read with default 15" eq "$?" 0
 "$RC" bogus >"$W/out" 2>&1; check "usage lists ensure-labels" eval 'grep -q "ensure-labels" "$W/out"'
 

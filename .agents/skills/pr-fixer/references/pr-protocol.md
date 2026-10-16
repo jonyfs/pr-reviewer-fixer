@@ -206,6 +206,9 @@ python3 <skill folder>/scripts/pr-json.py <n> \
 --critical C --warning W --note N`. The script writes the marker, refuses a stale `--sha`, refuses
 counts that contradict the verdict, and refuses a marker plus report over 60000 bytes (GitHub
 rejects comment bodies over 65536 characters). Never type the marker with `gh pr comment`.
+Before it, run `review-cycle.sh lint-report <n> --report FILE`: it exits 1 when a finding names a file
+the diff does not touch, a line no hunk shows, or when the `counts:` line differs from the open
+entries. It posts nothing, and `publish` does not call it.
 
 **Inline review comments.** Each body starts with its finding id, `[C1]`, `[W2]`, so a reply can
 name it. Inline comments need `gh api` with `path`, `line`, `side` and `commit_id`, which the
