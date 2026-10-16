@@ -208,9 +208,64 @@ runs `review-cycle.sh halt`: the pull request stays `review:blocked`, now with
 
 ## Install
 
-The skill folders live in `.agents/skills/` in this repository and nowhere else. Copy or symlink
-them to the place your harness reads skills from. `.agents/skills/` is the widest common path. Paths below were checked against each
-vendor's documentation on 2026-10-14. Vendors move these, so confirm against the current docs.
+### Requirements
+
+- `gh`, signed in. Check with `gh auth status`.
+- `python3` 3.9 or newer, and `node`.
+- Only to run this repository's test suite: `jq` and PyYAML.
+
+### Quick install, project level
+
+Install into the repository whose pull requests you want reviewed. Clone a release tag (the newest
+one is on the [releases page](https://github.com/jonyfs/pr-reviewer-fixer/releases)), then copy the
+two skill folders:
+
+```bash
+git clone --depth 1 --branch v<version> https://github.com/jonyfs/pr-reviewer-fixer.git ~/pr-reviewer-fixer
+cd <your-repository>
+mkdir -p .agents/skills
+cp -R ~/pr-reviewer-fixer/.agents/skills/pr-reviewer ~/pr-reviewer-fixer/.agents/skills/pr-fixer .agents/skills/
+```
+
+The `review-gate` template and the references call the scripts at
+`.agents/skills/pr-reviewer/scripts/`. If you install elsewhere, replace that prefix in the files
+you copy.
+
+Claude Code reads `.claude/skills/`, not `.agents/skills/`. Link the skills there, in your own
+repository:
+
+```bash
+mkdir -p .claude/skills
+ln -s ../../.agents/skills/pr-reviewer .claude/skills/pr-reviewer
+ln -s ../../.agents/skills/pr-fixer .claude/skills/pr-fixer
+```
+
+Without the link, tell the agent to read `.agents/skills/<skill>/SKILL.md`.
+
+To install for every repository instead, copy the folders to the user path of your harness from the
+table below, for example `~/.claude/skills/` for Claude Code or `~/.agents/skills/` for Codex. The
+scripts are then at that path, so replace the `.agents/skills/pr-reviewer/scripts/` prefix as
+described above.
+
+### Check the install
+
+From the repository, with the labels created once per repository:
+
+```bash
+export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"
+.agents/skills/pr-reviewer/scripts/review-cycle.sh ensure-labels
+.agents/skills/pr-reviewer/scripts/review-cycle.sh status <pull-request-number>
+```
+
+`ensure-labels` creates the six `review:*` labels. `status` reports what is owed on the pull
+request at its current head. If `REVIEW_MARKER_AUTHORS` is unset, the script refuses and says so.
+Then open your harness in the repository and run `/pr-reviewer` (see
+[Run it by hand](#run-it-by-hand)).
+
+### Where each harness reads skills
+
+`.agents/skills/` is the widest common path. The paths below were checked against each vendor's
+documentation on 2026-10-14. Vendors move these, so confirm against the current docs.
 
 | Harness | Project path | User path | Notes |
 |---|---|---|---|
@@ -229,31 +284,9 @@ vendor's documentation on 2026-10-14. Vendors move these, so confirm against the
 | JetBrains Junie | `.junie/skills/` | `~/.junie/skills/` | |
 | Aider | none | none | No skills feature. Load `SKILL.md` with `--read` |
 
-Two practical notes:
-
-- The skill frontmatter uses `name` and `description`, plus `metadata.version`, which the
-  specification allows as free-form metadata. The `templates/` folder is not part of the Agent
-  Skills specification. It works because the references point to it by path.
-- The scripts need `gh` (authenticated), `python3` 3.9 or newer, and `node`. The test suite also
-  needs `jq` and PyYAML.
-
-### Quick install, project level
-
-Run these from a clone of a release tag, inside the repository you install into:
-
-```bash
-mkdir -p .agents/skills
-cp -R <clone>/.agents/skills/pr-reviewer <clone>/.agents/skills/pr-fixer .agents/skills/
-```
-
-The `review-gate` template and the references call the scripts at
-`.agents/skills/pr-reviewer/scripts/`. If you install elsewhere, replace that prefix in the files
-you copy.
-
-Claude Code reads `.claude/skills/`, not `.agents/skills/`. To use the skills in Claude Code, link
-them in your own repository: `mkdir -p .claude/skills && ln -s
-../../.agents/skills/pr-reviewer .claude/skills/pr-reviewer`, and the same for `pr-fixer`. Without
-the link, tell the agent to read `.agents/skills/<skill>/SKILL.md`.
+The skill frontmatter uses `name` and `description`, plus `metadata.version`, which the
+specification allows as free-form metadata. The `templates/` folder is not part of the Agent
+Skills specification. It works because the references point to it by path.
 
 ### Versions and updates
 
@@ -263,13 +296,15 @@ Both skills ship under one semantic version. It is in `VERSION`, in `metadata.ve
 
 At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
 exists it prints one notice with the release link, and the agent asks you whether to update. The
-script never downloads or installs anything. To update, repeat the install step from the new
-release tag. The latest release answer is cached for 24 hours. Set `PR_SKILLS_NO_UPDATE_CHECK=1`
+script never downloads or installs anything. To update, clone the new tag and copy the two folders
+over the installed ones with the same `cp -R` command as above, then re-apply the path prefix if you
+changed it. The latest release answer is cached for 24 hours. Set `PR_SKILLS_NO_UPDATE_CHECK=1`
 to turn the check off. It is also skipped when `CI` or `GITHUB_ACTIONS` is `true`.
 
 ## Run it by hand
 
-In any supported harness, from the branch of an open pull request:
+From the branch of an open pull request, name the skill in your harness. The prefix depends on the
+harness: `/pr-reviewer` in Claude Code, `$pr-reviewer` in Codex (the table above lists the others).
 
 ```text
 /pr-reviewer          review the open pull request and publish the verdict
@@ -290,20 +325,28 @@ pushes to its branch, it runs the review loop before the turn ends, as described
 [`harness-loop.md`](.agents/skills/pr-reviewer/references/harness-loop.md). Nothing in GitHub
 starts a review, and nothing uses a provider API key.
 
-1. Create the labels once: `review-cycle.sh ensure-labels`.
+Two steps are required:
+
+1. Create the labels once per repository: `review-cycle.sh ensure-labels`.
 2. Set `REVIEW_MARKER_AUTHORS` to the login the agent publishes as, the account `gh` is signed in
-   to (`gh api user --jq .login`). Without it, any commenter could post a forged verdict marker, so
-   `status`, `publish`, `budget`, `extend`, `export-audit` and the gate refuse to run when it is
-   unset or names no login. A marker comment edited after it was created is ignored. Set the same
-   value as a repository variable for the gate.
-3. Optional: copy `templates/review-gate.yml` to `.github/workflows/review-gate.yml` and mark the
-   `review-gate` job as a required check in branch protection or a ruleset. It runs no model and
-   holds no secret. It runs from the base branch, not from the pull request, so a pull request
-   cannot edit its own gate. A comment does not start a `pull_request` workflow, so the agent
-   re-runs the check after it publishes a verdict.
+   to. Export it in the shell that starts your harness:
+   `export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"`. Without it, any commenter could
+   post a forged verdict marker, so `status`, `publish`, `budget`, `extend`, `export-audit` and the
+   gate refuse to run when it is unset or names no login. A marker comment edited after it was
+   created is ignored.
+
+The rest hardens the setup and is recommended for a shared repository:
+
+3. Add the `review-gate` check. Set the same login as a repository variable
+   (`gh variable set REVIEW_MARKER_AUTHORS --body "$(gh api user --jq .login)"`), copy
+   `templates/review-gate.yml` to `.github/workflows/review-gate.yml`, and mark the `review-gate`
+   job as a required check in branch protection or a ruleset. It runs no model and holds no secret.
+   It runs from the base branch, not from the pull request, so a pull request cannot edit its own
+   gate. A comment does not start a `pull_request` workflow, so the agent re-runs the check after it
+   publishes a verdict.
 4. Add CODEOWNERS entries for `.agents/skills/**` and `.github/workflows/**`.
 5. Pin each third-party action in your workflows to a full commit SHA.
-6. Optional, Claude Code: a Stop hook that runs `review-cycle.sh debt` and refuses to end a turn
+6. Claude Code only: add a Stop hook that runs `review-cycle.sh debt` and refuses to end a turn
    while a review is owed.
 
 A push from your session uses your own credentials, so your required CI starts on the fixer's
