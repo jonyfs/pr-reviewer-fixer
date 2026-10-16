@@ -222,12 +222,28 @@ runs `review-cycle.sh halt`: the pull request stays `review:blocked`, now with
 ### Quick install, project level
 
 Install into the repository whose pull requests you want reviewed. Clone a release tag (the newest
-one is on the [releases page](https://github.com/jonyfs/pr-reviewer-fixer/releases)), then copy the
-two skill folders:
+one is on the [releases page](https://github.com/jonyfs/pr-reviewer-fixer/releases)), then run
+`install.sh` from your repository. It copies the two skill folders to the path your harness reads:
 
 ```bash
 git clone --depth 1 --branch v<version> https://github.com/jonyfs/pr-reviewer-fixer.git ~/pr-reviewer-fixer
 cd <your-repository>
+~/pr-reviewer-fixer/install.sh --harness claude-code          # prints the plan, changes nothing
+~/pr-reviewer-fixer/install.sh --harness claude-code --yes    # installs
+```
+
+`--harness` takes `claude-code`, `codex`, `copilot`, `gemini`, `cursor`, `opencode`, `amp`, `roo`,
+`cline`, `kiro`, `windsurf`, `zed` or `junie`. `--scope user` installs under your home directory,
+`--skill pr-reviewer` or `--skill pr-fixer` installs one of the two, and `--target <dir>` names a
+skills folder directly. Without `--yes` it only prints the plan. With `--yes` it removes each
+installed `pr-reviewer` and `pr-fixer` folder before copying, so a file a newer release dropped
+does not stay behind; it refuses a destination that is a symbolic link. For a project install
+into a folder other than `.agents/skills`, it points the installed `templates/review-gate.yml` at
+the new script path.
+
+To do the same by hand, copy the folders:
+
+```bash
 mkdir -p .agents/skills
 cp -R ~/pr-reviewer-fixer/.agents/skills/pr-reviewer ~/pr-reviewer-fixer/.agents/skills/pr-fixer .agents/skills/
 ```
@@ -236,8 +252,8 @@ The `review-gate` template and the references call the scripts at
 `.agents/skills/pr-reviewer/scripts/`. If you install elsewhere, replace that prefix in the files
 you copy.
 
-Claude Code reads `.claude/skills/`, not `.agents/skills/`. Link the skills there, in your own
-repository:
+Claude Code reads `.claude/skills/`, not `.agents/skills/`. `install.sh --harness claude-code` puts
+them there. If you copied by hand, link the skills in your own repository:
 
 ```bash
 mkdir -p .claude/skills
@@ -301,9 +317,10 @@ Both skills ship under one semantic version. It is in `VERSION`, in `metadata.ve
 
 At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
 exists it prints one notice with the release link, and the agent asks you whether to update. The
-script never downloads or installs anything. To update, clone the new tag and copy the two folders
-over the installed ones with the same `cp -R` command as above, then re-apply the path prefix if you
-changed it. The latest release answer is cached for 24 hours. Set `PR_SKILLS_NO_UPDATE_CHECK=1`
+script never downloads or installs anything. To update, clone the new tag and run `install.sh` again
+with `--yes`, which replaces the installed folders. If you copy by hand, delete the two installed
+folders first, since `cp -R` leaves files the new release dropped; then re-apply the path prefix if
+you changed it. The latest release answer is cached for 24 hours. Set `PR_SKILLS_NO_UPDATE_CHECK=1`
 to turn the check off. It is also skipped when `CI` or `GITHUB_ACTIONS` is `true`.
 
 ## Run it by hand
@@ -464,6 +481,7 @@ docs/
   designs/              design records written before larger changes
   diagrams/             the Mermaid sources used in this README
 tests/                  fake-gh and git tests: run tests/run-all.sh
+install.sh              copies the two skills into the folder a harness reads
 VERSION, CHANGELOG.md   the release version and its history
 ```
 
@@ -481,7 +499,7 @@ bash tests/run-all.sh
 The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `push-guard.sh` and the version check. The suites run at the same time,
+checks, the `fix` guard, `export-audit`, `lint-report`, `push-guard.sh`, `install.sh` and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also
 fails if any workflow, template, script or test names a model action or a provider API key.

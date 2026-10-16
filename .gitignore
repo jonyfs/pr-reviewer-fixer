@@ -16,3 +16,4 @@ tests/fake-gh/err
 tests/fake-gh/work-*/
 tests/budget/state-*/
 tests/push-guard/work-*/
+tests/install/work-*/
