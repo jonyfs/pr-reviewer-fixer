@@ -42,6 +42,8 @@ if [ "$(id -u)" != 0 ]; then
 cp -R "$SRC" "$W/badsrc"; chmod 000 "$W/badsrc/pr-fixer/SKILL.md"; mkdir -p "$W/keep/pr-fixer"; echo keep >"$W/keep/pr-fixer/old.md"
 r=$(ins --source "$W/badsrc" --target "$W/keep" --skill pr-fixer --yes); check "failed copy -> refused, old install untouched, no stage left" eval '[ $r = 1 ] && [ -f "$W/keep/pr-fixer/old.md" ] && [ -z "$(ls -A "$W/keep" | grep "^\.")" ]'
 chmod 644 "$W/badsrc/pr-fixer/SKILL.md"
+else
+  row "SKIP failed copy (root ignores chmod 000)" ok
 fi
 r=$(ins --target "$SRC" --yes); check "source equals destination -> refused" eval '[ $r = 1 ] && grep -q "same folder" "$W/out"'
 
