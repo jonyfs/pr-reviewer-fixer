@@ -201,8 +201,9 @@ stateDiagram-v2
 | `MAX_REVIEW_CYCLES` | 5 | Automatic review, fix, re-review rounds |
 | `MAX_REVIEW_CYCLES_HARD` | 10 | Absolute ceiling. No answer can pass it |
 
-The fifth cycle, the last automatic one, uses a stronger fixer: one tier up, or `effort: "higher"` where
-the harness takes it. That is a single attempt and you are still asked afterwards. After the fifth cycle, if a CRITICAL is still open, `review-cycle.sh budget` says `ask` and the
+The last cycle of each allowance (the fifth with the defaults, and the last of every extension you
+grant) uses a stronger fixer: one tier up, or `effort: "higher"` where the harness takes it. It is a
+single attempt. After the fifth cycle, if a CRITICAL is still open, `review-cycle.sh budget` says `ask` and the
 review loop agent asks you in the session. It lists what is open, the open count at each pass,
 and a suggestion:
 

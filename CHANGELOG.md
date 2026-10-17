@@ -4,6 +4,20 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.1
+
+### Fixed
+
+- `publish` mention wrapping reads inline code the way Markdown does: spans that cross a line, double
+  backtick spans and `~~~` fences are left alone, and an `@` inside a URL is not wrapped.
+- The secret screen no longer needs a word boundary before a token, so a token glued to an
+  underscore prefix is refused. It also covers npm, GitLab and Google OAuth tokens.
+- The last-cycle rule in `harness-loop.md`, README and HOW-IT-WORKS names the last cycle of every
+  allowance, not only the fifth, and says what follows: `ask`, or `ceiling` at the hard limit.
+  It no longer tells the fixer to pass `--model` and `--tier`, which belong to `publish`.
+- The release workflow attaches the archive and `SHA256SUMS` to an existing release that lacks
+  them, so a rerun after a failed upload repairs it.
+
 ## 0.6.0
 
 ### Added

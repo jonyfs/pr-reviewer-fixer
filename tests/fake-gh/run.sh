@@ -411,6 +411,14 @@ printf '## findings\nbase commit 0123456789abcdef0123456789abcdef01234567 and gh
 check "a commit SHA and a short ghp_ word are not secrets -> published" eval '[ $r = 0 ] && [ $(ncomments) = 1 ]'
 printf '## findings\nask @alice and `@bob`, mail a@b.example, team @org/team.\n```\n@carol stays\n```\n' >"$SEC"; r=$(pubr "$SEC")
 check "bare @login wrapped, code spans, fences and addresses untouched" eval '[ $r = 0 ] && lastbody | grep -q "ask \`@alice\` and \`@bob\`, mail a@b.example, team \`@org/team\`\." && lastbody | grep -q "^@carol stays$"'
+printf '## findings\nsee https://github.com/@user/repo and @alice\nspan `a\n@carol b` end @dave\n``x @e`y`` @f\n~~~\n@g tilde\n~~~\n@h\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: URL kept, multi-line and double-backtick spans kept, ~~~ fence kept, others wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "https://github.com/@user/repo and \`@alice\`" && lastbody | grep -qF "@carol b\` end \`@dave\`" && lastbody | grep -qF "\`\`x @e\`y\`\` \`@f\`" && lastbody | grep -q "^@g tilde$" && lastbody | grep -qF "\`@h\`"'
+printf '## findings\nvalue x_%s\n' "$gh_tok" >"$SEC"; r=$(pubr "$SEC")
+check "token glued to an underscore prefix -> refused" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && [ $(ncomments) = 0 ]'
+printf '## findings\n//registry:_authToken=npm_%s\n' "$(printf 'b%.0s' $(seq 1 36))" >"$SEC"; r=$(pubr "$SEC")
+check "report with an npm token -> refused" eval '[ $r = 1 ] && grep -q "npm token" "$W/out" && [ $(ncomments) = 0 ]'
+printf '## findings\ntoken glpat-%s\n' "$(printf 'c%.0s' $(seq 1 24))" >"$SEC"; r=$(pubr "$SEC")
+check "report with a GitLab token -> refused" eval '[ $r = 1 ] && grep -q "GitLab token" "$W/out" && [ $(ncomments) = 0 ]'
 printf '## findings\nstray %s\n\n```findings\ncounts: { critical: 0, warning: 0, note: 0 }\n```\nDeclined to judge: none\n' "$gh_tok" >"$W/lrs.md"
 printf 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n' >"$W/lrs.patch"
 "$RC" lint-report --report "$W/lrs.md" --diff "$W/lrs.patch" >"$W/out" 2>&1; r=$?
