@@ -393,6 +393,29 @@ check "lint-report does not take that line as a file -> 1" eq "$r" 1
 REVIEW_GATE_TIMEOUT_S=7 bash -c 'grep -q "REVIEW_GATE_TIMEOUT_S:-15" "$0"' "$RC"; check "REVIEW_GATE_TIMEOUT_S read with default 15" eq "$?" 0
 "$RC" bogus >"$W/out" 2>&1; check "usage lists ensure-labels" eval 'grep -q "ensure-labels" "$W/out"'
 
+# ---- secrets and mentions in a published report ----------------------------------------------
+# Tokens are built at run time so this file holds none. A real-looking value is what the screen must refuse.
+gh_tok="ghp_$(printf 'a%.0s' $(seq 1 36))"; aws_key="AKIA$(printf 'A%.0s' $(seq 1 16))"
+pubr() { reset "$(mk 7 $A '[{"name":"review:running"}]' '[]' OPEN)"; "$RC" publish 7 --report "$1" --verdict PASSED --pass 1 --sha $A --critical 0 --warning 0 --note 0 >"$W/out" 2>&1; echo $?; }
+lastbody() { python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["comments"][-1]["body"])' "$FAKE_DIR/pr.json"; }
+SEC="$W/sec.md"
+printf '## findings\nthe diff adds %s as a default\n' "$gh_tok" >"$SEC"; r=$(pubr "$SEC")
+check "report with a GitHub token -> refused, nothing posted, token not echoed" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out" && [ $(ncomments) = 0 ] && has review:running'
+printf '## findings\nkey %s in config\n' "$aws_key" >"$SEC"; r=$(pubr "$SEC")
+check "report with an AWS key id -> refused" eval '[ $r = 1 ] && grep -q "AWS access key id" "$W/out" && [ $(ncomments) = 0 ]'
+printf '## findings\n-----BEGIN %s PRIVATE KEY-----\n' RSA >"$SEC"; r=$(pubr "$SEC")
+check "report with a private key header -> refused" eval '[ $r = 1 ] && grep -q "private key block" "$W/out" && [ $(ncomments) = 0 ]'
+printf '## findings\nAuthorization: Bearer %s\n' "$(printf 'z%.0s' $(seq 1 30))" >"$SEC"; r=$(pubr "$SEC")
+check "report with a bearer credential -> refused" eval '[ $r = 1 ] && grep -q "bearer credential" "$W/out" && [ $(ncomments) = 0 ]'
+printf '## findings\nbase commit 0123456789abcdef0123456789abcdef01234567 and ghp_short\n' >"$SEC"; r=$(pubr "$SEC")
+check "a commit SHA and a short ghp_ word are not secrets -> published" eval '[ $r = 0 ] && [ $(ncomments) = 1 ]'
+printf '## findings\nask @alice and `@bob`, mail a@b.example, team @org/team.\n```\n@carol stays\n```\n' >"$SEC"; r=$(pubr "$SEC")
+check "bare @login wrapped, code spans, fences and addresses untouched" eval '[ $r = 0 ] && lastbody | grep -q "ask \`@alice\` and \`@bob\`, mail a@b.example, team \`@org/team\`\." && lastbody | grep -q "^@carol stays$"'
+printf '## findings\nstray %s\n\n```findings\ncounts: { critical: 0, warning: 0, note: 0 }\n```\nDeclined to judge: none\n' "$gh_tok" >"$W/lrs.md"
+printf 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n' >"$W/lrs.patch"
+"$RC" lint-report --report "$W/lrs.md" --diff "$W/lrs.patch" >"$W/out" 2>&1; r=$?
+check "lint-report fails a report with a secret and does not print it" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

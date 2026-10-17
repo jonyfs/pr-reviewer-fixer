@@ -4,6 +4,29 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.0
+
+### Added
+
+- `review-cycle.sh publish` refuses a report that holds a token or private key (GitHub, AWS, Slack,
+  Stripe, Google, JWT, `sk-` keys, bearer headers) and names the kind without printing the value.
+  `lint-report` fails such a report too. The report is never rewritten, and high-entropy strings are
+  not screened, because a commit SHA would always match.
+- `publish` wraps a bare `@login` in backticks, outside code spans and fences, so the comment
+  notifies nobody.
+- The release workflow attaches `pr-reviewer-fixer-X.Y.Z.tar.gz` and `SHA256SUMS`. The README
+  explains how to check them and says the sum proves integrity, not authorship.
+- `harness-loop.md` (both copies): the last automatic cycle sends a fixer one tier up before the
+  question to the person.
+
+### Fixed
+
+- `harness-matrix.md` sandbox section (both copies): Copilot CLI, Cursor and OpenCode rows use the
+  controls the matrix records, `isolation: worktree` is no longer called a test-run control, and
+  `approval_policy` is listed as a choice.
+- `pr-protocol.md` (both copies) says `extend` stops because `budget` says `none`.
+- The install test reports a root skip as `SKIP` and no longer counts it as a pass.
+
 ## 0.5.3
 
 ### Fixed
