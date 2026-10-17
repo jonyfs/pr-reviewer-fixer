@@ -1,0 +1,17 @@
+diff --git a/tools/mentions.py b/tools/mentions.py
+new file mode 100644
+--- /dev/null
++++ b/tools/mentions.py
+@@ -0,0 +1,12 @@
++import re
++
++
++def wrap_mentions(text):
++    """Wrap a bare @login in backticks so posting the text notifies nobody."""
++    out = []
++    for line in text.split("\n"):
++        parts = line.split("`")
++        for i in range(0, len(parts), 2):
++            parts[i] = re.sub(r"(?<![\w`@])@([A-Za-z0-9-]+)", r"`@\1`", parts[i])
++        out.append("`".join(parts))
++    return "\n".join(out)

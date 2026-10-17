@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.6.1"
+  version: "0.7.0"
 ---
 
 # PR Reviewer
@@ -57,7 +57,12 @@ opening a pull request.
 | **WARNING** | Likely bug in an edge case, performance or maintainability problem, missing tests for new logic | Does not block. Fixed now or declared as debt with a named owner |
 | **NOTE** | Style, minor improvement, documentation gap, question, praise | Does not block |
 
-The verdict is arithmetic: `critical >= 1` is **BLOCKED**, otherwise **PASSED**. PASSED means
+What blocks is the setting `REVIEW_BLOCK_AT`. At `critical` (the default) only a CRITICAL blocks. At
+`warning` a WARNING blocks too, and `warning >= 1` is also **BLOCKED**. A blocking WARNING carries a
+`scenario:` in the findings block, a concrete input that fails; a WARNING you cannot give one for is
+a NOTE.
+
+The verdict is arithmetic: `critical >= 1` (or `warning >= 1` when `REVIEW_BLOCK_AT=warning`) is **BLOCKED**, otherwise **PASSED**. PASSED means
 "nothing blocks", never "nothing found". Counts travel in the marker, and `review-cycle.sh publish`
 refuses a BLOCKED with `critical=0` and a PASSED with `critical>0`.
 

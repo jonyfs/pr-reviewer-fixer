@@ -393,6 +393,45 @@ check "lint-report does not take that line as a file -> 1" eq "$r" 1
 REVIEW_GATE_TIMEOUT_S=7 bash -c 'grep -q "REVIEW_GATE_TIMEOUT_S:-15" "$0"' "$RC"; check "REVIEW_GATE_TIMEOUT_S read with default 15" eq "$?" 0
 "$RC" bogus >"$W/out" 2>&1; check "usage lists ensure-labels" eval 'grep -q "ensure-labels" "$W/out"'
 
+# ---- REVIEW_BLOCK_AT: what blocks is a setting -------------------------------------------------
+WP="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=PASSED pass=1 critical=0 warning=2 note=0 -->")"
+WB="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=0 warning=2 note=0 -->")"
+bp() { reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"; "$RC" publish 7 --report "$REP" --pass 1 --sha $D --note 0 "$@" >"$W/out" 2>&1; echo $?; }
+r=$(REVIEW_BLOCK_AT=warning bp --verdict PASSED --critical 0 --warning 2)
+check "block-at warning: PASSED with warnings -> refused, nothing posted" eval '[ $r = 1 ] && grep -q "PASSED cannot carry a blocking finding" "$W/out" && [ $(ncomments) = 0 ]'
+r=$(REVIEW_BLOCK_AT=warning bp --verdict BLOCKED --critical 0 --warning 2)
+check "block-at warning: BLOCKED with warnings and no critical -> published, review:blocked" eval '[ $r = 0 ] && has review:blocked && [ $(ncomments) = 1 ]'
+r=$(bp --verdict BLOCKED --critical 0 --warning 2)
+check "default: BLOCKED with warnings and no critical -> still refused" eval '[ $r = 1 ] && grep -q "BLOCKED needs at least one CRITICAL" "$W/out" && [ $(ncomments) = 0 ]'
+r=$(bp --verdict PASSED --critical 0 --warning 2)
+check "default: PASSED with warnings -> published" eval '[ $r = 0 ] && has review:passed'
+r=$(REVIEW_BLOCK_AT=nonsense bp --verdict PASSED --critical 0 --warning 0)
+check "block-at with another value -> publish refused" eval '[ $r = 1 ] && grep -q "REVIEW_BLOCK_AT must be critical or warning" "$W/out" && [ $(ncomments) = 0 ]'
+reset "$(mk 7 $D '[{"name":"review:blocked"}]' "[$WB]" OPEN)"
+b="$(REVIEW_BLOCK_AT=warning "$RC" budget 7 2>/dev/null)"
+check "block-at warning: budget says fix on a warning-only BLOCKED and counts it in progress" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?fix" && printf "%s" "$b" | grep -q "pass 1: 2"'
+b="$("$RC" budget 7 2>/dev/null)"
+check "default: budget progress counts criticals only" eval 'printf "%s" "$b" | grep -q "pass 1: 0"'
+b="$(REVIEW_BLOCK_AT=nonsense "$RC" budget 7 2>/dev/null)"
+check "block-at with another value -> budget answers none" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "REVIEW_BLOCK_AT must be"'
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$WP]" OPEN)"
+"$RC" status 7 >/dev/null 2>&1; r0=$?
+REVIEW_BLOCK_AT=warning "$RC" status 7 >"$W/out" 2>&1; r1=$?
+python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
+REVIEW_BLOCK_AT=warning python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
+REVIEW_BLOCK_AT=nonsense "$RC" status 7 >/dev/null 2>&1; r2=$?
+REVIEW_BLOCK_AT=nonsense python3 -I "$GATE" 7 >/dev/null 2>&1; g2=$?
+check "PASSED with warnings: status and gate pass by default, fail under block-at warning" eval '[ $r0 = 0 ] && [ $g0 = 0 ] && [ $r1 = 1 ] && grep -q "a CRITICAL or WARNING blocks" "$W/out" && [ $g1 != 0 ] && grep -q "CRITICAL or WARNING" "$W/gout"'
+check "block-at with another value -> status and gate inconclusive (2)" eval '[ $r2 = 2 ] && [ $g2 = 2 ]'
+printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 1, note: 0}\nfindings:\n  - id: W1\n    severity: WARNING\n    file: src/a.ts\n    line: 11\n    claim: "x"\n```\n' >"$W/lw.md"
+printf 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -10,2 +10,3 @@\n x\n+y\n z\n' >"$W/lw.patch"
+"$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r0=$?
+REVIEW_BLOCK_AT=warning "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r1=$?
+check "lint-report: a WARNING with no scenario is fine by default, a problem under block-at warning" eval '[ $r0 = 0 ] && [ $r1 = 1 ] && grep -q "needs a .scenario:." "$W/out"'
+sed -i.bak 's/    claim: "x"/    scenario: "n=2 returns a trailing undefined"\n    claim: "x"/' "$W/lw.md"; rm -f "$W/lw.md.bak"
+REVIEW_BLOCK_AT=warning "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r1=$?
+check "lint-report: a WARNING with a scenario passes under block-at warning" eq "$r1" 0
+
 # ---- secrets and mentions in a published report ----------------------------------------------
 # Tokens are built at run time so this file holds none. A real-looking value is what the screen must refuse.
 gh_tok="ghp_$(printf 'a%.0s' $(seq 1 36))"; aws_key="AKIA$(printf 'A%.0s' $(seq 1 16))"

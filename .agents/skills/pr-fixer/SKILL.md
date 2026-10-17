@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: "0.6.1"
+  version: "0.7.0"
 ---
 
 # PR Fixer
@@ -112,12 +112,13 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    [references/pr-protocol.md](references/pr-protocol.md): marker `sha=` equal to the head and
    author in `REVIEW_MARKER_AUTHORS`. Parse its `findings` block (or extract id, severity,
    location, claim, fix from prose; say when you assigned a severity). Split into
-   **blocking** (every CRITICAL) and **declared debt** (every WARNING and NOTE). Classify the PR
+   **blocking** (every CRITICAL, and every WARNING when `REVIEW_BLOCK_AT=warning`) and **declared debt**
+   (every other WARNING and NOTE). Classify the PR
    into lanes: finding, comment, conflict, check, approval.
    [references/lanes.md](references/lanes.md)
 5. **Resolve lanes.** Writing lanes run one at a time, conflict first (it rewrites history), then
    findings, comments, checks. Read-only lanes (triage, classification) may run beside them.
-   - **Finding (CRITICAL)**: falsify, write the threat-shaped test, see it red, fix minimally, see
+   - **Finding (CRITICAL, or WARNING under `REVIEW_BLOCK_AT=warning`)**: falsify, write the threat-shaped test, see it red, fix minimally, see
      it green, run the whole suite.
      [references/falsify-and-prove.md](references/falsify-and-prove.md)
    - **Comment**: evaluate each human or bot suggestion, smallest correct fix, reasoned reply on

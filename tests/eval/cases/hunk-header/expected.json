@@ -1,0 +1,7 @@
+{
+  "description": "A hunk header such as @@ -3 +3 @@ has no comma, so the unpacking raises ValueError. A removed line that reads '-- x' shows as '--- x' and a line starting '+++ ' inside a hunk is taken as a file header.",
+  "defects": [
+    {"id": "D1", "file": "tools/anchors.py", "line": 9, "tolerance": 1, "min_severity": "WARNING", "note": "single-line hunk header has no comma; unpacking fails"}
+  ],
+  "decoys": []
+}

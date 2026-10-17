@@ -54,6 +54,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           REVIEW_MARKER_AUTHORS: ${{ vars.REVIEW_MARKER_AUTHORS }}
+          REVIEW_BLOCK_AT: ${{ vars.REVIEW_BLOCK_AT }}
         run: |
           if [ -z "${REVIEW_MARKER_AUTHORS//[[:space:]]/}" ]; then
             echo "::error::Set the repository variable REVIEW_MARKER_AUTHORS to the login the harness publishes verdicts as. Without it any commenter could forge a PASSED marker."

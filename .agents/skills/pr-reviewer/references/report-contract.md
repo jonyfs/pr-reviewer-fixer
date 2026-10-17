@@ -61,6 +61,7 @@ counts: {critical: 1, warning: 2, note: 3}
 acceptance:
   - {id: A1, text: "Login rejects expired tokens", status: open}
 findings:
+  # A WARNING also carries `scenario:` (a concrete failing input) when REVIEW_BLOCK_AT=warning.
   - id: C1
     severity: CRITICAL
     file: src/auth/session.ts

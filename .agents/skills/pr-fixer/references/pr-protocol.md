@@ -56,6 +56,10 @@ and the gate alike:
    inconclusive (exit 2), `budget` prints `B_NEXT='none'` and exits 0, and `extend` stops because
    `budget` says `none`, instead of reading every comment. Only the bare `marker` subcommand, which reads a text you
    hand it, still accepts an unset list.
+   The same commands read one more setting, `REVIEW_BLOCK_AT` (`critical` by default, or `warning`).
+   It says which findings block: with `warning`, a marker carrying `warning>=1` cannot be `PASSED`
+   and a `BLOCKED` marker with `warning>=1` and no CRITICAL is valid. Any other value makes
+   `publish` refuse, `budget` answer `none` and `status` and the gate answer inconclusive (exit 2).
 2. The comment was never edited after it was created. `gh pr view --json comments` carries no edit
    time, so `scripts/pr-json.py` asks GraphQL (`IssueComment.lastEditedAt`), pages through all
    comments, drops every edited one, and fails closed when edits cannot be checked or a page is

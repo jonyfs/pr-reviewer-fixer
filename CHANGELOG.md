@@ -4,6 +4,28 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.0
+
+### Added
+
+- `REVIEW_BLOCK_AT=critical|warning` (default `critical`, so installed copies behave as before). With
+  `warning`, a WARNING blocks too: `publish` refuses a `PASSED` that counts a warning and accepts a
+  `BLOCKED` with warnings and no CRITICAL, `budget` says `fix` and tracks blocking findings per pass,
+  `status` and the gate judge a marker by the same rule, and the fixer works the warning like a
+  CRITICAL instead of declaring it as debt. The marker format is unchanged. Any other value is
+  refused by `publish`, answered `none` by `budget` and inconclusive (exit 2) by `status` and the
+  gate. The `review-gate` template passes the repository variable `REVIEW_BLOCK_AT`.
+- `lint-report` requires a `scenario:` (a concrete failing input) on every open WARNING when
+  `REVIEW_BLOCK_AT=warning`, so a blocking warning is never a style opinion.
+- Three review eval cases cut from bugs this repository really had: `mention-url`,
+  `push-guard-rename`, `hunk-header`.
+
+### Changed
+
+- With the default setting nothing changes. A repository that wants likely bugs fixed before merge
+  sets `REVIEW_BLOCK_AT=warning` in the shell that publishes and as a repository variable.
+  Changing the setting on a repository invalidates earlier `PASSED` markers that count warnings.
+
 ## 0.6.1
 
 ### Fixed

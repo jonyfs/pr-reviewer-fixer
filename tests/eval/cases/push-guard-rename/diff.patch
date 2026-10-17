@@ -1,0 +1,16 @@
+diff --git a/scripts/scope-check.sh b/scripts/scope-check.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/scope-check.sh
+@@ -0,0 +1,13 @@
++#!/usr/bin/env bash
++# Refuses a push that touches a file outside the allowed paths.
++set -euo pipefail
++allowed="$1"; base="$2"
++bad=0
++for c in $(git rev-list "$base"..HEAD); do
++  while IFS= read -r -d '' f; do
++    case "$f" in "$allowed"/*) ;; *) echo "out of scope: $f" >&2; bad=1 ;; esac
++  done < <(git show --name-only -z --format= "$c")
++done
++exit "$bad"

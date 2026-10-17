@@ -18,6 +18,10 @@ Each case is a folder under `cases/`:
 
 `sql-injection` has one CRITICAL and a safe query beside it. `off-by-one` has one WARNING.
 `clean-rename` has no defect, so every CRITICAL or WARNING there counts against precision.
+`mention-url`, `push-guard-rename` and `hunk-header` are bugs this repository really had, cut down to a
+self-contained diff. Each has one WARNING. With the default `REVIEW_BLOCK_AT=critical` such a bug is
+reported and the pull request still passes; run the cases again with `REVIEW_BLOCK_AT=warning` set to
+see whether the reviewer backs each one with a `scenario:` and whether precision holds.
 Check that the expected lines sit inside the diffs with `python3 tests/eval/score.py --validate`.
 
 ## Run it
