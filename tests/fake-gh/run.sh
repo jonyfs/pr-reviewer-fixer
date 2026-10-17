@@ -413,6 +413,8 @@ printf '## findings\nask @alice and `@bob`, mail a@b.example, team @org/team.\n`
 check "bare @login wrapped, code spans, fences and addresses untouched" eval '[ $r = 0 ] && lastbody | grep -q "ask \`@alice\` and \`@bob\`, mail a@b.example, team \`@org/team\`\." && lastbody | grep -q "^@carol stays$"'
 printf '## findings\nsee https://github.com/@user/repo and @alice\nspan `a\n@carol b` end @dave\n``x @e`y`` @f\n~~~\n@g tilde\n~~~\n@h\n' >"$SEC"; r=$(pubr "$SEC")
 check "mentions: URL kept, multi-line and double-backtick spans kept, ~~~ fence kept, others wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "https://github.com/@user/repo and \`@alice\`" && lastbody | grep -qF "@carol b\` end \`@dave\`" && lastbody | grep -qF "\`\`x @e\`y\`\` \`@f\`" && lastbody | grep -q "^@g tilde$" && lastbody | grep -qF "\`@h\`"'
+printf '## findings\nUse the ` char\n\nping @alice now\n\nthe ` char\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: a stray backtick does not pair across a blank line, so @alice is wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "ping \`@alice\` now"'
 printf '## findings\nvalue x_%s\n' "$gh_tok" >"$SEC"; r=$(pubr "$SEC")
 check "token glued to an underscore prefix -> refused" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && [ $(ncomments) = 0 ]'
 printf '## findings\n//registry:_authToken=npm_%s\n' "$(printf 'b%.0s' $(seq 1 36))" >"$SEC"; r=$(pubr "$SEC")

@@ -1099,7 +1099,7 @@ PY
 }
 
 # Wraps a bare @login in backticks so posting the report does not notify anyone. Fenced blocks and
-# existing code spans are left alone; so is an address like a@b.example, because a word character
+# existing code spans are left alone (a span never crosses a blank line); so is an address like a@b.example, because a word character
 # comes before the @.
 report_mentions() {
   python3 -I -c '
@@ -1124,6 +1124,8 @@ for ln in sys.stdin.read().split("\n"):
         if mark == fence:
             fence = None
         continue
+    if not ln.strip():
+        flush(); out.append(ln); continue
     seg.append(ln)
 flush()
 sys.stdout.write("\n".join(out))'
