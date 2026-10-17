@@ -396,7 +396,7 @@ sandbox and permission allowlist), and this project does not simulate it. `refer
 `review-cycle.sh publish` refuses a report that contains a token or private key (GitHub, AWS, Slack,
 Stripe, Google, JWT, `sk-` keys, bearer headers) and tells you to replace it with `[REDACTED]`. It
 does not rewrite the report, and it does not screen high-entropy strings, because a commit SHA would
-always match. It also wraps a bare `@login` in backticks. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
+always match. It also neutralises every `@login` by putting a zero-width space after the `@`, so the comment notifies nobody; the closing `findings` fence is the one part left untouched. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
 publisher, timestamps, label events, model and tier) from the trusted marker and the pull

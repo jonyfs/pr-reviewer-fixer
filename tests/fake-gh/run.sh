@@ -409,28 +409,55 @@ printf '## findings\nAuthorization: Bearer %s\n' "$(printf 'z%.0s' $(seq 1 30))"
 check "report with a bearer credential -> refused" eval '[ $r = 1 ] && grep -q "bearer credential" "$W/out" && [ $(ncomments) = 0 ]'
 printf '## findings\nbase commit 0123456789abcdef0123456789abcdef01234567 and ghp_short\n' >"$SEC"; r=$(pubr "$SEC")
 check "a commit SHA and a short ghp_ word are not secrets -> published" eval '[ $r = 0 ] && [ $(ncomments) = 1 ]'
-printf '## findings\nask @alice and `@bob`, mail a@b.example, team @org/team.\n```\n@carol stays\n```\n' >"$SEC"; r=$(pubr "$SEC")
-check "bare @login wrapped, code spans, fences and addresses untouched" eval '[ $r = 0 ] && lastbody | grep -q "ask \`@alice\` and \`@bob\`, mail a@b.example, team \`@org/team\`\." && lastbody | grep -q "^@carol stays$"'
-printf '## findings\nsee https://github.com/@user/repo and @alice\nspan `a\n@carol b` end @dave\n``x @e`y`` @f\n~~~\n@g tilde\n~~~\n@h\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: URL kept, multi-line and double-backtick spans kept, ~~~ fence kept, others wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "https://github.com/@user/repo and \`@alice\`" && lastbody | grep -qF "@carol b\` end \`@dave\`" && lastbody | grep -qF "\`\`x @e\`y\`\` \`@f\`" && lastbody | grep -q "^@g tilde$" && lastbody | grep -qF "\`@h\`"'
-printf '## findings\nUse the ` char\n\nping @alice now\n\nthe ` char\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: a stray backtick does not pair across a blank line, so @alice is wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "ping \`@alice\` now"'
-printf '## findings\n- item `x\n- @alice owner\n- end` y\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: a span does not pair across list items (W1b), so @alice is wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "\`@alice\` owner"'
-printf '## findings\n# H `x\n@alice\n# end` y\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: a span does not pair across headings (W1b), so @alice is wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "\`@alice\`"'
-printf '## findings\n> quote `x\n> @alice\n> end` y\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: a span does not pair across blockquote lines, so @alice is wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "\`@alice\`"'
-printf '## findings\n````\ncode\n```\n````\nping @x now\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: a four-backtick fence holding a three-backtick line closes at the long fence (W2), @x wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "ping \`@x\` now"'
-printf '## findings\n```\n@a\n```b\n@c\n```\nping @d\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: a fence line with an info string does not close (W2): @c kept, @d wrapped" eval '[ $r = 0 ] && lastbody | grep -q "^@c$" && lastbody | grep -qF "ping \`@d\`"'
-printf '## findings\n- ```\n  @a\n  ```\nping @b\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: a fence opened after a list marker is tracked: @a kept, @b wrapped" eval '[ $r = 0 ] && lastbody | grep -q "^  @a$" && lastbody | grep -qF "ping \`@b\`"'
-printf '## findings\ncc:@jonyfs and see.@kay and _@no and a/@yes\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: a mention after ':' or '.' is wrapped (W3), after '_' or '/' is not" eval '[ $r = 0 ] && lastbody | grep -qF "cc:\`@jonyfs\` and see.\`@kay\` and _@no and a/@yes"'
-printf '## findings\nescaped \\` then @zed then `code @in` done\n' >"$SEC"; r=$(pubr "$SEC")
-check "mentions: a backslash-escaped backtick opens no span: @zed wrapped, span kept" eval '[ $r = 0 ] && lastbody | grep -qF "\`@zed\`" && lastbody | grep -qF "\`code @in\`"'
+# The mention contract: every @login outside the closing findings fence gets a zero-width space after
+# the @, wherever it sits (code, quotes, lists, tables, URLs), because no parser can promise to agree
+# with GitHub's renderer in every container. The function is sourced and run directly, then once
+# through publish.
+eval "$(sed -n '/^report_mentions() {/,/^}/p' "$RC")"
+ZW="$(printf '\342\200\213')"
+mn() { printf '%s' "$1" | report_mentions; }
+# leaks: count of @login a renderer would notify (an @ with no ASCII letter or digit before it).
+leaks() { python3 -I -c 'import re,sys;print(len(re.findall(r"(?<![A-Za-z0-9])@[A-Za-z0-9]",sys.stdin.read())))'; }
+unzw() { python3 -I -c 'import sys;sys.stdout.write(sys.stdin.read().replace("\u200b",""))'; }
+mcase() { # name, input; the output must hold no live mention and, minus the added characters, the input
+  local in="$2" out; out="$(mn "$in"; echo x)"; out="${out%x}"
+  check "mentions: $1" eval '[ "$(printf %s "$out" | leaks)" = 0 ] && [ "$(printf %s "$out" | unzw; echo x)" = "${in}x" ]'
+}
+mcase "W1 fence in a quote outlives no container"      $'> ```\n> code\n\nping @jonyfs\n'
+mcase "W1 fence in a list item outlives no container"   $'- ```\n  code\nping @jonyfs\n'
+mcase "W1 tilde fence in a quote"                       $'> ~~~~\n> x\n\n@jonyfs\n'
+mcase "W2 four-space fence is not a fence"              $'para\n\n    ```\n\n@jonyfs hi\n'
+mcase "W2 four-space fence line inside a fence"         $'```\n    ```\n@a\n```\nping @jonyfs\n'
+mcase "W3 setext heading between a stray backtick"      $'Title `x\n===\n@jonyfs end` y\n'
+mcase "W3 table without leading pipes"                 $'a | b\n--|--\n`x | y\nping @jonyfs | z`\n'
+mcase "W4 real span over a pipe line"                   $'`a\n| @jonyfs b`\n'
+mcase "W4 real span over an ordered-list line"          $'`a\n2. @jonyfs b`\n'
+mcase "W5 path"                                         'see path/@jonyfs/x and a/@jonyfs and example.com/@jonyfs'
+mcase "W5 emphasis underscores"                         '_@jonyfs_ and _@jonyfs and more_'
+mcase "W5 doubled and slashed at-signs"                 '@@jonyfs and @/@jonyfs'
+mcase "W5 non-ASCII before the at-sign"                 'é@jonyfs 你好@jonyfs'
+mcase "after colon and dot"                             'cc:@jonyfs see.@jonyfs'
+mcase "URL"                                             'https://github.com/@jonyfs and www.example.com/@jonyfs'
+mcase "already in backticks"                            'ask `@jonyfs` and ``x @e`y`` @f'
+mcase "team"                                            'team @org/team.'
+mcase "html and link"                                   $'<b>@jonyfs</b> [@jonyfs](http://x/@jonyfs) <!-- @jonyfs -->\n'
+mcase "plain fence and indented code"                   $'```\n@carol\n```\n\n    run @jonyfs\n'
+mcase "a findings fence that is not last"             $'x\n\n```findings\n@bob\n```\nmore @jonyfs\n'
+mcase "a findings fence glued to a paragraph"           $'<div>\n```findings\n@bob\n```\n'
+check "mentions: of two findings fences only the last is kept" eq "$(mn $'a\n\n```findings\n@bob\n```\n\n```findings\n@amy\n```\n')" $'a\n\n```findings\n@'"$ZW"$'bob\n```\n\n```findings\n@amy\n```'
+check "mentions: not a mention, left byte for byte" eq "$(mn 'mail a@b.example hi@jonyfs 1@x @ @-x end@')" 'mail a@b.example hi@jonyfs 1@x @ @-x end@'
+check "mentions: one mention gets exactly one zero-width space after the @" eq "$(mn 'ask @alice')" "ask @${ZW}alice"
+check "mentions: running it twice changes nothing (idempotent)" eq "$(mn "$(mn 'ask @alice, @b/c and _@d_')")" "$(mn 'ask @alice, @b/c and _@d_')"
+FB=$'## r\nask @alice\n\n```findings\nversion: 1\nclaim: "@bob in a finding"\n```\n'
+check "mentions: the closing findings fence is kept byte for byte, text before it is not" eq "$(mn "$FB")" $'## r\nask @'"$ZW"$'alice\n\n```findings\nversion: 1\nclaim: "@bob in a finding"\n```'
+FC=$'a @x\r\n\r\n```findings\r\nclaim: @y\r\n```\r\n'
+check "mentions: CRLF kept, findings fence kept" eq "$(mn "$FC" | od -c | tr -d ' \n')" "$(printf 'a @%sx\r\n\r\n```findings\r\nclaim: @y\r\n```\r\n' "$ZW" | od -c | tr -d ' \n')"
+hex() { od -An -c | tr -d ' \n'; }
+check "mentions: a trailing newline is kept" eq "$(printf '@a\n' | report_mentions | hex)" "$(printf '@%sa\n' "$ZW" | hex)"
+check "mentions: no trailing newline is added" eq "$(printf '@a' | report_mentions | hex)" "$(printf '@%sa' "$ZW" | hex)"
+check "mentions: empty input, NUL, invalid UTF-8 and a lone surrogate never raise" eval 'printf "" | report_mentions >/dev/null && printf "a\0b @c" | report_mentions >/dev/null && printf "\377\376 @c" | report_mentions >/dev/null && printf "\355\240\200 @c" | report_mentions >/dev/null'
+printf '## findings\nask @alice and `@bob`, mail a@b.example, team @org/team.\n\n```findings\nclaim: @carol\n```\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: publish posts the neutralised report, the findings fence untouched" eval '[ $r = 0 ] && lastbody | grep -q "ask @${ZW}alice and \`@${ZW}bob\`, mail a@b.example, team @${ZW}org/team\." && lastbody | grep -q "^claim: @carol$"'
 { printf '## findings\n'; for i in $(seq 1 400); do printf '`x'; done; for i in $(seq 1 400); do printf '``'; done; printf ' @late\n'; } >"$SEC"
 t0=$SECONDS; r=$(pubr "$SEC"); dt=$((SECONDS - t0))
 check "mentions: 1600 bytes of mixed backtick runs finish in under 5 s (W4)" eval '[ $r = 0 ] && [ $dt -lt 5 ]'

@@ -8,11 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 
-- `publish` mention wrapping reads inline code the way Markdown does: spans that cross a line, double
-  backtick spans and `~~~` fences are left alone, and an `@` inside a URL is not wrapped. A span
-  never crosses a blank line, list item, heading, quote line or table row; a fence closes only on a
-  line of the same character, at least as long, with no info string; a mention after `:` or `.` is
-  wrapped; the span scan is linear, so a long run of backticks no longer stalls `publish`.
+- `publish` no longer parses Markdown to find a bare `@login`. Three passes of a hand-written parser
+  each left a mention that GitHub still rendered as a notification (fences ending with their quote or
+  list item, fence indentation, setext headings and tables, a flush that split a real code span, and
+  lookbehind characters that do not suppress a mention). Every `@` that starts a login now gets a
+  zero-width space after it, anywhere in the report: the text reads the same, nothing notifies, and
+  it holds inside code, links, HTML and any container. Only the closing `findings` fence (the last
+  one, after a blank line, with nothing after it) is kept byte for byte. A mention already in
+  backticks, or in a code block, carries the invisible character too. Linear, never raises, CRLF and
+  the trailing newline are kept, and a second pass changes nothing.
 - The secret screen no longer needs a word boundary before a token, so a token glued to an
   underscore prefix is refused. It also covers npm, GitLab and Google OAuth tokens.
 - The last-cycle rule in `harness-loop.md`, README and HOW-IT-WORKS names the last cycle of every

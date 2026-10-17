@@ -172,8 +172,8 @@ flowchart TD
 8. **Publish.** `review-cycle.sh publish` re-reads the head from GitHub and refuses a stale `--sha`,
    so a verdict can only name a commit that really was the head. It also refuses a `BLOCKED` with no
    CRITICAL and a `PASSED` with one. It also refuses a report that holds something shaped like a
-   token or a private key, without printing it, and wraps a bare `@login` in backticks so the comment
-   notifies nobody. It writes the marker comment, sets the label, and on `PASSED`
+   token or a private key, without printing it, and puts a zero-width space after every `@login` (the closing
+   `findings` fence excepted) so the comment notifies nobody. It writes the marker comment, sets the label, and on `PASSED`
    marks a draft pull request ready for review.
 
 In the automatic run the reviewer never submits `--request-changes` or `--approve`. A later comment

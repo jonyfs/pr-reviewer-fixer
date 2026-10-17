@@ -1098,74 +1098,45 @@ if hits:
 PY
 }
 
-# Wraps a bare @login in backticks so posting the report does not notify anyone. It reads the report
-# the way CommonMark does, in two linear passes. Blocks: a fence closes only on a line of the same
-# character, at least as long as the opener, with nothing after it; a list item, quote line, table
-# row, heading or rule starts a new block, and an inline code span never crosses a block boundary.
-# Inline: a code span runs from a run of N backticks to the next run of exactly N, found by index
-# (no backtracking); a backslash-escaped backtick opens nothing. Fenced blocks and code spans are
-# left alone, and so is an address like a@b.example or a path like a/@b, because a word character
-# or a slash comes before the @. When in doubt it wraps: an extra pair of backticks is cosmetic, a
-# bare mention notifies someone.
+# Neutralises every @login so posting the report notifies nobody. It does not read Markdown: a parser
+# here has to agree with GitHub's renderer in every container (quote, list, table, fence, span), and
+# each version of one left a case where a live mention got through. Instead every @ that starts a
+# login (not preceded by an ASCII letter or digit, so an address like a@b.example is left alone) gets a
+# zero-width space after it. The text reads the same, a renderer no longer sees a login, and it holds
+# inside code, links and HTML too. The one thing kept byte for byte is the closing machine-readable
+# `findings` fence: the last "```findings" line, preceded by a blank line or the start of the report,
+# through the next "```" line, with only whitespace after it. Anything else, including a second or a
+# glued findings fence, is neutralised like the rest. A mention inside code gets the invisible
+# character too; that is the price of having no parser. Linear, never raises (bytes in, bytes out),
+# CRLF and a trailing newline are kept, and a second pass changes nothing.
 report_mentions() {
   python3 -I -c '
-import bisect, re, sys
-MENTION = re.compile(r"(?<![\w@/])@(?P<m>[A-Za-z0-9][A-Za-z0-9-]{0,38}(?:/[A-Za-z0-9_-]+)?)")
-RUN = re.compile(r"`+")
-PREFIX = re.compile(r"^(?:\s*(?:>|(?:[-+*]|\d{1,9}[.)])(?=\s)))*\s*")
-FENCE = re.compile(r"^(`{3,}|~{3,})(.*)$")
-START = re.compile(r"^\s*(?:>|\||[-+*](?:\s|$)|\d{1,9}[.)](?:\s|$)|#{1,6}(?:\s|$))")
-SINGLE = re.compile(r"^(?: {0,3}#{1,6}(?:\s|$)| {0,3}([-*_])(?:\s*\1){2,}\s*$)")
+import re, sys
+raw = sys.stdin.buffer.read().decode("utf-8", "surrogateescape")
+MENTION = re.compile(r"(?<![A-Za-z0-9])@(?=[A-Za-z0-9])")
 def wrap(t):
-    return MENTION.sub(lambda m: "`@" + m.group("m") + "`", t)
-def inline(t):
-    runs = [(m.start(), m.end()) for m in RUN.finditer(t)]
-    by = {}
-    for i, (a, b) in enumerate(runs):
-        by.setdefault(b - a, []).append(i)
-    out, pos, i = [], 0, 0
-    while i < len(runs):
-        a, b = runs[i]
-        n, k = b - a, a
-        while k > pos and t[k - 1] == "\\":
-            k -= 1
-        if (a - k) % 2:
-            a, n = a + 1, n - 1
-        if n:
-            idx = by.get(n, [])
-            at = bisect.bisect_right(idx, i)
-            if at < len(idx):
-                j = idx[at]
-                out.append(wrap(t[pos:a]))
-                out.append(t[a:runs[j][1]])
-                pos, i = runs[j][1], j
-        i += 1
-    out.append(wrap(t[pos:]))
-    return "".join(out)
-out, seg, fence = [], [], None
-def flush():
-    if seg:
-        out.append(inline("\n".join(seg)))
-        seg.clear()
-for ln in sys.stdin.read().split("\n"):
-    s = PREFIX.sub("", ln, count=1)
-    m = FENCE.match(s)
-    if fence is not None:
-        out.append(ln)
-        if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not m.group(2).strip():
-            fence = None
-        continue
-    if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
-        flush(); fence = m.group(1); out.append(ln); continue
-    if not ln.strip():
-        flush(); out.append(ln); continue
-    if START.match(ln) or SINGLE.match(ln):
-        flush()
-    seg.append(ln)
-    if SINGLE.match(ln):
-        flush()
-flush()
-sys.stdout.write("\n".join(out))'
+    return MENTION.sub("@\u200b", t)
+lines = raw.split("\n")
+bare = lambda i: lines[i].rstrip("\r")
+keep = None
+for i in range(len(lines) - 1, -1, -1):
+    if bare(i).rstrip(" \t") == "```findings" and (i == 0 or not bare(i - 1).strip()):
+        for j in range(i + 1, len(lines)):
+            if bare(j) == "```":
+                if all(not bare(k).strip() for k in range(j + 1, len(lines))):
+                    keep = (i, j)
+                break
+        break
+if keep:
+    head = "\n".join(lines[:keep[0]])
+    mid = "\n".join(lines[keep[0]:keep[1] + 1])
+    tail = "\n".join(lines[keep[1] + 1:])
+    out = wrap(head) + ("\n" if keep[0] else "") + mid + "\n" + wrap(tail)
+    if keep[0] == 0:
+        out = mid + "\n" + wrap(tail)
+else:
+    out = wrap(raw)
+sys.stdout.buffer.write(out.encode("utf-8", "surrogateescape"))'
 }
 
 cmd_publish() {
