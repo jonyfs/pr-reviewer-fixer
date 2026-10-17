@@ -13,10 +13,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   list item, fence indentation, setext headings and tables, a flush that split a real code span, and
   lookbehind characters that do not suppress a mention). Every `@` that starts a login now gets a
   zero-width space after it, anywhere in the report: the text reads the same, nothing notifies, and
-  it holds inside code, links, HTML and any container. Only the closing `findings` fence (the last
-  one, after a blank line, with nothing after it) is kept byte for byte. A mention already in
-  backticks, or in a code block, carries the invisible character too. Linear, never raises, CRLF and
-  the trailing newline are kept, and a second pass changes nothing.
+  it holds inside code, links, HTML and any container. The at-sign counts in its entity forms
+  (`&#64;`, `&#x40;`, `&commat;`), and so does an `@` followed by a numeric entity, because GitHub
+  decodes entities before it looks for a mention. The `findings` block, the tail of the report from
+  the last findings fence, is kept byte for byte, since the fixer and `push-guard.sh` compare its
+  paths and claims exactly. It is kept only when GitHub is sure to render it as that fence: if the
+  block is not closed, text follows its closing fence (a closer may carry up to three spaces of
+  indent, more backticks and trailing blanks), an unterminated `<script>`, `<pre>`, `<style>`,
+  `<textarea>`, comment, `<?` or `<!` line comes before it, or it is glued to a paragraph that starts
+  with an HTML tag, `publish` and `lint-report` refuse and say why, and nothing is posted. A blank
+  line before the fence is not required. A mention already in backticks, or in a code block, carries
+  the invisible character too, so quoted code, a shell command or a package scope such as
+  `@types/node` in prose no longer pastes or greps byte for byte. Linear, never raises on its input,
+  CRLF and the trailing newline are kept, and a second pass changes nothing.
 - The secret screen no longer needs a word boundary before a token, so a token glued to an
   underscore prefix is refused. It also covers npm, GitLab and Google OAuth tokens.
 - The last-cycle rule in `harness-loop.md`, README and HOW-IT-WORKS names the last cycle of every

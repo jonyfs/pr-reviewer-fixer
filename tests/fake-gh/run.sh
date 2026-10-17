@@ -442,8 +442,31 @@ mcase "already in backticks"                            'ask `@jonyfs` and ``x @
 mcase "team"                                            'team @org/team.'
 mcase "html and link"                                   $'<b>@jonyfs</b> [@jonyfs](http://x/@jonyfs) <!-- @jonyfs -->\n'
 mcase "plain fence and indented code"                   $'```\n@carol\n```\n\n    run @jonyfs\n'
-mcase "a findings fence that is not last"             $'x\n\n```findings\n@bob\n```\nmore @jonyfs\n'
-mcase "a findings fence glued to a paragraph"           $'<div>\n```findings\n@bob\n```\n'
+mcase "a findings fence glued to a plain paragraph"      $'see @amy\n```findings\nclaim: x\n```\n'
+mcase "N3 entity at-sign, decimal"                       'ping &#64;jonyfs'
+mcase "N3 entity at-sign, hex and padded"                'a &#x40;jonyfs b &#X0040;jonyfs c &#0064;jonyfs'
+mcase "N3 entity at-sign, named"                         'ping &commat;jonyfs'
+mcase "N3 entity at-sign without a semicolon"            'ping &#64jonyfs'
+mcase "N3 literal at-sign then an entity login char"     'ping @&#106;onyfs'
+mcase "N3 entity at-sign then an entity login char"      'ping &#64;&#106;onyfs'
+check "mentions: &#640; and an escaped &amp;#64; are not at-signs, left alone" eq "$(mn 'x &#640;y &amp;#64;jonyfs')" 'x &#640;y &amp;#64;jonyfs'
+mrefuse() { # name, input: report_mentions exits 3, writes nothing to stdout, and says why on stderr
+  local out err; out="$(printf %s "$2" | report_mentions 2>"$W/mrefuse.err")"; local rc=$?
+  check "mentions: $1 -> refused" eval '[ $rc = 3 ] && [ -z "$out" ] && [ -s "$W/mrefuse.err" ]'
+}
+mrefuse "N3 closer-shaped line with a trailing space, text after"  $'x\n\n```findings\nversion: 1\n``` \nping @jonyfs\n```\n'
+mrefuse "N3 longer closing run, text after"                         $'x\n\n```findings\nversion: 1\n````\nping @jonyfs\n```\n'
+mrefuse "N3 indented closing fence, text after"                     $'x\n\n```findings\nversion: 1\n  ```\nping @jonyfs\n```\n'
+mrefuse "N3 findings block never closed"                            $'x\n\n```findings\nversion: 1\nclaim: @jonyfs\n'
+mrefuse "N3 text after the closing fence"                           $'x\n\n```findings\nversion: 1\n```\ntail @jonyfs\n'
+mrefuse "N3 unclosed <script> before the fence"                     $'<script>\n\n```findings\nclaim: @jonyfs\n```\n'
+mrefuse "N3 unclosed <textarea> before the fence"                   $'<textarea>\n\n```findings\nclaim: @jonyfs\n```\n'
+mrefuse "N3 unclosed <style> before the fence"                      $'<style>\n\n```findings\nclaim: @jonyfs\n```\n'
+mrefuse "N3 unclosed HTML comment before the fence"                 $'<!-- note\n\n```findings\nclaim: @jonyfs\n```\n'
+mrefuse "N3 fence glued to a paragraph that starts with a tag"      $'<div>\n```findings\n@bob\n```\n'
+check "mentions: a closed <script> block before the fence is fine" eq "$(mn $'<script>x</script>\n\n```findings\nclaim: @jonyfs\n```\n')" $'<script>x</script>\n\n```findings\nclaim: @jonyfs\n```'
+check "mentions: a trailing-space closer with only blanks after is kept verbatim" eq "$(mn $'a\n```findings\nfile: packages/@scope/pkg/index.ts\n``` \n\n')" $'a\n```findings\nfile: packages/@scope/pkg/index.ts\n``` '
+check "mentions: a glued findings fence keeps an @scope path byte for byte" eq "$(mn $'para @amy\n```findings\nfile: node_modules/@types/node/index.d.ts\n```\n' | tail -n 3)" $'```findings\nfile: node_modules/@types/node/index.d.ts\n```'
 check "mentions: of two findings fences only the last is kept" eq "$(mn $'a\n\n```findings\n@bob\n```\n\n```findings\n@amy\n```\n')" $'a\n\n```findings\n@'"$ZW"$'bob\n```\n\n```findings\n@amy\n```'
 check "mentions: not a mention, left byte for byte" eq "$(mn 'mail a@b.example hi@jonyfs 1@x @ @-x end@')" 'mail a@b.example hi@jonyfs 1@x @ @-x end@'
 check "mentions: one mention gets exactly one zero-width space after the @" eq "$(mn 'ask @alice')" "ask @${ZW}alice"
@@ -458,6 +481,8 @@ check "mentions: no trailing newline is added" eq "$(printf '@a' | report_mentio
 check "mentions: empty input, NUL, invalid UTF-8 and a lone surrogate never raise" eval 'printf "" | report_mentions >/dev/null && printf "a\0b @c" | report_mentions >/dev/null && printf "\377\376 @c" | report_mentions >/dev/null && printf "\355\240\200 @c" | report_mentions >/dev/null'
 printf '## findings\nask @alice and `@bob`, mail a@b.example, team @org/team.\n\n```findings\nclaim: @carol\n```\n' >"$SEC"; r=$(pubr "$SEC")
 check "mentions: publish posts the neutralised report, the findings fence untouched" eval '[ $r = 0 ] && lastbody | grep -q "ask @${ZW}alice and \`@${ZW}bob\`, mail a@b.example, team @${ZW}org/team\." && lastbody | grep -q "^claim: @carol$"'
+printf '## findings\nask @alice\n\n```findings\nversion: 1\n``` \nping @jonyfs\n```\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: publish refuses an unsafe findings region, posts nothing, moves no label (N3)" eval '[ $r = 1 ] && grep -q "cannot be posted safely" "$W/out" && [ $(ncomments) = 0 ]'
 { printf '## findings\n'; for i in $(seq 1 400); do printf '`x'; done; for i in $(seq 1 400); do printf '``'; done; printf ' @late\n'; } >"$SEC"
 t0=$SECONDS; r=$(pubr "$SEC"); dt=$((SECONDS - t0))
 check "mentions: 1600 bytes of mixed backtick runs finish in under 5 s (W4)" eval '[ $r = 0 ] && [ $dt -lt 5 ]'

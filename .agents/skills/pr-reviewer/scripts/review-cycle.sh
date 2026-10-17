@@ -1102,40 +1102,78 @@ PY
 # here has to agree with GitHub's renderer in every container (quote, list, table, fence, span), and
 # each version of one left a case where a live mention got through. Instead every @ that starts a
 # login (not preceded by an ASCII letter or digit, so an address like a@b.example is left alone) gets a
-# zero-width space after it. The text reads the same, a renderer no longer sees a login, and it holds
-# inside code, links and HTML too. The one thing kept byte for byte is the closing machine-readable
-# `findings` fence: the last "```findings" line, preceded by a blank line or the start of the report,
-# through the next "```" line, with only whitespace after it. Anything else, including a second or a
-# glued findings fence, is neutralised like the rest. A mention inside code gets the invisible
-# character too; that is the price of having no parser. Linear, never raises (bytes in, bytes out),
-# CRLF and a trailing newline are kept, and a second pass changes nothing.
+# zero-width space after it. The at-sign counts in its entity forms too (&#64; &#x40; &commat;, because
+# GitHub decodes entities before it looks for a mention), and so does an @ followed by a numeric entity
+# (@&#106;onyfs). The text reads the same, a renderer no longer sees a login, and it holds inside code,
+# links and HTML. A mention inside code gets the invisible character too; that is the price of having
+# no parser. The one thing never altered is the machine-readable `findings` block, because the fixer
+# and push-guard.sh compare its paths and claims byte for byte. The block is the tail of the report:
+# the last "```findings" line through the end of the file, where the first line that closes a fence
+# (up to three spaces, three or more backticks, trailing blanks) is followed by nothing but blank
+# lines. It is kept verbatim only when GitHub is sure to render it as that fence, so the function
+# REFUSES (exit 3, reason on stderr, nothing written) when: the block is not closed, or text follows
+# its closing fence; the findings fence sits in an HTML block that swallows it (an unterminated
+# <script>, <pre>, <style>, <textarea>, comment, <?, <!X or CDATA line earlier in the report); or it is
+# glued to a paragraph that starts with an HTML tag. A report with no findings fence is neutralised
+# whole. Linear, never raises on its input (bytes in, bytes out), CRLF and a trailing newline are
+# kept, and a second pass changes nothing.
 report_mentions() {
   python3 -I -c '
 import re, sys
 raw = sys.stdin.buffer.read().decode("utf-8", "surrogateescape")
-MENTION = re.compile(r"(?<![A-Za-z0-9])@(?=[A-Za-z0-9])")
+MENTION = re.compile(r"(?<![A-Za-z0-9])(?:@|&#0*64(?![0-9]);?|&#[xX]0*40(?![0-9A-Fa-f]);?|&commat;)(?=[A-Za-z0-9]|&#)")
 def wrap(t):
-    return MENTION.sub("@\u200b", t)
+    return MENTION.sub(lambda m: m.group(0) + "​", t)
+def refuse(why):
+    sys.stderr.write(why + "\n")
+    sys.exit(3)
 lines = raw.split("\n")
 bare = lambda i: lines[i].rstrip("\r")
-keep = None
+op = None
 for i in range(len(lines) - 1, -1, -1):
-    if bare(i).rstrip(" \t") == "```findings" and (i == 0 or not bare(i - 1).strip()):
-        for j in range(i + 1, len(lines)):
-            if bare(j) == "```":
-                if all(not bare(k).strip() for k in range(j + 1, len(lines))):
-                    keep = (i, j)
-                break
+    if bare(i).rstrip(" \t") == "```findings":
+        op = i
         break
-if keep:
-    head = "\n".join(lines[:keep[0]])
-    mid = "\n".join(lines[keep[0]:keep[1] + 1])
-    tail = "\n".join(lines[keep[1] + 1:])
-    out = wrap(head) + ("\n" if keep[0] else "") + mid + "\n" + wrap(tail)
-    if keep[0] == 0:
-        out = mid + "\n" + wrap(tail)
-else:
+if op is None:
     out = wrap(raw)
+else:
+    closer = None
+    for j in range(op + 1, len(lines)):
+        if re.fullmatch(r" {0,3}`{3,}[ \t]*", bare(j)):
+            closer = j
+            break
+    if closer is None:
+        refuse("the findings block is not closed: it needs a closing fence of three backticks")
+    if any(bare(k).strip() for k in range(closer + 1, len(lines))):
+        refuse("text follows the closing fence of the findings block: the block must be the last thing in the report")
+    starts = [
+        (re.compile(r" {0,3}<(?:script|pre|style|textarea)(?:[ \t>]|$)", re.I), re.compile(r"</(?:script|pre|style|textarea)>", re.I)),
+        (re.compile(r" {0,3}<!--"), re.compile(r"-->")),
+        (re.compile(r" {0,3}<\?"), re.compile(r"\?>")),
+        (re.compile(r" {0,3}<![A-Za-z]"), re.compile(r">")),
+        (re.compile(r" {0,3}<!\[CDATA\["), re.compile(r"\]\]>")),
+    ]
+    end = None
+    for i in range(op):
+        s = bare(i)
+        pos = 0
+        if end is None:
+            for st, en in starts:
+                m = st.match(s)
+                if m:
+                    end, pos = en, m.end()
+                    break
+        if end is not None and end.search(s, pos):
+            end = None
+    if end is not None:
+        refuse("the findings fence follows an unterminated HTML block (<script>, <pre>, <style>, <textarea>, a comment, <? or <!), which would swallow it; close that block or remove it")
+    if op > 0 and bare(op - 1).strip():
+        k = op - 1
+        while k > 0 and bare(k - 1).strip():
+            k -= 1
+        if any(re.match(r" {0,3}<[A-Za-z/!?]", bare(x)) for x in range(k, op)):
+            refuse("the findings fence is glued to a paragraph that starts with an HTML tag; put a blank line before the fence")
+    out = (wrap("\n".join(lines[:op])) + "\n" if op else "") + "\n".join(lines[op:])
 sys.stdout.buffer.write(out.encode("utf-8", "surrogateescape"))'
 }
 
@@ -1174,6 +1212,10 @@ cmd_publish() {
   leaked="$(report_secrets "$report")" || die "review-cycle: REFUSED. The report looks like it contains a secret ($leaked).
    A comment on a pull request is public to everyone who can read it. Replace the value with
    [REDACTED] in the report, then publish again. The report was not changed and nothing was posted."
+  local why
+  why="$(report_mentions <"$report" 2>&1 >/dev/null)" || die "review-cycle: REFUSED. The report cannot be posted safely: $why.
+   The findings block is kept byte for byte, so it has to be a fence GitHub is sure to render as one.
+   Fix the report, then publish again. The report was not changed and nothing was posted."
 
   # **Required when WRITING, optional when READING.** A marker published now carries all three
   # counts; a marker published by an older script carries none, and the readers above still take it. The
@@ -1468,6 +1510,13 @@ cmd_lint_report() {
     rm -f "$tmp"
     echo "lint-report: FAIL. 1 problem(s):"
     echo "  - the report looks like it contains a secret ($leaked); replace the value with [REDACTED]"
+    return 1
+  fi
+  local why
+  if ! why="$(report_mentions <"$report" 2>&1 >/dev/null)"; then
+    rm -f "$tmp"
+    echo "lint-report: FAIL. 1 problem(s):"
+    echo "  - the report cannot be posted safely: $why"
     return 1
   fi
   X_REPORT="$report" X_DIFF="$diff" python3 -I - <<'PY'
