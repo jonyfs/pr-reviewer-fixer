@@ -9,7 +9,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Fixed
 
 - `publish` mention wrapping reads inline code the way Markdown does: spans that cross a line, double
-  backtick spans and `~~~` fences are left alone, and an `@` inside a URL is not wrapped.
+  backtick spans and `~~~` fences are left alone, and an `@` inside a URL is not wrapped. A span
+  never crosses a blank line, list item, heading, quote line or table row; a fence closes only on a
+  line of the same character, at least as long, with no info string; a mention after `:` or `.` is
+  wrapped; the span scan is linear, so a long run of backticks no longer stalls `publish`.
 - The secret screen no longer needs a word boundary before a token, so a token glued to an
   underscore prefix is refused. It also covers npm, GitLab and Google OAuth tokens.
 - The last-cycle rule in `harness-loop.md`, README and HOW-IT-WORKS names the last cycle of every

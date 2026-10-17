@@ -415,6 +415,28 @@ printf '## findings\nsee https://github.com/@user/repo and @alice\nspan `a\n@car
 check "mentions: URL kept, multi-line and double-backtick spans kept, ~~~ fence kept, others wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "https://github.com/@user/repo and \`@alice\`" && lastbody | grep -qF "@carol b\` end \`@dave\`" && lastbody | grep -qF "\`\`x @e\`y\`\` \`@f\`" && lastbody | grep -q "^@g tilde$" && lastbody | grep -qF "\`@h\`"'
 printf '## findings\nUse the ` char\n\nping @alice now\n\nthe ` char\n' >"$SEC"; r=$(pubr "$SEC")
 check "mentions: a stray backtick does not pair across a blank line, so @alice is wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "ping \`@alice\` now"'
+printf '## findings\n- item `x\n- @alice owner\n- end` y\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: a span does not pair across list items (W1b), so @alice is wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "\`@alice\` owner"'
+printf '## findings\n# H `x\n@alice\n# end` y\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: a span does not pair across headings (W1b), so @alice is wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "\`@alice\`"'
+printf '## findings\n> quote `x\n> @alice\n> end` y\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: a span does not pair across blockquote lines, so @alice is wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "\`@alice\`"'
+printf '## findings\n````\ncode\n```\n````\nping @x now\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: a four-backtick fence holding a three-backtick line closes at the long fence (W2), @x wrapped" eval '[ $r = 0 ] && lastbody | grep -qF "ping \`@x\` now"'
+printf '## findings\n```\n@a\n```b\n@c\n```\nping @d\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: a fence line with an info string does not close (W2): @c kept, @d wrapped" eval '[ $r = 0 ] && lastbody | grep -q "^@c$" && lastbody | grep -qF "ping \`@d\`"'
+printf '## findings\n- ```\n  @a\n  ```\nping @b\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: a fence opened after a list marker is tracked: @a kept, @b wrapped" eval '[ $r = 0 ] && lastbody | grep -q "^  @a$" && lastbody | grep -qF "ping \`@b\`"'
+printf '## findings\ncc:@jonyfs and see.@kay and _@no and a/@yes\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: a mention after ':' or '.' is wrapped (W3), after '_' or '/' is not" eval '[ $r = 0 ] && lastbody | grep -qF "cc:\`@jonyfs\` and see.\`@kay\` and _@no and a/@yes"'
+printf '## findings\nescaped \\` then @zed then `code @in` done\n' >"$SEC"; r=$(pubr "$SEC")
+check "mentions: a backslash-escaped backtick opens no span: @zed wrapped, span kept" eval '[ $r = 0 ] && lastbody | grep -qF "\`@zed\`" && lastbody | grep -qF "\`code @in\`"'
+{ printf '## findings\n'; for i in $(seq 1 400); do printf '`x'; done; for i in $(seq 1 400); do printf '``'; done; printf ' @late\n'; } >"$SEC"
+t0=$SECONDS; r=$(pubr "$SEC"); dt=$((SECONDS - t0))
+check "mentions: 1600 bytes of mixed backtick runs finish in under 5 s (W4)" eval '[ $r = 0 ] && [ $dt -lt 5 ]'
+{ printf '## findings\n'; for i in $(seq 1 3000); do printf '`x'; done; for i in $(seq 1 3000); do printf '``'; done; printf '\n'; } >"$SEC"
+t0=$SECONDS; r=$(pubr "$SEC"); dt=$((SECONDS - t0))
+check "mentions: 18 KB of mixed backtick runs finish in under 5 s (W4)" eval '[ $r = 0 ] && [ $dt -lt 5 ]'
 printf '## findings\nvalue x_%s\n' "$gh_tok" >"$SEC"; r=$(pubr "$SEC")
 check "token glued to an underscore prefix -> refused" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && [ $(ncomments) = 0 ]'
 printf '## findings\n//registry:_authToken=npm_%s\n' "$(printf 'b%.0s' $(seq 1 36))" >"$SEC"; r=$(pubr "$SEC")
