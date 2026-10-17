@@ -77,11 +77,14 @@
 #     publish [pr] --verdict PASSED|BLOCKED --pass <n> --sha <40hex> --report <file>
 #             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
 #                          posts the marker comment, then moves the label. On PASSED, a draft
-#                          pull request is marked ready for review (`gh pr ready`).
+#                          pull request is marked ready for review (`gh pr ready`). Refuses a
+#                          report that holds a token or private key (never printed), and wraps a
+#                          bare @login in backticks so the comment notifies nobody.
 #     lint-report [pr] --report <file> [--diff <file>]
 #                          checks that every finding names a file and a line the diff shows, and
 #                          that the `counts:` line matches the open entries, and that the coverage note says what was
-#                          declined. Run before publish;
+#                          declined, and fails a report that holds a token or private key. Run
+#                          before publish;
 #                          posts nothing. Exit 1 on a problem, 2 when it could not read an input.
 #     ensure-labels        creates or updates the six review:* labels in the current repository
 #                          (gh resolves the repository from the working directory or GH_REPO)
@@ -1064,6 +1067,57 @@ cmd_stale() {
   fi
 }
 
+# **A report is posted to a place other people read, so it is screened before it leaves.** A token
+# pasted into a finding (a reviewer quoting a diff line that holds a key) becomes public the moment
+# `publish` posts it. Redacting by regex has missed loose tokens in other tools, so this refuses
+# instead: the report is never rewritten, and the person or agent removes the secret and publishes
+# again. The match itself is never printed. High-entropy strings are not screened: a 40-character
+# commit SHA is the commonest thing in a report and would be refused every time.
+report_secrets() {
+  X_FILE="$1" python3 -I - <<'PY'
+import os, re, sys
+text = open(os.environ["X_FILE"], encoding="utf-8", errors="replace").read()
+pats = {
+    "GitHub token": r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})",
+    "AWS access key id": r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b",
+    "private key block": r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
+    "Slack token": r"\bxox[abprs]-[A-Za-z0-9-]{10,}",
+    "API key (sk-...)": r"\bsk-[A-Za-z0-9_-]{20,}",
+    "Stripe key": r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}",
+    "Google API key": r"\bAIza[0-9A-Za-z_-]{35}",
+    "JSON web token": r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
+    "bearer credential": r"(?i)\bauthorization:\s*bearer\s+[^\s`'\"]{20,}",
+}
+hits = [name for name, p in pats.items() if re.search(p, text)]
+if hits:
+    print(", ".join(hits))
+    sys.exit(1)
+PY
+}
+
+# Wraps a bare @login in backticks so posting the report does not notify anyone. Fenced blocks and
+# existing code spans are left alone; so is an address like a@b.example, because a word character
+# comes before the @.
+report_mentions() {
+  python3 -I -c '
+import re, sys
+fence = False
+out = []
+for ln in sys.stdin.read().split("\n"):
+    if ln.lstrip().startswith("```"):
+        fence = not fence
+        out.append(ln)
+        continue
+    if fence:
+        out.append(ln)
+        continue
+    parts = ln.split("`")
+    for i in range(0, len(parts), 2):
+        parts[i] = re.sub(r"(?<![\w`@])@([A-Za-z0-9][A-Za-z0-9-]{0,38}(?:/[A-Za-z0-9_-]+)?)", r"`@\1`", parts[i])
+    out.append("`".join(parts))
+sys.stdout.write("\n".join(out))'
+}
+
 cmd_publish() {
   local verdict="" passno="" sha="" report="" number="" crit="" warn="" note="" model="" tier=""
   while [ $# -gt 0 ]; do
@@ -1095,6 +1149,10 @@ cmd_publish() {
   # validated the length of".
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "review-cycle: --sha must be a full 40-character hex commit SHA, got '$sha'"
   [ -s "$report" ] || die "review-cycle: --report must name a file that exists AND is not empty; the report is the evidence, and an empty file is none"
+  local leaked
+  leaked="$(report_secrets "$report")" || die "review-cycle: REFUSED. The report looks like it contains a secret ($leaked).
+   A comment on a pull request is public to everyone who can read it. Replace the value with
+   [REDACTED] in the report, then publish again. The report was not changed and nothing was posted."
 
   # **Required when WRITING, optional when READING.** A marker published now carries all three
   # counts; a marker published by an older script carries none, and the readers above still take it. The
@@ -1218,7 +1276,7 @@ cmd_publish() {
   local halted_rm=""
   [ -n "${HALTED:-}" ] && halted_rm="--remove-label review:needs-human"
   { printf '%s\n\n' "$marker_line"
-    cat "$report"; } | gh pr comment "$NUMBER" --body-file - >/dev/null \
+    report_mentions <"$report"; } | gh pr comment "$NUMBER" --body-file - >/dev/null \
     || die "review-cycle: could not post the marker on #$NUMBER"
   gh pr edit "$NUMBER" --add-label "$label" $halted_rm \
       $( [ -n "$LABEL" ] && [ "$LABEL" != "$label" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
@@ -1384,6 +1442,13 @@ cmd_lint_report() {
     gh pr diff "$pr" >"$diff" 2>/dev/null || { rm -f "$tmp"; echo "review-cycle: could not read the diff of #$pr" >&2; return 2; }
   fi
   [ -s "$diff" ] || { rm -f "$tmp"; echo "review-cycle: the diff is empty or unreadable, so no finding can be checked against it" >&2; return 2; }
+  local leaked
+  if ! leaked="$(report_secrets "$report")"; then
+    rm -f "$tmp"
+    echo "lint-report: FAIL. 1 problem(s):"
+    echo "  - the report looks like it contains a secret ($leaked); replace the value with [REDACTED]"
+    return 1
+  fi
   X_REPORT="$report" X_DIFF="$diff" python3 -I - <<'PY'
 import os, re, sys
 

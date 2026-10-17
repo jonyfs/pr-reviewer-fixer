@@ -61,9 +61,11 @@ agent's own tool calls, so the harness has to. These are the controls this file 
 
 | Harness | Control | Notes |
 |---|---|---|
-| Claude Code | `acceptEdits` or `dontAsk` permission mode with an allowlist; `isolation: worktree` for a subagent | The allowlist should name the project's test command and nothing broader. |
-| Codex CLI | `sandbox_mode = "workspace-write"`, `approval_policy` set to `on-request` | Subagents inherit the parent's sandbox and cannot set their own. In the action, `permission-profile: ":workspace"`. |
-| Copilot CLI, Cursor, OpenCode | `unverified` | Check the harness's own permission settings before running the fixer. |
+| Claude Code | `acceptEdits` or `dontAsk` permission mode with an allowlist | The allowlist should name the project's test command and nothing broader. `isolation: worktree` keeps the fixer's files apart but does not restrict what a command can do. |
+| Codex CLI | `sandbox_mode = "workspace-write"`; `approval_policy` is `on-request`, `never` or a granular table, so pick one deliberately | Subagents inherit the parent's sandbox and cannot set their own. In the action, `permission-profile: ":workspace"`. |
+| Copilot CLI | `--allow-tool` and `--deny-tool` lists; avoid `--allow-all-tools` | Allow the project's test command only. How far the CLI isolates a command is `unverified`. |
+| Cursor | `readonly: true` on subagents that must not write | The fixer must write, so `unverified` for its test run. |
+| OpenCode | Per-agent `permission` (`ask`, `allow`, `deny`) for `edit` and `bash` | Set `bash` to `ask` or an explicit allow; filesystem isolation is `unverified`. |
 | Gemini CLI | `unverified` | The page did not cover approval flags. |
 
 Whatever the harness, run the fixer on branches you trust, in a checkout without long-lived

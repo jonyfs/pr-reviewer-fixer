@@ -201,7 +201,8 @@ stateDiagram-v2
 | `MAX_REVIEW_CYCLES` | 5 | Automatic review, fix, re-review rounds |
 | `MAX_REVIEW_CYCLES_HARD` | 10 | Absolute ceiling. No answer can pass it |
 
-After the fifth cycle, if a CRITICAL is still open, `review-cycle.sh budget` says `ask` and the
+The fifth cycle, the last automatic one, uses a stronger fixer: one tier up, or `effort: "higher"` where
+the harness takes it. That is a single attempt and you are still asked afterwards. After the fifth cycle, if a CRITICAL is still open, `review-cycle.sh budget` says `ask` and the
 review loop agent asks you in the session. It lists what is open, the open count at each pass,
 and a suggestion:
 
@@ -324,7 +325,10 @@ exists it prints one notice with the release link, and the agent asks you whethe
 script never downloads or installs anything. To update, clone the new tag and run `install.sh` again
 with `--yes`, which replaces the installed folders. If you copy by hand, delete the two installed
 folders first, since `cp -R` leaves files the new release dropped; then re-apply the path prefix if
-you changed it. The latest release answer is cached for 24 hours. Set `PR_SKILLS_NO_UPDATE_CHECK=1`
+you changed it. Each release carries `pr-reviewer-fixer-X.Y.Z.tar.gz` and a `SHA256SUMS` file. Download
+both and run `shasum -a 256 -c SHA256SUMS` (or `sha256sum -c`) to check the archive arrived intact.
+The sum shows the file matches what the release workflow built. It does not show who wrote the code.
+The latest release answer is cached for 24 hours. Set `PR_SKILLS_NO_UPDATE_CHECK=1`
 to turn the check off. It is also skipped when `CI` or `GITHUB_ACTIONS` is `true`.
 
 ## Run it by hand
@@ -388,7 +392,10 @@ sandbox and permission allowlist), and this project does not simulate it. `refer
 
 ### Audit evidence
 
-`review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
+`review-cycle.sh publish` refuses a report that contains a token or private key (GitHub, AWS, Slack,
+Stripe, Google, JWT, `sk-` keys, bearer headers) and tells you to replace it with `[REDACTED]`. It
+does not rewrite the report, and it does not screen high-entropy strings, because a commit SHA would
+always match. It also wraps a bare `@login` in backticks. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
 publisher, timestamps, label events, model and tier) from the trusted marker and the pull
@@ -512,7 +519,8 @@ bash tests/run-all.sh
 ```
 
 The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
-the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a forged marker),
+the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
+token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
 checks, the `fix` guard, `export-audit`, `lint-report`, `push-guard.sh`, `install.sh`, the review
 eval scorer and the version check. The suites run at the same time,

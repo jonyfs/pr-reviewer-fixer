@@ -72,7 +72,7 @@ A marker comment that was edited after it was created is ignored by all of them.
    | `B_NEXT` | Do |
    |---|---|
    | `none` | Stop. The head is PASSED, or there is no verdict to act on. |
-   | `fix` | Dispatch the fixer sub-agent: "Follow `.agents/skills/pr-fixer/SKILL.md` on pull request #N, cycle C." Wait for its closure comment, then go to step 2. |
+   | `fix` | Dispatch the fixer sub-agent: "Follow `.agents/skills/pr-fixer/SKILL.md` on pull request #N, cycle C." Wait for its closure comment, then go to step 2. On the last automatic cycle (`B_DONE` is `B_ALLOWED` minus 1) send a stronger fixer, as described below. |
    | `ask` | Ask the person (below). |
    | `ceiling` | `review-cycle.sh halt <pr> --reason ceiling`. Tell the person. Stop. |
 
@@ -83,6 +83,14 @@ A marker comment that was edited after it was created is ignored by all of them.
 
 Every pass and cycle number comes from `budget` (the `pass=` of the newest trusted marker), never
 from a counter the loop agent keeps in its head.
+
+## The last automatic cycle
+
+When `budget` says `fix` and `B_DONE` is one less than `B_ALLOWED`, this is the last cycle before the
+question to the person. Dispatch that fixer one tier up, as a fresh-context sub-agent: pass
+`effort: "higher"` where the harness's sub-agent tool takes it, or pick the next model tier from
+[harness-matrix.md](harness-matrix.md). The stronger fixer is tried once and the person is still asked
+afterwards. A model-tier choice is self-attested like any other, so pass `--model` and `--tier` as usual.
 
 ## The question at the end of the budget
 
