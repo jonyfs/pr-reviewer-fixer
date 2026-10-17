@@ -7,7 +7,7 @@ IN="${1:-$ROOT/install.sh}"
 # The scratch tree holds copies of the skills, so it lives outside tests/ (run-all.sh greps tests/).
 W="$(mktemp -d "${TMPDIR:-/tmp}/install-test.XXXXXX")"; trap 'rm -rf "$W"' EXIT; mkdir -p "$W/proj" "$W/home"
 PASS=0; FAIL=0; ROWS=()
-row() { if [ "$2" = ok ]; then PASS=$((PASS+1)); ROWS+=("PASS | $1"); else FAIL=$((FAIL+1)); ROWS+=("FAIL | $1 ($3)"); fi; }
+row() { if [ "$2" = skip ]; then ROWS+=("SKIP | $1"); elif [ "$2" = ok ]; then PASS=$((PASS+1)); ROWS+=("PASS | $1"); else FAIL=$((FAIL+1)); ROWS+=("FAIL | $1 ($3)"); fi; }
 eq() { [ "$1" = "$2" ]; }
 check() { local name="$1"; shift; if "$@"; then row "$name" ok; else row "$name" bad "assert failed"; fi; }
 ins() { (cd "$W/proj" && HOME="$W/home" bash "$IN" "$@") >"$W/out" 2>&1; echo $?; }
@@ -43,7 +43,7 @@ cp -R "$SRC" "$W/badsrc"; chmod 000 "$W/badsrc/pr-fixer/SKILL.md"; mkdir -p "$W/
 r=$(ins --source "$W/badsrc" --target "$W/keep" --skill pr-fixer --yes); check "failed copy -> refused, old install untouched, no stage left" eval '[ $r = 1 ] && [ -f "$W/keep/pr-fixer/old.md" ] && [ -z "$(ls -A "$W/keep" | grep "^\.")" ]'
 chmod 644 "$W/badsrc/pr-fixer/SKILL.md"
 else
-  row "SKIP failed copy (root ignores chmod 000)" ok
+  row "failed copy (root ignores chmod 000)" skip
 fi
 r=$(ins --target "$SRC" --yes); check "source equals destination -> refused" eval '[ $r = 1 ] && grep -q "same folder" "$W/out"'
 

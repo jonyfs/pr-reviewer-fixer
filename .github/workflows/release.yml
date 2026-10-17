@@ -36,4 +36,9 @@ jobs:
           fi
           awk -v v="$version" '$1 == "##" && ($2 == v || $2 == "[" v "]") {f=1; next} f && /^## /{exit} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
           [ -s "$RUNNER_TEMP/notes.md" ] || { echo "CHANGELOG.md has no entry for $version" >&2; exit 1; }
-          gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --notes-file "$RUNNER_TEMP/notes.md"
+          # The archive is what a person downloads; SHA256SUMS lets them check it arrived intact.
+          # It proves the file matches what this workflow built, not who wrote the code.
+          archive="pr-reviewer-fixer-$version.tar.gz"
+          git archive --format=tar.gz --prefix="pr-reviewer-fixer-$version/" -o "$RUNNER_TEMP/$archive" "$GITHUB_SHA"
+          (cd "$RUNNER_TEMP" && sha256sum "$archive" > SHA256SUMS)
+          gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --notes-file "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/SHA256SUMS"

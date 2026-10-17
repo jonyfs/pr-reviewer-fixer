@@ -52,9 +52,9 @@ and the gate alike:
 
 1. The author is on `REVIEW_MARKER_AUTHORS`, a comma-separated list of GitHub logins compared
    without case. The list must name at least one login. **Unset, empty, whitespace and a lone
-   comma all fail closed**: `publish`, `extend`, `export-audit` and `halt` refuse, `status` and the
-   gate answer inconclusive (exit 2), and `budget` prints `B_NEXT='none'` and exits 0, instead of
-   reading every comment. Only the bare `marker` subcommand, which reads a text you
+   comma all fail closed**: `publish`, `export-audit` and `halt` refuse, `status` and the gate answer
+   inconclusive (exit 2), `budget` prints `B_NEXT='none'` and exits 0, and `extend` stops because
+   `budget` says `none`, instead of reading every comment. Only the bare `marker` subcommand, which reads a text you
    hand it, still accepts an unset list.
 2. The comment was never edited after it was created. `gh pr view --json comments` carries no edit
    time, so `scripts/pr-json.py` asks GraphQL (`IssueComment.lastEditedAt`), pages through all
@@ -205,7 +205,8 @@ python3 <skill folder>/scripts/pr-json.py <n> \
 
 **Verdict comment.** Only `review-cycle.sh publish --verdict V --pass P --sha <head> --report FILE
 --critical C --warning W --note N`. The script writes the marker, refuses a stale `--sha`, refuses
-counts that contradict the verdict, and refuses a marker plus report over 60000 bytes (GitHub
+counts that contradict the verdict, refuses a report that holds a token or private key (it names
+the kind and never prints the value), wraps a bare `@login` in backticks, and refuses a marker plus report over 60000 bytes (GitHub
 rejects comment bodies over 65536 characters). Never type the marker with `gh pr comment`.
 Before it, run `review-cycle.sh lint-report <n> --report FILE`: it exits 1 when a finding names a file
 the diff does not touch, a line no hunk shows, or when the `counts:` line differs from the open
