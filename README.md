@@ -396,7 +396,7 @@ sandbox and permission allowlist), and this project does not simulate it. `refer
 `review-cycle.sh publish` refuses a report that contains a token or private key (GitHub, AWS, Slack,
 Stripe, Google, JWT, `sk-` keys, bearer headers) and tells you to replace it with `[REDACTED]`. It
 does not rewrite the report, and it does not screen high-entropy strings, because a commit SHA would
-always match. It also neutralises every `@login` by putting a zero-width space after the `@`, so the comment notifies nobody. The at-sign also counts as `&#64;`, `&#x40;` (any padding, any case of the x), `&commat;`, and a numeric entity without its semicolon, which GitHub decodes inside an HTML block. A login can start with a letter, a digit, an entity or a tag, because a stray end tag such as `</b>` vanishes and the login closes up. An `@` after a real letter or digit (`actions/checkout@v4`, `a@b.example`) is left alone. This reaches code spans, code blocks, links and HTML, so quoted code, a shell command or a package scope such as `@types/node` carries an invisible character and no longer pastes or greps byte for byte. The `findings` block (the last `` ```findings `` fence through the end of the report) is the one part left untouched, because the fixer compares its paths exactly. It must be the last thing in the report, closed by the first closing fence, and not hidden by an unterminated `<script>`, `<pre>`, `<style>`, `<textarea>` or comment before it nor glued to a paragraph that starts with an HTML tag; otherwise `publish` and `lint-report` refuse and say why. The scan for an unterminated block reads every line, including a quoted snippet inside a code fence, so the refusal names the line and says how to recover: close the block on that line, indent the line by four spaces, or describe the snippet instead of quoting it. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
+always match. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
 publisher, timestamps, label events, model and tier) from the trusted marker and the pull
@@ -524,9 +524,7 @@ the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report,
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
 checks, the `fix` guard, `export-audit`, `lint-report`, `push-guard.sh`, `install.sh`, the review
-eval scorer and the version check. The mention neutraliser is also checked against a pinned table of
-`gh api markdown` results (`tests/fake-gh/mention-table.tsv`, read by `tests/fake-gh/mentions.py`)
-and a seeded random sweep, for idempotence and for no mention left. The suites run at the same time,
+eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also
 fails if any workflow, template, script or test names a model action or a provider API key.

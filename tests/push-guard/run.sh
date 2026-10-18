@@ -77,19 +77,6 @@ RENAME_BASE="$(g rev-parse HEAD)"; mkdir -p "$W/repo/tests"; g mv src/secret.yml
 prjson OPEN feat/r "$RENAME_BASE" false
 r=$(run --findings "$W/rep.md"); check "rename of an out-of-scope file to a test name -> refused" eval '[ $r = 1 ] && grep -q "src/secret.yml" "$W/out"'
 
-# A path with an at-sign in the findings block survives report_mentions, so the fixer can push it.
-# The block is the one the publisher posts: a plain one, a glued fence and a trailing-space closer.
-eval "$(sed -n '/^report_mentions() {/,/^}/p' "$SRC/review-cycle.sh")"
-g checkout -q -b feat/at "$HEAD_OID"; mkdir -p "$W/repo/packages/@scope/pkg" "$W/repo/node_modules/@types/x"
-echo 1 >"$W/repo/packages/@scope/pkg/index.ts"; echo 2 >"$W/repo/node_modules/@types/x/index.d.ts"
-g add -A -f; g commit -q -m "fix in scoped paths"
-prjson OPEN feat/at "$HEAD_OID" false
-atrep() { printf '## r\nsee @amy\n%s```findings\nversion: 1\nfindings:\n  - id: C1\n    severity: CRITICAL\n    status: open\n    file: packages/@scope/pkg/index.ts\n  - id: C2\n    severity: CRITICAL\n    status: open\n    file: node_modules/@types/x/index.d.ts\n```%s\n' "$1" "$2" | report_mentions >"$W/at.md"; }
-atrep $'\n' ""; r=$(run --findings "$W/at.md"); check "findings paths with @scope and @types, blank line before the fence -> ok" eq "$r" 0
-atrep "" ""; r=$(run --findings "$W/at.md"); check "findings paths with @scope, fence glued to the line above -> ok" eq "$r" 0
-atrep $'\n' " "; r=$(run --findings "$W/at.md"); check "findings paths with @scope, closing fence with a trailing space -> ok" eq "$r" 0
-check "the published block still holds the @scope path byte for byte" grep -qx '    file: packages/@scope/pkg/index.ts' "$W/at.md"
-
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

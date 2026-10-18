@@ -172,11 +172,8 @@ flowchart TD
 8. **Publish.** `review-cycle.sh publish` re-reads the head from GitHub and refuses a stale `--sha`,
    so a verdict can only name a commit that really was the head. It also refuses a `BLOCKED` with no
    CRITICAL and a `PASSED` with one. It also refuses a report that holds something shaped like a
-   token or a private key, without printing it, and puts a zero-width space after every `@login`, also when the at-sign is written as an entity
-   (`&#64;`, `&#x40;`, `&commat;`, also a numeric one without its semicolon), and also before a tag or an entity that can start a login, so the comment notifies nobody. Quoted code and paths in prose
-   carry the invisible character too. Only the `findings` block, the tail of the report, is kept byte
-   for byte, so the fixer can match its paths; if that block is not closed, has text after its closing
-   fence, or could be swallowed by an unterminated HTML block, the script refuses and says why (it names the line of the block, and a code fence around that line does not help). It writes the marker comment, sets the label, and on `PASSED`
+   token or a private key, without printing it (write a login you mention as `@login` in backticks,
+   because a bare one notifies that person). It writes the marker comment, sets the label, and on `PASSED`
    marks a draft pull request ready for review.
 
 In the automatic run the reviewer never submits `--request-changes` or `--approve`. A later comment

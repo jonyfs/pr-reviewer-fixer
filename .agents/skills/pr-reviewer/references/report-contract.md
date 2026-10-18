@@ -110,27 +110,7 @@ is mandatory for `refused-accepted` and `refused-rejected`. Counts equal the num
 severity whose status is `open` or `refused-rejected`; `verified`, `refused-accepted` and
 `not-applicable` entries stay in the block for the record and are not counted.
 
-### Where the block sits
-
-`publish` and `lint-report` find the block as the tail of the report: the last line that is exactly
-` ```findings ` opens it, and the first fence line after it (up to three spaces of indent, three or
-more backticks, nothing else but blanks) closes it. They refuse the report, name the reason and post
-nothing when any of these holds, so write the report to avoid them:
-
-- The block is not closed.
-- Anything but blank lines follows the closing fence. The block is the last thing in the report.
-- The opening fence is glued to a paragraph that starts with an HTML tag. Leave a blank line before
-  the fence; a plain paragraph above it is fine.
-- A line earlier in the report starts an HTML block that nothing closes before the fence: a
-  `<script>`, `<pre>`, `<style>` or `<textarea>` tag, a `<!--` comment, `<?` or `<!X`, with up to three
-  spaces of indent. GitHub would swallow the block into it. The check reads every line, including a
-  snippet quoted inside a code fence, so a fenced PHP snippet whose first line is `<?php` is refused
-  too. The message names the line number. To quote such a snippet, close the block on that same line
-  (`<?php echo 1; ?>`), indent the line by four spaces, or describe the snippet instead.
-
-Text outside the block is changed on publish: every `@login`, however the at-sign is written, gets an
-invisible zero-width space after the `@` so the comment notifies nobody. The block itself is kept byte
-for byte, because the fixer compares its paths and claims exactly.
+The block is the last thing in the report. Write a login you mention in prose as `@login` in backticks: `publish` does not rewrite the report, so a bare one notifies that person.
 
 ## Marker
 

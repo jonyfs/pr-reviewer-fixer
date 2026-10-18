@@ -1098,111 +1098,6 @@ if hits:
 PY
 }
 
-# Neutralises every @login so posting the report notifies nobody. It does not read Markdown: a parser
-# here has to agree with GitHub's renderer in every container (quote, list, table, fence, span), and
-# each version of one left a case where a live mention got through. Instead every @ that starts a
-# login gets a zero-width space after it. The at-sign counts in all its spellings: the character, a
-# decimal or hex entity with any zero padding and any case of the x (&#64; &#x40; &#X0040;), and
-# &commat;. A numeric entity counts with or without its semicolon, because GitHub decodes the bare
-# form inside an HTML block (<div>&#64jonyfs</div> notifies) even though it leaves it alone in a
-# paragraph. A login starts with a letter, a digit, any entity (@&#106;onyfs) or a tag (@</b>jonyfs
-# notifies: the renderer drops a stray end tag and the login closes up). An @ is left alone
-# only when a real ASCII letter or digit sits right before it (an address like a@b.example, a
-# pin like actions/checkout@v4); a letter or digit that is the tail of an entity does not count, since
-# an HTML block decodes &#32 and &nbsp and &amp without their semicolon to a character that is not
-# part of a word (<div>&nbsp@jonyfs</div> notifies). Whether to insert never depends on a character
-# the function inserted: the space goes after a token that ends in @, ; or an entity tail, and the next
-# token reads all three the same way, so a second pass changes nothing. The text reads the same, a
-# renderer no longer sees a login, and it holds inside code, links and HTML. A mention inside code
-# gets the invisible character too; that is the price of having no parser. The one thing never
-# altered is the machine-readable `findings` block, because the fixer and push-guard.sh compare its
-# paths and claims byte for byte. The block is the tail of the report:
-# the last "```findings" line through the end of the file, where the first line that closes a fence
-# (up to three spaces, three or more backticks, trailing blanks) is followed by nothing but blank
-# lines. It is kept verbatim only when GitHub is sure to render it as that fence, so the function
-# REFUSES (exit 3, reason on stderr, nothing written) when: the block is not closed, or text follows
-# its closing fence; the findings fence sits in an HTML block that swallows it (an unterminated
-# <script>, <pre>, <style>, <textarea>, comment, <?, <!X or CDATA line earlier in the report, named by
-# its line number; a code fence around such a line does not help, because telling a fence from an
-# HTML block needs the parser this function does not have); or it is glued to a paragraph that
-# starts with an HTML tag. A report with no findings fence is neutralised whole. Linear, never raises
-# on its input (bytes in, bytes out), CRLF and a trailing newline are kept, and a second pass changes
-# nothing.
-report_mentions() {
-  python3 -I -c '
-import re, sys
-raw = sys.stdin.buffer.read().decode("utf-8", "surrogateescape")
-MENTION = re.compile(r"(?:@|&#0*64(?![0-9]);?|&#[xX]0*40(?![0-9A-Fa-f]);?|&commat;)(?=[A-Za-z0-9&<])")
-ALNUM = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
-def real_word_before(t, p):
-    q = p
-    while q > 0 and t[q - 1] in ALNUM:
-        q -= 1
-    return q < p and t[q - 1:q] != "&" and t[q - 2:q] != "&#"
-def wrap(t):
-    out, last = [], 0
-    for m in MENTION.finditer(t):
-        if real_word_before(t, m.start()):
-            continue
-        out.append(t[last:m.end()])
-        out.append("​")
-        last = m.end()
-    out.append(t[last:])
-    return "".join(out)
-def refuse(why):
-    sys.stderr.write(why + "\n")
-    sys.exit(3)
-lines = raw.split("\n")
-bare = lambda i: lines[i].rstrip("\r")
-op = None
-for i in range(len(lines) - 1, -1, -1):
-    if bare(i).rstrip(" \t") == "```findings":
-        op = i
-        break
-if op is None:
-    out = wrap(raw)
-else:
-    closer = None
-    for j in range(op + 1, len(lines)):
-        if re.fullmatch(r" {0,3}`{3,}[ \t]*", bare(j)):
-            closer = j
-            break
-    if closer is None:
-        refuse("the findings block is not closed: it needs a closing fence of three backticks")
-    if any(bare(k).strip() for k in range(closer + 1, len(lines))):
-        refuse("text follows the closing fence of the findings block: the block must be the last thing in the report")
-    starts = [
-        (re.compile(r" {0,3}<(?:script|pre|style|textarea)(?:[ \t>]|$)", re.I), re.compile(r"</(?:script|pre|style|textarea)>", re.I)),
-        (re.compile(r" {0,3}<!--"), re.compile(r"-->")),
-        (re.compile(r" {0,3}<\?"), re.compile(r"\?>")),
-        (re.compile(r" {0,3}<![A-Za-z]"), re.compile(r">")),
-        (re.compile(r" {0,3}<!\[CDATA\["), re.compile(r"\]\]>")),
-    ]
-    end = None
-    began = 0
-    for i in range(op):
-        s = bare(i)
-        pos = 0
-        if end is None:
-            for st, en in starts:
-                m = st.match(s)
-                if m:
-                    end, pos, began = en, m.end(), i + 1
-                    break
-        if end is not None and end.search(s, pos):
-            end = None
-    if end is not None:
-        refuse("line %d of the report starts an HTML block (<script>, <pre>, <style>, <textarea>, a comment, <? or <!) that nothing closes before the findings fence, so it would swallow the fence. A code fence around that line does not help, because this check reads every line. Close the block on that line, indent the line by four spaces, or describe the snippet instead of quoting it" % began)
-    if op > 0 and bare(op - 1).strip():
-        k = op - 1
-        while k > 0 and bare(k - 1).strip():
-            k -= 1
-        if any(re.match(r" {0,3}<[A-Za-z/!?]", bare(x)) for x in range(k, op)):
-            refuse("the findings fence is glued to a paragraph that starts with an HTML tag; put a blank line before the fence")
-    out = (wrap("\n".join(lines[:op])) + "\n" if op else "") + "\n".join(lines[op:])
-sys.stdout.buffer.write(out.encode("utf-8", "surrogateescape"))'
-}
-
 cmd_publish() {
   local verdict="" passno="" sha="" report="" number="" crit="" warn="" note="" model="" tier=""
   while [ $# -gt 0 ]; do
@@ -1238,10 +1133,6 @@ cmd_publish() {
   leaked="$(report_secrets "$report")" || die "review-cycle: REFUSED. The report looks like it contains a secret ($leaked).
    A comment on a pull request is public to everyone who can read it. Replace the value with
    [REDACTED] in the report, then publish again. The report was not changed and nothing was posted."
-  local why
-  why="$(report_mentions <"$report" 2>&1 >/dev/null)" || die "review-cycle: REFUSED. The report cannot be posted safely: $why.
-   The findings block is kept byte for byte, so it has to be a fence GitHub is sure to render as one.
-   Fix the report, then publish again. The report was not changed and nothing was posted."
 
   # **Required when WRITING, optional when READING.** A marker published now carries all three
   # counts; a marker published by an older script carries none, and the readers above still take it. The
@@ -1365,7 +1256,7 @@ cmd_publish() {
   local halted_rm=""
   [ -n "${HALTED:-}" ] && halted_rm="--remove-label review:needs-human"
   { printf '%s\n\n' "$marker_line"
-    report_mentions <"$report"; } | gh pr comment "$NUMBER" --body-file - >/dev/null \
+    cat "$report"; } | gh pr comment "$NUMBER" --body-file - >/dev/null \
     || die "review-cycle: could not post the marker on #$NUMBER"
   gh pr edit "$NUMBER" --add-label "$label" $halted_rm \
       $( [ -n "$LABEL" ] && [ "$LABEL" != "$label" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
@@ -1536,13 +1427,6 @@ cmd_lint_report() {
     rm -f "$tmp"
     echo "lint-report: FAIL. 1 problem(s):"
     echo "  - the report looks like it contains a secret ($leaked); replace the value with [REDACTED]"
-    return 1
-  fi
-  local why
-  if ! why="$(report_mentions <"$report" 2>&1 >/dev/null)"; then
-    rm -f "$tmp"
-    echo "lint-report: FAIL. 1 problem(s):"
-    echo "  - the report cannot be posted safely: $why"
     return 1
   fi
   X_REPORT="$report" X_DIFF="$diff" python3 -I - <<'PY'

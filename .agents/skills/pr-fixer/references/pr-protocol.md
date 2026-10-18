@@ -206,7 +206,7 @@ python3 <skill folder>/scripts/pr-json.py <n> \
 **Verdict comment.** Only `review-cycle.sh publish --verdict V --pass P --sha <head> --report FILE
 --critical C --warning W --note N`. The script writes the marker, refuses a stale `--sha`, refuses
 counts that contradict the verdict, refuses a report that holds a token or private key (it names
-the kind and never prints the value), puts a zero-width space after the `@` of every `@login` (also written `&#64;`, `&#x40;` or `&commat;`, with or without the semicolon for the numeric ones, and also when a tag or an entity follows the `@`) everywhere except the `findings` block, so quoted code and paths in prose carry an invisible character, and refuses a report whose `findings` block is not the last thing in it (closed, nothing after the closing fence, not hidden by an unterminated HTML block, named by its line, or glued to an HTML paragraph) because that block is kept byte for byte and must be a fence GitHub is sure to render. It also refuses a marker plus report over 60000 bytes (GitHub
+the kind and never prints the value), and does not rewrite the report (a login is written as `@login` in backticks so that it notifies nobody). It also refuses a marker plus report over 60000 bytes (GitHub
 rejects comment bodies over 65536 characters). Never type the marker with `gh pr comment`.
 Before it, run `review-cycle.sh lint-report <n> --report FILE`: it exits 1 when a finding names a file
 the diff does not touch, a line no hunk shows, or when the `counts:` line differs from the open

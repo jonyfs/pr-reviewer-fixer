@@ -8,38 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 
-- `publish` no longer parses Markdown to find a bare `@login`. Three passes of a hand-written parser
-  each left a mention that GitHub still rendered as a notification (fences ending with their quote or
-  list item, fence indentation, setext headings and tables, a flush that split a real code span, and
-  lookbehind characters that do not suppress a mention). Every `@` that starts a login now gets a
-  zero-width space after it, anywhere in the report: the text reads the same, nothing notifies, and
-  it holds inside code, links, HTML and any container. The at-sign counts in all its spellings
-  (`@`, `&#64;`, `&#x40;` with any padding and any case of the x, `&commat;`), because GitHub decodes
-  entities before it looks for a mention. A numeric entity counts without its semicolon too, since
-  GitHub decodes the bare form inside an HTML block, and the space is never inserted after a token
-  in a way that changes how the next one reads, so a second pass changes nothing (a bare `&#x40`
-  next to a full `&#x40;` used to turn the second into a mention). A login can start with a letter,
-  a digit, an entity or a tag: `@</b>jonyfs` notifies, because the renderer drops a stray end tag and
-  the login closes up. An `@` is left alone only after a real ASCII letter or digit, not after the
-  tail of an entity: `<div>&nbsp@jonyfs</div>` and `<div>&#32@jonyfs</div>` notify, `lodash@4.17.21`
-  and `a@b.example` do not. The rules are pinned by `tests/fake-gh/mention-table.tsv` (383 inputs
-  rendered with `gh api markdown`) and a seeded sweep of 20000 random inputs, run by
-  `tests/fake-gh/mentions.py`. The `findings` block, the tail of the report from
-  the last findings fence, is kept byte for byte, since the fixer and `push-guard.sh` compare its
-  paths and claims exactly. It is kept only when GitHub is sure to render it as that fence: if the
-  block is not closed, text follows its closing fence (a closer may carry up to three spaces of
-  indent, more backticks and trailing blanks), an unterminated `<script>`, `<pre>`, `<style>`,
-  `<textarea>`, comment, `<?` or `<!` line comes before it, or it is glued to a paragraph that starts
-  with an HTML tag, `publish` and `lint-report` refuse and say why, and nothing is posted. The
-  refusal for an unterminated HTML block names the line and how to recover, since the scan reads
-  inside a quoted code fence too (a fenced `<?php` snippet is refused): close the block on that line,
-  indent the line by four spaces, or describe the snippet. Lines inside a fence are not skipped,
-  because a `<div>` block ends only at a blank line and a fence-looking line inside it is not a
-  fence. `report-contract.md` states these rules for the reviewer. A blank
-  line before the fence is not required. A mention already in backticks, or in a code block, carries
-  the invisible character too, so quoted code, a shell command or a package scope such as
-  `@types/node` in prose no longer pastes or greps byte for byte. Linear, never raises on its input,
-  CRLF and the trailing newline are kept, and a second pass changes nothing.
+- Removed the `@login` wrapping that 0.6.0 added to `publish`. Six review passes and four rewrites of it
+  (a Markdown scanner, then a zero-width space with its own entity rules) each left a case where GitHub
+  still rendered a mention, or changed the text it was meant to protect, and the guard had grown a
+  fuzz harness larger than the check it served. `publish` posts the report as written again. Write a
+  login you mention as `@login` in backticks; the secret screen stays.
 - The secret screen no longer needs a word boundary before a token, so a token glued to an
   underscore prefix is refused. It also covers npm, GitLab and Google OAuth tokens.
 - The last-cycle rule in `harness-loop.md`, README and HOW-IT-WORKS names the last cycle of every
