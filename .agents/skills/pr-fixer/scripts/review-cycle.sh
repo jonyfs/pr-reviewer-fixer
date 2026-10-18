@@ -1101,29 +1101,54 @@ PY
 # Neutralises every @login so posting the report notifies nobody. It does not read Markdown: a parser
 # here has to agree with GitHub's renderer in every container (quote, list, table, fence, span), and
 # each version of one left a case where a live mention got through. Instead every @ that starts a
-# login (not preceded by an ASCII letter or digit, so an address like a@b.example is left alone) gets a
-# zero-width space after it. The at-sign counts in its entity forms too (&#64; &#x40; &commat;, because
-# GitHub decodes entities before it looks for a mention), and so does an @ followed by a numeric entity
-# (@&#106;onyfs). The text reads the same, a renderer no longer sees a login, and it holds inside code,
-# links and HTML. A mention inside code gets the invisible character too; that is the price of having
-# no parser. The one thing never altered is the machine-readable `findings` block, because the fixer
-# and push-guard.sh compare its paths and claims byte for byte. The block is the tail of the report:
+# login gets a zero-width space after it. The at-sign counts in all its spellings: the character, a
+# decimal or hex entity with any zero padding and any case of the x (&#64; &#x40; &#X0040;), and
+# &commat;. A numeric entity counts with or without its semicolon, because GitHub decodes the bare
+# form inside an HTML block (<div>&#64jonyfs</div> notifies) even though it leaves it alone in a
+# paragraph. A login starts with a letter, a digit, any entity (@&#106;onyfs) or a tag (@</b>jonyfs
+# notifies: the renderer drops a stray end tag and the login closes up). An @ is left alone
+# only when a real ASCII letter or digit sits right before it (an address like a@b.example, a
+# pin like actions/checkout@v4); a letter or digit that is the tail of an entity does not count, since
+# an HTML block decodes &#32 and &nbsp and &amp without their semicolon to a character that is not
+# part of a word (<div>&nbsp@jonyfs</div> notifies). Whether to insert never depends on a character
+# the function inserted: the space goes after a token that ends in @, ; or an entity tail, and the next
+# token reads all three the same way, so a second pass changes nothing. The text reads the same, a
+# renderer no longer sees a login, and it holds inside code, links and HTML. A mention inside code
+# gets the invisible character too; that is the price of having no parser. The one thing never
+# altered is the machine-readable `findings` block, because the fixer and push-guard.sh compare its
+# paths and claims byte for byte. The block is the tail of the report:
 # the last "```findings" line through the end of the file, where the first line that closes a fence
 # (up to three spaces, three or more backticks, trailing blanks) is followed by nothing but blank
 # lines. It is kept verbatim only when GitHub is sure to render it as that fence, so the function
 # REFUSES (exit 3, reason on stderr, nothing written) when: the block is not closed, or text follows
 # its closing fence; the findings fence sits in an HTML block that swallows it (an unterminated
-# <script>, <pre>, <style>, <textarea>, comment, <?, <!X or CDATA line earlier in the report); or it is
-# glued to a paragraph that starts with an HTML tag. A report with no findings fence is neutralised
-# whole. Linear, never raises on its input (bytes in, bytes out), CRLF and a trailing newline are
-# kept, and a second pass changes nothing.
+# <script>, <pre>, <style>, <textarea>, comment, <?, <!X or CDATA line earlier in the report, named by
+# its line number; a code fence around such a line does not help, because telling a fence from an
+# HTML block needs the parser this function does not have); or it is glued to a paragraph that
+# starts with an HTML tag. A report with no findings fence is neutralised whole. Linear, never raises
+# on its input (bytes in, bytes out), CRLF and a trailing newline are kept, and a second pass changes
+# nothing.
 report_mentions() {
   python3 -I -c '
 import re, sys
 raw = sys.stdin.buffer.read().decode("utf-8", "surrogateescape")
-MENTION = re.compile(r"(?<![A-Za-z0-9])(?:@|&#0*64(?![0-9]);?|&#[xX]0*40(?![0-9A-Fa-f]);?|&commat;)(?=[A-Za-z0-9]|&#)")
+MENTION = re.compile(r"(?:@|&#0*64(?![0-9]);?|&#[xX]0*40(?![0-9A-Fa-f]);?|&commat;)(?=[A-Za-z0-9&<])")
+ALNUM = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+def real_word_before(t, p):
+    q = p
+    while q > 0 and t[q - 1] in ALNUM:
+        q -= 1
+    return q < p and t[q - 1:q] != "&" and t[q - 2:q] != "&#"
 def wrap(t):
-    return MENTION.sub(lambda m: m.group(0) + "​", t)
+    out, last = [], 0
+    for m in MENTION.finditer(t):
+        if real_word_before(t, m.start()):
+            continue
+        out.append(t[last:m.end()])
+        out.append("​")
+        last = m.end()
+    out.append(t[last:])
+    return "".join(out)
 def refuse(why):
     sys.stderr.write(why + "\n")
     sys.exit(3)
@@ -1154,6 +1179,7 @@ else:
         (re.compile(r" {0,3}<!\[CDATA\["), re.compile(r"\]\]>")),
     ]
     end = None
+    began = 0
     for i in range(op):
         s = bare(i)
         pos = 0
@@ -1161,12 +1187,12 @@ else:
             for st, en in starts:
                 m = st.match(s)
                 if m:
-                    end, pos = en, m.end()
+                    end, pos, began = en, m.end(), i + 1
                     break
         if end is not None and end.search(s, pos):
             end = None
     if end is not None:
-        refuse("the findings fence follows an unterminated HTML block (<script>, <pre>, <style>, <textarea>, a comment, <? or <!), which would swallow it; close that block or remove it")
+        refuse("line %d of the report starts an HTML block (<script>, <pre>, <style>, <textarea>, a comment, <? or <!) that nothing closes before the findings fence, so it would swallow the fence. A code fence around that line does not help, because this check reads every line. Close the block on that line, indent the line by four spaces, or describe the snippet instead of quoting it" % began)
     if op > 0 and bare(op - 1).strip():
         k = op - 1
         while k > 0 and bare(k - 1).strip():

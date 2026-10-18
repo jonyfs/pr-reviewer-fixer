@@ -471,6 +471,51 @@ check "mentions: of two findings fences only the last is kept" eq "$(mn $'a\n\n`
 check "mentions: not a mention, left byte for byte" eq "$(mn 'mail a@b.example hi@jonyfs 1@x @ @-x end@')" 'mail a@b.example hi@jonyfs 1@x @ @-x end@'
 check "mentions: one mention gets exactly one zero-width space after the @" eq "$(mn 'ask @alice')" "ask @${ZW}alice"
 check "mentions: running it twice changes nothing (idempotent)" eq "$(mn "$(mn 'ask @alice, @b/c and _@d_')")" "$(mn 'ask @alice, @b/c and _@d_')"
+mexact() { # name, input, expected output: exactly that, and a second pass changes nothing
+  local out exp="$3"; out="$(mn "$2"; echo x)"; out="${out%x}"
+  check "mentions: $1" eval '[ "$out" = "$exp" ] && [ "$(mn "$out"; echo x)" = "${out}x" ]'
+}
+# Pass 5 W1: an at-sign entity without its semicolon ends in a digit; the space after it used to
+# change what the next entity saw before it, so the next entity became a mention and a second pass
+# inserted another space. GitHub renders none of these four as a mention, and all four as one after.
+mexact "W1 &#x40 then a full &#x40;"                  '&#x40&#x40;jonyfs'        "&#x40${ZW}&#x40;${ZW}jonyfs"
+mexact "W1 &#64 then a full &#64;"                    '&#64&#64;jonyfs'          "&#64${ZW}&#64;${ZW}jonyfs"
+mexact "W1 &#64 then &#x40; inside a sentence"        'x &#64&#x40;jonyfs y'     "x &#64${ZW}&#x40;${ZW}jonyfs y"
+mexact "W1 &#x40 then &#64; then an entity login"     '&#x40&#64;&#106;onyfs'    "&#x40${ZW}&#64;${ZW}&#106;onyfs"
+# The bare numeric forms are real at-signs inside an HTML block (GitHub decodes them there), so they
+# are wrapped, and a letter or digit that ends an entity is not a real one before an at-sign.
+mexact "bare &#64 in an HTML block"                   '<div>&#64jonyfs</div>'    "<div>&#64${ZW}jonyfs</div>"
+mexact "&#32 before an at-sign is a space, not a digit" '<div>&#32@jonyfs</div>' "<div>&#32@${ZW}jonyfs</div>"
+mexact "&nbsp before an at-sign is a space"           '<div>&nbsp@jonyfs</div>'  "<div>&nbsp@${ZW}jonyfs</div>"
+mexact "&amp before an at-sign"                       '<div>&amp@jonyfs</div>'   "<div>&amp@${ZW}jonyfs</div>"
+mexact "an entity run before the entity at-sign"      '&#106&#64;jonyfs'         "&#106&#64;${ZW}jonyfs"
+mexact "a stray end tag after the at-sign"            '@</b>jonyfs'              "@${ZW}</b>jonyfs"
+mexact "a stray end tag after an entity at-sign"      '&#64;</x>jonyfs'          "&#64;${ZW}</x>jonyfs"
+mexact "an entity that decodes to letters after it"   '@&fjlig;'                 "@${ZW}&fjlig;"
+mexact "two entity at-signs in a row"                 '&#64;&#64;jonyfs'         "&#64;${ZW}&#64;${ZW}jonyfs"
+mexact "a pin and an address keep their at-sign"      'uses actions/checkout@v4 and a&#64;jonyfs, lodash@4.17.21' 'uses actions/checkout@v4 and a&#64;jonyfs, lodash@4.17.21'
+# Every row of the pinned GitHub table (383 inputs, 149 of them live mentions as written), then a
+# seeded random sweep: exit 0 or 3, findings block kept, idempotent, no mention left by an oracle
+# that is stricter than GitHub. It runs the function in one process, so 20000 cases take seconds.
+python3 -I "$T/mentions.py" "$RC" "$T/mention-table.tsv" >"$W/mentions.out" 2>&1; r=$?
+check "mentions: pinned GitHub table and seeded sweep, idempotent and no live mention left" eval '[ $r = 0 ] && grep -q "^ok$" "$W/mentions.out"'
+# N1 (pass 5): a quoted snippet inside a code fence that starts like an HTML block is refused, the
+# message names its line and says how to recover, and each recovery is accepted with the findings
+# block untouched. Skipping lines inside a fence is NOT done: a <div> block ends only at a blank line,
+# so a fence-looking line inside one is not a fence, and a later <textarea> would swallow the block.
+FB5=$'\n\nping @jonyfs\n\n```findings\nclaim: x\n```\n'
+msays() { # name, input, text the reason must contain
+  local out want="$3"; out="$(printf %s "$2" | report_mentions 2>"$W/msays.err")"; local rc=$?
+  check "mentions: $1" eval '[ $rc = 3 ] && [ -z "$out" ] && grep -q -F -- "$want" "$W/msays.err"'
+}
+msays "N1 fenced <?php snippet names its line"            $'see:\n\n```php\n<?php\necho 1;\n```'"$FB5" "line 4 of the report"
+msays "N1 fenced multi-line comment names its line"       $'```html\n<!-- a\nb -->x\n<!-- c\n```'"$FB5" "line 4 of the report"
+msays "N1 fenced script with a src names its line"        $'```html\n<script src="x">\n```'"$FB5" "line 2 of the report"
+msays "N1 the message says a code fence does not help"    $'```php\n<?php\n```'"$FB5" "A code fence around that line does not help"
+msays "N1 the message says how to recover"                $'```php\n<?php\n```'"$FB5" "indent the line by four spaces"
+check "mentions: N1 the snippet indented by four spaces is accepted, findings block verbatim" eq "$(mn $'```php\n    <?php\necho 1;\n```'"$FB5" | tail -n 3)" $'```findings\nclaim: x\n```'
+check "mentions: N1 the opener closed on its own line is accepted" eq "$(mn $'```php\n<?php echo 1; ?>\n```'"$FB5" | tail -n 3)" $'```findings\nclaim: x\n```'
+mrefuse "N1 a div, a fence-looking line, then a textarea (why lines inside a fence are not skipped)" $'<div>\n```php\n\n<textarea>'"$FB5"
 FB=$'## r\nask @alice\n\n```findings\nversion: 1\nclaim: "@bob in a finding"\n```\n'
 check "mentions: the closing findings fence is kept byte for byte, text before it is not" eq "$(mn "$FB")" $'## r\nask @'"$ZW"$'alice\n\n```findings\nversion: 1\nclaim: "@bob in a finding"\n```'
 FC=$'a @x\r\n\r\n```findings\r\nclaim: @y\r\n```\r\n'
@@ -499,6 +544,16 @@ printf '## findings\nstray %s\n\n```findings\ncounts: { critical: 0, warning: 0,
 printf 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n' >"$W/lrs.patch"
 "$RC" lint-report --report "$W/lrs.md" --diff "$W/lrs.patch" >"$W/out" 2>&1; r=$?
 check "lint-report fails a report with a secret and does not print it" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+
+printf 'see:\n\n```php\n<?php\n```\n\nDeclined to judge: none\n\n```findings\ncounts: { critical: 0, warning: 0, note: 0 }\n```\n' >"$W/lrh.md"
+"$RC" lint-report --report "$W/lrh.md" --diff "$W/lrs.patch" >"$W/out" 2>&1; r=$?
+check "lint-report names the line of an HTML block opener inside a quoted fence (N1)" eval '[ $r = 1 ] && grep -q "line 4 of the report" "$W/out" && grep -q "indent the line by four spaces" "$W/out"'
+# Linear time on the shapes the new lookbehind and entity patterns could make quadratic.
+for shape in '"&#64" * 200000' '"a@" * 300000' '"@&" * 300000' '"&#" + "0" * 600000'; do
+  python3 -I -c "print($shape)" >"$W/big.txt"
+  t0=$SECONDS; report_mentions <"$W/big.txt" >"$W/big.out"; r=$?; dt=$((SECONDS - t0))
+  check "mentions: $shape finishes in under 10 s, exit 0" eval '[ $r = 0 ] && [ $dt -lt 10 ]'
+done
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

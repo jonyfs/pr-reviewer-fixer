@@ -1,0 +1,394 @@
+## Pinned results of `gh api markdown -f mode=gfm` (2026-10-17). One input per line: the number of
+## `user-mention` links GitHub rendered for the input followed by a findings block, a TAB, then the
+## input (a backslash-n is a newline). The login is jonyfs. tests/fake-gh/mentions.py reads this file.
+## The output of report_mentions for every row was rendered the same way and held 0 mentions.
+## pass 5 W1: a numeric at-sign entity without its semicolon next to a full one
+0	&#x40&#x40;jonyfs
+0	&#64&#64;jonyfs
+0	x &#64&#x40;jonyfs y
+0	&#x40&#64;&#106;onyfs
+## spellings, chains, preceding characters and containers (text context)
+1	@jonyfs
+1	&#64;jonyfs
+1	&#064;jonyfs
+0	&#0000000064;jonyfs
+1	&#x40;jonyfs
+1	&#X40;jonyfs
+1	&#x040;jonyfs
+0	&#X0000000040;jonyfs
+1	&commat;jonyfs
+0	&COMMAT;jonyfs
+0	&Commat;jonyfs
+0	&#64jonyfs
+0	&#x40jonyfs
+0	&commatjonyfs
+0	&#640;jonyfs
+0	&#x400;jonyfs
+0	&#65312;jonyfs
+0	&#xFF20;jonyfs
+0	＠jonyfs
+1	@&#106;onyfs
+1	@&#x6a;onyfs
+1	@&#X6A;onyfs
+0	@&#106onyfs
+1	@j&#111;nyfs
+1	&#64;&#106;onyfs
+1	&commat;&#x6a;onyfs
+0	@&zwj;jonyfs
+0	@&ZeroWidthSpace;jonyfs
+0	@&NewLine;jonyfs
+0	@&shy;jonyfs
+0	@<b></b>jonyfs
+0	@<!---->jonyfs
+0	@<wbr>jonyfs
+0	@<i>j</i>onyfs
+0	@<span></span>jonyfs
+0	@&amp;jonyfs
+1	&#64;&#64;jonyfs
+1	@@jonyfs
+1	@&#64;jonyfs
+1	&#64;@jonyfs
+1	&commat;&#x40;&#64;jonyfs
+1	&#64;&#64;&#64;&#64;jonyfs
+1	@&commat;jonyfs
+1	&commat;@jonyfs
+0	a&#64;jonyfs
+0	1&#64;jonyfs
+0	a@jonyfs
+0	1@jonyfs
+0	_@jonyfs
+1	-@jonyfs
+1	.@jonyfs
+1	(@jonyfs)
+1	>@jonyfs
+1	*@jonyfs*
+1	"@jonyfs"
+1	&#8203;@jonyfs
+1	&#32;@jonyfs
+1	&nbsp;@jonyfs
+1	&#x200B;&#x40;jonyfs
+0	&#106&#64;jonyfs
+0	&#106@jonyfs
+0	&nbsp@jonyfs
+1	&amp;@jonyfs
+0	&#97;@jonyfs
+0	&#97;&#64;jonyfs
+0	<b>&#32@jonyfs</b>
+0	<b>&#64jonyfs</b>
+0	<b>&#x40&#x40;jonyfs</b>
+1	<b>@jonyfs</b>
+1	<b>&#64;jonyfs</b>
+1	<b>&commat;jonyfs</b>
+1	<p>&#x40&#x40;jonyfs</p>
+1	<div>&#64&#64;jonyfs</div>
+0	<a href="x">&#64;jonyfs</a>
+0	`&#64;jonyfs`
+0	`@jonyfs`
+1	> &#64;jonyfs
+0	> &#64&#64;jonyfs
+1	- &#64;jonyfs
+0	- &#64&#x40;jonyfs
+1	| a | b |\n|---|---|\n| &#64;jonyfs | &#64&#64;jonyfs |
+1	**&#64;jonyfs**
+0	[&#64;jonyfs](http://x)
+0	@jonyfs/team
+0	&#64;jonyfs/team
+0	@jon-yfs
+0	&#64;jon-yfs
+1	@jonyfs.
+1	&#64;jonyfs,
+## inside an HTML block: GitHub decodes the bare forms there (&#64jonyfs, &nbsp@jonyfs, &amp@jonyfs)
+1	<p>&#64jonyfs</p>
+1	<div>&#x40jonyfs</div>
+1	<div>&#X40jonyfs</div>
+0	<div>&commatjonyfs</div>
+1	<div>&commat;jonyfs</div>
+0	<div>&COMMAT;jonyfs</div>
+1	<div>&#32@jonyfs</div>
+1	<div>&#x20@jonyfs</div>
+1	<div>&nbsp@jonyfs</div>
+1	<div>&nbsp;@jonyfs</div>
+1	<div>&amp@jonyfs</div>
+0	<div>&#106&#64;jonyfs</div>
+1	<div>&#64&#64jonyfs</div>
+1	<div>&#x40&#x40jonyfs</div>
+1	<div>&#64&#x40;jonyfs</div>
+1	<div>&#0000000064;jonyfs</div>
+1	<div>&#0000000064jonyfs</div>
+1	<div>&#X0000000040;jonyfs</div>
+0	<div>&#640;jonyfs</div>
+0	<div>&#64 jonyfs</div>
+0	<div>x&#64;jonyfs</div>
+0	<div>x&#64jonyfs</div>
+0	<div>1&#64jonyfs</div>
+0	<div>&#97&#64;jonyfs</div>
+1	<div>@&#106onyfs</div>
+1	<div>@&#106;onyfs</div>
+0	<div>@&zwj;jonyfs</div>
+0	<div>@&NewLine;jonyfs</div>
+0	<div>@<!---->jonyfs</div>
+0	<div>@<b></b>jonyfs</div>
+0	<div>@&amp;jonyfs</div>
+1	<div>&#x40;&#x40;jonyfs</div>
+1	<div>&#9&#64;jonyfs</div>
+1	<div>&#x9;&#64jonyfs</div>
+1	<div>&#10@jonyfs</div>
+1	<div>&#xA@jonyfs</div>
+1	<div>&#xa0@jonyfs</div>
+1	<div>&#160@jonyfs</div>
+1	<div>&lt@jonyfs</div>
+1	<div>&gt@jonyfs</div>
+1	<div>&copy@jonyfs</div>
+1	<div>&#45@jonyfs</div>
+1	<div>&#40@jonyfs</div>
+1	<div>&#58@jonyfs</div>
+0	<div>&#97@jonyfs</div>
+0	<div>&#95@jonyfs</div>
+0	<div>&#106@jonyfs</div>
+## what follows the at-sign: a tag, an end tag, a comment, an entity (a stray end tag vanishes and the login closes up)
+1	@</b>jonyfs
+1	@</x>jonyfs
+0	@<x>jonyfs
+0	@<x>jonyfs</x>
+0	@<font>jonyfs</font>
+0	@<foo/>jonyfs
+0	@<br>jonyfs
+0	@<br/>jonyfs
+0	@<?x?>jonyfs
+0	@<![CDATA[]]>jonyfs
+0	@<!x>jonyfs
+0	@</>jonyfs
+0	@<>jonyfs
+0	@<3>jonyfs
+0	@< b>jonyfs
+0	@<b >jonyfs
+0	@<script></script>jonyfs
+0	@<style></style>jonyfs
+0	@<img>jonyfs
+0	@<a></a>jonyfs
+0	@<u></u>jonyfs
+0	@<kbd></kbd>jonyfs
+0	@<b>jonyfs</b>
+0	@<div>jonyfs</div>
+0	@<p>jonyfs
+0	@</p>jonyfs
+1	@</div>jonyfs
+1	@</span>jonyfs
+1	@</b></b></b>jonyfs
+1	@</b>&#106;onyfs
+1	&#64;</b>jonyfs
+0	&#64</b>jonyfs
+1	<div>@</b>jonyfs</div>
+0	<div>@<x>jonyfs</div>
+1	<div>&#64</b>jonyfs</div>
+0	<div>@<!-- -->jonyfs</div>
+0	<div>@<!-- --><!-- -->jonyfs</div>
+0	<div>@<?php ?>jonyfs</div>
+0	<div>@<a href="x"></a>jonyfs</div>
+1	<div>@</a>jonyfs</div>
+1	<p>@</i>jonyfs</p>
+1	- @</b>jonyfs
+1	> @</b>jonyfs
+0	@\jonyfs
+0	@\<b>jonyfs
+0	@**jonyfs
+0	@*jonyfs*
+0	@_jonyfs_
+0	@[](x)jonyfs
+0	@![](x)jonyfs
+0	@<http://x.example>jonyfs
+0	@<!--x-->jonyfs
+0	@<span>jonyfs</span>
+0	@<sup></sup>jonyfs
+0	@<br />jonyfs
+0	@<br\n>jonyfs
+0	@\n</b>jonyfs
+0	@  jonyfs
+0	@&#8203;jonyfs
+0	@&#173;jonyfs
+0	@<b>&#106;onyfs
+## seeded random combinations in a heading, every one rendered by GitHub
+1	# &#64;jonyfs
+0	# &#0064&#X0040;&nbsp;&nbsp;&#64;> &ampjonyfs
+0	# &#0064&#X0040;*&amp<div>jonyfs
+0	# &#106&amp&nbsp;jonyfs
+0	# &#106;&#64</b>jonyfsjonyfs
+0	# &#32&#8203;&#X0040;</b>.jonyfs
+0	# &#32&#x20;&nbsp;&#x40;&#x40jonyfs
+0	# &#6466jonyfs
+0	# &#64;&amp;jonyfs
+0	# &#64;;jonyfs
+0	# &#8203;&#64;&#0064&#x40> &ampjonyfs
+0	# &#X0040;-&#32&#106jonyfs<!---->&nbsp
+0	# &#x20;<p>&fjlig;6&amp;&#x40;&nbsp;jonyfs
+0	# &#x40&nbspx&.0jonyfs
+0	# &#x6a;6_&#X0040;&commat;4jonyfs
+0	# &#x6a;@&#64&#X0040;> jonyfs
+0	# &&#32<b>&#64;\n\njonyfs
+1	# &commat;&commat;1*jonyfs
+0	# &lt&#x40&#64;@<p>&#x20;1</b>jonyfs
+0	# &nbsp;*&#106j06&#0064jonyfs
+1	# &nbspa<!---->6@- &commat;jonyfs
+0	# *4jonyfs
+1	# *\n\n<!---->&#64;jonyfs
+0	# - &nbsp;&nbspjonyfs- &#32
+0	# -&fjlig;\n&#64jonyfs
+0	# . &#32&#64;1jonyfs
+0	# 0&#64jonyfs
+0	# 0&#X0040;&amp&lt<div>&#x40@jonyfs
+0	# 0\n\njonyfs
+0	# 4 </b>> jonyfs
+0	# 6&nbsp<!---->4&#64;jonyfs
+0	# 6_xa\n\n&fjlig;jonyfs
+0	# ;&#X0040;&lt&fjlig;&#X0040; jonyfs
+0	# ;4_jjonyfs
+0	# ;\n&lt&#32jonyfs
+0	# <b><p>&#8203;_&nbsp;jonyfs
+0	# <div><!---->jonyfs
+0	# <p>&#x6a;&fjlig;\njonyfs
+0	# > &#x20;;*<p>jonyfs
+0	# > &#x40;&lt<div>&ampjonyfs
+0	# @&jonyfs
+1	# @6-&#x40 &#X0040;\n\n&#106;jonyfs
+0	# @<!----><!---->.01&#32jonyfs
+0	# \n-_&#106a<!---->6&#64;jonyfs
+0	# \n\n&fjlig;&jonyfs
+0	# a&&amp 0 jonyfs
+0	# a4&#x6a;&jonyfs
+0	# j&#x404&#106jonyfs
+0	# j&commat;&amp;<p>&amp;&nbsp&#x40jonyfs
+0	# j-> @&#64jonyfs
+0	# jonyfs- <!---->&#x6a;jonyfs.&amp;
+0	# jonyfsjonyfs
+0	# x&nbsp6&nbsp;\n&fjlig;1jonyfs
+0	# x.&#x40;&#64&nbsp;jonyfs
+## seeded random combinations that GitHub renders as a mention
+1	&#64&#x6a;&&#106;-&#x40;jonyfs
+1	&#64;&@jonyfs
+1	&#64;&lt&#X0040;@@jonyfs\n-
+1	&#64;1aa&nbspjonyfs
+1	&#64;4</b>&#8203;j&#32&#64jonyfs
+1	&#X0040;&#106;@</b>jonyfs
+1	&#X0040;6 <p>j\n\n<b>1jonyfs
+1	&#X0040;@jonyfs&#64
+1	&#x40;jonyfs;
+1	&@<b>@\n@jonyfs
+1	&commat;1@&#64;&#64<b>xjonyfs
+1	&commat;@jonyfs&#x20;\n.1jonyfs
+1	&commat;a&#64&#x40<p>*jonyfs
+1	&commat;a&#8203;jonyfs
+1	&fjlig;@- &#X0040;&#X0040;x&amp;jonyfs
+1	- &#64;j&#0064jonyfs
+1	- &#X0040;;-  &#8203;&commat;6\njonyfs
+1	- &commat;&#x6a;&amp;0jonyfs&#646<div>
+1	- *-&commat;jonyfs
+1	- \n&#x40<p>&#X0040;&#x6a; jonyfs
+1	1-- \n&#X0040;a&amp;jonyfs
+1	<b>;x<!---->&#8203;&#8203;-@jonyfs
+1	<div>&#106a;> &#x40jonyfs
+1	<div>&#8203;&lt&#0064jonyfs
+1	<div>&#X0040;6\n<p>&fjlig;jonyfs
+1	<div>&#x40&#x40jonyfs
+1	<div>&#x40;<!---->&#0064jonyfs
+1	<div>&amp;&#64jonyfs
+1	<div>&commat;&#0064&lt&#X0040;jonyfs
+1	<div>&commat;&#64;x&#106&jonyfs
+1	<div>&lt&#X0040;jonyfs
+1	<div>- &fjlig;*&#0064&#64;0&#0064jonyfs
+1	<div>- 1&#x40&#8203;&lt&#x40jonyfs
+1	<div>.@jonyfs
+1	<div>1&#64@&fjlig;<!---->&#0064&fjlig;&#106jonyfs
+1	<div></b>&nbsp1- &#0064jonyfs
+1	<div><div>jonyfs&@&#X0040;x
+1	<div>@&#x6a;\na&nbsp<div>1jonyfs
+1	<p> &#X0040;&#64;jonyfs
+1	<p>&#32</b>&commat;x\njonyfs
+1	<p>&#x20;&#32&nbsp&#X0040;jonyfs
+1	<p>&#x40;@jonyfs
+1	<p>&#x6a;_&fjlig;&amp<div>&#x20;\n@jonyfs
+1	<p>&&#X0040;<b>&#64;&#X0040;jonyfs
+1	<p>&commat;&#32&#64;jonyfs
+1	<p>- &#x20;@jonyfs
+1	<p>;@&#x6a;\njonyfs
+1	<p>> &#x40;jonyfs
+1	<p>j.&#0064&#106</b>> &#8203;jonyfs
+1	>  &#8203;&commat;&#x40;jonyfs
+1	> &nbsp;@jonyfs
+1	> ;&#8203;1\n&#X0040;@jonyfs
+1	> @0- jonyfs@
+1	> @</b>&#106;&#x40;&#32jonyfs
+1	> \n&#X0040;jonyfs
+1	> \n&#x40;jonyfs
+1	\n&#64;&commat;a\n&nbspjonyfs
+1	\n&fjlig;> &#x40;&#X0040;&fjlig; jonyfs
+## seeded random combinations that GitHub does not render as a mention
+0	 &#8203;jonyfs
+0	 &nbspjonyfs
+0	 64<p><div>*jonyfs
+0	&#006446\n 0&#0064jonyfs
+0	&#106&fjlig;a&nbsp@&#0064<p>*jonyfs
+0	&#106;&amp*x4</b>jonyfs
+0	&#106;&ampjonyfs
+0	&#106;&commat;*jonyfs
+0	&#106;6&#x40_&jonyfs
+0	&#106;6<div>jonyfs
+0	&#106</b>&#64;<p>*<b>&#32jonyfs
+0	&#32&#8203;_jonyfs
+0	&#320jonyfs
+0	&#646&nbsp;&#64;</b>&nbsp;0jonyfs
+0	&#64;&#x40jonyfs
+0	&#64;</b>&amp;1- &amp;.jonyfs
+0	&#64;\n4&#x20;jonyfs
+0	&#8203;&#32jonyfs
+0	&#8203;&#x40jonyfs
+0	&#8203;jjonyfs
+0	&#X0040;;.@&#x40jonyfs
+0	&#x20; _jonyfs&nbsp<div>*
+0	&#x20;&fjlig;&amp&fjlig;&#x20;0&#0064&commat;jonyfs
+0	&#x20;&ltjonyfs
+0	&#x40&amp;&amp;jonyfs
+0	&#x40&nbsp;&#x20;<b>&#x40@&#106;jonyfs
+0	&#x40;- jonyfs
+0	&#x40</b>;&commat;&0&#8203;jonyfs
+0	&#x6a;&#32@&#X0040;<b>jonyfs
+0	&#x6a;6jonyfs
+0	&amp<b>_<p>&#x40;.@&#0064jonyfs
+0	&amp@&#8203;@&#106;jonyfs
+0	&ampx&#x6a;<div>4&commat;- 1jonyfs
+0	&commat;&#x20;<div>&4jonyfs
+0	&commat;&nbspjonyfs.&#8203;@\n\n- 
+0	&commat;-jonyfs&#64;.<b>x&#64;
+0	&commat;.1_&nbspjonyfs
+0	&fjlig;jonyfs.jonyfs&#106&#x20;&
+0	&jonyfsjonyfs
+0	&lt&#64&#64;&nbsp> \n&nbsp;jonyfs
+0	&lt&#64<p><p>jonyfs
+0	&lt&#x6a;&commat;&#32-&amp;&#x40;&nbspjonyfs
+0	&lt&#x6a;jonyfs
+0	&lt<b>&#106;&#8203;jonyfs
+0	&ltjonyfs&#x20;j&#64&nbsp
+0	&ltx<p>&nbsp;<!---->jonyfs
+0	&nbsp&#8203;jonyfs
+0	&nbsp&#X0040;&nbsp;jonyfs
+0	&nbsp;j&#x6a;&#X0040;<b>&jonyfs
+0	&nbsp;x&#x20;jonyfs
+0	&nbspjonyfs&commat;*aj&&#64
+0	*&amp;&commat;_&#00640jonyfs
+0	- &#106;&@.&#x40&#32jonyfs
+0	- &#64&#x20;jonyfs
+0	- &#8203;&#0064&#0064@jonyfs
+0	- &#8203;.4jonyfs
+0	- &#X0040;&#32;00&lt0jonyfs
+0	- &#x20;&#8203;<div>&#106&nbsp.&amp;jonyfs
+0	- &#x20;-&#106jonyfs&nbsp
+0	- &#x20;jonyfs<div>&#x6a;@&#32&#x6a;
+0	- &#x40&commat;&fjlig;jonyfs
+0	- &#x404*</b>&#106jonyfs
+0	- &#x40;- 6&#x6a;a&#x6a;jonyfs
+0	- &#x6a;-&amp;jonyfs
+0	- &#x6a;_x&#x20;j&#106;&nbsp;&amp;jonyfs
+0	- &&lt\n\n-&#64&ampjonyfs
+0	- &amp*&#106<b>&#64&#64;x1jonyfs
+0	- &amp6&#64;\n1</b>jonyfs
+0	- &amp;4_0jonyfs
+0	- &amp;</b>jonyfs
