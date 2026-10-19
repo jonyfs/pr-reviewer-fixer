@@ -17,6 +17,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   without `warning` read a warning-only BLOCKED as a BLOCKED with nothing blocking, and its fixer
   found no work.
 
+- `export-audit` writes `block_at` as the marker states it: `warning`, or `null` when the marker
+  names no setting.
+
 ### Changed
 
 - A 0.7.x gate does not parse a marker carrying `block_at=` and reports it absent (fail closed).

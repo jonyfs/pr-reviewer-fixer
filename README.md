@@ -406,7 +406,7 @@ does not rewrite the report, and it does not screen high-entropy strings, becaus
 always match. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
-publisher, timestamps, label events, model and tier) from the trusted marker and the pull
+publisher, timestamps, label events, model, tier and `block_at`) from the trusted marker and the pull
 request's own timeline, for a person to commit through a pull request. See
 [`docs/compliance-records/README.md`](docs/compliance-records/README.md) for what a record does and
 does not prove.

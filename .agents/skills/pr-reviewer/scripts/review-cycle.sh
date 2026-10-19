@@ -694,7 +694,10 @@ cmd_status() {
     echo "#$NUMBER head $short — $BLOCK_AT_MSG, got '$REVIEW_BLOCK_AT'. INCONCLUSIVE."
     return 2
   fi
-  if block_at_mismatch "${MARKER_BLOCK_AT:--}"; then
+  # Only a marker at the head is judged. One left behind by a push is history, and the review it
+  # calls for is owed (exit 1 below) whatever setting it was published under.
+  if block_at_mismatch "${MARKER_BLOCK_AT:--}" && [ -n "$MARKER_SHA" ] \
+     && [ "${HEAD:0:${#MARKER_SHA}}" = "$MARKER_SHA" ]; then
     echo "#$NUMBER head $short — the newest marker was published under REVIEW_BLOCK_AT=$MARKER_BLOCK_AT and this shell has ${REVIEW_BLOCK_AT:-critical}. INCONCLUSIVE."
     echo "  next: export REVIEW_BLOCK_AT=$MARKER_BLOCK_AT (and the repository variable of that name), then run status again"
     return 2
@@ -857,7 +860,7 @@ def num(v, d):
     return int(v) if isinstance(v, str) and re.fullmatch(r"[0-9]+", v) else d
 
 def fields(text):
-    return {m.group(1): m.group(2) for m in re.finditer(r"([a-z_]+)=([^ >]+)", text)}
+    return {m.group(1).lower(): m.group(2) for m in re.finditer(r"([A-Za-z_]+)=([^ >]+)", text)}
 
 block_warn = os.environ.get("BUDGET_BLOCK_AT") == "warning"
 data = json.load(sys.stdin)
@@ -1441,7 +1444,9 @@ rec = {
     "warning": int(m.group(5)) if m.group(5) else None,
     "note": int(m.group(6)) if m.group(6) else None,
     "model": m.group(7), "tier": m.group(8), "model_and_tier_self_attested": True,
-    "block_at": (m.group(9) or "critical").lower(),
+    # Only what the marker says. A marker without the field was published under the default by
+    # 0.8.0 or later, or by an older version under either setting, so absence is not "critical".
+    "block_at": m.group(9).lower() if m.group(9) else None,
     "publisher": (c.get("author") or {}).get("login"), "published_at": c.get("createdAt"),
     "marker_url": c.get("url"),
     "label_events": labels,

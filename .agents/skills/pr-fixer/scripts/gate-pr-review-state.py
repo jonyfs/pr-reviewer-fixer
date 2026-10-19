@@ -397,7 +397,8 @@ def main() -> int:
             # The setting the marker was published under, when it names one. Judged under another
             # setting it means something else, so the gate does not judge it at all.
             marker_block_at = (markers[-1][8] or "").lower()
-            if marker_block_at and marker_block_at != block_at:
+            at_head = head.startswith(sha) or sha.startswith(head[:len(sha)])
+            if marker_block_at and marker_block_at != block_at and at_head:
                 print(f"  ⚠️  the newest marker on #{number} was published under REVIEW_BLOCK_AT="
                       f"{marker_block_at} and the gate runs with {block_at} — gate INCONCLUSIVE. "
                       "Set the repository variable REVIEW_BLOCK_AT to the value the reviewer used")

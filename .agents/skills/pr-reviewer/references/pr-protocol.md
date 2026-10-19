@@ -288,6 +288,9 @@ the marker. They are optional and come as a pair; an older marker without them s
 readers that do not know them ignore them. **Both are self-attested by the publishing session and
 are not verified.** Only the sha, the counts, the publisher and the timestamps come from GitHub.
 
+Under `REVIEW_BLOCK_AT=warning`, `publish` also writes `block_at=warning`. The export records it as
+`block_at`, and as `null` when the marker names no setting.
+
 `review-cycle.sh export-audit <n> [--out <dir>]` writes `<dir>/<n>-<pass>.json` (default
 `docs/compliance-records/`) from the newest trusted marker and the PR's label events. It applies the
 trust rules above, lists markers by logins off the allowlist under `ignored`, refuses when no

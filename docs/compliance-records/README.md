@@ -12,6 +12,7 @@ person through a pull request. The file is named `<pr>-<pass>.json`.
 | `publisher`, `published_at`, `marker_url` | the marker comment | GitHub |
 | `label_events` | the pull request's labeled and unlabeled events, with actor and time | GitHub |
 | `model`, `tier` | the marker, passed by `publish --model --tier` | **Nobody.** Self-attested by the publishing session |
+| `block_at` | the marker: `warning` when it was published under `REVIEW_BLOCK_AT=warning`, `null` when it names no setting (the default since 0.8.0, or any marker from an older version) | GitHub |
 | `ignored` | markers by logins that are not in `REVIEW_MARKER_AUTHORS` | GitHub, listed and never used |
 | `comments_dropped_for_edits` | how many comments were removed because they were edited | GitHub |
 

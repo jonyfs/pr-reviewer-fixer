@@ -447,6 +447,18 @@ reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$WPA]" OPEN)"
 python3 -I "$GATE" 7 >"$W/gout" 2>&1; g0=$?
 REVIEW_BLOCK_AT=warning python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
 check "block_at=warning marker: gate under critical is inconclusive (2), under warning passes (0)" eval '[ $g0 = 2 ] && grep -q "published under REVIEW_BLOCK_AT=warning" "$W/gout" && [ $g1 = 0 ]'
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$WPA]" OPEN)"; withevents
+rm -rf "$EXPORT"; o1="$(REVIEW_BLOCK_AT=warning "$RC" export-audit 7 --out "$EXPORT" 2>/dev/null)"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
+rm -rf "$EXPORT-b"; o2="$("$RC" export-audit 7 --out "$EXPORT-b" 2>/dev/null)"
+check "export-audit records block_at from the marker, null when it names none" eval 'python3 -I -c "import json,sys;sys.exit(0 if json.load(open(sys.argv[1]))[\"block_at\"]==\"warning\" else 1)" "$o1" 2>/dev/null; a=$?; python3 -I -c "import json,sys;sys.exit(0 if json.load(open(sys.argv[1]))[\"block_at\"] is None else 1)" "$o2"; b=$?; [ $a = 0 ] && [ $b = 0 ]'
+WBU="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=0 warning=2 note=0 BLOCK_AT=WARNING -->")"
+reset "$(mk 7 $D '[{"name":"review:blocked"}]' "[$WBU]" OPEN)"
+b="$("$RC" budget 7 2>/dev/null)"
+check "block_at read without case by budget too: BLOCK_AT=WARNING under critical -> none" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "published under REVIEW_BLOCK_AT=warning"'
+reset "$(mk 7 $A '[{"name":"review:pending"}]' "[$WBA]" OPEN)"
+"$RC" status 7 >/dev/null 2>&1; r0=$?
+check "block_at mismatch on a marker the head left behind -> review owed (1), not inconclusive" eq "$r0" 1
 printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 1, note: 0}\nfindings:\n  - id: W1\n    severity: WARNING\n    file: src/a.ts\n    line: 11\n    claim: "x"\n```\n' >"$W/lw.md"
 printf 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -10,2 +10,3 @@\n x\n+y\n z\n' >"$W/lw.patch"
 "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r0=$?
