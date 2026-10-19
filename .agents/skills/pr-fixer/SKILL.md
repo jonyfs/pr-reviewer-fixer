@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: "0.7.1"
+  version: "0.8.0"
 ---
 
 # PR Fixer
@@ -113,7 +113,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    author in `REVIEW_MARKER_AUTHORS`. Parse its `findings` block (or extract id, severity,
    location, claim, fix from prose; say when you assigned a severity). Split into
    **blocking** (every CRITICAL, and every WARNING when `REVIEW_BLOCK_AT=warning`) and **declared debt**
-   (every other WARNING and NOTE). Classify the PR
+   (every other WARNING and NOTE). If the marker carries `block_at=warning`, run with
+   `REVIEW_BLOCK_AT=warning`; the scripts refuse to judge it under another setting. Classify the PR
    into lanes: finding, comment, conflict, check, approval.
    [references/lanes.md](references/lanes.md)
 5. **Resolve lanes.** Writing lanes run one at a time, conflict first (it rewrites history), then

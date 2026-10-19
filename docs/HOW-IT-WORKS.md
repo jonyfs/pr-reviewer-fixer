@@ -15,7 +15,8 @@ Three rules shape everything:
 
 - The one who fixes never judges the fix. A fresh reviewer re-checks it.
 - By default only a CRITICAL finding blocks a merge, and everything else is written down as debt with
-  an owner. With `REVIEW_BLOCK_AT=warning` a WARNING blocks as well, so the fixer corrects it.
+  an owner. With `REVIEW_BLOCK_AT=warning` a WARNING blocks as well, so the fixer corrects it. The
+  verdict records that setting, and a reader running with another one refuses to judge it.
 - A script, not a model, keeps the books. Labels, the verdict and the cycle count are written by
   `scripts/review-cycle.sh`, which refuses states that make no sense.
 

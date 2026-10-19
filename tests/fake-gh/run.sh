@@ -426,6 +426,27 @@ check "block-at with another value -> status and gate inconclusive (2)" eval '[ 
 REVIEW_BLOCK_AT=Warning "$RC" status 7 >/dev/null 2>&1; r3=$?
 REVIEW_BLOCK_AT=Warning python3 -I "$GATE" 7 >/dev/null 2>&1; g3=$?
 check "block-at read exactly: Warning is inconclusive (2) in status and in the gate alike" eval '[ $r3 = 2 ] && [ $g3 = 2 ]'
+# ---- block_at in the marker: a reader with another setting does not judge it ----------------------
+lastbody() { python3 -I -c "import json,sys;print(json.load(open(sys.argv[1]))[\"comments\"][-1][\"body\"])" "$FAKE_DIR/pr.json" | head -1; }
+r=$(REVIEW_BLOCK_AT=warning bp --verdict BLOCKED --critical 0 --warning 2)
+check "block-at warning: publish writes block_at=warning into the marker" eval '[ $r = 0 ] && lastbody | grep -q "note=0 block_at=warning -->"'
+r=$(bp --verdict PASSED --critical 0 --warning 2)
+check "default: publish writes no block_at, the marker older readers parse" eval '[ $r = 0 ] && lastbody | grep -q "note=0 -->"'
+o="$(printf '%s\n' "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=0 warning=2 note=0 model=m tier=deep block_at=warning -->" | env -u REVIEW_MARKER_AUTHORS "$RC" marker 2>/dev/null)"
+check "marker reads block_at as a seventh field, after model and tier" eq "$o" "$D BLOCKED 1 0 2 0 warning"
+WBA="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=0 warning=2 note=0 block_at=warning -->")"
+reset "$(mk 7 $D '[{"name":"review:blocked"}]' "[$WBA]" OPEN)"
+"$RC" status 7 >"$W/out" 2>&1; r0=$?
+REVIEW_BLOCK_AT=warning "$RC" status 7 >/dev/null 2>&1; r1=$?
+check "block_at=warning marker: status under critical is inconclusive (2), under warning owes the fix (1)" eval '[ $r0 = 2 ] && grep -q "published under REVIEW_BLOCK_AT=warning" "$W/out" && [ $r1 = 1 ]'
+b="$("$RC" budget 7 2>/dev/null)"
+b1="$(REVIEW_BLOCK_AT=warning "$RC" budget 7 2>/dev/null)"
+check "block_at=warning marker: budget under critical says none, under warning says fix" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "published under REVIEW_BLOCK_AT=warning" && printf "%s" "$b1" | grep -q "^B_NEXT=.\?fix"'
+WPA="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=PASSED pass=1 critical=0 warning=0 note=1 block_at=warning -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$WPA]" OPEN)"
+python3 -I "$GATE" 7 >"$W/gout" 2>&1; g0=$?
+REVIEW_BLOCK_AT=warning python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+check "block_at=warning marker: gate under critical is inconclusive (2), under warning passes (0)" eval '[ $g0 = 2 ] && grep -q "published under REVIEW_BLOCK_AT=warning" "$W/gout" && [ $g1 = 0 ]'
 printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 1, note: 0}\nfindings:\n  - id: W1\n    severity: WARNING\n    file: src/a.ts\n    line: 11\n    claim: "x"\n```\n' >"$W/lw.md"
 printf 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -10,2 +10,3 @@\n x\n+y\n z\n' >"$W/lw.patch"
 "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r0=$?

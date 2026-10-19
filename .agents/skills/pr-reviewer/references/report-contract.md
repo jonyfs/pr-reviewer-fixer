@@ -120,11 +120,13 @@ The block is the last thing in the report. Write a login you mention in prose as
 Published only through `scripts/review-cycle.sh publish`, which writes
 
 ```
-<!-- adversarial-review: sha=<40hex> verdict=PASSED|BLOCKED pass=<n> critical=<n> warning=<n> note=<n> [model=<id> tier=fast|standard|deep] -->
+<!-- adversarial-review: sha=<40hex> verdict=PASSED|BLOCKED pass=<n> critical=<n> warning=<n> note=<n> [model=<id> tier=fast|standard|deep] [block_at=warning] -->
 ```
 
 `model` and `tier` are optional, come as a pair, and are self-attested by the publishing session. A
-marker without them is still valid.
+marker without them is still valid. `block_at=warning` is written when the reviewer published under
+`REVIEW_BLOCK_AT=warning`, and left out under the default. A reader running with another setting
+does not judge such a marker ([pr-protocol.md](pr-protocol.md)).
 
 and moves the label (`review:passed` or `review:blocked`). The marker is the authority and the label
 is its projection. The marker string keeps its original prefix so existing gates still parse it.

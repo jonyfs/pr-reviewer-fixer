@@ -36,7 +36,10 @@ finding blocks the merge never ends. These skills are built around those two fai
    the fixer then corrects likely bugs before the merge instead of the team carrying them as debt.
    Each blocking WARNING must name a concrete failing input (`scenario:`), so style opinions stay
    notes. Use the same value in the shell that publishes and in the repository variable the
-   `review-gate` reads.
+   `review-gate` reads. The value is read exactly, in lower case: `Warning` makes `status` and the
+   gate inconclusive, so check the variable when you upgrade from 0.7.0. A verdict published under
+   `warning` records it in the marker (`block_at=warning`), and a shell or gate running with
+   another setting answers inconclusive instead of misreading it.
 3. Every finding is tested before it is fixed. The fixer must reproduce the problem, see a test
    fail, fix it, and see the test pass. A finding that does not reproduce is refused with evidence.
 4. The loop stops. After five automatic cycles the agent asks the person in the session whether

@@ -12,7 +12,7 @@ authority. The authority is a marker comment the reviewer posts, naming the head
 reviewed:
 
     <!-- adversarial-review: sha=<40 hex> verdict=PASSED|BLOCKED pass=<n>
-                             critical=<n> warning=<n> note=<n> -->
+                             critical=<n> warning=<n> note=<n> [block_at=warning] -->
 
 `review:passed` with no marker is a claim with no evidence. `review:passed` whose marker names a SHA
 that is no longer the head is the oldest green-that-proves-nothing there is: review passes, the
@@ -161,7 +161,8 @@ NEEDS_HUMAN = "review:needs-human"
 MARKER = re.compile(
     r"^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
     r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
-    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->",
+    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?"
+    r"(?:\s+block_at=(critical|warning))?\s*-->",
     re.I,
 )
 
@@ -389,10 +390,18 @@ def main() -> int:
                 "claim standing alone"
             )
         else:
-            # The last two groups are the optional, self-attested model and tier; the gate decides
-            # from the first six and never from them.
+            # Groups 7 and 8 are the optional, self-attested model and tier; the gate never decides
+            # from them. Group 9 is the optional `block_at`.
             sha, verdict, passes, criticals, warnings, _notes = markers[-1][:6]
             sha = sha.lower()
+            # The setting the marker was published under, when it names one. Judged under another
+            # setting it means something else, so the gate does not judge it at all.
+            marker_block_at = (markers[-1][8] or "").lower()
+            if marker_block_at and marker_block_at != block_at:
+                print(f"  ⚠️  the newest marker on #{number} was published under REVIEW_BLOCK_AT="
+                      f"{marker_block_at} and the gate runs with {block_at} — gate INCONCLUSIVE. "
+                      "Set the repository variable REVIEW_BLOCK_AT to the value the reviewer used")
+                return INCONCLUSIVE
             if verdict.upper() != "PASSED":
                 errors.append(
                     f"pull request #{number} is labelled `review:passed` and its latest marker "
