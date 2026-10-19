@@ -1,0 +1,1 @@
+Add scope-check.sh. It walks every commit in the push and fails when a commit touches a file outside the allowed folder.

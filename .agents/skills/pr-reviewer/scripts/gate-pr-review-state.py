@@ -229,6 +229,13 @@ def main() -> int:
         print("  ⚠️  REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be "
               "trusted — gate INCONCLUSIVE, which is not the same as approved")
         return INCONCLUSIVE
+    # What blocks is `REVIEW_BLOCK_AT`: `critical` (the default) or `warning`. The same setting must
+    # reach `review-cycle.sh publish`, or a verdict published under one would be judged by the other.
+    # Any other value is not guessed at, for the same reason an empty allowlist is not.
+    block_at = os.environ.get("REVIEW_BLOCK_AT", "").strip().lower() or "critical"
+    if block_at not in ("critical", "warning"):
+        print(f"  ⚠️  REVIEW_BLOCK_AT is {block_at!r}; it must be critical or warning — gate INCONCLUSIVE")
+        return INCONCLUSIVE
     # The pull request is read through pr-json.py, which drops every comment edited after creation
     # and fails closed when edits cannot be checked.
     out = pr_json(explicit)
@@ -382,7 +389,7 @@ def main() -> int:
         else:
             # The last two groups are the optional, self-attested model and tier; the gate decides
             # from the first six and never from them.
-            sha, verdict, passes, criticals, _warnings, _notes = markers[-1][:6]
+            sha, verdict, passes, criticals, warnings, _notes = markers[-1][:6]
             sha = sha.lower()
             if verdict.upper() != "PASSED":
                 errors.append(
@@ -411,11 +418,15 @@ def main() -> int:
             # `criticals` is None on a marker published before the counts existed, and None is not
             # zero: it says nobody counted, not that somebody counted nothing. Only a marker that
             # actually carries the number is checked against it.
-            elif criticals is not None and int(criticals) > 0:
+            elif criticals is not None and (
+                int(criticals) + (int(warnings or 0) if block_at == "warning" else 0)
+            ) > 0:
                 errors.append(
                     f"pull request #{number} is labelled `review:passed` and its marker says "
-                    f"`verdict=PASSED` while counting `critical={criticals}`. Only a CRITICAL "
-                    "blocks, so a passing verdict cannot carry one — the reviewer is disagreeing "
+                    f"`verdict=PASSED` while counting `critical={criticals} warning={warnings}`. "
+                    f"With REVIEW_BLOCK_AT={block_at} a "
+                    f"{'CRITICAL or WARNING' if block_at == 'warning' else 'CRITICAL'} blocks, so a "
+                    "passing verdict cannot carry one — the reviewer is disagreeing "
                     "with the arithmetic that produced its own verdict"
                 )
 

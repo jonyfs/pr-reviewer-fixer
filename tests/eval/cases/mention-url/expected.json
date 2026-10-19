@@ -1,0 +1,7 @@
+{
+  "description": "A URL such as https://github.com/@user/repo has an @ after a slash, which the lookbehind does not exclude, so the link gets backticks and breaks. The split on a single backtick also mis-pairs spans that cross a line.",
+  "defects": [
+    {"id": "D1", "file": "tools/mentions.py", "line": 11, "tolerance": 1, "min_severity": "WARNING", "note": "lookbehind lacks / and :, so an @ inside a URL is wrapped"}
+  ],
+  "decoys": []
+}

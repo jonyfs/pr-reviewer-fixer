@@ -30,9 +30,13 @@ finding blocks the merge never ends. These skills are built around those two fai
 
 1. The reviewer is separate from the fixer. The fixer runs in a fresh context and never judges
    its own work. The reviewer re-checks the correction.
-2. Only a CRITICAL blocks. A CRITICAL is data loss, a security breach, an outage, or a broken
-   invariant your project declares non-negotiable. Warnings and notes are recorded as debt with a
-   named owner and never hold the merge.
+2. By default only a CRITICAL blocks. A CRITICAL is data loss, a security breach, an outage, or a
+   broken invariant your project declares non-negotiable. Warnings and notes are recorded as debt with
+   a named owner and do not hold the merge. Set `REVIEW_BLOCK_AT=warning` and a WARNING blocks too:
+   the fixer then corrects likely bugs before the merge instead of the team carrying them as debt.
+   Each blocking WARNING must name a concrete failing input (`scenario:`), so style opinions stay
+   notes. Use the same value in the shell that publishes and in the repository variable the
+   `review-gate` reads.
 3. Every finding is tested before it is fixed. The fixer must reproduce the problem, see a test
    fail, fix it, and see the test pass. A finding that does not reproduce is refused with evidence.
 4. The loop stops. After five automatic cycles the agent asks the person in the session whether

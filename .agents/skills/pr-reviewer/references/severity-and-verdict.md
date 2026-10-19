@@ -38,8 +38,17 @@ style, and CRITICAL is the only thing that stops a merge.
 
 ## Verdict
 
-- **BLOCKED**: one or more CRITICAL. Nothing else blocks.
-- **PASSED**: zero CRITICAL. Warnings and notes are declared debt, each with a proposed owner.
+- **BLOCKED**: one or more CRITICAL. With `REVIEW_BLOCK_AT=warning`, one or more WARNING also blocks.
+  Nothing else does.
+- **PASSED**: zero blocking findings. With the default setting that is zero CRITICAL, and warnings
+  and notes are declared debt, each with a proposed owner. With `REVIEW_BLOCK_AT=warning` only notes
+  remain.
+
+`REVIEW_BLOCK_AT` is `critical` by default. A repository that wants likely bugs fixed before merge
+sets it to `warning` (the same value in the shell that publishes and in the repository variable the
+`review-gate` reads). A WARNING that blocks must give a `scenario:`: a concrete input or sequence
+that fails. If you cannot write one, it is a NOTE. This keeps the stricter setting from turning
+style opinions into blockers.
 
 There is no third verdict. A verdict with no state to project into is not a verdict. "No criticals
 but many warnings" is PASSED with `warning=N`.

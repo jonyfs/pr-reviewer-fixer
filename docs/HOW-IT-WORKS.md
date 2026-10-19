@@ -14,7 +14,8 @@ the other two and keeps count.
 Three rules shape everything:
 
 - The one who fixes never judges the fix. A fresh reviewer re-checks it.
-- Only a CRITICAL finding blocks a merge. Everything else is written down as debt with an owner.
+- By default only a CRITICAL finding blocks a merge, and everything else is written down as debt with
+  an owner. With `REVIEW_BLOCK_AT=warning` a WARNING blocks as well, so the fixer corrects it.
 - A script, not a model, keeps the books. Labels, the verdict and the cycle count are written by
   `scripts/review-cycle.sh`, which refuses states that make no sense.
 
@@ -157,11 +158,12 @@ flowchart TD
 
    | Severity | Meaning | Blocks? |
    |---|---|---|
-   | CRITICAL | Data loss, a security breach, a production outage, or a broken invariant the project calls non-negotiable | Yes, the only one |
-   | WARNING | A likely bug in an edge case, a performance or maintainability problem, missing tests for new logic | No |
+   | CRITICAL | Data loss, a security breach, a production outage, or a broken invariant the project calls non-negotiable | Yes |
+   | WARNING | A likely bug in an edge case, a performance or maintainability problem, missing tests for new logic | No by default. Yes with `REVIEW_BLOCK_AT=warning`, and it then needs a `scenario:` naming an input that fails |
    | NOTE | Style, a small improvement, a doc gap, a question | No |
 
-   The verdict is arithmetic: one or more CRITICAL means `BLOCKED`, otherwise `PASSED`. `PASSED` means
+   The verdict is arithmetic: one or more blocking findings (CRITICAL, plus WARNING when
+   `REVIEW_BLOCK_AT=warning`) means `BLOCKED`, otherwise `PASSED`. `PASSED` means
    nothing blocks, not that nothing was found. A finding raised from two or more stances goes up one
    level, but never past WARNING, because agreement is not consequence.
 7. **Report and lint.** The report ends with a fenced `findings` block, one entry per finding. Then

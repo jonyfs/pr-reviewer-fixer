@@ -1,0 +1,7 @@
+{
+  "description": "git show --name-only lists only the new path of a rename. Moving an out-of-scope file into the allowed folder in one commit hides the deleted source, so the check passes a change it should refuse.",
+  "defects": [
+    {"id": "D1", "file": "scripts/scope-check.sh", "line": 10, "tolerance": 1, "min_severity": "WARNING", "note": "rename detection hides the deleted source path; needs --no-renames"}
+  ],
+  "decoys": []
+}

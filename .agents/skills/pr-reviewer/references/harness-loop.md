@@ -45,6 +45,7 @@ review is owed. It is a convenience. The rule above is the portable trigger.
 
 ```bash
 export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"
+export REVIEW_BLOCK_AT=critical   # or warning: a WARNING then blocks too; match the repository variable
 .agents/skills/pr-reviewer/scripts/review-cycle.sh ensure-labels
 ```
 
@@ -79,7 +80,8 @@ A marker comment that was edited after it was created is ignored by all of them.
 6. **PASSED.** `review-cycle.sh publish` has already marked a draft pull request ready for review,
    so there is nothing to do for the draft flag. With warnings or notes, dispatch the fixer in
    debt-only mode once, so each item gets an owner in the `pr-debt` block. Then stop. Merging is the
-   person's decision.
+   person's decision. With `REVIEW_BLOCK_AT=warning` a WARNING is not debt: it blocks, `budget` says
+   `fix`, and the fixer works it like a CRITICAL. Only notes reach this step.
 
 Every pass and cycle number comes from `budget` (the `pass=` of the newest trusted marker), never
 from a counter the loop agent keeps in its head.

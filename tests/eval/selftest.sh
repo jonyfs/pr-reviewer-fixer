@@ -20,30 +20,38 @@ rep() {
     done
     echo '```'; } >"$W/$d/$c.md"
 }
+# The three real-bug cases: empty reports for every run except "perfect".
+rest() { rep "$1" mention-url; rep "$1" push-guard-rename; rep "$1" hunk-header; }
 sc() { python3 -I "$SC" --reports "$W/$1" "${@:2}"; }
 
 # perfect: every defect hit, nothing else.
 rep perfect sql-injection src/users.py:6:CRITICAL; rep perfect off-by-one src/page.js:3:WARNING; rep perfect clean-rename
+rep perfect mention-url tools/mentions.py:11:WARNING; rep perfect push-guard-rename scripts/scope-check.sh:10:WARNING; rep perfect hunk-header tools/anchors.py:9:WARNING
 check "perfect run -> recall 1, precision 1" eval 'sc perfect --json | jq -e ".recall == 1 and .precision == 1" >/dev/null'
 
 # missed: the SQL injection is not found; the off-by-one is.
 rep missed sql-injection; rep missed off-by-one src/page.js:4:WARNING; rep missed clean-rename
-check "a missed defect lowers recall and is named" eval '[ "$(sc missed --json | jq -r ".recall")" = "0.5" ] && sc missed | grep -q "D1"'
+rest missed
+check "a missed defect lowers recall and is named" eval '[ "$(sc missed --json | jq -r ".recall")" = "0.2" ] && sc missed | grep -q "D1"'
 
 # noisy: both defects hit, plus a CRITICAL on the decoy and a WARNING on the clean rename.
 rep noisy sql-injection src/users.py:6:CRITICAL src/users.py:12:CRITICAL; rep noisy off-by-one src/page.js:3:CRITICAL; rep noisy clean-rename src/util.ts:3:WARNING
+rest noisy
 check "false findings lower precision, decoy hits counted" eval '[ "$(sc noisy --json | jq -r ".precision")" = "0.5" ] && [ "$(sc noisy --json | jq -r ".total.decoy_hits")" = "2" ]'
 
 # severity floor: a NOTE on the right line is not a hit for a CRITICAL defect.
 rep floor sql-injection src/users.py:6:NOTE; rep floor off-by-one src/page.js:3:WARNING; rep floor clean-rename
+rest floor
 check "a NOTE does not meet min_severity CRITICAL" eval '[ "$(sc floor --json | jq -r ".cases[\"sql-injection\"].hit")" = "0" ]'
 
 # line tolerance: three lines away is a miss for tolerance 1.
 rep far sql-injection src/users.py:9:CRITICAL; rep far off-by-one src/page.js:3:WARNING; rep far clean-rename
+rest far
 check "outside the tolerance is a miss" eval '[ "$(sc far --json | jq -r ".cases[\"sql-injection\"].hit")" = "0" ]'
 
 # a closed finding is not counted.
 rep closed sql-injection src/users.py:6:CRITICAL:verified; rep closed off-by-one src/page.js:3:WARNING; rep closed clean-rename
+rest closed
 check "a verified (closed) finding is ignored" eval '[ "$(sc closed --json | jq -r ".cases[\"sql-injection\"].reported")" = "0" ]'
 
 # thresholds drive the exit code.

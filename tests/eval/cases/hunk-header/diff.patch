@@ -1,0 +1,16 @@
+diff --git a/tools/anchors.py b/tools/anchors.py
+new file mode 100644
+--- /dev/null
++++ b/tools/anchors.py
+@@ -0,0 +1,11 @@
++def new_side_ranges(diff_lines):
++    """Map each file to the line ranges its hunks add, from a unified diff."""
++    ranges, cur = {}, None
++    for ln in diff_lines:
++        if ln.startswith("+++ "):
++            cur = ln[4:].strip().removeprefix("b/")
++            ranges.setdefault(cur, [])
++        elif ln.startswith("@@"):
++            start, n = ln.split("+")[1].split(" ")[0].split(",")
++            ranges[cur].append((int(start), int(start) + int(n) - 1))
++    return ranges

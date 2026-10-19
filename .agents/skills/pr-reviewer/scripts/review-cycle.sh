@@ -74,6 +74,9 @@
 #     stale [pr]           a marker-backed state whose head moved goes back to review:pending
 #     marker [file] [--author <login>]
 #                          reads one marker from a file or stdin
+#     REVIEW_BLOCK_AT=critical|warning (default critical) decides which findings block: `publish`
+#     refuses a PASSED that counts a blocking finding and a BLOCKED that counts none, `budget` tracks
+#     blocking findings per pass, and `status`, `budget` and the gate refuse any other value.
 #     publish [pr] --verdict PASSED|BLOCKED --pass <n> --sha <40hex> --report <file>
 #             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
 #                          posts the marker comment, then moves the label. On PASSED, a draft
@@ -349,6 +352,22 @@ marker_authors_ready() {
   return 1
 }
 NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
+# **What blocks is a setting, not a constant.** `REVIEW_BLOCK_AT=critical` (the default) means only a
+# CRITICAL blocks, as before. `REVIEW_BLOCK_AT=warning` means a WARNING blocks too, so a verdict
+# with `warning>0` is BLOCKED and the fixer runs on it instead of the finding being declared as
+# debt. The marker carries the same three counts either way; only the arithmetic over them moves,
+# and every reader (this script, the gate) applies the same one. Any other value is refused rather
+# than guessed, because guessing "critical" would quietly turn the stricter setting off.
+block_at_ready() { case "${REVIEW_BLOCK_AT:-critical}" in critical|warning) return 0 ;; *) return 1 ;; esac; }
+BLOCK_AT_MSG='REVIEW_BLOCK_AT must be critical or warning'
+# critical warning -> how many findings block under the current setting ("-" counts as 0).
+blocking_count() {
+  local c="${1:-0}" w="${2:-0}"
+  case "$c" in ''|-|*[!0-9]*) c=0 ;; esac
+  case "$w" in ''|-|*[!0-9]*) w=0 ;; esac
+  if [ "${REVIEW_BLOCK_AT:-critical}" = warning ]; then echo $((c + w)); else echo "$c"; fi
+}
+blocker_word() { if [ "${REVIEW_BLOCK_AT:-critical}" = warning ]; then echo "CRITICAL or WARNING"; else echo "CRITICAL"; fi; }
 marker_author_allowed() {
   local want entry list=()
   want="$(printf '%s' "${1:-}" | tr -d '[:space:]' | tr 'A-Z' 'a-z')"
@@ -658,10 +677,14 @@ cmd_status() {
   # is refused BEFORE the nothing-owed branch below. `PASSED` means nothing blocks, and a CRITICAL is
   # the only thing that blocks; the two statements cannot both be on the same line. Old markers carry
   # `-` here and skip the check entirely: they were written before anybody counted.
+  if ! block_at_ready; then
+    echo "#$NUMBER head $short — $BLOCK_AT_MSG, got '$REVIEW_BLOCK_AT'. INCONCLUSIVE."
+    return 2
+  fi
   if [ "$LABEL" = "review:passed" ] && [ "$MARKER_VERDICT" = "PASSED" ] \
-     && positivo "${MARKER_CRITICAL:-}"; then
-    echo "#$NUMBER head $short — the marker says PASSED and counts $MARKER_CRITICAL CRITICAL. Only a CRITICAL blocks, so a passing verdict cannot carry one."
-    echo "  next: /pr-fixer on the critical findings, then /pr-reviewer again"
+     && positivo "$(blocking_count "${MARKER_CRITICAL:-}" "${MARKER_WARNING:-}")"; then
+    echo "#$NUMBER head $short — the marker says PASSED and counts critical=$MARKER_CRITICAL warning=$MARKER_WARNING. With REVIEW_BLOCK_AT=${REVIEW_BLOCK_AT:-critical} a $(blocker_word) blocks, so a passing verdict cannot carry one."
+    echo "  next: /pr-fixer on the blocking findings, then /pr-reviewer again"
     return 1
   fi
 
@@ -804,7 +827,11 @@ cmd_budget() {
     printf "B_NEXT='none'\nB_WHY='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker is trusted and the budget is not read'\n"
     return 0
   fi
-  printf '%s' "$json" | BUDGET_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
+  if ! block_at_ready; then
+    printf "B_NEXT='none'\nB_WHY='%s, so the budget is not read'\n" "$BLOCK_AT_MSG"
+    return 0
+  fi
+  printf '%s' "$json" | BUDGET_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" BUDGET_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
     BUDGET_HARD="${MAX_REVIEW_CYCLES_HARD:-10}" python3 -I -c '
 import json, os, re, shlex, sys
 
@@ -814,6 +841,7 @@ def num(v, d):
 def fields(text):
     return {m.group(1): m.group(2) for m in re.finditer(r"([a-z_]+)=([^ >]+)", text)}
 
+block_warn = os.environ.get("BUDGET_BLOCK_AT") == "warning"
 data = json.load(sys.stdin)
 hard = min(max(num(os.environ["BUDGET_HARD"], 10), 1), 10)
 mx = min(max(num(os.environ["BUDGET_MAX"], 5), 1), hard)
@@ -832,7 +860,8 @@ for c in trusted:
     f = fields(m.group(1))
     if "pass" in f and "verdict" in f:
         verdicts.append({"sha": f["sha"], "verdict": f["verdict"].upper(), "pass": num(f["pass"], 0),
-                         "critical": num(f["critical"], 0) if "critical" in f else None})
+                         "critical": (num(f["critical"], 0) + (num(f.get("warning"), 0) if block_warn else 0))
+                                     if "critical" in f else None})
 at = next((v for v in reversed(verdicts) if head.startswith(v["sha"])), None)
 
 ext = []
@@ -1150,15 +1179,17 @@ cmd_publish() {
   # `BLOCK = 1+ CRITICAL` since its first version, and a measured cycle (many passes, dozens of
   # findings, zero approvals, zero criticals) blocked on every one of them anyway. A rule written
   # in prose and checked nowhere is a rule the next pass restates and breaks again.
-  [ "$verdict" = "BLOCKED" ] && [ "$crit" -eq 0 ] && \
-    die "review-cycle: REFUSED. BLOCKED needs at least one CRITICAL, and this marker counts none.
-   A CRITICAL is data loss, a security hole, a production outage, or a broken invariant the project
-   declares non-negotiable (for example in its constitution, CLAUDE.md or AGENTS.md). Warnings and
-   notes are DEBT: publish PASSED with the counts, and declare them in the pull request with an
-   owner."
-  [ "$verdict" = "PASSED" ] && [ "$crit" -gt 0 ] && \
-    die "review-cycle: REFUSED. PASSED cannot carry a CRITICAL, and this marker counts $crit.
-   Only a CRITICAL blocks, so a passing verdict beside one is the verdict contradicting the
+  block_at_ready || die "review-cycle: REFUSED. $BLOCK_AT_MSG, got '$REVIEW_BLOCK_AT'"
+  local blk; blk="$(blocking_count "$crit" "$warn")"
+  [ "$verdict" = "BLOCKED" ] && [ "$blk" -eq 0 ] && \
+    die "review-cycle: REFUSED. BLOCKED needs at least one $(blocker_word), and this marker counts none.
+   With REVIEW_BLOCK_AT=${REVIEW_BLOCK_AT:-critical}, a CRITICAL is data loss, a security hole, a production outage, or a
+   broken invariant the project declares non-negotiable (for example in its constitution, CLAUDE.md
+   or AGENTS.md)$([ "${REVIEW_BLOCK_AT:-critical}" = warning ] && printf ', and a WARNING is a likely bug with a concrete failing input')
+   Everything else is a NOTE or declared debt with an owner: publish PASSED with the counts."
+  [ "$verdict" = "PASSED" ] && [ "$blk" -gt 0 ] && \
+    die "review-cycle: REFUSED. PASSED cannot carry a blocking finding, and this marker counts $blk (critical=$crit warning=$warn, REVIEW_BLOCK_AT=${REVIEW_BLOCK_AT:-critical}).
+   Only a $(blocker_word) blocks, so a passing verdict beside one is the verdict contradicting the
    arithmetic that produced it. Close them with /pr-fixer and review the correction."
 
   marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
@@ -1429,7 +1460,7 @@ cmd_lint_report() {
     echo "  - the report looks like it contains a secret ($leaked); replace the value with [REDACTED]"
     return 1
   fi
-  X_REPORT="$report" X_DIFF="$diff" python3 -I - <<'PY'
+  X_REPORT="$report" X_DIFF="$diff" X_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" python3 -I - <<'PY'
 import os, re, sys
 
 report = open(os.environ["X_REPORT"], encoding="utf-8", errors="replace").read()
@@ -1484,7 +1515,7 @@ for ln in block.splitlines():
         e = {"id": s.group(1).strip("\"'")}
         entries.append(e)
         continue
-    kv = re.match(r"^\s{2,}(file|line|severity|status):\s*(.*?)\s*$", ln)
+    kv = re.match(r"^\s{2,}(file|line|severity|status|scenario):\s*(.*?)\s*$", ln)
     if kv and e is not None:
         e[kv.group(1)] = kv.group(2).strip("\"'")
 
@@ -1494,6 +1525,9 @@ for f in entries:
     path, line = f.get("file"), f.get("line")
     if (f.get("status") or "open") in ("not-applicable",):
         continue
+    if (os.environ.get("X_BLOCK_AT") == "warning" and f.get("severity", "").upper() == "WARNING"
+            and (f.get("status") or "open") in ("open", "refused-rejected") and not f.get("scenario")):
+        problems.append("%s: a WARNING blocks under REVIEW_BLOCK_AT=warning, so it needs a `scenario:` with a concrete failing input; without one it is a NOTE" % fid)
     if not path:
         problems.append("%s: no file named, so it cannot be checked against the diff" % fid)
         continue

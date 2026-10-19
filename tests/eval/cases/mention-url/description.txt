@@ -1,0 +1,1 @@
+Add wrap_mentions for review reports. Mentions inside code spans are left alone. Text such as a URL or an email must come out unchanged.
