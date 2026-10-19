@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: "0.7.0"
+  version: "0.7.1"
 ---
 
 # PR Fixer
@@ -67,7 +67,7 @@ independent report is the author reviewing themselves, which is what the pair ex
 10. **Bounded autonomy**: `max_review_cycles` (5) automatic cycles, then the review loop agent asks
     a person in the session, then halts on `stop` or no answer. `max_review_cycles_hard` (10) is
     never passed. No provider API key is used anywhere.
-11. **Never settle your own refusal**: a refused CRITICAL goes into the closure comment with its
+11. **Never settle your own refusal**: a refused blocking finding goes into the closure comment with its
     evidence and stays a claim until the reviewer's next pass accepts or rejects it.
 12. **`human_blocking` is about people**: a person's blocking comment or change request. The
     automatic reviewer never requests changes; its verdict is the marker.
@@ -153,10 +153,10 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    finish message; there is no separate one. Reply `Closed in <sha7> (C1)` on threads where
    `gh api` is available. Format and commands:
    [references/pr-protocol.md](references/pr-protocol.md). Hand to the reviewer's next pass, which
-   judges every refusal. Only a new CRITICAL or a rejected refusal restarts the cycle.
+   judges every refusal. Only a new blocking finding or a rejected refusal restarts the cycle.
    **After `max_review_cycles` (5) without converging, ask, then halt.** The next cycle does not
    start: `scripts/review-cycle.sh budget` says `ask`, and the review loop agent asks the person
-   in the session with the open CRITICALs, the open count per pass, a suggestion and the choices
+   in the session with the open blocking findings, the open count per pass, a suggestion and the choices
    `continue N` or `stop`. `continue N` is `review-cycle.sh extend`; `stop` or no answer is
    `review-cycle.sh halt`. You do not ask and you do not halt: you close the cycle you were
    dispatched for and stop. Rules: [references/pr-protocol.md](references/pr-protocol.md),
@@ -171,10 +171,10 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
 - [ ] `review-cycle.sh fix` ran before any file was opened for writing
 - [ ] Acted only after the review closed at the current head
 - [ ] Ingested only the `findings` block of a trusted verdict comment at the head
-- [ ] Each CRITICAL reproduced before the fix, or refused with evidence of non-reproduction, and no
+- [ ] Each blocking finding reproduced before the fix, or refused with evidence of non-reproduction, and no
       refusal marked settled
-- [ ] Each CRITICAL fix has a red recorded, then a green, then the whole suite
-- [ ] Every WARNING and NOTE is fixed or declared with a named owner in the `pr-debt` block
+- [ ] Each blocking finding's fix has a red recorded, then a green, then the whole suite
+- [ ] Every non-blocking WARNING and every NOTE is fixed or declared with a named owner in the `pr-debt` block
 - [ ] Exactly one closure comment for this cycle, with the `pr-fixer-closure` marker
 - [ ] No push to a protected branch, no bypassed check, no force-push, no external commit overwritten
 - [ ] Remote head re-verified before each push; each push preceded by a verification result and by

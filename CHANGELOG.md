@@ -4,6 +4,26 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.1
+
+### Fixed
+
+- A blocking WARNING can now finish a loop. With `REVIEW_BLOCK_AT=warning`, pass 2 marks a WARNING
+  `verified`, `refused-accepted` or `refused-rejected`, the same end states a CRITICAL has
+  (`report-contract.md`, the reviewer's step 9 and the refusal tables). Before, a WARNING could only
+  be `open` or `not-applicable`, so a fixed one stayed counted until the budget ran out.
+- Prose both skills read at run time no longer says only a CRITICAL blocks when the setting says
+  otherwise: the reviewer's `SKILL.md`, `severity-and-verdict.md`, `targets-and-context.md`,
+  `operating-principles.md` and `workflow-and-gh.md`, the fixer's `lanes.md`,
+  `operating-principles.md` and `falsify-and-prove.md`, the gate docstring and `docs/HOW-IT-WORKS.md`.
+- The fixer's `SKILL.md` and `trigger-and-handoff.md`, both copies of `harness-loop.md` and
+  `pr-protocol.md`, and the README and `HOW-IT-WORKS.md` budget text speak of blocking findings, not
+  only CRITICALs: a new blocking finding restarts a cycle, the fixer proves each one red then green,
+  and the question at the end of the budget lists the open blocking findings.
+- The gate reads `REVIEW_BLOCK_AT` exactly, as `review-cycle.sh` does. A value such as `Warning` was
+  accepted by the gate and refused by the script; both now answer inconclusive.
+- The `mention-url` eval case names line 10, where the faulty lookbehind is, not line 11.
+
 ## 0.7.0
 
 ### Added

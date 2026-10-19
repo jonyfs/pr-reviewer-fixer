@@ -28,7 +28,8 @@ siblings is not a marker carrying partial information, it is not a marker.
 WHAT THE COUNTS BUY, beyond being readable. `review:passed` means **nothing blocks**, not "nothing
 was found": the warnings and notes beside it are declared debt. What this gate can therefore check,
 and does, is the one contradiction the format makes visible: a marker saying `verdict=PASSED` while
-counting a CRITICAL. Only a CRITICAL blocks, so a passing verdict cannot carry one; that is the
+counting a blocking finding. A CRITICAL always blocks, and a WARNING blocks when
+`REVIEW_BLOCK_AT=warning`, so a passing verdict cannot carry one; that is the
 reviewer disagreeing with its own arithmetic, the same family as the label disagreeing with the
 verdict, one level down. It still does not read the findings, and still cannot tell a truthful count
 from an invented one.
@@ -231,8 +232,9 @@ def main() -> int:
         return INCONCLUSIVE
     # What blocks is `REVIEW_BLOCK_AT`: `critical` (the default) or `warning`. The same setting must
     # reach `review-cycle.sh publish`, or a verdict published under one would be judged by the other.
-    # Any other value is not guessed at, for the same reason an empty allowlist is not.
-    block_at = os.environ.get("REVIEW_BLOCK_AT", "").strip().lower() or "critical"
+    # Any other value is not guessed at, for the same reason an empty allowlist is not. The value is
+    # read exactly, as review-cycle.sh reads it: `Warning` is refused by both, never accepted by one.
+    block_at = os.environ.get("REVIEW_BLOCK_AT") or "critical"
     if block_at not in ("critical", "warning"):
         print(f"  ⚠️  REVIEW_BLOCK_AT is {block_at!r}; it must be critical or warning — gate INCONCLUSIVE")
         return INCONCLUSIVE

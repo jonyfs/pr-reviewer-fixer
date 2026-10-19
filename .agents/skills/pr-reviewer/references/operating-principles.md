@@ -14,12 +14,13 @@ document behind it.
    change that cannot be wrong in a way a reviewer could see (a typo in prose, a version number),
    and the exemption is stated in the pull request, not assumed.
 2. **Finding and barring are different acts.** Every persona or stance still reports something,
-   but only a CRITICAL blocks. Warnings and notes are declared debt with a named owner; debt that
-   names nobody is dropped, not declared.
+   but only a blocking finding holds the merge: a CRITICAL, and a WARNING when
+   `REVIEW_BLOCK_AT=warning`. Other warnings and notes are declared debt with a named owner; debt
+   that names nobody is dropped, not declared.
 3. **Promotion stops below CRITICAL.** Agreement between stances measures how visible a thing is,
    not what it costs.
 4. **The acceptance list is fixed at pass 1.** From pass 2 the reviewer checks whether those
-   conditions closed and whether a new CRITICAL appeared. Only the owner amends the list, in
+   conditions closed and whether a new blocking finding appeared. Only the owner amends the list, in
    writing. A reviewer that extends its own bar has removed the only thing that lets the loop end.
 5. **The reviewer gets the strongest tier available.** Seeing a defect the author did not see is
    the expensive half of the loop. A cheap reviewer returns eloquent findings instead of true
@@ -51,7 +52,7 @@ document behind it.
 15. **Say which pull request and which head.** A report that cannot be tied to a commit is a
     review of something, and nobody can tell what.
 16. **`max_review_cycles` then ask, then halt.** After the automatic cycles (5) without
-    converging, the loop asks a person once, with the open CRITICAL list and the count per pass,
+    converging, the loop asks a person once, with the open blocking findings and the count per pass,
     instead of starting the next cycle. Stop or silence halts it; `max_review_cycles_hard` (10) is
     never passed. The ask and the halt always notify.
 17. **Decisions have owners.** A finding that needs a product, architecture or contract decision

@@ -9,8 +9,8 @@ Tags: [#pr #review #severity #verdict #reference]
 
 | Severity | Definition | Effect |
 |---|---|---|
-| **CRITICAL** | Will cause data loss, a security breach, or a production outage, or breaks an invariant the host project declares non-negotiable | Blocks the merge. The only severity that does |
-| **WARNING** | Likely to cause a bug in an edge case, degrade performance, or confuse a maintainer. Includes missing tests for new logic | Does not block. Fix now, or declare as debt with a named owner |
+| **CRITICAL** | Will cause data loss, a security breach, or a production outage, or breaks an invariant the host project declares non-negotiable | Blocks the merge, under either setting |
+| **WARNING** | Likely to cause a bug in an edge case, degrade performance, or confuse a maintainer. Includes missing tests for new logic | Blocks when `REVIEW_BLOCK_AT=warning`. Otherwise fix now, or declare as debt with a named owner |
 | **NOTE** | Style, minor improvement, documentation gap, question, praise | Does not block. Author's discretion, recorded as debt |
 
 ### Project invariants are read, not assumed
@@ -68,11 +68,12 @@ it. The marker is the verdict; the label and the required status check are its e
 Never approve over a failing required check without an explicit stated reason. A prior CRITICAL
 that is still open keeps the verdict at BLOCKED.
 
-## A CRITICAL the fixer refused
+## A blocking finding the fixer refused
 
-The fixer may refuse a CRITICAL that does not reproduce, with the evidence written in its closure
+A blocking finding is every CRITICAL, and every WARNING when `REVIEW_BLOCK_AT=warning`. The fixer
+may refuse one that does not reproduce, with the evidence written in its closure
 comment. The refusal is a claim, and the reviewer judges it on the next pass, at the deep tier.
-Each pass-1 CRITICAL ends pass 2 in exactly one state:
+Each earlier blocking finding ends the next pass in exactly one state:
 
 | State | Status in the findings block | Condition | Counts |
 |---|---|---|---|
@@ -80,7 +81,7 @@ Each pass-1 CRITICAL ends pass 2 in exactly one state:
 | Refusal accepted | `refused-accepted` | The non-reproduction evidence holds when the reviewer runs it | Withdrawn. The reason is recorded in the report. Counts drop by one |
 | Refusal rejected | `refused-rejected` | The evidence does not hold, or tested the wrong form | Still counted. The verdict stays BLOCKED |
 
-A CRITICAL that the fixer neither closed nor refused stays `open` and counted. The fixer never
+A blocking finding that the fixer neither closed nor refused stays `open` and counted. The fixer never
 decides whether its own refusal stands, and a cheaper tier never decides it either.
 
 ## Conventional Comments

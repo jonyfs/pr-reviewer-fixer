@@ -197,7 +197,7 @@ python3 <skill folder>/scripts/pr-json.py <n> \
   or it went up), suggest 0: stop, and a person decides. The suggestion never passes the hard
   ceiling.
 - **The question** is asked in the session through the harness's question tool, listing the open
-  CRITICAL ids and claims, `B_PROGRESS`, the suggestion and the choices `continue N` or `stop`.
+  blocking finding ids and claims, `B_PROGRESS`, the suggestion and the choices `continue N` or `stop`.
   `continue N` runs `review-cycle.sh extend <n> --n N`. `stop`, or no answer in a headless session,
   runs `review-cycle.sh halt <n> --reason stop|no-answer`. The last BLOCKED publish already set
   `review:blocked`; `halt` only adds `review:needs-human`.

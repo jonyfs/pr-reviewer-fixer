@@ -67,7 +67,7 @@ user or read project settings when unset, and fall back to the safe default.
 | `ci_triage` | Where to send failing checks that are outside this PR's scope (skill/command/human) | human |
 | `delete_branch_on_merge` | Clean up head branch after merge | `true` |
 | `max_cycles` | Loop iterations per fixer pass | `5` |
-| `max_review_cycles` | Automatic review-fix-review cycles. When they are spent with a CRITICAL still open, the loop agent asks the person in the session instead of starting the next cycle (environment variable `MAX_REVIEW_CYCLES`) | `5` |
+| `max_review_cycles` | Automatic review-fix-review cycles. When they are spent with a blocking finding still open, the loop agent asks the person in the session instead of starting the next cycle (environment variable `MAX_REVIEW_CYCLES`) | `5` |
 | `block_at` | What blocks a merge: `critical` (only a CRITICAL) or `warning` (a WARNING too, each with a `scenario:`). Read by `publish`, `budget`, `status` and the gate (environment variable and repository variable `REVIEW_BLOCK_AT`) | `critical` |
 | `max_review_cycles_hard` | Absolute ceiling on cycles. No answer can pass it; reaching it halts with `reason=ceiling` (`MAX_REVIEW_CYCLES_HARD`, clamped to 10) | `10` |
 | `max_conflict_files` | Conflicted files above which the conflict lane escalates instead of resolving ([conflicts.md](conflicts.md); `MAX_CONFLICT_FILES`) | `15` |

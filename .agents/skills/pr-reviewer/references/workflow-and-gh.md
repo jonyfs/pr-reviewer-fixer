@@ -73,8 +73,8 @@ fixes.
 
 | Verdict | Automatic run | Invoked by a person | When |
 |---------|---------------|---------------------|------|
-| **PASSED** | Marker comment only | Marker comment, plus `--approve` if the invoker is not the author | Zero CRITICAL. Warnings and notes are declared debt |
-| **BLOCKED** | Marker comment only, never `--request-changes` | Marker comment, plus `--request-changes` if wanted | One or more CRITICAL, listed in the report |
+| **PASSED** | Marker comment only | Marker comment, plus `--approve` if the invoker is not the author | Zero blocking findings (no CRITICAL, and no WARNING under `REVIEW_BLOCK_AT=warning`). The rest is declared debt |
+| **BLOCKED** | Marker comment only, never `--request-changes` | Marker comment, plus `--request-changes` if wanted | One or more blocking findings, listed in the report |
 
 A later COMMENT review does not clear an earlier CHANGES_REQUESTED review from the same identity,
 so a bot change request would outlive the CRITICAL it named. In the automatic run, BLOCKED is

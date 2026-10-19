@@ -15,11 +15,12 @@ the previous lane left, not the state at dispatch time.
 
 ## Finding Lane
 
-Trigger: a `pr-reviewer` report at the current head with a CRITICAL, or WARNINGS the owner asked to
-close.
+Trigger: a `pr-reviewer` report at the current head with a blocking finding (a CRITICAL, or a
+WARNING when `REVIEW_BLOCK_AT=warning`), or WARNINGS the owner asked to close.
 
-1. Split into blocking (CRITICAL) and declared debt (WARNING, NOTE).
-2. Per CRITICAL, run [falsify-and-prove.md](falsify-and-prove.md): reproduce, threat-shaped test,
+1. Split into blocking (every CRITICAL, and every WARNING when `REVIEW_BLOCK_AT=warning`) and
+   declared debt (every other WARNING, and every NOTE).
+2. Per blocking finding, run [falsify-and-prove.md](falsify-and-prove.md): reproduce, threat-shaped test,
    red, minimal fix, green, whole suite. One finding, one commit.
 3. Refuse a finding that does not reproduce, with the evidence, in the closure comment. Never mark
    the refusal settled; the reviewer's next pass judges it.
@@ -27,8 +28,8 @@ close.
    (read-modify-write, [pr-protocol.md](pr-protocol.md)).
 5. Post one closure comment for the cycle.
 
-Guardrails: do not widen scope; do not fit the test to the code; a CRITICAL that cannot be tested
-goes back to the reviewer.
+Guardrails: do not widen scope; do not fit the test to the code; a blocking finding that cannot be
+tested goes back to the reviewer.
 
 ## Comment Lane
 

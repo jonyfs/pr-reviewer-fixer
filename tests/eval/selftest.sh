@@ -26,7 +26,7 @@ sc() { python3 -I "$SC" --reports "$W/$1" "${@:2}"; }
 
 # perfect: every defect hit, nothing else.
 rep perfect sql-injection src/users.py:6:CRITICAL; rep perfect off-by-one src/page.js:3:WARNING; rep perfect clean-rename
-rep perfect mention-url tools/mentions.py:11:WARNING; rep perfect push-guard-rename scripts/scope-check.sh:10:WARNING; rep perfect hunk-header tools/anchors.py:9:WARNING
+rep perfect mention-url tools/mentions.py:10:WARNING; rep perfect push-guard-rename scripts/scope-check.sh:10:WARNING; rep perfect hunk-header tools/anchors.py:9:WARNING
 check "perfect run -> recall 1, precision 1" eval 'sc perfect --json | jq -e ".recall == 1 and .precision == 1" >/dev/null'
 
 # missed: the SQL injection is not found; the off-by-one is.

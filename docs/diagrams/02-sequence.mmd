@@ -20,7 +20,7 @@ sequenceDiagram
         L->>R: Pass 2 on the new head
         R->>GH: Pass 2 verdict
     end
-    alt Budget spent, CRITICAL still open
+    alt Budget spent, blocking finding still open
         L->>P: Question in the session, with a suggestion
         P-->>L: continue N or stop
         L->>GH: Granted or halted marker

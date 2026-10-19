@@ -423,6 +423,9 @@ REVIEW_BLOCK_AT=nonsense "$RC" status 7 >/dev/null 2>&1; r2=$?
 REVIEW_BLOCK_AT=nonsense python3 -I "$GATE" 7 >/dev/null 2>&1; g2=$?
 check "PASSED with warnings: status and gate pass by default, fail under block-at warning" eval '[ $r0 = 0 ] && [ $g0 = 0 ] && [ $r1 = 1 ] && grep -q "a CRITICAL or WARNING blocks" "$W/out" && [ $g1 != 0 ] && grep -q "CRITICAL or WARNING" "$W/gout"'
 check "block-at with another value -> status and gate inconclusive (2)" eval '[ $r2 = 2 ] && [ $g2 = 2 ]'
+REVIEW_BLOCK_AT=Warning "$RC" status 7 >/dev/null 2>&1; r3=$?
+REVIEW_BLOCK_AT=Warning python3 -I "$GATE" 7 >/dev/null 2>&1; g3=$?
+check "block-at read exactly: Warning is inconclusive (2) in status and in the gate alike" eval '[ $r3 = 2 ] && [ $g3 = 2 ]'
 printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 1, note: 0}\nfindings:\n  - id: W1\n    severity: WARNING\n    file: src/a.ts\n    line: 11\n    claim: "x"\n```\n' >"$W/lw.md"
 printf 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -10,2 +10,3 @@\n x\n+y\n z\n' >"$W/lw.patch"
 "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r0=$?

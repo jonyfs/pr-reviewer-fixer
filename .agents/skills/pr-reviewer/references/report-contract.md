@@ -21,10 +21,11 @@ Tags: [#pr #review #contract #reference]
  Pass 2+: the same list, each item marked closed or open, never rewritten.>
 
 ### Critical findings
-<Only these block the merge. Each: id, location, dimension, stance, impact, failure scenario, fix.>
+<These always block the merge. Each: id, location, dimension, stance, impact, failure scenario, fix.>
 
 ### Warnings (declared debt)
-<Real, recorded, not blocking. Each carries a proposed owner.>
+<Real and recorded. Each carries a proposed owner. Not blocking by default; under
+ REVIEW_BLOCK_AT=warning each one blocks and carries a `scenario:`.>
 
 ### Notes (declared debt)
 
@@ -88,9 +89,10 @@ findings:
 ```
 ````
 
-On pass 2 and later every entry also carries `status`. For a CRITICAL it is one of `open`,
-`verified`, `refused-accepted`, `refused-rejected`, `not-applicable`; for a WARNING or NOTE it is
-`open` or `not-applicable`. An entry with no `status` is `open`. A pass-2 CRITICAL entry looks like:
+On pass 2 and later every entry also carries `status`. For a blocking entry (every CRITICAL, and every
+WARNING when `REVIEW_BLOCK_AT=warning`) it is one of `open`, `verified`, `refused-accepted`,
+`refused-rejected`, `not-applicable`; for any other WARNING and every NOTE it is `open` or
+`not-applicable`. An entry with no `status` is `open`. A pass-2 blocking entry looks like:
 
 ```yaml
   - id: C1
@@ -133,9 +135,9 @@ PR artifacts: [pr-protocol.md](pr-protocol.md).
 
 The verdict comment of the last pass does not change: it is an ordinary BLOCKED report with its
 marker and its `findings` block, and it stays the authority. The question to the person is asked
-in the session, not on the PR, with the open CRITICAL ids and one-line claims (from the `findings`
+in the session, not on the PR, with the open blocking finding ids and one-line claims (from the `findings`
 block of the verdict at the head), the open count per pass (`pass 1: 3, pass 2: 3, ..., pass 6:
-1`, from the `critical=` of each marker, printed by `review-cycle.sh budget`), the suggestion with
+1`, the blocking count of each marker, printed by `review-cycle.sh budget`), the suggestion with
 its reason, and the choices `continue N` or `stop`.
 
 The answer is one comment with its marker as the first line ([pr-protocol.md](pr-protocol.md)),

@@ -186,8 +186,9 @@ keep blocking after the problem was fixed. The marker comment is the verdict. Th
 ### Pass 2 and later
 
 A later pass checks two things only: whether the conditions fixed at pass 1 now hold, and whether a
-new CRITICAL appeared, including one the fix introduced. Each CRITICAL from the earlier pass ends in
-exactly one state:
+new blocking finding appeared, including one the fix introduced. Each blocking finding from the
+earlier pass (every CRITICAL, and every WARNING when `REVIEW_BLOCK_AT=warning`) ends in exactly one
+state:
 
 | State | When | Effect |
 |---|---|---|
@@ -206,7 +207,7 @@ flowchart TD
     B -->|No| Z([Stop: the loop agent asks the person])
     B -->|Yes| C[fix: refuse forks and<br/>non-collaborators, label review:fixing]
     C --> D[Load state and read the<br/>findings block]
-    D --> E[Split into blocking CRITICALs<br/>and declared debt]
+    D --> E[Split into blocking findings<br/>and declared debt]
     E --> F[Lanes, one writer at a time:<br/>conflict, finding, comment, check]
     F --> G[Write pr-debt with an owner<br/>for every warning and note]
     G --> H[Verify, then push-guard.sh]
@@ -267,8 +268,8 @@ no force-push over commits it did not write, no `git add -A`, and no unrelated c
 
 The loop runs up to five automatic cycles (`MAX_REVIEW_CYCLES`), with a hard ceiling of ten
 (`MAX_REVIEW_CYCLES_HARD`). The last cycle of each allowance (the fifth, and the last of every extension) sends a fixer one tier
-up, or with higher effort, once. If a CRITICAL is still open after five, `review-cycle.sh budget` says
-`ask` and the loop agent asks you in the session. It shows the open CRITICALs, how the open count
+up, or with higher effort, once. If a blocking finding is still open after five, `review-cycle.sh budget` says
+`ask` and the loop agent asks you in the session. It shows the open blocking findings, how the open count
 changed from pass to pass, and a suggestion. You answer `continue N` or `stop`. `continue N` is
 recorded by `review-cycle.sh extend`. `stop`, or no answer in a headless session, is recorded by
 `halt`, and the pull request stays `review:blocked` with `review:needs-human` until a person decides.
