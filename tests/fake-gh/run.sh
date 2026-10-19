@@ -458,7 +458,10 @@ b="$("$RC" budget 7 2>/dev/null)"
 check "block_at read without case by budget too: BLOCK_AT=WARNING under critical -> none" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "published under REVIEW_BLOCK_AT=warning"'
 reset "$(mk 7 $A '[{"name":"review:pending"}]' "[$WBA]" OPEN)"
 "$RC" status 7 >/dev/null 2>&1; r0=$?
+reset "$(mk 7 $A '[{"name":"review:passed"}]' "[$WPA]" OPEN)"
+python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
 check "block_at mismatch on a marker the head left behind -> review owed (1), not inconclusive" eq "$r0" 1
+check "gate: block_at mismatch on a marker the head left behind -> the stale pass fails (1), not inconclusive" eval '[ $g1 = 1 ] && grep -q "a push after the review invalidates the pass" "$W/gout"'
 printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 1, note: 0}\nfindings:\n  - id: W1\n    severity: WARNING\n    file: src/a.ts\n    line: 11\n    claim: "x"\n```\n' >"$W/lw.md"
 printf 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -10,2 +10,3 @@\n x\n+y\n z\n' >"$W/lw.patch"
 "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r0=$?

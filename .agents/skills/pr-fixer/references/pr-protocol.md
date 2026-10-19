@@ -61,9 +61,10 @@ and the gate alike:
    and a `BLOCKED` marker with `warning>=1` and no CRITICAL is valid. Any other value makes
    `publish` refuse, `budget` answer `none` and `status` and the gate answer inconclusive (exit 2).
    The value is read exactly: `Warning` or ` warning` is another value. Under `warning`, `publish`
-   writes `block_at=warning` into the marker. A marker that names a setting is judged only by a
-   reader with the same one; under any other, `status` and the gate answer inconclusive (exit 2)
-   and `budget` answers `none`, naming both values. A marker without the field is judged by the
+   writes `block_at=warning` into the marker. A marker at the head that names a setting is judged
+   only by a reader with the same one; under any other, `status` and the gate answer inconclusive
+   (exit 2) and `budget` answers `none`, naming both values. A marker the head has moved past is
+   history: a review is owed whatever it names. A marker without the field is judged by the
    reader's own setting.
 2. The comment was never edited after it was created. `gh pr view --json comments` carries no edit
    time, so `scripts/pr-json.py` asks GraphQL (`IssueComment.lastEditedAt`), pages through all

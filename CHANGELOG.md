@@ -12,8 +12,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `publish` appends `block_at=warning`; under the default it writes nothing new, so those markers
   are byte for byte what 0.7.x readers parse. `marker` prints the setting as a seventh field when
   the marker names one, and `export-audit` records `block_at` in the JSON.
-- A reader running with a different setting no longer misreads such a marker: `status` and the gate
-  answer inconclusive (exit 2) and `budget` answers `none`, each naming both values. Before, a shell
+- A reader running with a different setting no longer misreads such a marker at the head: `status`
+  and the gate answer inconclusive (exit 2) and `budget` answers `none`, each naming both values. Before, a shell
   without `warning` read a warning-only BLOCKED as a BLOCKED with nothing blocking, and its fixer
   found no work.
 
