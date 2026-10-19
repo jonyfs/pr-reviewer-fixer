@@ -37,10 +37,11 @@ false green, a merged-while-fixing pull request, or a loop that never ended.
 10. **The closure report is an artifact of the pull request.** Per finding: the reproduction, the
     test and the threat it reproduces, the red output verbatim, the fix, the green, the suite
     counts. A finding closed without that row is open.
-11. **Debt names an owner.** A WARNING or NOTE left open is written into the pull request body
+11. **Debt names an owner.** A non-blocking WARNING or a NOTE left open is written into the pull request body
     with a person, an issue or a feature. Unowned debt is dropped, not declared.
-12. **Only a new CRITICAL restarts the cycle.** A warning about a correction joins the debt, or
-    the correction of a finding is itself a finding and the loop cannot end.
+12. **Only a new blocking finding restarts the cycle.** That is a new CRITICAL, or a new WARNING
+    with a `scenario:` under `REVIEW_BLOCK_AT=warning`. Any other warning about a correction joins
+    the debt, or the correction of a finding is itself a finding and the loop cannot end.
 13. **`max_review_cycles` then ask, then halt.** After the automatic cycles (5) the review loop
     agent asks the person, in the session, one question with the open list and the history, and
     halts on stop or no answer. `max_review_cycles_hard` (10) is never passed. The ask and the halt

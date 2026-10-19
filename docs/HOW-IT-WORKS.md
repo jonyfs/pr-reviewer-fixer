@@ -186,8 +186,9 @@ keep blocking after the problem was fixed. The marker comment is the verdict. Th
 ### Pass 2 and later
 
 A later pass checks two things only: whether the conditions fixed at pass 1 now hold, and whether a
-new CRITICAL appeared, including one the fix introduced. Each CRITICAL from the earlier pass ends in
-exactly one state:
+new blocking finding appeared, including one the fix introduced. Each blocking finding from the
+earlier pass (every CRITICAL, and every WARNING when `REVIEW_BLOCK_AT=warning`) ends in exactly one
+state:
 
 | State | When | Effect |
 |---|---|---|
@@ -206,7 +207,7 @@ flowchart TD
     B -->|No| Z([Stop: the loop agent asks the person])
     B -->|Yes| C[fix: refuse forks and<br/>non-collaborators, label review:fixing]
     C --> D[Load state and read the<br/>findings block]
-    D --> E[Split into blocking CRITICALs<br/>and declared debt]
+    D --> E[Split into blocking findings<br/>and declared debt]
     E --> F[Lanes, one writer at a time:<br/>conflict, finding, comment, check]
     F --> G[Write pr-debt with an owner<br/>for every warning and note]
     G --> H[Verify, then push-guard.sh]

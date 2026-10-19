@@ -14,8 +14,9 @@ document behind it.
    change that cannot be wrong in a way a reviewer could see (a typo in prose, a version number),
    and the exemption is stated in the pull request, not assumed.
 2. **Finding and barring are different acts.** Every persona or stance still reports something,
-   but only a CRITICAL blocks. Warnings and notes are declared debt with a named owner; debt that
-   names nobody is dropped, not declared.
+   but only a blocking finding holds the merge: a CRITICAL, and a WARNING when
+   `REVIEW_BLOCK_AT=warning`. Other warnings and notes are declared debt with a named owner; debt
+   that names nobody is dropped, not declared.
 3. **Promotion stops below CRITICAL.** Agreement between stances measures how visible a thing is,
    not what it costs.
 4. **The acceptance list is fixed at pass 1.** From pass 2 the reviewer checks whether those

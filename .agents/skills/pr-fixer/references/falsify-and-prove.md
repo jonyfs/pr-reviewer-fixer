@@ -134,6 +134,6 @@ the last cycle of the budget), escalate, or hand off.>
 | Refusing silently | A finding that leaves the list with no line comes back as an incident |
 | Marking a refusal settled | Judging a refusal belongs to the reviewer's next pass, at the deep tier |
 | Fixing everything in one commit | Indivisible batches are not reviewable |
-| Holding a PR for a WARNING | Only a CRITICAL blocks |
+| Holding a PR for a WARNING under the default setting | Only a CRITICAL blocks, unless `REVIEW_BLOCK_AT=warning` |
 | Debt "declared" with no owner | Naming nobody is the same as dropping it |
 | Running in the context that implemented | That context would judge its own correction |

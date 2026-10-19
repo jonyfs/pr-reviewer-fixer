@@ -89,7 +89,8 @@ git diff <last_reviewed_sha>...HEAD      # the incremental delta
 2. Classify **every** prior finding as **verified** (closed, and you re-ran its red and green),
    **still open**, **refused-accepted**, **refused-rejected**, or **no longer applicable** (e.g. the
    region was deleted). See [severity-and-verdict.md](severity-and-verdict.md) for refusals.
-3. A prior CRITICAL that is still open keeps the verdict at BLOCKED, and must be named in the
-   summary. On pass 2 and later, only the acceptance conditions fixed at pass 1 and any new
-   CRITICAL are checked; other observations go to declared debt.
+3. A prior blocking finding (a CRITICAL, or a WARNING under `REVIEW_BLOCK_AT=warning`) that is
+   still open keeps the verdict at BLOCKED, and must be named in the summary. On pass 2 and later,
+   only the acceptance conditions fixed at pass 1 and any new blocking finding are checked; other
+   observations go to declared debt.
 4. Do not restate a finding the author already resolved.
