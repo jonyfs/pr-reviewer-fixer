@@ -4,6 +4,33 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.0
+
+### Added
+
+- The verdict marker records the setting it was published under. With `REVIEW_BLOCK_AT=warning`,
+  `publish` appends `block_at=warning`; under the default it writes nothing new, so those markers
+  are byte for byte what 0.7.x readers parse. `marker` prints the setting as a seventh field when
+  the marker names one, and `export-audit` records `block_at` in the JSON.
+- A reader running with a different setting no longer misreads such a marker at the head: `status`
+  and the gate answer inconclusive (exit 2) and `budget` answers `none`, each naming both values. Before, a shell
+  without `warning` read a warning-only BLOCKED as a BLOCKED with nothing blocking, and its fixer
+  found no work.
+
+- `export-audit` writes `block_at` as the marker states it: `warning`, or `null` when the marker
+  names no setting.
+
+### Changed
+
+- A 0.7.x gate does not parse a marker carrying `block_at=` and reports it absent (fail closed).
+  Update the gate scripts together with the skills before publishing under `warning`.
+
+### Fixed
+
+- The README says `REVIEW_BLOCK_AT` is read exactly, so a repository variable set to `Warning`
+  shows up as an inconclusive gate after upgrading from 0.7.0.
+- The `budget` header in `review-cycle.sh` says `ask` fires when a blocking finding is open.
+
 ## 0.7.1
 
 ### Fixed

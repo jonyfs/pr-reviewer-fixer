@@ -16,7 +16,7 @@ check with `cmp`.
 | Artifact | Writer | Reader | Marker or format | Locate with | Lifecycle |
 |---|---|---|---|---|---|
 | Labels | `scripts/review-cycle.sh` only, never by hand (table below) | Both skills, the `review-gate` check, people in the PR list | `review:pending`, `review:running`, `review:passed`, `review:blocked`, `review:fixing`, `review:needs-human` | `gh pr view <n> --json labels --jq '.labels[].name'` | Moves with every script call. Absence of any `review:*` label reads as "not reviewed" |
-| Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-- adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> [model=<id> tier=fast\|standard\|deep] -->`, then the report, ending with the fenced `findings` block | `scripts/pr-json.py <n>` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
+| Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-- adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> [model=<id> tier=fast\|standard\|deep] [block_at=warning] -->`, then the report, ending with the fenced `findings` block | `scripts/pr-json.py <n>` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
 | Inline review comments | `pr-reviewer`, only in a run a person invoked | `pr-fixer` comment lane | Body starts with the finding id in brackets: `[C1] <claim>` | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed by a thread reply, then resolved. The automatic run posts none |
 | Fixer closure comment | `pr-fixer`, once per cycle, as its finish message | `pr-reviewer` pass c+1 (Understand the change) | `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `scripts/pr-json.py <n>` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
 | Debt block | `pr-fixer` (Declare debt) | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-- pr-debt:start -->` and `<!-- pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
@@ -60,6 +60,12 @@ and the gate alike:
    It says which findings block: with `warning`, a marker carrying `warning>=1` cannot be `PASSED`
    and a `BLOCKED` marker with `warning>=1` and no CRITICAL is valid. Any other value makes
    `publish` refuse, `budget` answer `none` and `status` and the gate answer inconclusive (exit 2).
+   The value is read exactly: `Warning` or ` warning` is another value. Under `warning`, `publish`
+   writes `block_at=warning` into the marker. A marker at the head that names a setting is judged
+   only by a reader with the same one; under any other, `status` and the gate answer inconclusive
+   (exit 2) and `budget` answers `none`, naming both values. A marker the head has moved past is
+   history: a review is owed whatever it names. A marker without the field is judged by the
+   reader's own setting.
 2. The comment was never edited after it was created. `gh pr view --json comments` carries no edit
    time, so `scripts/pr-json.py` asks GraphQL (`IssueComment.lastEditedAt`), pages through all
    comments, drops every edited one, and fails closed when edits cannot be checked or a page is
@@ -282,6 +288,9 @@ hand.
 the marker. They are optional and come as a pair; an older marker without them stays valid and
 readers that do not know them ignore them. **Both are self-attested by the publishing session and
 are not verified.** Only the sha, the counts, the publisher and the timestamps come from GitHub.
+
+Under `REVIEW_BLOCK_AT=warning`, `publish` also writes `block_at=warning`. The export records it as
+`block_at`, and as `null` when the marker names no setting.
 
 `review-cycle.sh export-audit <n> [--out <dir>]` writes `<dir>/<n>-<pass>.json` (default
 `docs/compliance-records/`) from the newest trusted marker and the PR's label events. It applies the

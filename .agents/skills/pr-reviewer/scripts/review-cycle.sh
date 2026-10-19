@@ -77,6 +77,8 @@
 #     REVIEW_BLOCK_AT=critical|warning (default critical) decides which findings block: `publish`
 #     refuses a PASSED that counts a blocking finding and a BLOCKED that counts none, `budget` tracks
 #     blocking findings per pass, and `status`, `budget` and the gate refuse any other value.
+#     Under `warning`, `publish` also writes `block_at=warning` into the marker, and a reader whose
+#     own setting differs (`status`, `budget`, the gate) answers inconclusive instead of judging it.
 #     publish [pr] --verdict PASSED|BLOCKED --pass <n> --sha <40hex> --report <file>
 #             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
 #                          posts the marker comment, then moves the label. On PASSED, a draft
@@ -310,7 +312,7 @@ STATES_RE='review:(pending|running|fixing|blocked|passed)'
 # The shell reader. It had no caller at first, a third reader of the marker format that read
 # nothing, which is why no test could ever see it drift from the other two. `marker` is its
 # caller now, and a test can drive both forms through it.
-MARKER_RE='<!--[[:space:]]*adversarial-review:[[:space:]]*sha=([0-9a-f]{7,40})[[:space:]]+verdict=(PASSED|BLOCKED)[[:space:]]+pass=([0-9]+)([[:space:]]+critical=([0-9]+)[[:space:]]+warning=([0-9]+)[[:space:]]+note=([0-9]+))?([[:space:]]+model=([A-Za-z0-9._:-]+)[[:space:]]+tier=(fast|standard|deep))?[[:space:]]*-->'
+MARKER_RE='<!--[[:space:]]*adversarial-review:[[:space:]]*sha=([0-9a-f]{7,40})[[:space:]]+verdict=(PASSED|BLOCKED)[[:space:]]+pass=([0-9]+)([[:space:]]+critical=([0-9]+)[[:space:]]+warning=([0-9]+)[[:space:]]+note=([0-9]+))?([[:space:]]+model=([A-Za-z0-9._:-]+)[[:space:]]+tier=(fast|standard|deep))?([[:space:]]+block_at=(critical|warning))?[[:space:]]*-->'
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
@@ -360,6 +362,11 @@ NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker 
 # than guessed, because guessing "critical" would quietly turn the stricter setting off.
 block_at_ready() { case "${REVIEW_BLOCK_AT:-critical}" in critical|warning) return 0 ;; *) return 1 ;; esac; }
 BLOCK_AT_MSG='REVIEW_BLOCK_AT must be critical or warning'
+# A marker published under `warning` says so (`block_at=warning`). Read under `critical` it would
+# look like a BLOCKED with nothing blocking, and a fixer in that shell would find no work, so a
+# reader whose setting differs refuses to judge it. A marker naming no setting is judged by the
+# reader's own, as before: it was published under `critical`, or before the field existed.
+block_at_mismatch() { [ -n "${1:-}" ] && [ "$1" != - ] && [ "$1" != "${REVIEW_BLOCK_AT:-critical}" ]; }
 # critical warning -> how many findings block under the current setting ("-" counts as 0).
 blocking_count() {
   local c="${1:-0}" w="${2:-0}"
@@ -436,7 +443,7 @@ parse() {
   # before they get here; an empty list skips nothing.
   local m
   m=$(printf '%s' "$json" | REVIEW_MARKER_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
-    const re=/^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->/i;
+    const re=/^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?(?:\s+block_at=(critical|warning))?\s*-->/i;
     const env=process.env.REVIEW_MARKER_AUTHORS||"",active=/\S/.test(env);
     const allow=env.split(",").map(x=>x.replace(/\s+/g,"").toLowerCase()).filter(Boolean);
     let last=null,blocked="no";
@@ -449,9 +456,9 @@ parse() {
       const mm=re.exec(c.body||"");
       if(mm&&mm[2].toUpperCase()==="BLOCKED")blocked="yes";}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
-      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-"].join(" "):
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase()].join(" "):
       // No readable marker, but a BLOCKED one was seen (it may have been edited): keep the history.
-      (blocked==="yes"?["","","","-","-","-",blocked,"-","-"].join(" "):""))
+      (blocked==="yes"?["","","","-","-","-",blocked,"-","-","-"].join(" "):""))
   }catch(e){}})')
   MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
   MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
@@ -468,6 +475,8 @@ parse() {
   # Self-attested by the publishing session, never verified. `-` when the marker carries none.
   MARKER_MODEL=$(printf '%s' "$m" | cut -d' ' -f8)
   MARKER_TIER=$(printf '%s' "$m" | cut -d' ' -f9)
+  # The REVIEW_BLOCK_AT the marker was published under, `-` when it names none (critical, or older).
+  MARKER_BLOCK_AT=$(printf '%s' "$m" | cut -d' ' -f10)
 }
 
 # Reads ONE marker, through `MARKER_RE`, from a file or from stdin, and prints
@@ -513,11 +522,15 @@ cmd_marker() {
   local restaura; restaura="$(shopt -p nocasematch)"
   shopt -s nocasematch
   if [[ "$body" =~ ^[[:space:]]*$MARKER_RE ]]; then
-    printf '%s %s %s %s %s %s\n' \
+    printf '%s %s %s %s %s %s' \
       "$(printf '%s' "${BASH_REMATCH[1]}" | tr 'A-Z' 'a-z')" \
       "$(printf '%s' "${BASH_REMATCH[2]}" | tr 'a-z' 'A-Z')" \
       "${BASH_REMATCH[3]}" \
       "${BASH_REMATCH[5]:--}" "${BASH_REMATCH[6]:--}" "${BASH_REMATCH[7]:--}"
+    # A seventh field only when the marker names the setting it was published under, so the six
+    # fields an older marker prints stay exactly what they were.
+    [ -n "${BASH_REMATCH[12]:-}" ] && printf ' %s' "$(printf '%s' "${BASH_REMATCH[12]}" | tr 'A-Z' 'a-z')"
+    echo
     eval "$restaura"
     return 0
   fi
@@ -681,6 +694,14 @@ cmd_status() {
     echo "#$NUMBER head $short — $BLOCK_AT_MSG, got '$REVIEW_BLOCK_AT'. INCONCLUSIVE."
     return 2
   fi
+  # Only a marker at the head is judged. One left behind by a push is history, and the review it
+  # calls for is owed (exit 1 below) whatever setting it was published under.
+  if block_at_mismatch "${MARKER_BLOCK_AT:--}" && [ -n "$MARKER_SHA" ] \
+     && [ "${HEAD:0:${#MARKER_SHA}}" = "$MARKER_SHA" ]; then
+    echo "#$NUMBER head $short — the newest marker was published under REVIEW_BLOCK_AT=$MARKER_BLOCK_AT and this shell has ${REVIEW_BLOCK_AT:-critical}. INCONCLUSIVE."
+    echo "  next: export REVIEW_BLOCK_AT=$MARKER_BLOCK_AT (and the repository variable of that name), then run status again"
+    return 2
+  fi
   if [ "$LABEL" = "review:passed" ] && [ "$MARKER_VERDICT" = "PASSED" ] \
      && positivo "$(blocking_count "${MARKER_CRITICAL:-}" "${MARKER_WARNING:-}")"; then
     echo "#$NUMBER head $short — the marker says PASSED and counts critical=$MARKER_CRITICAL warning=$MARKER_WARNING. With REVIEW_BLOCK_AT=${REVIEW_BLOCK_AT:-critical} a $(blocker_word) blocks, so a passing verdict cannot carry one."
@@ -807,7 +828,7 @@ if last and last.get("state") == "halted" and last.get("reason") == os.environ["
 # line per field. `B_NEXT` is what the loop does now:
 #
 #     fix      cycle `B_PASS` of at most `B_ALLOWED`: dispatch the fixer
-#     ask      the automatic cycles are spent and a CRITICAL is open: ask a person (`extend` or halt)
+#     ask      the automatic cycles are spent and a blocking finding is open: ask a person (`extend` or halt)
 #     ceiling  the hard ceiling was reached: halt, no answer passes it
 #     none     nothing to do: no trusted verdict at the head, or the verdict there is not BLOCKED, or
 #              the ceiling halt is already posted
@@ -839,7 +860,7 @@ def num(v, d):
     return int(v) if isinstance(v, str) and re.fullmatch(r"[0-9]+", v) else d
 
 def fields(text):
-    return {m.group(1): m.group(2) for m in re.finditer(r"([a-z_]+)=([^ >]+)", text)}
+    return {m.group(1).lower(): m.group(2) for m in re.finditer(r"([A-Za-z_]+)=([^ >]+)", text)}
 
 block_warn = os.environ.get("BUDGET_BLOCK_AT") == "warning"
 data = json.load(sys.stdin)
@@ -854,12 +875,14 @@ verdicts = []
 for c in trusted:
     m = re.match(r"\s*<!--\s*adversarial-review:\s*(sha=[0-9a-f]{7,40}\s+verdict=(?:PASSED|BLOCKED)\s+pass=\d+"
                  r"(?:\s+critical=\d+\s+warning=\d+\s+note=\d+)?"
-                 r"(?:\s+model=[A-Za-z0-9._:-]+\s+tier=(?:fast|standard|deep))?)\s*-->", c.get("body") or "", re.I)
+                 r"(?:\s+model=[A-Za-z0-9._:-]+\s+tier=(?:fast|standard|deep))?"
+                 r"(?:\s+block_at=(?:critical|warning))?)\s*-->", c.get("body") or "", re.I)
     if not m:
         continue
     f = fields(m.group(1))
     if "pass" in f and "verdict" in f:
         verdicts.append({"sha": f["sha"], "verdict": f["verdict"].upper(), "pass": num(f["pass"], 0),
+                         "block_at": f.get("block_at", "").lower(),
                          "critical": (num(f["critical"], 0) + (num(f.get("warning"), 0) if block_warn else 0))
                                      if "critical" in f else None})
 at = next((v for v in reversed(verdicts) if head.startswith(v["sha"])), None)
@@ -889,8 +912,11 @@ else:
 
 done = 0 if at is None else at["pass"] - 1
 remaining = max(hard - done, 0)
+mine = os.environ.get("BUDGET_BLOCK_AT")
 if at is None:
     nxt, why = "none", "no trusted verdict marker at the head"
+elif at["block_at"] and at["block_at"] != mine:
+    nxt, why = "none", "the verdict at the head was published under REVIEW_BLOCK_AT=%s and this shell has %s; set the same value and read the budget again" % (at["block_at"], mine)
 elif at["verdict"] != "BLOCKED":
     nxt, why = "none", "verdict at the head is " + at["verdict"]
 elif done < allowed:
@@ -1271,9 +1297,13 @@ cmd_publish() {
     case "$tier" in fast|standard|deep) ;; *) die "review-cycle: --tier is one of fast, standard, deep" ;; esac
     model_part=" model=$model tier=$tier"
   fi
+  # The setting goes into the marker only when it is not the default, so a marker published under
+  # `critical` is byte for byte what older readers already parse.
+  local block_part=""
+  [ "${REVIEW_BLOCK_AT:-critical}" = warning ] && block_part=" block_at=warning"
   local marker_line body_bytes
-  marker_line="$(printf '<!-- adversarial-review: sha=%s verdict=%s pass=%s critical=%s warning=%s note=%s%s -->' \
-      "$HEAD" "$verdict" "$passno" "$crit" "$warn" "$note" "$model_part")"
+  marker_line="$(printf '<!-- adversarial-review: sha=%s verdict=%s pass=%s critical=%s warning=%s note=%s%s%s -->' \
+      "$HEAD" "$verdict" "$passno" "$crit" "$warn" "$note" "$model_part" "$block_part")"
   body_bytes=$(( $(printf '%s\n\n' "$marker_line" | wc -c) + $(wc -c <"$report") ))
   if [ "$body_bytes" -gt 60000 ]; then
     die "review-cycle: REFUSED. The marker plus the report is $body_bytes bytes, and the limit here is 60000.
@@ -1365,7 +1395,8 @@ import json, os, re, sys
 MARK = re.compile(
     r"^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
     r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
-    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?\s*-->", re.I)
+    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?"
+    r"(?:\s+block_at=(critical|warning))?\s*-->", re.I)
 
 def die(msg):
     print("review-cycle: REFUSED. " + msg, file=sys.stderr)
@@ -1413,6 +1444,9 @@ rec = {
     "warning": int(m.group(5)) if m.group(5) else None,
     "note": int(m.group(6)) if m.group(6) else None,
     "model": m.group(7), "tier": m.group(8), "model_and_tier_self_attested": True,
+    # Only what the marker says. A marker without the field was published under the default by
+    # 0.8.0 or later, or by an older version under either setting, so absence is not "critical".
+    "block_at": m.group(9).lower() if m.group(9) else None,
     "publisher": (c.get("author") or {}).get("login"), "published_at": c.get("createdAt"),
     "marker_url": c.get("url"),
     "label_events": labels,
