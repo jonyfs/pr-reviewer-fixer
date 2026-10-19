@@ -4,6 +4,20 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.2
+
+### Fixed
+
+- The comment above `block_at_mismatch` in `review-cycle.sh` says the function only compares the
+  settings and each caller applies it to a marker at the head, and names what each reader does
+  with a stale marker: `status` owes the review, the gate fails, `budget` says `none` (N1 and N3
+  of #17).
+
+### Added
+
+- A test row: `budget` on a `block_at=warning` marker the head left behind answers `none` for no
+  verdict at the head, not the mismatch (N2 of #17).
+
 ## 0.8.1
 
 ### Fixed
