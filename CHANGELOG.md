@@ -4,6 +4,15 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.1
+
+### Fixed
+
+- Two comments in `review-cycle.sh` now say that a reader with another `REVIEW_BLOCK_AT` refuses
+  to judge a `block_at=warning` marker only while that marker is at the head; a marker on an older
+  commit is stale and the review is due, as the code already did (N7 of #16). Comments only, no
+  behavior change.
+
 ## 0.8.0
 
 ### Added

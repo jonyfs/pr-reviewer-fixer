@@ -77,8 +77,9 @@
 #     REVIEW_BLOCK_AT=critical|warning (default critical) decides which findings block: `publish`
 #     refuses a PASSED that counts a blocking finding and a BLOCKED that counts none, `budget` tracks
 #     blocking findings per pass, and `status`, `budget` and the gate refuse any other value.
-#     Under `warning`, `publish` also writes `block_at=warning` into the marker, and a reader whose
-#     own setting differs (`status`, `budget`, the gate) answers inconclusive instead of judging it.
+#     Under `warning`, `publish` also writes `block_at=warning` into the marker, and while that
+#     marker is at the head a reader whose own setting differs (`status`, `budget`, the gate)
+#     answers inconclusive instead of judging it.
 #     publish [pr] --verdict PASSED|BLOCKED --pass <n> --sha <40hex> --report <file>
 #             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
 #                          posts the marker comment, then moves the label. On PASSED, a draft
@@ -363,9 +364,11 @@ NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker 
 block_at_ready() { case "${REVIEW_BLOCK_AT:-critical}" in critical|warning) return 0 ;; *) return 1 ;; esac; }
 BLOCK_AT_MSG='REVIEW_BLOCK_AT must be critical or warning'
 # A marker published under `warning` says so (`block_at=warning`). Read under `critical` it would
-# look like a BLOCKED with nothing blocking, and a fixer in that shell would find no work, so a
-# reader whose setting differs refuses to judge it. A marker naming no setting is judged by the
-# reader's own, as before: it was published under `critical`, or before the field existed.
+# look like a BLOCKED with nothing blocking, and a fixer in that shell would find no work, so
+# while the marker is at the head a reader whose setting differs refuses to judge it. A marker on
+# an older commit is stale under either setting, and the review is due. A marker naming no setting
+# is judged by the reader's own, as before: it was published under `critical`, or before the field
+# existed.
 block_at_mismatch() { [ -n "${1:-}" ] && [ "$1" != - ] && [ "$1" != "${REVIEW_BLOCK_AT:-critical}" ]; }
 # critical warning -> how many findings block under the current setting ("-" counts as 0).
 blocking_count() {
