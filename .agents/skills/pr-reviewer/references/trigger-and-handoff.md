@@ -18,7 +18,7 @@ PR opened / pushed to (by the session's agent) or a person asks
   -> BLOCKED?  yes -> pr-fixer cycle c = p
                        (review-cycle.sh fix, work lanes, push, one closure comment)
                        head moves -> label retired to review:pending
-                       -> pr-reviewer pass c+1 (conditions, prior CRITICALs, new CRITICAL only)
+                       -> pr-reviewer pass c+1 (conditions, prior and new blocking findings only)
                        -> still BLOCKED and budget left -> cycle c+1
   -> budget spent (cycle 5 by default) -> `budget` says ask -> the person is asked in the session
                        -> continue N -> `extend`, N more cycles
@@ -28,13 +28,14 @@ PR opened / pushed to (by the session's agent) or a person asks
 ```
 
 Termination: **`max_review_cycles` (5) automatic cycles, then ask, then halt.** After cycle 5 ends
-with a CRITICAL still open, the loop does not start cycle 6 and does not stop silently. The loop
-agent asks the person, in the session, with the open CRITICAL ids and claims, the open count per
+with a blocking finding still open, the loop does not start cycle 6 and does not stop silently. The loop
+agent asks the person, in the session, with the open blocking finding ids and claims, the open count per
 pass, a suggestion and the choices `continue N` or `stop`. `continue N` grants N more cycles; `stop`
 or no answer halts and the PR stays `review:blocked` with `review:needs-human`.
 `max_review_cycles_hard` (10) is an absolute ceiling that no answer passes. The cycle number is the
-`pass=` of the newest trusted marker, never a constant. Only a new CRITICAL restarts a cycle. A new
-WARNING or NOTE about a correction joins the debt. Automerge stays off unless the repository opted
+`pass=` of the newest trusted marker, never a constant. Only a new blocking finding (a CRITICAL, or a
+WARNING under `REVIEW_BLOCK_AT=warning`) restarts a cycle. Any other WARNING or NOTE about a
+correction joins the debt. Automerge stays off unless the repository opted
 in. Numbering, budget and suggestion rules: [pr-protocol.md](pr-protocol.md).
 
 ## Configuration
@@ -98,8 +99,8 @@ the command that finds it, and its lifecycle.
    moved past the marker), the `pr-debt` block, and one closure comment with the
    `pr-fixer-closure` marker as its finish message.
 4. The reviewer's next pass reads the pass-1 acceptance list from the pass-1 report and the closure
-   comment for the cycle, settles every prior CRITICAL (verified, refusal accepted, refusal
-   rejected), and checks for a new CRITICAL. It runs even when the head did not move.
+   comment for the cycle, settles every prior blocking finding (verified, refusal accepted,
+   refusal rejected), and checks for a new one. It runs even when the head did not move.
 
 "Review closure" in an automated loop means a published marker at the current head, not a human
 approval.

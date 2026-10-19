@@ -135,9 +135,9 @@ PR artifacts: [pr-protocol.md](pr-protocol.md).
 
 The verdict comment of the last pass does not change: it is an ordinary BLOCKED report with its
 marker and its `findings` block, and it stays the authority. The question to the person is asked
-in the session, not on the PR, with the open CRITICAL ids and one-line claims (from the `findings`
+in the session, not on the PR, with the open blocking finding ids and one-line claims (from the `findings`
 block of the verdict at the head), the open count per pass (`pass 1: 3, pass 2: 3, ..., pass 6:
-1`, from the `critical=` of each marker, printed by `review-cycle.sh budget`), the suggestion with
+1`, the blocking count of each marker, printed by `review-cycle.sh budget`), the suggestion with
 its reason, and the choices `continue N` or `stop`.
 
 The answer is one comment with its marker as the first line ([pr-protocol.md](pr-protocol.md)),

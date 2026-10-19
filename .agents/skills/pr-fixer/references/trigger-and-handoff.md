@@ -73,8 +73,8 @@ Each step that touches the PR follows [pr-protocol.md](pr-protocol.md).
 | Condition | Action |
 |---|---|
 | Reviewer pass c+1 returns PASSED | Done. Debt stays in the PR body |
-| Pass c+1 rejects a refusal or finds a new CRITICAL, budget left | BLOCKED. The loop runs cycle c+1 |
-| BLOCKED and cycles done reached `max_review_cycles` (5) or the granted extension | Cycle c does not start. `budget` says `ask`: the loop agent asks the person in the session, with the open CRITICAL list, the open count per pass and a suggestion |
+| Pass c+1 rejects a refusal or finds a new blocking finding, budget left | BLOCKED. The loop runs cycle c+1 |
+| BLOCKED and cycles done reached `max_review_cycles` (5) or the granted extension | Cycle c does not start. `budget` says `ask`: the loop agent asks the person in the session, with the open blocking findings, the open count per pass and a suggestion |
 | The person answers `continue N` | `review-cycle.sh extend <n> --n N` posts the granted marker; N more cycles run |
 | `stop`, or no answer (headless session) | `review-cycle.sh halt <n> --reason stop|no-answer` posts the halted marker. The PR stays `review:blocked` with `review:needs-human` |
 | BLOCKED and cycles done reached `max_review_cycles_hard` (10) | No question. `halt --reason ceiling` |

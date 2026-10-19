@@ -268,8 +268,8 @@ no force-push over commits it did not write, no `git add -A`, and no unrelated c
 
 The loop runs up to five automatic cycles (`MAX_REVIEW_CYCLES`), with a hard ceiling of ten
 (`MAX_REVIEW_CYCLES_HARD`). The last cycle of each allowance (the fifth, and the last of every extension) sends a fixer one tier
-up, or with higher effort, once. If a CRITICAL is still open after five, `review-cycle.sh budget` says
-`ask` and the loop agent asks you in the session. It shows the open CRITICALs, how the open count
+up, or with higher effort, once. If a blocking finding is still open after five, `review-cycle.sh budget` says
+`ask` and the loop agent asks you in the session. It shows the open blocking findings, how the open count
 changed from pass to pass, and a suggestion. You answer `continue N` or `stop`. `continue N` is
 recorded by `review-cycle.sh extend`. `stop`, or no answer in a headless session, is recorded by
 `halt`, and the pull request stays `review:blocked` with `review:needs-human` until a person decides.

@@ -9,7 +9,7 @@ flowchart TD
     G --> H
     E --> I[pr-fixer<br/>falsify, test red, fix, test green]
     I --> J[Push to the PR branch]
-    J --> K[pr-reviewer pass 2<br/>conditions fixed at pass 1 + any new CRITICAL]
+    J --> K[pr-reviewer pass 2<br/>conditions fixed at pass 1 + any new blocking finding]
     K --> C
     K -. cycle budget spent .-> L{Ask a person<br/>in the session}
     L -- continue N --> I

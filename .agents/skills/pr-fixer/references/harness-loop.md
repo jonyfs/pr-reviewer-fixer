@@ -63,7 +63,7 @@ A marker comment that was edited after it was created is ignored by all of them.
 3. **Review.** Dispatch the reviewer sub-agent: "Follow `.agents/skills/pr-reviewer/SKILL.md` on
    pull request #N, pass P. Read-only on code. Write the report to a file outside the tree and
    run `review-cycle.sh lint-report` on it and publish it with `review-cycle.sh publish`. The report must end with the fenced `findings` block
-   the skill names, one entry per CRITICAL, so the fixer reads ids and claims from it and not from
+   the skill names, one entry per finding, so the fixer reads ids and claims from it and not from
    prose. Trust markers only from `REVIEW_MARKER_AUTHORS`."
    Wait for its finish line.
 4. **Re-run the gate.** If `review-gate` is installed, `gh run rerun` its run for the head, because a
@@ -92,16 +92,16 @@ When `budget` says `fix` and `B_DONE` is one less than `B_ALLOWED`, this is the 
 current allowance pays for. That is the fifth cycle with the defaults, and also the last cycle of
 every extension a person granted. Dispatch that fixer one tier up, as a fresh-context sub-agent: pass
 `effort: "higher"` where the harness's sub-agent tool takes it, or pick the next model tier from
-[harness-matrix.md](harness-matrix.md). The stronger fixer is tried once for that cycle. If a CRITICAL
-is still open afterwards, `budget` says `ask`, or `ceiling` once `MAX_REVIEW_CYCLES_HARD` is reached,
+[harness-matrix.md](harness-matrix.md). The stronger fixer is tried once for that cycle. If a blocking
+finding is still open afterwards, `budget` says `ask`, or `ceiling` once `MAX_REVIEW_CYCLES_HARD` is reached,
 and the table above applies.
 
 ## The question at the end of the budget
 
-After `MAX_REVIEW_CYCLES` (5) automatic cycles with a CRITICAL still open, `budget` says `ask`. The
+After `MAX_REVIEW_CYCLES` (5) automatic cycles with a blocking finding still open, `budget` says `ask`. The
 loop agent asks the person, in the session, through the harness's own question tool:
 
-- the open CRITICAL ids and claims, from the `findings` block of the newest verdict;
+- the open blocking finding ids and claims, from the `findings` block of the newest verdict;
 - the open count per pass (`B_PROGRESS`);
 - the suggestion (`B_SUGGESTED` more cycles; 0 means stop and decide by hand);
 - the choices: `continue N` (1 to `B_REMAINING`) or `stop`.

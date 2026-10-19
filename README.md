@@ -59,7 +59,7 @@ flowchart TD
     G --> H
     E --> I[pr-fixer<br/>falsify, test red, fix, test green]
     I --> J[Push to the PR branch]
-    J --> K[pr-reviewer pass 2<br/>conditions fixed at pass 1 + any new CRITICAL]
+    J --> K[pr-reviewer pass 2<br/>conditions fixed at pass 1 + any new blocking finding]
     K --> C
     K -. cycle budget spent .-> L{Ask a person<br/>in the session}
     L -- continue N --> I
@@ -99,7 +99,7 @@ sequenceDiagram
         L->>R: Pass 2 on the new head
         R->>GH: Pass 2 verdict
     end
-    alt Budget spent, CRITICAL still open
+    alt Budget spent, blocking finding still open
         L->>P: Question in the session, with a suggestion
         P-->>L: continue N or stop
         L->>GH: Granted or halted marker
@@ -115,7 +115,7 @@ sequenceDiagram
   guide, `CLAUDE.md`, `AGENTS.md`, lint configuration) as they are on the base commit, so a pull
   request cannot rewrite the rules it is judged by, then prior comments and CI results.
 - Fixes the acceptance conditions at pass 1, before looking for defects. Later passes check only
-  those conditions and any new CRITICAL, so the target does not move.
+  those conditions and any new blocking finding, so the target does not move.
 - Dispatches one read-only agent per applicable review dimension (thirteen dimensions: correctness,
   design, security, testing, concurrency and so on). Each agent works under one stance: Saboteur,
   New Hire, Security Auditor or Architect.
@@ -207,7 +207,7 @@ stateDiagram-v2
 
 The last cycle of each allowance (the fifth with the defaults, and the last of every extension you
 grant) uses a stronger fixer: one tier up, or `effort: "higher"` where the harness takes it. It is a
-single attempt. After the fifth cycle, if a CRITICAL is still open, `review-cycle.sh budget` says `ask` and the
+single attempt. After the fifth cycle, if a blocking finding is still open, `review-cycle.sh budget` says `ask` and the
 review loop agent asks you in the session. It lists what is open, the open count at each pass,
 and a suggestion:
 

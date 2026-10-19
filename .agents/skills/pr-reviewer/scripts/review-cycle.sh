@@ -816,7 +816,7 @@ if last and last.get("state") == "halted" and last.get("reason") == os.environ["
 # granted extension is the newest `state=granted` marker by a trusted login: it allows `cycle + n`
 # cycles in all, clamped to the hard ceiling. A `state=halted` marker other than the ceiling one
 # does not stop a later run from asking again. `B_SUGGESTED` is the number of further cycles the
-# progress supports: 3 when the open CRITICAL count fell in each of the last two cycles, 1 when it
+# progress supports: 3 when the open blocking count fell in each of the last two cycles, 1 when it
 # is lower than at pass 1 but did not keep falling, 0 otherwise, never more than what remains.
 cmd_budget() {
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read a budget from"

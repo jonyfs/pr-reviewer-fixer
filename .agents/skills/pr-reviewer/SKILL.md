@@ -210,7 +210,7 @@ findings block for `pr-fixer`.
 - [ ] Marker published through the script at the current head; marker plus report under 60000 bytes
 - [ ] Every prior blocking finding is verified, refusal accepted, or refusal rejected (pass 2+)
 - [ ] Automatic run: no `--request-changes`, no `--approve`
-- [ ] Budget spent with a CRITICAL open: no pass started, the review loop agent asked the person
+- [ ] Budget spent with a blocking finding open: no pass started, the review loop agent asked the person
       once, and the answer recorded as granted or halted and notified; never a pass beyond
       `max_review_cycles_hard`
 - [ ] Start line announced before reading the diff; one finish or stopped line, counts equal to the marker
