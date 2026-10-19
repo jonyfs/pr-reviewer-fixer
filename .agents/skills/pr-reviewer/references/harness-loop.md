@@ -86,11 +86,13 @@ from a counter the loop agent keeps in its head.
 
 ## The last automatic cycle
 
-When `budget` says `fix` and `B_DONE` is one less than `B_ALLOWED`, this is the last cycle before the
-question to the person. Dispatch that fixer one tier up, as a fresh-context sub-agent: pass
+When `budget` says `fix` and `B_DONE` is one less than `B_ALLOWED`, this is the last cycle the
+current allowance pays for. That is the fifth cycle with the defaults, and also the last cycle of
+every extension a person granted. Dispatch that fixer one tier up, as a fresh-context sub-agent: pass
 `effort: "higher"` where the harness's sub-agent tool takes it, or pick the next model tier from
-[harness-matrix.md](harness-matrix.md). The stronger fixer is tried once and the person is still asked
-afterwards. A model-tier choice is self-attested like any other, so pass `--model` and `--tier` as usual.
+[harness-matrix.md](harness-matrix.md). The stronger fixer is tried once for that cycle. If a CRITICAL
+is still open afterwards, `budget` says `ask`, or `ceiling` once `MAX_REVIEW_CYCLES_HARD` is reached,
+and the table above applies.
 
 ## The question at the end of the budget
 

@@ -201,8 +201,9 @@ stateDiagram-v2
 | `MAX_REVIEW_CYCLES` | 5 | Automatic review, fix, re-review rounds |
 | `MAX_REVIEW_CYCLES_HARD` | 10 | Absolute ceiling. No answer can pass it |
 
-The fifth cycle, the last automatic one, uses a stronger fixer: one tier up, or `effort: "higher"` where
-the harness takes it. That is a single attempt and you are still asked afterwards. After the fifth cycle, if a CRITICAL is still open, `review-cycle.sh budget` says `ask` and the
+The last cycle of each allowance (the fifth with the defaults, and the last of every extension you
+grant) uses a stronger fixer: one tier up, or `effort: "higher"` where the harness takes it. It is a
+single attempt. After the fifth cycle, if a CRITICAL is still open, `review-cycle.sh budget` says `ask` and the
 review loop agent asks you in the session. It lists what is open, the open count at each pass,
 and a suggestion:
 
@@ -395,7 +396,7 @@ sandbox and permission allowlist), and this project does not simulate it. `refer
 `review-cycle.sh publish` refuses a report that contains a token or private key (GitHub, AWS, Slack,
 Stripe, Google, JWT, `sk-` keys, bearer headers) and tells you to replace it with `[REDACTED]`. It
 does not rewrite the report, and it does not screen high-entropy strings, because a commit SHA would
-always match. It also wraps a bare `@login` in backticks. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
+always match. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
 publisher, timestamps, label events, model and tier) from the trusted marker and the pull

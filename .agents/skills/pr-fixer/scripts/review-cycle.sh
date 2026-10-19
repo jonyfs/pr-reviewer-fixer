@@ -1078,14 +1078,17 @@ report_secrets() {
 import os, re, sys
 text = open(os.environ["X_FILE"], encoding="utf-8", errors="replace").read()
 pats = {
-    "GitHub token": r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})",
-    "AWS access key id": r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b",
+    "GitHub token": r"(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})",
+    "AWS access key id": r"(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Za-z0-9])",
     "private key block": r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
-    "Slack token": r"\bxox[abprs]-[A-Za-z0-9-]{10,}",
-    "API key (sk-...)": r"\bsk-[A-Za-z0-9_-]{20,}",
-    "Stripe key": r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}",
-    "Google API key": r"\bAIza[0-9A-Za-z_-]{35}",
-    "JSON web token": r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
+    "Slack token": r"(?<![A-Za-z0-9])xox[abprs]-[A-Za-z0-9-]{10,}",
+    "API key (sk-...)": r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}",
+    "Stripe key": r"(?<![A-Za-z0-9])[sr]k_(?:live|test)_[A-Za-z0-9]{16,}",
+    "Google API key": r"(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}",
+    "JSON web token": r"(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
+    "npm token": r"(?<![A-Za-z0-9])npm_[A-Za-z0-9]{36}",
+    "GitLab token": r"(?<![A-Za-z0-9])glpat-[A-Za-z0-9_-]{20,}",
+    "Google OAuth token": r"(?<![A-Za-z0-9])ya29\.[A-Za-z0-9_-]{20,}",
     "bearer credential": r"(?i)\bauthorization:\s*bearer\s+[^\s`'\"]{20,}",
 }
 hits = [name for name, p in pats.items() if re.search(p, text)]
@@ -1093,29 +1096,6 @@ if hits:
     print(", ".join(hits))
     sys.exit(1)
 PY
-}
-
-# Wraps a bare @login in backticks so posting the report does not notify anyone. Fenced blocks and
-# existing code spans are left alone; so is an address like a@b.example, because a word character
-# comes before the @.
-report_mentions() {
-  python3 -I -c '
-import re, sys
-fence = False
-out = []
-for ln in sys.stdin.read().split("\n"):
-    if ln.lstrip().startswith("```"):
-        fence = not fence
-        out.append(ln)
-        continue
-    if fence:
-        out.append(ln)
-        continue
-    parts = ln.split("`")
-    for i in range(0, len(parts), 2):
-        parts[i] = re.sub(r"(?<![\w`@])@([A-Za-z0-9][A-Za-z0-9-]{0,38}(?:/[A-Za-z0-9_-]+)?)", r"`@\1`", parts[i])
-    out.append("`".join(parts))
-sys.stdout.write("\n".join(out))'
 }
 
 cmd_publish() {
@@ -1276,7 +1256,7 @@ cmd_publish() {
   local halted_rm=""
   [ -n "${HALTED:-}" ] && halted_rm="--remove-label review:needs-human"
   { printf '%s\n\n' "$marker_line"
-    report_mentions <"$report"; } | gh pr comment "$NUMBER" --body-file - >/dev/null \
+    cat "$report"; } | gh pr comment "$NUMBER" --body-file - >/dev/null \
     || die "review-cycle: could not post the marker on #$NUMBER"
   gh pr edit "$NUMBER" --add-label "$label" $halted_rm \
       $( [ -n "$LABEL" ] && [ "$LABEL" != "$label" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \

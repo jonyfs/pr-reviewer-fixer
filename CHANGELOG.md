@@ -4,6 +4,23 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.1
+
+### Fixed
+
+- Removed the `@login` wrapping that 0.6.0 added to `publish`. Six review passes and four rewrites of it
+  (a Markdown scanner, then a zero-width space with its own entity rules) each left a case where GitHub
+  still rendered a mention, or changed the text it was meant to protect, and the guard had grown a
+  fuzz harness larger than the check it served. `publish` posts the report as written again. Write a
+  login you mention as `@login` in backticks; the secret screen stays.
+- The secret screen no longer needs a word boundary before a token, so a token glued to an
+  underscore prefix is refused. It also covers npm, GitLab and Google OAuth tokens.
+- The last-cycle rule in `harness-loop.md`, README and HOW-IT-WORKS names the last cycle of every
+  allowance, not only the fifth, and says what follows: `ask`, or `ceiling` at the hard limit.
+  It no longer tells the fixer to pass `--model` and `--tier`, which belong to `publish`.
+- The release workflow attaches the archive and `SHA256SUMS` to an existing release that lacks
+  them, so a rerun after a failed upload repairs it.
+
 ## 0.6.0
 
 ### Added

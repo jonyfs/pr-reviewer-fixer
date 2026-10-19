@@ -110,6 +110,8 @@ is mandatory for `refused-accepted` and `refused-rejected`. Counts equal the num
 severity whose status is `open` or `refused-rejected`; `verified`, `refused-accepted` and
 `not-applicable` entries stay in the block for the record and are not counted.
 
+The block is the last thing in the report. Write a login you mention in prose as `@login` in backticks: `publish` does not rewrite the report, so a bare one notifies that person.
+
 ## Marker
 
 Published only through `scripts/review-cycle.sh publish`, which writes

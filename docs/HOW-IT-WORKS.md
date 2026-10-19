@@ -172,8 +172,8 @@ flowchart TD
 8. **Publish.** `review-cycle.sh publish` re-reads the head from GitHub and refuses a stale `--sha`,
    so a verdict can only name a commit that really was the head. It also refuses a `BLOCKED` with no
    CRITICAL and a `PASSED` with one. It also refuses a report that holds something shaped like a
-   token or a private key, without printing it, and wraps a bare `@login` in backticks so the comment
-   notifies nobody. It writes the marker comment, sets the label, and on `PASSED`
+   token or a private key, without printing it (write a login you mention as `@login` in backticks,
+   because a bare one notifies that person). It writes the marker comment, sets the label, and on `PASSED`
    marks a draft pull request ready for review.
 
 In the automatic run the reviewer never submits `--request-changes` or `--approve`. A later comment
@@ -264,8 +264,8 @@ no force-push over commits it did not write, no `git add -A`, and no unrelated c
 ## The cycle budget
 
 The loop runs up to five automatic cycles (`MAX_REVIEW_CYCLES`), with a hard ceiling of ten
-(`MAX_REVIEW_CYCLES_HARD`). The fifth cycle sends a fixer one tier up (or with higher effort), once, before asking anyone. If a
-CRITICAL is still open after five, `review-cycle.sh budget` says
+(`MAX_REVIEW_CYCLES_HARD`). The last cycle of each allowance (the fifth, and the last of every extension) sends a fixer one tier
+up, or with higher effort, once. If a CRITICAL is still open after five, `review-cycle.sh budget` says
 `ask` and the loop agent asks you in the session. It shows the open CRITICALs, how the open count
 changed from pass to pass, and a suggestion. You answer `continue N` or `stop`. `continue N` is
 recorded by `review-cycle.sh extend`. `stop`, or no answer in a headless session, is recorded by
