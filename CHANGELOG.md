@@ -4,6 +4,19 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.9.1
+
+### Documentation
+
+- The documents and comments that said an edit cannot lower the cycle count now say it holds only
+  when the edit keeps the `pass=` number. Only the body after an edit is kept, so an edit that
+  rewrites the number counts as the new number (N5 of #23). `pr-json.py` describes both reasons it
+  keeps edited comments.
+- Filter F2 in `pr-protocol.md` no longer claims to number the next pass. It reads only unedited
+  comments and the newest marker; the numbers come from `B_NEXT_PASS` and `B_CYCLE` (N6 of #23).
+- Rule 2 in `pr-protocol.md` says an edit can also raise the highest pass, up to the ceiling, which
+  fails closed (N7 of #23).
+
 ## 0.9.0
 
 ### Changed

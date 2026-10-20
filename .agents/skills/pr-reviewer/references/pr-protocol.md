@@ -75,8 +75,11 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    comments, drops every edited one, and fails closed when edits cannot be checked or a page is
    truncated. Read comments through `pr-json.py`, as the filters below do, not through
    `gh pr view`. An edited marker by a trusted login is still counted in two places: a BLOCKED
-   one stays BLOCKED history, and its `pass=` still counts toward the highest pass, so editing the
-   newest marker cannot lower `B_NEXT_PASS` or `B_DONE`.
+   one stays BLOCKED history, and its `pass=` still counts toward the highest pass, so an edit that
+   keeps the number cannot lower `B_NEXT_PASS` or `B_DONE`. Only the body after the edit is kept, so
+   an edit that rewrites the number counts as the new number: a lower one lowers the count (the
+   delete-and-repost case below), and a higher one raises it, up to sending `budget` to the
+   ceiling. Both are edits by a trusted login, and the higher one fails closed.
 
 Rule 2 stops an edit. It does not stop a delete and a repost by the same login; signing the marker
 would, and it is on the backlog. The agents publish with `gh` under the account the
@@ -142,8 +145,11 @@ awk '/^```findings$/{f=1; next} f && /^```$/{exit} f' verdict.md          # the 
 Both conditions are required: the marker's `sha=` matches the current head, and the author is in
 the allowlist. A verdict comment for an older head is history, not a work list.
 
-**F2. Newest trusted marker at any head** (to number the next pass or cycle): the same command as
-F1 without the `$head | startswith($s)` line. Its `pass=` is the latest pass.
+**F2. Newest trusted marker at any head** (to read the latest verdict whatever commit it names):
+the same command as F1 without the `$head | startswith($s)` line. It reads only unedited comments
+and takes the newest one, so it does not number anything: the next pass is `B_NEXT_PASS` and the
+cycle is `B_CYCLE`, from `review-cycle.sh budget`, which also counts edited markers and takes the
+highest `pass=`.
 
 **F3. The closure comment for cycle `<c>`:**
 

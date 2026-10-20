@@ -496,8 +496,9 @@ parse() {
     for(const c of (JSON.parse(s).editedComments||[])){
       if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
       const mm=re.exec(c.body||"");
-      // An edited marker is never the verdict, but its pass still counts: an edit cannot lower the
-      // highest pass, so it cannot hand `publish` a pass number that was already used.
+      // An edited marker is never the verdict, but its pass still counts: an edit that keeps the
+      // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
+      // body after the edit is kept, so an edit that rewrites the number counts as the new one.
       if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
       last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp].join(" "):
@@ -939,7 +940,8 @@ trusted = [c for c in data.get("comments", [])
            if str((c.get("author") or {}).get("login") or "").lower() in allow]
 
 # Edited comments (pr-json.py keeps them aside) are never a verdict, but their pass still counts,
-# so editing the newest marker cannot lower the count. parse() in the shell does the same.
+# so an edit that keeps the number cannot lower the count (one that rewrites it counts as the new
+# number). parse() in the shell does the same.
 edited = [c for c in data.get("editedComments", [])
           if str((c.get("author") or {}).get("login") or "").lower() in allow]
 
