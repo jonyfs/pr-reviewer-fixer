@@ -26,6 +26,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   because `cp -R` would copy the link and the template rewrite would write through it. A
   destination inside the source (`--target <source>/pr-reviewer`) is refused too, by physical path,
   instead of putting a copy of the skill inside the source skill.
+- `install.sh` deleted its own source when the source lay inside a skill folder it replaces: the
+  repository cloned as `~/.claude/skills/pr-reviewer` and run with `--scope user --yes` lost the
+  whole clone, `.git` and uncommitted work included, to the `rm -rf` of the old install, and then
+  printed that the old install was untouched. It now refuses before any change, in the dry run too,
+  when a source skill folder and the destination skill folder of the same name are one folder or
+  one lies inside the other, and when the folder `install.sh` runs from lies inside a destination
+  skill folder (the same clone, with `--source` naming another folder).
+- `install.sh` resolved paths with a logical `cd`, which reads `..` before following a link, so
+  `--target <link to a source skill>/..` passed the same-folder check, set the source's skill folder
+  aside and then claimed it was back. Paths now resolve with `cd -P` and an empty `CDPATH`, the copy
+  writes to the resolved paths, and a path that cannot be resolved (a `..` after a folder that does
+  not exist yet, a file in the way, a folder it cannot enter) is refused instead of kept as written.
+  A failed swap names where the old copy is when it could not be put back.
+- `install.sh --help` printed a fixed line range that no longer reached the end of the header and
+  cut the exit-codes sentence. It now prints the whole header comment.
+- `review-cycle.sh` discarded `pr-json.py`'s stderr, so a refused pull request argument (`status
+  7x`) said only that the pull request could not be read. The reason now reaches stderr too.
+- The install test suite runs a copy of `install.sh` and the skills inside its own scratch
+  directory, so a refusal that regressed cannot touch the checkout it was started from.
 - `triage-pr.sh` compared `TRIAGE_IGNORE_CHECKS` and `FIXER_COMMIT_AUTHORS` with every space
   removed, so a check named `CI Tests` or a commit author named `Fixer Bot` never matched. Entries
   are now trimmed and compared without case, as written.

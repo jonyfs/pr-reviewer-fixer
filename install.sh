@@ -22,9 +22,16 @@
 # the installed copy of templates/review-gate.yml, so the gate calls the scripts where they now
 # live. The template in the source tree is not touched.
 #
+# Every path check compares physical paths (links and `..` resolved the way the kernel resolves them),
+# and the copy then writes to those resolved paths. Before any change, in the dry run too, it refuses
+# when a source skill folder and the destination skill folder of the same name are one folder or one
+# lies inside the other (the repository cloned as ~/.claude/skills/pr-reviewer, say), when the folder
+# this script runs from lies inside a destination skill folder, and when the destination lies inside
+# the source.
+#
 # EXIT CODES. 0 = done, or a dry run. 1 = refused (bad arguments, unknown harness, a source folder
-# that is not a skill or holds a symbolic link, a destination that is the source, lies inside it or
-# is not safe to replace). It installs nothing it cannot check.
+# that is not a skill or holds a symbolic link, a path it cannot resolve, a source and destination
+# that overlap, a destination that is not safe to replace). It installs nothing it cannot check.
 set -uo pipefail
 
 die() { echo "install: $*" >&2; exit 1; }
@@ -41,7 +48,8 @@ while [ $# -gt 0 ]; do
       esac
       shift 2 ;;
     --yes)     YES=1; shift ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    # The header is every comment line from line 2 down to the first line that is not one.
+    -h|--help) awk 'NR == 1 { next } /^#/ { print; next } { exit }' "$0"; exit 0 ;;
     *) die "unknown argument '$1' (try --help)" ;;
   esac
 done
@@ -82,35 +90,65 @@ else
 fi
 [ -n "$DEST_ROOT" ] && [ "$DEST_ROOT" != "/" ] || die "refusing an empty or root destination"
 
-if [ -z "$SOURCE" ]; then SOURCE="$(cd "$(dirname "$0")" && pwd)/.agents/skills"; fi
+# Physical path of a folder that may not exist yet: the nearest existing parent, resolved with
+# `cd -P` (CDPATH cleared, so a relative name cannot be sent elsewhere), plus the missing rest as
+# written. It fails closed: a `.` or `..` in the missing rest, a missing part that exists as a file
+# or a dangling link, or a parent `cd -P` cannot enter makes it print nothing and return 1.
+physical() {
+  local p="$1" rest="" base r
+  case "$p" in /*) ;; *) p="$PWD/$p" ;; esac
+  while [ ! -d "$p" ]; do
+    { [ -e "$p" ] || [ -L "$p" ]; } && return 1
+    base="$(basename -- "$p")"
+    case "$base" in .|..|"") return 1 ;; esac
+    rest="/$base$rest"; p="$(dirname -- "$p")"
+  done
+  r="$(CDPATH='' cd -P -- "$p" 2>/dev/null && pwd -P)" || return 1
+  case "$r" in /*) ;; *) return 1 ;; esac
+  case "$r" in *$'\n'*) return 1 ;; esac
+  r="${r%/}$rest"
+  [ -n "$r" ] || return 1
+  printf '%s\n' "$r"
+}
+# True when $1 is $2 or lies inside it. The trailing `/` keeps `/a/skills2` out of `/a/skills`.
+within() { case "$1/" in "$2/"*) return 0 ;; esac; return 1; }
+
+SELF_P="$(physical "$(dirname -- "$0")")" || die "cannot resolve the folder install.sh runs from"
+if [ -z "$SOURCE" ]; then SOURCE="$SELF_P/.agents/skills"; fi
+SRC_P="$(physical "$SOURCE")" || die "cannot resolve the source $SOURCE to a physical path"
+[ -d "$SRC_P" ] || die "$SOURCE is not a folder; --source must hold the skill folders"
+SOURCE="$SRC_P"
+DEST_P="$(physical "$DEST_ROOT")" || die "cannot resolve the destination $DEST_ROOT to a physical path (a '..' after a folder that does not exist, a file in the way, or a folder it cannot enter)"
+[ "$DEST_P" != "/" ] || die "refusing an empty or root destination"
 SKILLS=(); case "$SKILL" in both) SKILLS=(pr-reviewer pr-fixer) ;; *) SKILLS=("$SKILL") ;; esac
 for s in "${SKILLS[@]}"; do
-  [ -f "$SOURCE/$s/SKILL.md" ] || die "$SOURCE/$s/SKILL.md not found; --source must hold the skill folders"
+  [ -f "$SRC_P/$s/SKILL.md" ] || die "$SOURCE/$s/SKILL.md not found; --source must hold the skill folders"
   # `cp -R` copies a link as a link, at any depth, so the install would point into the source and
   # the template rewrite below would edit the source's own file. Any link under the skill folder,
   # the folder itself included, is refused.
-  [ ! -L "$SOURCE/$s" ] || die "$SOURCE/$s is a symbolic link; give --source the real folder"
-  link="$(find "$SOURCE/$s" -type l -print 2>/dev/null | head -n 1)"
+  [ ! -L "$SRC_P/$s" ] || die "$SOURCE/$s is a symbolic link; give --source the real folder"
+  link="$(find "$SRC_P/$s" -type l -print 2>/dev/null | head -n 1)"
   [ -z "$link" ] || die "$link is a symbolic link inside the source; replace it with the real files"
 done
-# Physical path of a folder that may not exist yet: the nearest existing parent, resolved, plus the
-# rest of the path as written.
-physical() {
-  local p="$1" rest=""
-  while [ ! -d "$p" ]; do rest="/$(basename "$p")$rest"; p="$(dirname "$p")"; done
-  echo "$(cd "$p" && pwd -P)$rest"
-}
-# Physical paths (`pwd -P`), so a destination that is a link to the source, such as
-# `.claude/skills -> ../.agents/skills`, is caught here instead of being replaced by a copy of itself.
-SRC_P="$(cd "$SOURCE" && pwd -P)"; DEST_P="$(physical "$DEST_ROOT")"
-[ "$SRC_P" != "$DEST_P" ] || die "source and destination are the same folder"
-case "$DEST_P/" in "$SRC_P/"*) die "the destination $DEST_ROOT is inside the source $SOURCE" ;; esac
+# Physical paths, so a destination that is a link to the source, such as
+# `.claude/skills -> ../.agents/skills`, or `<link to a skill>/..`, is caught here instead of being
+# replaced by a copy of itself.
+[ "$SRC_P" != "$DEST_P" ] || die "source and destination are the same folder ($SRC_P)"
+within "$DEST_P" "$SRC_P" && die "the destination $DEST_ROOT is inside the source $SOURCE"
+for s in "${SKILLS[@]}"; do
+  # The swap below moves $DEST_P/$s aside and removes it, so a source inside it would go too.
+  within "$SRC_P/$s" "$DEST_P/$s" && die "the source $SOURCE/$s is inside the destination skill folder $DEST_ROOT/$s, which the install would remove; run install.sh from a clone outside the skills folder"
+  within "$DEST_P/$s" "$SRC_P/$s" && die "the destination $DEST_ROOT/$s is inside the source $SOURCE/$s"
+  # The same holds for the clone this script runs from, when --source names another folder.
+  within "$SELF_P" "$DEST_P/$s" && die "install.sh runs from inside the destination skill folder $DEST_ROOT/$s, which the install would remove; run it from a clone outside the skills folder"
+done
 
 echo "install: skills  ${SKILLS[*]}"
 echo "install: from    $SOURCE"
 echo "install: to      $DEST_ROOT"
+[ "$DEST_P" = "$DEST_ROOT" ] || echo "install: which is $DEST_P"
 for s in "${SKILLS[@]}"; do
-  if [ -e "$DEST_ROOT/$s" ]; then echo "install: will REPLACE $DEST_ROOT/$s with the new copy"
+  if [ -e "$DEST_P/$s" ] || [ -L "$DEST_P/$s" ]; then echo "install: will REPLACE $DEST_ROOT/$s with the new copy"
   else echo "install: will create $DEST_ROOT/$s"; fi
 done
 [ -z "$REL" ] || [ "$REL" = ".agents/skills" ] || echo "install: will point templates/review-gate.yml at $REL/pr-reviewer/scripts/"
@@ -118,9 +156,9 @@ done
 # Refuse before the first removal: a destination that is a symbolic link, or a name this script
 # does not own, stops the whole run, in the dry run too.
 for s in "${SKILLS[@]}"; do
-  dest="$DEST_ROOT/$s"
+  dest="$DEST_P/$s"
   case "$dest" in */pr-reviewer|*/pr-fixer) ;; *) die "refusing to replace '$dest'" ;; esac
-  if [ -L "$dest" ]; then die "$dest is a symbolic link; remove it yourself first"; fi
+  if [ -L "$dest" ]; then die "$DEST_ROOT/$s is a symbolic link; remove it yourself first"; fi
 done
 
 if [ "$YES" -ne 1 ]; then
@@ -128,23 +166,30 @@ if [ "$YES" -ne 1 ]; then
   exit 0
 fi
 
-mkdir -p "$DEST_ROOT" || die "cannot create $DEST_ROOT"
+mkdir -p -- "$DEST_P" || die "cannot create $DEST_ROOT"
+# The folders it just created must resolve to the path it checked.
+[ "$(physical "$DEST_P")" = "$DEST_P" ] || die "$DEST_ROOT resolved to another folder after it was created; nothing installed"
 for s in "${SKILLS[@]}"; do
-  dest="$DEST_ROOT/$s"
+  dest="$DEST_P/$s"
   # Copy to a sibling first and move it into place, so a failed copy leaves the old install alone.
-  stage="$DEST_ROOT/.$s.new.$$"
+  stage="$DEST_P/.$s.new.$$"
   rm -rf -- "$stage"
-  cp -R "$SOURCE/$s" "$stage" || { rm -rf -- "$stage"; die "copy of $s failed; the old install is untouched"; }
-  old="$DEST_ROOT/.$s.old.$$"
+  cp -R "$SRC_P/$s" "$stage" || { rm -rf -- "$stage"; die "copy of $s failed; the old install is untouched"; }
+  old="$DEST_P/.$s.old.$$"
   rm -rf -- "$old"
-  if [ -e "$dest" ]; then mv "$dest" "$old" || { rm -rf -- "$stage"; die "could not set the old $s aside; it is untouched"; }; fi
-  mv "$stage" "$dest" || { [ ! -e "$old" ] || mv "$old" "$dest"; rm -rf -- "$stage"; die "could not move the new $s into place; the old one is back"; }
+  if [ -e "$dest" ]; then mv -- "$dest" "$old" || { rm -rf -- "$stage"; die "could not set the old $s aside; it is untouched"; }; fi
+  if ! mv -- "$stage" "$dest"; then
+    rm -rf -- "$stage"
+    if [ ! -e "$old" ]; then die "could not move the new $s into place; there was no old one"; fi
+    mv -- "$old" "$dest" && die "could not move the new $s into place; the old one is back"
+    die "could not move the new $s into place, nor the old one back; it is at $old"
+  fi
   rm -rf -- "$old"
   if [ -n "$REL" ] && [ "$REL" != ".agents/skills" ] && [ -f "$dest/templates/review-gate.yml" ]; then
     tmp="$dest/templates/review-gate.yml.tmp"
     sed "s|\.agents/skills/pr-reviewer/scripts/|$REL/pr-reviewer/scripts/|g" "$dest/templates/review-gate.yml" >"$tmp" \
       && mv "$tmp" "$dest/templates/review-gate.yml"
   fi
-  echo "install: installed $dest ($(tr -d '[:space:]' <"$SOURCE/../../VERSION" 2>/dev/null || echo unknown))"
+  echo "install: installed $DEST_ROOT/$s ($(tr -d '[:space:]' <"$SRC_P/../../VERSION" 2>/dev/null || echo unknown))"
 done
 echo "install: next, set REVIEW_MARKER_AUTHORS and run review-cycle.sh ensure-labels (README, 'Check the install')."
