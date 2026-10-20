@@ -320,6 +320,25 @@ reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$ARABIC_PASS]" OPEN)"
 "$RC" status 7 >/dev/null 2>&1; r1=$?
 python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
 check "marker with pass=<arabic-indic 1> is no marker to status or gate (status 1, gate 1)" eval '[ $r1 = 1 ] && [ $g1 = 1 ]'
+# Whitespace inside a marker is ASCII only, in every reader and under every locale: a no-break space
+# or an ideographic space after `<!--` makes it no marker to status (node), marker (bash), the gate,
+# budget and export-audit alike. One reader taking it while another refuses is how CI and the gate
+# disagree.
+for loc in C en_US.UTF-8; do
+  for ws in $'\xc2\xa0' $'\xe3\x80\x80'; do
+    hex="$(printf %s "$ws" | od -An -tx1 | tr -d ' \n')"
+    UPASS="<!--${ws}adversarial-review: sha=$D verdict=PASSED pass=1 critical=0 warning=0 note=0 -->"
+    reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$(mc github-actions "$UPASS")]" OPEN)"; withevents
+    LC_ALL=$loc "$RC" status 7 >/dev/null 2>&1; r1=$?
+    LC_ALL=$loc python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+    printf '%s\n' "$UPASS" | LC_ALL=$loc "$RC" marker --author github-actions >/dev/null 2>&1; m1=$?
+    rm -rf "$EXPORT"; LC_ALL=$loc "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>&1; x1=$?
+    reset "$(mk 7 $D '[{"name":"review:blocked"}]' "[$(mc github-actions "<!--${ws}adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=1 warning=0 note=0 -->")]" OPEN)"
+    b1="$(LC_ALL=$loc "$RC" budget 7 2>/dev/null | grep '^B_NEXT=' | tr -d "'")"
+    check "marker with $hex after <!-- under $loc is no marker: status 1, gate 1, marker 1, export-audit refuses, budget none" \
+      eval '[ $r1 = 1 ] && [ $g1 = 1 ] && [ $m1 = 1 ] && [ $x1 != 0 ] && [ ! -e "$EXPORT/7-1.json" ] && [ "$b1" = B_NEXT=none ]'
+  done
+done
 # A verdict posted as a login off the list is one every reader ignores: publish refuses to post it.
 reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"
 r=$(FAKE_LOGIN=mallory pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)

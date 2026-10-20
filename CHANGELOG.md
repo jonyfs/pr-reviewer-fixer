@@ -25,7 +25,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   ignores, so `status` owed the review forever and a halt was posted again on every run.
 - The Python marker, extension and lint-report regexes run with `re.ASCII`. `\d` took non-ASCII
   digits, which `int()` then parsed, so the gate read `pass=١` as pass 1 while `status` read no
-  marker at all.
+  marker at all. Whitespace inside a marker is now the six ASCII characters (space, tab, LF, CR, FF,
+  VT) in every reader: the node regex in `parse()` and the bash `MARKER_RE` spell them out instead of
+  `\s` and `[[:space:]]`, so a no-break or ideographic space after `<!--` is no marker to `status`,
+  `marker`, the gate, `budget` and `export-audit` alike, under any locale.
 
 ### Fixed
 

@@ -158,6 +158,9 @@ NEEDS_HUMAN = "review:needs-human"
 # The three counts are ONE optional group: `(?:...)?` around all of them together, never three
 # independent `?`, so a half-written marker falls out as no marker instead of being read as an old
 # one whose leftover field is silently ignored.
+#
+# `\s` under re.ASCII is the six ASCII whitespace characters, the same set `review-cycle.sh` spells
+# out as MARKER_WS for its node and bash readers. A no-break space is no whitespace to any of them.
 MARKER = re.compile(
     r"^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
     r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"

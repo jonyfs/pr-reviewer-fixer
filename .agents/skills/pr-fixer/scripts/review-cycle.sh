@@ -318,7 +318,13 @@ STATES_RE='review:(pending|running|fixing|blocked|passed)'
 # The shell reader. It had no caller at first, a third reader of the marker format that read
 # nothing, which is why no test could ever see it drift from the other two. `marker` is its
 # caller now, and a test can drive both forms through it.
-MARKER_RE='<!--[[:space:]]*adversarial-review:[[:space:]]*sha=([0-9a-f]{7,40})[[:space:]]+verdict=(PASSED|BLOCKED)[[:space:]]+pass=([0-9]+)([[:space:]]+critical=([0-9]+)[[:space:]]+warning=([0-9]+)[[:space:]]+note=([0-9]+))?([[:space:]]+model=([A-Za-z0-9._:-]+)[[:space:]]+tier=(fast|standard|deep))?([[:space:]]+block_at=(critical|warning))?[[:space:]]*-->'
+# Whitespace inside a marker is the six ASCII characters space, tab, LF, CR, FF and VT, spelled out,
+# in every reader: here, the node regex in `parse()` and the Python readers (whose `\s` under
+# re.ASCII is the same six). `[[:space:]]` and an unflagged `\s` take a no-break space or an
+# ideographic space in some locales and engines and not in others, and a marker one reader accepts
+# and another refuses is how `status` and the gate came to disagree.
+MARKER_WS=$' \t\n\r\f\v'
+MARKER_RE="<!--[$MARKER_WS]*adversarial-review:[$MARKER_WS]*sha=([0-9a-f]{7,40})[$MARKER_WS]+verdict=(PASSED|BLOCKED)[$MARKER_WS]+pass=([0-9]+)([$MARKER_WS]+critical=([0-9]+)[$MARKER_WS]+warning=([0-9]+)[$MARKER_WS]+note=([0-9]+))?([$MARKER_WS]+model=([A-Za-z0-9._:-]+)[$MARKER_WS]+tier=(fast|standard|deep))?([$MARKER_WS]+block_at=(critical|warning))?[$MARKER_WS]*-->"
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
@@ -470,7 +476,7 @@ parse() {
   # before they get here; an empty list skips nothing.
   local m
   m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
-    const re=/^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?(?:\s+block_at=(critical|warning))?\s*-->/i;
+    const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
     const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
     let last=null,blocked="no";
     for(const c of (JSON.parse(s).comments||[])){
@@ -543,11 +549,11 @@ cmd_marker() {
   # sensitive lost `verdict=passed` and an uppercase SHA, which `/i` takes on both siblings.
   #
   # The anchor is untouched and does the same work on the whole body as it did on one line:
-  # `[[:space:]]` spans newlines, so only whitespace may precede a marker and a quoted one is still
+  # `[$MARKER_WS]` spans newlines, so only whitespace may precede a marker and a quoted one is still
   # not one.
   local restaura; restaura="$(shopt -p nocasematch)"
   shopt -s nocasematch
-  if [[ "$body" =~ ^[[:space:]]*$MARKER_RE ]]; then
+  if [[ "$body" =~ ^[$MARKER_WS]*$MARKER_RE ]]; then
     printf '%s %s %s %s %s %s' \
       "$(printf '%s' "${BASH_REMATCH[1]}" | tr 'A-Z' 'a-z')" \
       "$(printf '%s' "${BASH_REMATCH[2]}" | tr 'a-z' 'A-Z')" \
