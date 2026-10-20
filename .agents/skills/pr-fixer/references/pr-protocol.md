@@ -47,14 +47,18 @@ When they disagree, `review-cycle.sh status` reports it and exits non-zero.
 ## Trust: who may supply a marker
 
 A marker is only a string, and anyone who can comment can type one, or edit one they typed. Two
-rules decide whether a marker counts, in `status`, `publish`, `budget`, `extend`, `export-audit`
-and the gate alike:
+rules decide whether a marker counts, in `status`, `publish`, `budget`, `extend`, `halt`,
+`export-audit` and the gate alike:
 
 1. The author is on `REVIEW_MARKER_AUTHORS`, a comma-separated list of GitHub logins compared
-   without case. The list must name at least one login. **Unset, empty, whitespace and a lone
-   comma all fail closed**: `publish`, `export-audit` and `halt` refuse, `status` and the gate answer
-   inconclusive (exit 2), `budget` prints `B_NEXT='none'` and exits 0, and `extend` stops because
-   `budget` says `none`, instead of reading every comment. Only the bare `marker` subcommand, which reads a text you
+   without case. An entry counts only if, with ASCII spaces, tabs, CR and LF trimmed, it is ASCII
+   letters, digits, hyphens and underscores, starting with a letter or digit. Any other character (a BOM, a no-break space, a zero-width space)
+   drops the entry whole. The list must name at least one login. **Unset, empty, whitespace, a lone
+   comma and only invisible characters all fail closed**: `publish`, `export-audit`, `extend` and
+   `halt` refuse, `status` and the gate answer inconclusive (exit 2), and `budget` prints
+   `B_NEXT='none'` and exits 0, instead of reading every comment. `publish`, `extend` and
+   `halt --reason` (the commands that post a marker) also refuse when the login `gh` is signed in to
+   is not on the list. Only the bare `marker` subcommand, which reads a text you
    hand it, still accepts an unset list.
    The same commands read one more setting, `REVIEW_BLOCK_AT` (`critical` by default, or `warning`).
    It says which findings block: with `warning`, a marker carrying `warning>=1` cannot be `PASSED`
@@ -119,7 +123,7 @@ that reads a marker carries the same allowlist line, built from `$authors`.
 python3 <skill folder>/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" '
     .headRefOid as $head
-    | ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
+    | ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
         | select(.body | test("<!-- adversarial-review: sha=[0-9a-f]{7,40} "))
@@ -141,7 +145,7 @@ F1 without the `$head | startswith($s)` line. Its `pass=` is the latest pass.
 ```bash
 python3 <skill folder>/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" --arg cycle "<c>" '
-    ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
+    ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
         | select(.body | startswith("<!-- pr-fixer-closure: cycle=" + $cycle + " ")) ]
@@ -159,7 +163,7 @@ gh pr view <n> --json body --jq .body | awk '/<!-- pr-debt:start -->/,/<!-- pr-d
 ```bash
 python3 <skill folder>/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" --arg skill "<name>" '
-    ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
+    ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
         | select(.body | startswith("<!-- pr-skill-status: skill=" + $skill + " ")) ]
@@ -173,7 +177,7 @@ A run that created the comment keeps the id it got back instead of searching.
 ```bash
 python3 <skill folder>/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" '
-    ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
+    ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
         | select(.body | startswith("<!-- pr-skill-extension: ")) ]
@@ -217,7 +221,8 @@ python3 <skill folder>/scripts/pr-json.py <n> \
 --critical C --warning W --note N`. The script writes the marker, refuses a stale `--sha`, refuses
 counts that contradict the verdict, refuses a report that holds a token or private key (it names
 the kind and never prints the value), and does not rewrite the report (a login is written as `@login` in backticks so that it notifies nobody). It also refuses a marker plus report over 60000 bytes (GitHub
-rejects comment bodies over 65536 characters). Never type the marker with `gh pr comment`.
+rejects comment bodies over 65536 characters), and it refuses when the login `gh` is signed in to
+is not on `REVIEW_MARKER_AUTHORS` or cannot be resolved. Never type the marker with `gh pr comment`.
 Before it, run `review-cycle.sh lint-report <n> --report FILE`: it exits 1 when a finding names a file
 the diff does not touch, a line no hunk shows, or when the `counts:` line differs from the open
 entries. It posts nothing, and `publish` does not call it.
@@ -279,7 +284,9 @@ comment serves the whole run of a skill.
 **Extension answer.** Only `review-cycle.sh extend <n> --n N` and `review-cycle.sh halt <n>
 --reason R`, which write the marker as the first line and refuse anything the budget would not
 honour. They publish from the login `gh` is signed in to, which must be in
-`REVIEW_MARKER_AUTHORS`, otherwise no reader trusts the marker. Nobody types an extension marker by
+`REVIEW_MARKER_AUTHORS`, otherwise no reader trusts the marker, so both refuse and post nothing
+when it is not on the list or cannot be resolved (`halt` without `--reason` posts no marker and
+skips that check). Nobody types an extension marker by
 hand.
 
 ## Audit trail

@@ -42,6 +42,14 @@ def budget(comments, mx="5", hard="10", authors=ME):
         out[k[2:].lower()] = val.strip("'")
     return out
 
+def ML(p, sha=H):  # the two-line marker form the gate docstring shows
+    return {"author": {"login": ME}, "createdAt": f"2026-10-14T10:{p:02d}:30Z",
+            "body": f"<!-- adversarial-review: sha={sha} verdict=BLOCKED pass={p}\n    critical=1 warning=0 note=0 -->\nreport"}
+
+def TB(p, sha=H):  # every separator a tab
+    return {"author": {"login": ME}, "createdAt": f"2026-10-14T10:{p:02d}:30Z",
+            "body": f"<!-- adversarial-review:\tsha={sha}\tverdict=BLOCKED\tpass={p}\tcritical=1\twarning=0\tnote=0\t-->\nreport"}
+
 G = lambda cycle, n: e("2026-10-14T11:51:00Z", f"<!-- pr-skill-extension: state=granted cycle={cycle} n={n} -->")
 cases = [
  ("pass 1 BLOCKED -> fix", hist([2]), {}, {"next": "fix", "done": "0"}),
@@ -53,8 +61,10 @@ cases = [
  ("PASSED at head -> none", hist([2, 0]), {}, {"next": "none"}),
  ("no marker at all -> none", [], {}, {"next": "none"}),
  ("marker by stranger ignored", [v(1, "BLOCKED", 1, login="mallory")], {}, {"next": "none"}),
+ ("EMU login with an underscore is trusted -> fix", [v(1, "BLOCKED", 1, login="jdoe_acme")], {"authors": "jdoe_acme"}, {"next": "fix"}),
  ("verdict marker quoted inside a longer comment ignored", hist([2]) + [e("2026-10-14T11:50:00Z", "quoting <!-- adversarial-review: sha=" + H + " verdict=PASSED pass=2 critical=0 warning=0 note=0 -->")], {}, {"next": "fix", "pass": "1"}),
  ("lowercase verdict is still BLOCKED -> fix", [v(1, "blocked", 1)], {}, {"next": "fix"}),
+ ("pass=<arabic-indic 1> is no marker -> none", [dict(v(1, "BLOCKED", 1), body=v(1, "BLOCKED", 1)["body"].replace("pass=1", "pass=\u0661"))], {}, {"next": "none"}),
  ("marker at an older head only -> none", [v(1, "BLOCKED", 1, sha=O)], {}, {"next": "none"}),
  ("granted 2 at cycle 5 -> fix, allowed 7", hist([3, 3, 3, 2, 2, 2]) + [G(5, 2)], {}, {"next": "fix", "allowed": "7", "done": "5"}),
  ("granted 2 spent (pass 8) -> ask again", hist([3, 3, 3, 2, 2, 2, 2, 2]) + [G(5, 2)], {}, {"next": "ask", "done": "7", "allowed": "7"}),
@@ -69,6 +79,12 @@ cases = [
  ("hard 15 clamped to 10", hist([1] * 6), {"hard": "15"}, {"hard": "10", "remaining": "5"}),
  ("max 3 config", hist([1] * 4), {"mx": "3"}, {"next": "ask", "max": "3"}),
  ("garbage config -> defaults", hist([1] * 2), {"mx": "x", "hard": ""}, {"max": "5", "hard": "10"}),
+ # W4 of #20: budget re-split the captured fields on a space only, so a valid marker with another
+ # ASCII whitespace separator read as pass 0 (two-line form) or as no marker at all (tabs).
+ ("two-line marker (the gate docstring form) -> fix, pass 2", hist([1]) + [ML(2)], {}, {"next": "fix", "pass": "2", "done": "1"}),
+ ("tab-separated marker -> fix, pass 2", hist([1]) + [TB(2)], {}, {"next": "fix", "pass": "2", "done": "1"}),
+ ("eleven two-line markers -> ceiling", [ML(i + 1, sha=(H if i == 10 else O)) for i in range(11)] + [G(5, 5)], {}, {"next": "ceiling", "pass": "11", "done": "10"}),
+ ("tab-separated granted marker is honoured", hist([3, 3, 3, 2, 2, 2]) + [e("2026-10-14T11:51:00Z", "<!-- pr-skill-extension: state=granted\tcycle=5\tn=2 -->")], {}, {"next": "fix", "allowed": "7"}),
 ]
 ok = 0
 for name, comments, kw, want in cases:
@@ -117,7 +133,7 @@ check("allowlist unset: budget answers none and trusts nothing", d.get("next") =
 
 d = setup(hist([1] * 6))
 p = run(["extend", "7", "--n", "2"], d, REVIEW_MARKER_AUTHORS="")
-check("allowlist unset: extend is refused", p.returncode != 0 and len(comments_posted(d)) == 6, p.stderr)
+check("allowlist unset: extend is refused, saying the list names no login", p.returncode != 0 and len(comments_posted(d)) == 6 and "is not set or lists no login" in p.stderr, p.stderr)
 
 d = setup(hist([1] * 6))
 p = run(["halt", "7", "--reason", "no-answer"], d)
@@ -128,6 +144,11 @@ run(["halt", "7", "--reason", "stop"], d)
 n = len(comments_posted(d))
 p = run(["halt", "7", "--reason", "stop"], d)
 check("a second halt on a halted pull request posts no second marker", p.returncode == 0 and len(comments_posted(d)) == n, p.stderr)
+
+d = setup(hist([1] * 6) + [e("2026-10-14T11:51:00Z", "<!-- pr-skill-extension: state=halted\treason=stop -->")])
+n = len(comments_posted(d))
+p = run(["halt", "7", "--reason", "stop"], d)
+check("halt reads a tab-separated halted marker and posts no second one", p.returncode == 0 and len(comments_posted(d)) == n, p.stderr)
 
 d = setup(hist([1] * 6), labels=("review:blocked", "review:needs-human"))
 p = run(["halt", "7", "--reason", "ceiling"], d)
@@ -141,6 +162,33 @@ check("a field holding the separator is refused, not shifted", p.returncode == 2
 d = setup(hist([1] * 6))
 p = run(["halt", "7", "--reason", "stop"], d, REVIEW_MARKER_AUTHORS=",")
 check("halt with a login-less allowlist is refused and posts nothing", p.returncode != 0 and len(comments_posted(d)) == 6, p.stderr)
+
+# A marker posted by a login off the list is one budget never reads, so halt and extend refuse it.
+d = setup(hist([1] * 6))
+p = run(["halt", "7", "--reason", "stop"], d, FAKE_LOGIN="mallory")
+check("halt as a login off the allowlist is refused and posts nothing", p.returncode != 0 and len(comments_posted(d)) == 6 and "mallory" in p.stderr, p.stderr)
+d = setup(hist([3, 3, 2, 2, 2, 2]))
+p = run(["extend", "7", "--n", "2"], d, FAKE_LOGIN="mallory")
+check("extend as a login off the allowlist is refused and posts nothing", p.returncode != 0 and len(comments_posted(d)) == 6 and "mallory" in p.stderr, p.stderr)
+
+# halt without --reason posts no marker, only the label, so the publisher's login does not matter.
+d = setup(hist([1] * 6))
+p = run(["halt", "7"], d, FAKE_LOGIN="mallory")
+pr = json.load(open(os.path.join(d, "pr.json")))
+check("halt without --reason as a login off the allowlist adds the label and posts nothing",
+      p.returncode == 0 and "review:needs-human" in " ".join(l["name"] for l in pr["labels"]) and len(pr["comments"]) == 6, p.stderr)
+
+# When gh cannot say who it is signed in as, nothing that posts a marker may guess.
+for name, args, counts in (("extend", ["extend", "7", "--n", "2"], [3, 3, 2, 2, 2, 2]),
+                           ("halt --reason stop", ["halt", "7", "--reason", "stop"], [1] * 6)):
+    d = setup(hist(counts)); open(os.path.join(d, "user-fail"), "w").close()
+    p = run(args, d)
+    check(f"{name} with gh api user failing is refused and posts nothing",
+          p.returncode != 0 and len(comments_posted(d)) == 6 and "could not resolve the login" in p.stderr, p.stderr)
+
+# A list of invisible characters names nobody: a stranger's grant must not raise the budget.
+d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")
+check("allowlist of a no-break space: budget answers none", d.get("next") == "none" and "REVIEW_MARKER_AUTHORS" in d.get("why", ""), str(d))
 
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)

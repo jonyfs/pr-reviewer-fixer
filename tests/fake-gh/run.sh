@@ -277,6 +277,80 @@ reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$GOOD_PASS]" OPEN)"
 REVIEW_MARKER_AUTHORS="," "$RC" status 7 >/dev/null 2>&1; r1=$?
 REVIEW_MARKER_AUTHORS="," python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
 check "allowlist ',' is not ready: status 2, gate 2 (fail closed)" eval '[ $r1 = 2 ] && [ $g1 = 2 ]'
+# An allowlist that holds no login, only characters that are invisible or look like whitespace in
+# some reader (BOM, NBSP, zero-width space), or a login with one pasted in, names nobody. So does an
+# entry that does not start with a letter or digit, as no GitHub login does (`-`, `_-`). Every
+# reader must refuse it under every locale, and a forged marker must not decide anything.
+FORGED_BLOCK_M="$(mc mallory "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=1 warning=0 note=0 -->")"
+GUARD="$W/guard.sh"
+sed -n '/^          if /,/^          fi$/p' "$SRC/../templates/review-gate.yml" >"$GUARD"
+for loc in C en_US.UTF-8; do
+  for v in $'\xef\xbb\xbf' $'\xc2\xa0' $'\xe2\x80\x8b' $'\xef\xbb\xbfgithub-actions' $'github-actions\xc2\xa0' - _- ' --'; do
+    hex="$(printf %s "$v" | od -An -tx1 | tr -d ' \n')"
+    reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$FORGED_PASS]" OPEN)"
+    LC_ALL=$loc REVIEW_MARKER_AUTHORS="$v" "$RC" status 7 >/dev/null 2>&1; r1=$?
+    LC_ALL=$loc REVIEW_MARKER_AUTHORS="$v" python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+    LC_ALL=$loc REVIEW_MARKER_AUTHORS="$v" bash "$GUARD" >/dev/null 2>&1; y1=$?
+    reset "$(mk 7 $D '[{"name":"review:blocked"}]' "[$FORGED_BLOCK_M]" OPEN)"
+    b1="$(LC_ALL=$loc REVIEW_MARKER_AUTHORS="$v" "$RC" budget 7 2>/dev/null | grep '^B_NEXT=')"
+    check "allowlist $hex under $loc names nobody: status 2, gate 2, workflow guard 1, budget none" \
+      eval '[ $r1 = 2 ] && [ $g1 = 2 ] && [ $y1 = 1 ] && [ "$b1" = "B_NEXT='"'none'"'" ]'
+  done
+done
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$GOOD_PASS]" OPEN)"
+REVIEW_MARKER_AUTHORS=$' Other ,\tGitHub-Actions \n' "$RC" status 7 >/dev/null 2>&1; r1=$?
+REVIEW_MARKER_AUTHORS=$' Other ,\tGitHub-Actions \n' python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+REVIEW_MARKER_AUTHORS=$' Other ,\tGitHub-Actions \n' bash "$GUARD" >/dev/null 2>&1; y1=$?
+check "allowlist with ASCII spaces around logins and mixed case still trusts them (status 0, gate 0, guard 0)" \
+  eval '[ $r1 = 0 ] && [ $g1 = 0 ] && [ $y1 = 0 ]'
+# An Enterprise Managed User login has the form handle_shortcode. The underscore is part of a real
+# GitHub login, so a list naming one is ready and trusts it in every reader, and publish posts as it.
+EMU_PASS="$(mc jdoe_acme "<!-- adversarial-review: sha=$D verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$EMU_PASS]" OPEN)"
+REVIEW_MARKER_AUTHORS=jdoe_acme "$RC" status 7 >/dev/null 2>&1; r1=$?
+REVIEW_MARKER_AUTHORS=jdoe_acme python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+REVIEW_MARKER_AUTHORS=jdoe_acme bash "$GUARD" >/dev/null 2>&1; y1=$?
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"
+r2=$(REVIEW_MARKER_AUTHORS=jdoe_acme FAKE_LOGIN=jdoe_acme pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "EMU login jdoe_acme is trusted: status 0, gate 0, guard 0, publish posts" \
+  eval '[ $r1 = 0 ] && [ $g1 = 0 ] && [ $y1 = 0 ] && [ $r2 = 0 ] && [ $(ncomments) = 1 ]'
+# A count written in non-ASCII digits is not a count. node already refuses it; Python's \d took it.
+ARABIC_PASS="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=PASSED pass=$(printf '\xd9\xa1') critical=0 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$ARABIC_PASS]" OPEN)"
+"$RC" status 7 >/dev/null 2>&1; r1=$?
+python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+check "marker with pass=<arabic-indic 1> is no marker to status or gate (status 1, gate 1)" eval '[ $r1 = 1 ] && [ $g1 = 1 ]'
+withevents; rm -rf "$EXPORT"; "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$W/err"; x1=$?
+check "export-audit on a marker with pass=<arabic-indic 1> refuses, writes nothing" \
+  eval '[ $x1 != 0 ] && grep -q "no trusted marker" "$W/err" && [ -z "$(ls -A "$EXPORT" 2>/dev/null)" ]'
+# Whitespace inside a marker is ASCII only, in every reader and under every locale: a no-break space
+# or an ideographic space after `<!--` makes it no marker to status (node), marker (bash), the gate,
+# budget and export-audit alike. One reader taking it while another refuses is how CI and the gate
+# disagree.
+for loc in C en_US.UTF-8; do
+  for ws in $'\xc2\xa0' $'\xe3\x80\x80'; do
+    hex="$(printf %s "$ws" | od -An -tx1 | tr -d ' \n')"
+    UPASS="<!--${ws}adversarial-review: sha=$D verdict=PASSED pass=1 critical=0 warning=0 note=0 -->"
+    reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$(mc github-actions "$UPASS")]" OPEN)"; withevents
+    LC_ALL=$loc "$RC" status 7 >/dev/null 2>&1; r1=$?
+    LC_ALL=$loc python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+    printf '%s\n' "$UPASS" | LC_ALL=$loc "$RC" marker --author github-actions >/dev/null 2>&1; m1=$?
+    rm -rf "$EXPORT"; LC_ALL=$loc "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>&1; x1=$?
+    reset "$(mk 7 $D '[{"name":"review:blocked"}]' "[$(mc github-actions "<!--${ws}adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=1 warning=0 note=0 -->")]" OPEN)"
+    b1="$(LC_ALL=$loc "$RC" budget 7 2>/dev/null | grep '^B_NEXT=' | tr -d "'")"
+    check "marker with $hex after <!-- under $loc is no marker: status 1, gate 1, marker 1, export-audit refuses, budget none" \
+      eval '[ $r1 = 1 ] && [ $g1 = 1 ] && [ $m1 = 1 ] && [ $x1 != 0 ] && [ ! -e "$EXPORT/7-1.json" ] && [ "$b1" = B_NEXT=none ]'
+  done
+done
+# A verdict posted as a login off the list is one every reader ignores: publish refuses to post it.
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"
+r=$(FAKE_LOGIN=mallory pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "publish signed in as a login off the allowlist is refused, posts nothing" \
+  eval '[ $r = 1 ] && [ $(ncomments) = 0 ] && grep -q mallory "$W/out"'
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"; touch "$FAKE_DIR/user-fail"
+r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "publish when gh api user fails is refused, posts nothing" \
+  eval '[ $r = 1 ] && [ $(ncomments) = 0 ] && grep -q "could not resolve the login" "$W/out"'
 # ---- comment edits (GraphQL lastEditedAt) ------------------------------------------------------
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$GOOD_PASS]" OPEN)"
 "$RC" status 7 >/dev/null 2>&1; r0=$?
@@ -382,6 +456,9 @@ lr 1 src/a.ts 11-40; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >
 check "lint-report range end outside the hunk -> 1" eq "$r" 1
 lr 1 src/a.ts abc; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
 check "lint-report line that is not a number -> 1" eval '[ $r = 1 ] && grep -q "not a line number" "$W/out"'
+# Arabic-indic 11: `\d` without re.ASCII would take it and int() would parse it as 11, inside the hunk.
+lr 1 src/a.ts $'\xd9\xa1\xd9\xa1'; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+check "lint-report line in non-ASCII digits -> 1" eval '[ $r = 1 ] && grep -q "not a line number" "$W/out"'
 printf 'diff --git a/src/s.sql b/src/s.sql\n--- a/src/s.sql\n+++ b/src/s.sql\n@@ -1,1 +1,3 @@\n a\n+++ evil\n+b\n' >"$W/d.patch"
 lr 1 src/s.sql 3; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
 check "lint-report added line that looks like a file header -> 0" eq "$r" 0

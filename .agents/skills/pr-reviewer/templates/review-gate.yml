@@ -32,7 +32,9 @@
 #
 # MARKER AUTHORS. The repository variable REVIEW_MARKER_AUTHORS must list the GitHub login or logins
 # the harness publishes as (the account `gh` is authenticated as, for example `jonyfs`). With it
-# unset, anyone who can comment could forge a PASSED marker, so the job refuses to run.
+# unset, or naming no login (an entry counts only as ASCII letters, digits, hyphens and underscores, starting with a letter or digit, so a value
+# holding only a BOM or a no-break space names nobody), anyone who can comment could forge a PASSED
+# marker, so the job refuses to run.
 name: review-gate
 
 on:
@@ -67,8 +69,10 @@ jobs:
           REVIEW_MARKER_AUTHORS: ${{ vars.REVIEW_MARKER_AUTHORS }}
           REVIEW_BLOCK_AT: ${{ vars.REVIEW_BLOCK_AT }}
         run: |
-          if [ -z "${REVIEW_MARKER_AUTHORS//[[:space:]]/}" ]; then
-            echo "::error::Set the repository variable REVIEW_MARKER_AUTHORS to the login the harness publishes verdicts as. Without it any commenter could forge a PASSED marker."
+          # One entry per line; kept only if it is ASCII letters, digits, hyphens and underscores, starting with a letter or digit once spaces and
+          # tabs are trimmed, the rule review-cycle.sh applies. A BOM or no-break space is not a login.
+          if ! printf '%s\n' "$REVIEW_MARKER_AUTHORS" | tr -d '\r' | tr ',' '\n' | LC_ALL=C grep -Eq '^[[:blank:]]*[A-Za-z0-9][A-Za-z0-9_-]*[[:blank:]]*$'; then
+            echo "::error::Set the repository variable REVIEW_MARKER_AUTHORS to the login the harness publishes verdicts as (ASCII letters, digits, hyphens and underscores, starting with a letter or digit). Without one any commenter could forge a PASSED marker."
             exit 1
           fi
           .agents/skills/pr-reviewer/scripts/review-cycle.sh status "$PR"

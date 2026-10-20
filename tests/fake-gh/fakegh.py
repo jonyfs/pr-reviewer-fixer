@@ -16,6 +16,7 @@ if args[:2] == ["pr", "view"]:
     if not os.path.exists(p): sys.exit(1)
     sys.stdout.write(json.dumps(with_ids(load()))); sys.exit(0)
 if args[:2] == ["api", "user"]:
+    if os.path.exists(os.path.join(d, "user-fail")): sys.exit(1)  # a token with no user behind it
     print(os.environ.get("FAKE_LOGIN", "github-actions")); sys.exit(0)
 if args[:1] == ["api"] and len(args) > 1 and args[1].split("?")[0].endswith("/events"):
     if not os.path.exists(p) or os.path.exists(os.path.join(d, "events-fail")): sys.exit(1)

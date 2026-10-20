@@ -374,9 +374,11 @@ Two steps are required:
 2. Set `REVIEW_MARKER_AUTHORS` to the login the agent publishes as, the account `gh` is signed in
    to. Export it in the shell that starts your harness:
    `export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"`. Without it, any commenter could
-   post a forged verdict marker, so `status`, `publish`, `extend`, `export-audit` and the
+   post a forged verdict marker, so `status`, `publish`, `extend`, `halt`, `export-audit` and the
    gate refuse to run when it is unset or names no login, and `budget` prints `B_NEXT='none'` without
-   reading the budget. A marker comment edited after it was
+   reading the budget. An entry counts only as ASCII letters, digits, hyphens and underscores, starting with a letter or digit, so a pasted BOM or
+   no-break space names nobody. `publish`, `extend` and `halt --reason` also refuse when `gh` is signed in
+   as a login that is not on the list. A marker comment edited after it was
    created is ignored.
 
 The rest hardens the setup and is recommended for a shared repository:

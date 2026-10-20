@@ -54,7 +54,7 @@ def main():
         pr = json.loads(out)
     except json.JSONDecodeError:
         return fail("gh pr view did not answer JSON")
-    m = re.match(r"https?://[^/]+/([^/]+)/([^/]+)/pull/(\d+)", str(pr.get("url") or ""))
+    m = re.match(r"https?://[^/]+/([^/]+)/([^/]+)/pull/(\d+)", str(pr.get("url") or ""), re.ASCII)
     if not m:
         return fail("the pull request has no usable url, so its comment edits cannot be checked")
     owner, repo, number = m.groups()
