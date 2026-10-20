@@ -227,6 +227,25 @@ p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "7",
 check("publish with a trusted marker edited by another login is refused, nothing posted",
       p.returncode != 0 and len(comments_posted(d)) == n and "edited by mallory" in p.stderr, p.stderr + p.stdout)
 
+# W1 of #25: a foreign edit that breaks the marker shape is still a foreign edit. Before, the
+# broken body matched no marker, so the comment fell out of the count and the pass number reset.
+def broken(cs, ids):
+    for i in ids:
+        cs[i]["body"] = cs[i]["body"].replace("adversarial-review", "adversarial_review")
+    return cs
+EIDS = tuple("IC_%d" % i for i in range(1, 6))
+d = budget(broken(hist([1] * 6), range(1, 6)), edited=EIDS, edited_by=tuple((i, "mallory") for i in EIDS))
+check("trusted markers broken by another login's edit -> budget none, names the editor",
+      d.get("next") == "none" and "edited by mallory" in d.get("why", ""), d)
+d = budget(broken(hist([1] * 6), range(1, 6)), edited=EIDS)
+check("trusted markers broken by their own author's edit -> not a foreign edit", "edited by" not in d.get("why", ""), d)
+d = setup(broken(hist([1] * 6), range(1, 6)), labels=("review:running",), edited=EIDS, edited_by=tuple((i, "mallory") for i in EIDS))
+rep = os.path.join(d, "report.md"); open(rep, "w").write("## findings\n- one\n")
+n = len(comments_posted(d))
+p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "2", "--sha", H, "--critical", "1", "--warning", "0", "--note", "0"], d)
+check("publish --pass 2 after another login broke the markers is refused, nothing posted",
+      p.returncode != 0 and len(comments_posted(d)) == n and "edited by mallory" in p.stderr, p.stderr + p.stdout)
+
 # A list of invisible characters names nobody: a stranger's grant must not raise the budget.
 d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")
 check("allowlist of a no-break space: budget answers none", d.get("next") == "none" and "REVIEW_MARKER_AUTHORS" in d.get("why", ""), str(d))

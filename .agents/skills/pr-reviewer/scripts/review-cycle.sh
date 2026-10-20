@@ -123,7 +123,8 @@
 #                             Only the bare `marker` subcommand still reads with the list unset.
 #                             A comment edited after it was created is never read as a verdict
 #                             (pr-json.py); its `pass=` still counts toward the highest pass. A
-#                             trusted marker edited by another login stops `publish` and `budget`.
+#                             comment by a trusted login edited by another login (whether or not
+#                             it still reads as a marker) stops `publish` and `budget`.
 #     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
 #                             Default 5. Read by `budget` and `extend`.
 #     MAX_REVIEW_CYCLES_HARD  Absolute ceiling no answer passes. Default 10, clamped to 1..10.
@@ -498,11 +499,13 @@ parse() {
       const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
       if(active&&(!who||!allow.includes(who)))continue;
       const mm=re.exec(c.body||"");
-      // Anyone with write access can edit another login'"'"'s comment, so a trusted marker edited by
+      // Anyone with write access can edit another login'"'"'s comment, so a trusted comment edited by
       // someone else may carry a number or verdict its author never wrote. It is reported (and
       // counted as BLOCKED history, which only tightens), and `publish` and `budget` refuse on it.
+      // Whether the body still reads as a marker does not matter: an edit that breaks the marker
+      // would otherwise drop it from the count unseen, so any foreign edit counts (fails closed).
       const ed=String((c&&c.editor&&c.editor.login)||"").toLowerCase();
-      if(mm&&ed!==who){foreign=ed||"unknown";blocked="yes";}
+      if(ed!==who){foreign=ed||"unknown";blocked="yes";}
       // An edited marker is never the verdict, but its pass still counts: an edit that keeps the
       // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
       // body after the edit is kept, so an edit that rewrites the number counts as the new one.
@@ -541,8 +544,9 @@ parse() {
   # an older commit, or a low `--pass`, cannot restart the count.
   MARKER_MAX_PASS=$(printf '%s' "$m" | cut -d' ' -f11)
   case "$MARKER_MAX_PASS" in ''|*[!0-9]*) MARKER_MAX_PASS=0 ;; esac
-  # The login that edited a trusted marker it did not write (`unknown` when GitHub names none), `-`
-  # when there is none. Such an edit can rewrite `pass=`, so the count is not trusted while it stands.
+  # The login that edited a trusted comment it did not write (`unknown` when GitHub names none), `-`
+  # when there is none. Such an edit can rewrite `pass=` or break the marker so it no longer counts,
+  # so the count is not trusted while it stands.
   MARKER_FOREIGN_EDIT=$(printf '%s' "$m" | cut -d' ' -f12)
   [ -n "$MARKER_FOREIGN_EDIT" ] || MARKER_FOREIGN_EDIT=-
 }
@@ -1007,7 +1011,7 @@ done = max(max_pass - 1, 0)
 remaining = max(hard - done, 0)
 mine = os.environ.get("BUDGET_BLOCK_AT")
 if foreign != "-":
-    nxt, why = "none", "a trusted verdict marker was edited by %s, not by its author, so the pass count cannot be trusted; a person checks that comment (its edit history shows what changed) and deletes or restores it" % foreign
+    nxt, why = "none", "a comment by a trusted login was edited by %s, not by its author, so the pass count cannot be trusted (the edit may have rewritten or broken a verdict marker); a person checks that comment (its edit history shows what changed) and deletes or restores it" % foreign
 elif at is None:
     nxt, why = "none", "no trusted verdict marker at the head"
 elif at["block_at"] and at["block_at"] != mine:
@@ -1392,7 +1396,7 @@ cmd_publish() {
   # state at a time and `publish` is itself the thing about to overwrite it.
   # The pass number is the next one after the highest trusted marker, exactly. A lower one (or the
   # same one again) would let `budget` restart the cycle count, and a higher one would skip cycles.
-  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED. A trusted verdict marker on #$NUMBER was edited by ${MARKER_FOREIGN_EDIT}, not by its author, so its pass number and verdict cannot be trusted and the next pass is not known.
+  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED. A comment by a trusted login on #$NUMBER was edited by ${MARKER_FOREIGN_EDIT}, not by its author. The edit may have rewritten or broken a verdict marker, so the pass numbers and verdicts cannot be trusted and the next pass is not known.
    A person checks that comment on GitHub (its edit history shows what changed) and deletes it or restores it with a new comment, then publishes again."
   local want_pass=$(( ${MARKER_MAX_PASS:-0} + 1 ))
   [ "$passno" -eq "$want_pass" ] || die "review-cycle: REFUSED. --pass $passno, and the next pass on #$NUMBER is $want_pass (the highest trusted marker says pass ${MARKER_MAX_PASS:-0}).

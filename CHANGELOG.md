@@ -13,7 +13,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `pass=` (and the cycle count) or turn a BLOCKED into a PASSED (N4 of #24). `pr-json.py` records
   the login of the last edit (`IssueComment.editor`) in `editedComments`; `publish` refuses,
   `budget` answers `none` and names the editor, and the gate counts that marker as BLOCKED history,
-  until a person deletes or restores the comment. An edit by the author is treated as before; an
+  until a person deletes or restores the comment. This holds whether or not the edited body still
+  reads as a marker, so a foreign edit that breaks the marker (for example `adversarial_review`)
+  cannot drop it from the count unseen (W1 of #25). An edit by the author is treated as before; an
   editor GitHub no longer names counts as another login.
 - `budget` takes the highest pass from `parse()` instead of reading the edited comments again, so
   `publish` and `budget` count edited markers the same way (N8 of #23).
@@ -28,6 +30,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   calls every edit an edit by a trusted login (N2 and N4 of #24). The `pr-json.py` comment and the
   `tests/budget/t.py` comment that still said an edit cannot lower the count now say it holds when
   the edit keeps the number (N1 and N3 of #24).
+
+### Tests
+
+- Rows for a foreign edit that breaks the marker shape, in `budget`, `publish` and the gate (W1 of
+  #25).
 
 ## 0.9.1
 

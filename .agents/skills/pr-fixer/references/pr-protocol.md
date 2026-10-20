@@ -80,9 +80,11 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    an edit that rewrites the number counts as the new number: a lower one lowers the count, and a
    higher one raises it, up to sending `budget` to the ceiling, which fails closed. GitHub lets
    anyone with write access edit another login's comment, so `pr-json.py` also records who made
-   the last edit (`IssueComment.editor`). A trusted marker edited by anyone other than its author,
-   or by an account GitHub no longer names, counts as BLOCKED history, `budget` answers `none` and
-   names the editor, and `publish` refuses, until a person deletes or restores that comment.
+   the last edit (`IssueComment.editor`). A comment by a trusted login edited by anyone other than
+   its author, or by an account GitHub no longer names, counts as BLOCKED history, `budget` answers
+   `none` and names the editor, and `publish` refuses, until a person deletes or restores that
+   comment. This holds whether or not the edited body still reads as a marker, so an edit that
+   breaks a marker cannot drop it from the count unseen.
 
 Rule 2 keeps an edited marker from being read as a verdict, and keeps an edit by another login from
 moving the count. It does not stop the author's own login from rewriting its number, or deleting

@@ -164,6 +164,13 @@ python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
 echo "IC_0 mallory" >"$FAKE_DIR/edited-by"
 python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
 check "gate: an older PASSED edited by its author passes; edited by another login it is BLOCKED history" eval '[ $g0 = 0 ] && [ $g1 != 0 ]'
+# W1 of #25: the same, with the edit breaking the marker shape. It is still BLOCKED history.
+PS1X="$(mc github-actions "<!-- adversarial_review: sha=$B verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$PS1X,$PH1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
+python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
+echo "IC_0 mallory" >"$FAKE_DIR/edited-by"
+python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
+check "gate: a marker broken by its author's edit passes; broken by another login it is BLOCKED history" eval '[ $g0 = 0 ] && [ $g1 != 0 ]'
 reset "$(mk 7 $D '[{"name":"review:blocked"}]' '[]' OPEN)"
 python3 -I - <<'PY'
 import json, os

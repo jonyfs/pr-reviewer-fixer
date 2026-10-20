@@ -390,16 +390,16 @@ def main() -> int:
             if m:
                 markers.append(m.groups())
         # An edited comment is never read as a verdict, but an edit must not be able to erase a BLOCKED
-        # marker from the history: BLOCKED history only tightens a rule. A trusted marker edited by
-        # someone other than its author counts as BLOCKED history whatever it now says, since that
-        # edit could have turned a BLOCKED into a PASSED.
+        # marker from the history: BLOCKED history only tightens a rule. A trusted comment edited by
+        # someone other than its author counts as BLOCKED history whatever it now says, marker or
+        # not, since that edit could have turned a BLOCKED into a PASSED or broken the marker.
         edited_blocked = False
         for c in pr.get("editedComments", []) or []:
             if marker_author_allowed(c):
                 em = MARKER.match(c.get("body", "") or "")
                 author = str((c.get("author") or {}).get("login") or "").lower()
                 editor = str((c.get("editor") or {}).get("login") or "").lower()
-                if em and (em.group(2).upper() == "BLOCKED" or editor != author):
+                if editor != author or (em and em.group(2).upper() == "BLOCKED"):
                     edited_blocked = True
         if not markers:
             errors.append(
