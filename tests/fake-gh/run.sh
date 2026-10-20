@@ -320,6 +320,9 @@ reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$ARABIC_PASS]" OPEN)"
 "$RC" status 7 >/dev/null 2>&1; r1=$?
 python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
 check "marker with pass=<arabic-indic 1> is no marker to status or gate (status 1, gate 1)" eval '[ $r1 = 1 ] && [ $g1 = 1 ]'
+withevents; rm -rf "$EXPORT"; "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$W/err"; x1=$?
+check "export-audit on a marker with pass=<arabic-indic 1> refuses, writes nothing" \
+  eval '[ $x1 != 0 ] && grep -q "no trusted marker" "$W/err" && [ -z "$(ls -A "$EXPORT" 2>/dev/null)" ]'
 # Whitespace inside a marker is ASCII only, in every reader and under every locale: a no-break space
 # or an ideographic space after `<!--` makes it no marker to status (node), marker (bash), the gate,
 # budget and export-audit alike. One reader taking it while another refuses is how CI and the gate
