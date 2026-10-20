@@ -38,9 +38,15 @@ jobs:
           if gh release view "v$version" >/dev/null 2>&1; then
             # A rerun after a failed upload attaches the files a release is missing.
             if gh release view "v$version" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS; then
-              echo "v$version already released"
+              echo "v$version already has its files"
             else
               gh release upload "v$version" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/SHA256SUMS" --clobber
+            fi
+            # `gh release create` uploads the files to a draft and publishes it last, so a failure in
+            # that last call leaves a draft with every file attached. A rerun publishes it.
+            if [ "$(gh release view "v$version" --json isDraft --jq .isDraft)" = true ]; then
+              gh release edit "v$version" --draft=false
+              echo "v$version was a draft; published"
             fi
             exit 0
           fi

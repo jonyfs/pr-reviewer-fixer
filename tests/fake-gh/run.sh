@@ -426,6 +426,19 @@ check "block-at with another value -> status and gate inconclusive (2)" eval '[ 
 REVIEW_BLOCK_AT=Warning "$RC" status 7 >/dev/null 2>&1; r3=$?
 REVIEW_BLOCK_AT=Warning python3 -I "$GATE" 7 >/dev/null 2>&1; g3=$?
 check "block-at read exactly: Warning is inconclusive (2) in status and in the gate alike" eval '[ $r3 = 2 ] && [ $g3 = 2 ]'
+# ---- two review states at once: every label move clears all of them, so the loop can recover --------
+TWO='[{"name":"review:blocked"},{"name":"review:running"}]'
+reset "$(mk 7 $A "$TWO" '[]' OPEN)"
+"$RC" status 7 >"$W/out" 2>&1; r=$?
+check "two states: status owes (1) and names start as the way out" eval '[ $r = 1 ] && grep -q "several review states" "$W/out" && grep -q "next: review-cycle.sh start 7" "$W/out"'
+"$RC" start 7 >"$W/out" 2>&1; r=$?
+check "two states: start -> review:running alone" eval '[ $r = 0 ] && [ "$(labels)" = "review:running" ]'
+reset "$(mk 7 $A "$TWO" '[]' OPEN)"
+"$RC" fix 7 >"$W/out" 2>&1; r=$?
+check "two states: fix -> review:fixing alone" eval '[ $r = 0 ] && [ "$(labels)" = "review:fixing" ]'
+reset "$(mk 7 $A '[{"name":"review:pending"},{"name":"review:running"}]' '[]' OPEN)"
+r=$(pub --verdict PASSED --pass 1 --sha $A --critical 0 --warning 0 --note 0)
+check "two states: publish PASSED -> review:passed alone" eval '[ $r = 0 ] && [ "$(labels)" = "review:passed" ]'
 # ---- block_at in the marker: a reader with another setting does not judge it ----------------------
 lastbody() { python3 -I -c "import json,sys;print(json.load(open(sys.argv[1]))[\"comments\"][-1][\"body\"])" "$FAKE_DIR/pr.json" | head -1; }
 r=$(REVIEW_BLOCK_AT=warning bp --verdict BLOCKED --critical 0 --warning 2)

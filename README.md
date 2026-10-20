@@ -201,6 +201,11 @@ stateDiagram-v2
     state "blocked + review:needs-human" as needs_human
 ```
 
+`review-cycle.sh stale` performs the moves back to `pending`. The fixer runs it after its push and the
+review loop runs it after any push it sees. A push made outside a session leaves the old label until
+the next loop runs, but the `review-gate` check fails at once, because the verdict marker names the
+old commit.
+
 ## Cycle budget and human control
 
 | Setting | Default | Meaning |

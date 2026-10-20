@@ -361,6 +361,15 @@ NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker 
 # debt. The marker carries the same three counts either way; only the arithmetic over them moves,
 # and every reader (this script, the gate) applies the same one. Any other value is refused rather
 # than guessed, because guessing "critical" would quietly turn the stricter setting off.
+# One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
+# state `parse()` found, joined by spaces, so with two at once a single `--remove-label "$LABEL"`
+# split into two words and real gh refused the call ("accepts at most 1 arg(s)"). Each label move
+# then died and the pull request stayed in two states until a person cleared them by hand.
+remove_states_except() {
+  local l
+  for l in $LABEL; do [ "$l" = "$1" ] || printf -- '--remove-label %s ' "$l"; done
+  return 0
+}
 block_at_ready() { case "${REVIEW_BLOCK_AT:-critical}" in critical|warning) return 0 ;; *) return 1 ;; esac; }
 BLOCK_AT_MSG='REVIEW_BLOCK_AT must be critical or warning'
 # A marker published under `warning` says so (`block_at=warning`). Read under `critical` it would
@@ -688,7 +697,8 @@ cmd_status() {
     return 1
   fi
   case "$LABEL" in
-    *" "*) echo "#$NUMBER carries several review states at once ($LABEL) — the projection has to project one thing"; return 1 ;;
+    *" "*) echo "#$NUMBER carries several review states at once ($LABEL) — the projection has to project one thing"
+           echo "  next: review-cycle.sh start $NUMBER (it clears every other state), then /pr-reviewer"; return 1 ;;
   esac
 
   # A PASSED marker that counts a CRITICAL is the reviewer contradicting its own arithmetic, and it
@@ -982,7 +992,7 @@ cmd_start() {
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
   parse "$json"
   gh pr edit "$NUMBER" --add-label review:running ${HALTED:+--remove-label review:needs-human} \
-      $( [ -n "$LABEL" ] && [ "$LABEL" != "review:running" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
+      $(remove_states_except review:running) >/dev/null \
     || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
   echo "#$NUMBER → review:running (head ${HEAD:0:12})"
 }
@@ -1094,7 +1104,7 @@ cmd_fix() {
   # Before any label moves: a refused correction leaves the pull request exactly as it was.
   fix_guard "$NUMBER" || die "review-cycle: #$NUMBER was not claimed for correction"
   gh pr edit "$NUMBER" --add-label review:fixing ${HALTED:+--remove-label review:needs-human} \
-      $( [ -n "$LABEL" ] && [ "$LABEL" != "review:fixing" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
+      $(remove_states_except review:fixing) >/dev/null \
     || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
   echo "#$NUMBER → review:fixing (head ${HEAD:0:12})${HALTED:+, review:needs-human withdrawn}"
 }
@@ -1325,7 +1335,7 @@ cmd_publish() {
     cat "$report"; } | gh pr comment "$NUMBER" --body-file - >/dev/null \
     || die "review-cycle: could not post the marker on #$NUMBER"
   gh pr edit "$NUMBER" --add-label "$label" $halted_rm \
-      $( [ -n "$LABEL" ] && [ "$LABEL" != "$label" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
+      $(remove_states_except "$label") >/dev/null \
     || die "review-cycle: marker posted but the label did not move on #$NUMBER; fix by hand; labels may be missing: run review-cycle.sh ensure-labels, then move the label to $label"
   echo "#$NUMBER → $label${halted_rm:+, review:needs-human withdrawn}, marker bound to ${HEAD:0:12}, pass $passno, critical=$crit warning=$warn note=$note"
   # An approved pull request stops being a draft. This is the one thing publish does beyond the

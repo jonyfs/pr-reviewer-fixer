@@ -38,6 +38,12 @@ Run the loop, without being asked, when any of these happens in the session:
 Do not wait for CI, a bot or a person to start it. If the session ends before the loop does, the
 next session starts it from `review-cycle.sh status`, which exits 1 while a review is owed.
 
+After any push to the branch, by the agent or by a person, run `review-cycle.sh stale <pr>` before
+step 1. It moves a marker-backed label (`review:passed`, `review:blocked`, `review:fixing`) back to
+`review:pending` once the head has left the marker, so the label stops claiming a verdict about
+another commit. The fixer runs it after its own push; nothing on GitHub runs it for a push made
+outside a session, so until the next loop the label is stale while the gate already fails.
+
 An optional Claude Code Stop hook can run `review-cycle.sh debt` and refuse to end a turn while a
 review is owed. It is a convenience. The rule above is the portable trigger.
 
@@ -66,8 +72,11 @@ A marker comment that was edited after it was created is ignored by all of them.
    the skill names, one entry per finding, so the fixer reads ids and claims from it and not from
    prose. Trust markers only from `REVIEW_MARKER_AUTHORS`."
    Wait for its finish line.
-4. **Re-run the gate.** If `review-gate` is installed, `gh run rerun` its run for the head, because a
-   comment does not start it. See `templates/review-gate.yml`.
+4. **Re-run the gate.** If `review-gate` is installed, re-run every failed or cancelled run for the
+   head SHA, because a comment does not start it. A head has more than one run: the one from
+   `opened` or `synchronize` failed before the verdict existed, and on PASSED the `gh pr ready` in
+   `publish` starts a `ready_for_review` run that is already green. Re-running only the newest one
+   leaves the red one on the pull request. See `templates/review-gate.yml`.
 5. **Decide.** `review-cycle.sh budget <pr>` prints `B_NEXT`:
 
    | `B_NEXT` | Do |
