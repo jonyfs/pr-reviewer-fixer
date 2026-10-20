@@ -56,8 +56,9 @@ and the gate alike:
    drops the entry whole. The list must name at least one login. **Unset, empty, whitespace, a lone
    comma and only invisible characters all fail closed**: `publish`, `export-audit`, `extend` and
    `halt` refuse, `status` and the gate answer inconclusive (exit 2), and `budget` prints
-   `B_NEXT='none'` and exits 0, instead of reading every comment. `publish`, `extend` and `halt`
-   also refuse when the login `gh` is signed in to is not on the list. Only the bare `marker` subcommand, which reads a text you
+   `B_NEXT='none'` and exits 0, instead of reading every comment. `publish`, `extend` and
+   `halt --reason` (the commands that post a marker) also refuse when the login `gh` is signed in to
+   is not on the list. Only the bare `marker` subcommand, which reads a text you
    hand it, still accepts an unset list.
    The same commands read one more setting, `REVIEW_BLOCK_AT` (`critical` by default, or `warning`).
    It says which findings block: with `warning`, a marker carrying `warning>=1` cannot be `PASSED`

@@ -20,7 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   kept list trusts nobody everywhere, including `budget`, which used to trust everyone then. The underscore
   keeps Enterprise Managed User logins (`handle_shortcode`) working. A `[bot]` suffix is outside the
   grammar, and an entry carrying one is dropped.
-- `publish`, `extend` and `halt` refuse when the login `gh` is signed in to is not on
+- `publish`, `extend` and `halt --reason` refuse when the login `gh` is signed in to is not on
   `REVIEW_MARKER_AUTHORS`, or cannot be resolved. A marker posted as anyone else is one every reader
   ignores, so `status` owed the review forever and a halt was posted again on every run.
 - The Python marker, extension and lint-report regexes run with `re.ASCII`. `\d` took non-ASCII

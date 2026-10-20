@@ -152,6 +152,13 @@ d = setup(hist([3, 3, 2, 2, 2, 2]))
 p = run(["extend", "7", "--n", "2"], d, FAKE_LOGIN="mallory")
 check("extend as a login off the allowlist is refused and posts nothing", p.returncode != 0 and len(comments_posted(d)) == 6 and "mallory" in p.stderr, p.stderr)
 
+# halt without --reason posts no marker, only the label, so the publisher's login does not matter.
+d = setup(hist([1] * 6))
+p = run(["halt", "7"], d, FAKE_LOGIN="mallory")
+pr = json.load(open(os.path.join(d, "pr.json")))
+check("halt without --reason as a login off the allowlist adds the label and posts nothing",
+      p.returncode == 0 and "review:needs-human" in " ".join(l["name"] for l in pr["labels"]) and len(pr["comments"]) == 6, p.stderr)
+
 # A list of invisible characters names nobody: a stranger's grant must not raise the budget.
 d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")
 check("allowlist of a no-break space: budget answers none", d.get("next") == "none" and "REVIEW_MARKER_AUTHORS" in d.get("why", ""), str(d))

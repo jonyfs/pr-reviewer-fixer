@@ -818,7 +818,8 @@ cmd_halt() {
   done
   case "$reason" in ''|*[!A-Za-z0-9_.-]*) [ -z "$reason" ] || die "review-cycle: --reason takes letters, digits, dot, dash and underscore only" ;; esac
   marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
-  publisher_on_list
+  # Only `--reason` posts a marker, so only then must the publisher be on the list.
+  [ -z "$reason" ] || publisher_on_list
   local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to halt"
   parse "$json"
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop left to halt"
