@@ -14,11 +14,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `parse()` and the Python reader in `budget` saw no login and trusted every commenter. A PASSED
   marker forged by anyone made `status` print "Nothing owed" and the gate go green. Every reader now
   applies one rule: split on commas, trim ASCII spaces, tabs, CR and LF, and keep an entry only if
-  it is ASCII letters, digits and hyphens. Anything else drops the entry whole. The shell computes
+  it is ASCII letters, digits, hyphens and underscores. Anything else drops the entry whole. The shell computes
   the kept list once (`marker_authors`) and hands it to the node and Python readers; the gate, the
   `review-gate.yml` guard and the `jq` recipes in `pr-protocol.md` apply the same grammar. An empty
-  kept list trusts nobody everywhere, including `budget`, which used to trust everyone then. A login
-  outside that grammar (an underscore, a `[bot]` suffix) is no longer accepted.
+  kept list trusts nobody everywhere, including `budget`, which used to trust everyone then. The underscore
+  keeps Enterprise Managed User logins (`handle_shortcode`) working. A `[bot]` suffix is outside the
+  grammar, and an entry carrying one is dropped.
 - `publish`, `extend` and `halt` refuse when the login `gh` is signed in to is not on
   `REVIEW_MARKER_AUTHORS`, or cannot be resolved. A marker posted as anyone else is one every reader
   ignores, so `status` owed the review forever and a halt was posted again on every run.

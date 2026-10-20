@@ -376,7 +376,7 @@ Two steps are required:
    `export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"`. Without it, any commenter could
    post a forged verdict marker, so `status`, `publish`, `extend`, `halt`, `export-audit` and the
    gate refuse to run when it is unset or names no login, and `budget` prints `B_NEXT='none'` without
-   reading the budget. An entry counts only as ASCII letters, digits and hyphens, so a pasted BOM or
+   reading the budget. An entry counts only as ASCII letters, digits, hyphens and underscores, so a pasted BOM or
    no-break space names nobody. `publish`, `extend` and `halt` also refuse when `gh` is signed in as
    a login that is not on the list. A marker comment edited after it was
    created is ignored.

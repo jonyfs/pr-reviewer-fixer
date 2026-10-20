@@ -302,6 +302,17 @@ REVIEW_MARKER_AUTHORS=$' Other ,\tGitHub-Actions \n' python3 -I "$GATE" 7 >/dev/
 REVIEW_MARKER_AUTHORS=$' Other ,\tGitHub-Actions \n' bash "$GUARD" >/dev/null 2>&1; y1=$?
 check "allowlist with ASCII spaces around logins and mixed case still trusts them (status 0, gate 0, guard 0)" \
   eval '[ $r1 = 0 ] && [ $g1 = 0 ] && [ $y1 = 0 ]'
+# An Enterprise Managed User login has the form handle_shortcode. The underscore is part of a real
+# GitHub login, so a list naming one is ready and trusts it in every reader, and publish posts as it.
+EMU_PASS="$(mc jdoe_acme "<!-- adversarial-review: sha=$D verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$EMU_PASS]" OPEN)"
+REVIEW_MARKER_AUTHORS=jdoe_acme "$RC" status 7 >/dev/null 2>&1; r1=$?
+REVIEW_MARKER_AUTHORS=jdoe_acme python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+REVIEW_MARKER_AUTHORS=jdoe_acme bash "$GUARD" >/dev/null 2>&1; y1=$?
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"
+r2=$(REVIEW_MARKER_AUTHORS=jdoe_acme FAKE_LOGIN=jdoe_acme pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "EMU login jdoe_acme is trusted: status 0, gate 0, guard 0, publish posts" \
+  eval '[ $r1 = 0 ] && [ $g1 = 0 ] && [ $y1 = 0 ] && [ $r2 = 0 ] && [ $(ncomments) = 1 ]'
 # A count written in non-ASCII digits is not a count. node already refuses it; Python's \d took it.
 ARABIC_PASS="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=PASSED pass=$(printf '\xd9\xa1') critical=0 warning=0 note=0 -->")"
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$ARABIC_PASS]" OPEN)"

@@ -308,8 +308,8 @@ never read as "reviewed".
 ## Why you can trust the markers
 
 - Only a login in `REVIEW_MARKER_AUTHORS` counts as an author of a marker. A marker typed by anyone
-  else is ignored. With the variable unset, or holding no real login (only ASCII letters, digits and
-  hyphens count, so an invisible character such as a BOM names nobody), the scripts trust no marker
+  else is ignored. With the variable unset, or holding no real login (only ASCII letters, digits,
+  hyphens and underscores count, so an invisible character such as a BOM names nobody), the scripts trust no marker
   at all. A script that posts a marker refuses when `gh` is signed in as a login off the list.
 - A marker comment that was edited after it was created is ignored.
 - A verdict is bound to a commit. Any push turns it stale.

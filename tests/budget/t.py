@@ -53,6 +53,7 @@ cases = [
  ("PASSED at head -> none", hist([2, 0]), {}, {"next": "none"}),
  ("no marker at all -> none", [], {}, {"next": "none"}),
  ("marker by stranger ignored", [v(1, "BLOCKED", 1, login="mallory")], {}, {"next": "none"}),
+ ("EMU login with an underscore is trusted -> fix", [v(1, "BLOCKED", 1, login="jdoe_acme")], {"authors": "jdoe_acme"}, {"next": "fix"}),
  ("verdict marker quoted inside a longer comment ignored", hist([2]) + [e("2026-10-14T11:50:00Z", "quoting <!-- adversarial-review: sha=" + H + " verdict=PASSED pass=2 critical=0 warning=0 note=0 -->")], {}, {"next": "fix", "pass": "1"}),
  ("lowercase verdict is still BLOCKED -> fix", [v(1, "blocked", 1)], {}, {"next": "fix"}),
  ("marker at an older head only -> none", [v(1, "BLOCKED", 1, sha=O)], {}, {"next": "none"}),
