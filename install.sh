@@ -31,14 +31,25 @@
 # ~/.claude/skills/pr-reviewer, say), when the folder this script runs from lies inside a destination
 # skill folder, and when the destination lies inside the source.
 #
-# Whatever the path checks miss, it only ever removes a folder that looks like a copy it made: an
-# existing destination skill folder must be a real folder that holds a SKILL.md with that skill's
-# name and no .git at any depth, or the run is refused. It never removes a stage or set-aside folder
-# it did not create in this run.
+# Whatever the path checks miss, it only ever removes a folder that looks like a copy it made. One
+# rule decides that, for the source and the destination alike: a real folder, nothing named .git in
+# any letter case at any depth, and a SKILL.md whose frontmatter (the first `---` block) has the line
+# `name: <skill>`, a trailing CR allowed. A source skill folder that fails it is refused before any
+# change, so an install never writes a copy it would refuse to replace on the next run; an existing
+# destination skill folder that fails it is refused before the plan is printed. The copy's folders
+# are made writable by their owner, so the next run can remove it. With --yes it also refuses a
+# leftover folder with the name of this run's stage or set-aside copy, which it never removes.
+#
+# Limits: the rule cannot tell a person's edited install from a fresh one, so local edits inside an
+# installed skill folder are replaced, and a .git above the skill folder (a dotfiles repository at
+# ~/.claude, say) is not looked for. A file system mounted inside a destination skill folder is not
+# detected.
 #
 # EXIT CODES. 0 = done, or a dry run. 1 = refused (bad arguments, unknown harness, a source folder
-# that is not a skill or holds a symbolic link, a path it cannot resolve, a source and destination
-# that overlap, a destination that is not safe to replace). It installs nothing it cannot check.
+# that is not a skill, holds a symbolic link or would not pass the rule, a path it cannot resolve, a
+# source and destination that overlap, a destination that is not safe to replace), or an old copy
+# that could not be removed in full after the new one was put in place (the message names where it
+# is). It installs nothing it cannot check.
 set -uo pipefail
 
 die() { echo "install: $*" >&2; exit 1; }
@@ -125,6 +136,8 @@ within() { case "$1/" in "$2/"*) return 0 ;; esac; return 1; }
 # `skills/pr-reviewer` are one folder. $1 need not exist; the walk starts at its nearest existing parent.
 same_or_inside() {
   local a="$1" b="$2"
+  # dirname of a relative path settles on `.`, so the walk below would never end.
+  case "$a" in /*) ;; *) return 1 ;; esac
   [ -d "$b" ] || return 1
   while :; do
     if [ -e "$a" ] && [ "$a" -ef "$b" ]; then return 0; fi
@@ -134,6 +147,30 @@ same_or_inside() {
 }
 # $1 is $2 or lies inside it, by spelling or by identity.
 overlaps() { within "$1" "$2" || same_or_inside "$1" "$2"; }
+# The one rule for "folder $1 looks like an install of skill $2". It is applied to each source skill
+# folder before any change and to an existing destination skill folder before it is replaced, so a
+# copy the install made always passes it on the next run. The folder is a real folder, not a link;
+# nothing in it is named .git in any letter case, at any depth; it holds a SKILL.md, not a link, whose
+# first line is `---` and whose frontmatter, up to the next `---`, has the line `name: $2`. A trailing
+# CR is ignored on every line, so a checkout with CRLF line endings passes. On failure it returns 1
+# with the reason in WHY.
+WHY=""
+looks_like_install() {
+  local d="$1" s="$2" gitp
+  WHY=""
+  if [ -L "$d" ]; then WHY="is a symbolic link"; return 1; fi
+  [ -d "$d" ] || { WHY="is not a folder"; return 1; }
+  gitp="$(find "$d" -iname .git -print -quit 2>/dev/null)" || { WHY="cannot be read in full"; return 1; }
+  [ -z "$gitp" ] || { WHY="is or holds a repository ($gitp, a .git), which an install never is"; return 1; }
+  if [ -L "$d/SKILL.md" ] || [ ! -f "$d/SKILL.md" ]; then WHY="does not look like an install of $s (no SKILL.md)"; return 1; fi
+  awk -v want="name: $s" '
+    { sub(/\r$/, "") }
+    NR == 1 { if ($0 != "---") exit; next }
+    $0 == "---" { closed = 1; exit }
+    $0 == want { found = 1 }
+    END { exit !(closed && found) }' "$d/SKILL.md" 2>/dev/null \
+    || { WHY="does not look like an install of $s (no SKILL.md whose frontmatter has 'name: $s')"; return 1; }
+}
 
 SELF_P="$(physical "$(dirname -- "$0")")" || die "cannot resolve the folder install.sh runs from"
 if [ -z "$SOURCE" ]; then SOURCE="$SELF_P/.agents/skills"; fi
@@ -151,6 +188,8 @@ for s in "${SKILLS[@]}"; do
   [ ! -L "$SRC_P/$s" ] || die "$SOURCE/$s is a symbolic link; give --source the real folder"
   link="$(find "$SRC_P/$s" -type l -print 2>/dev/null | head -n 1)"
   [ -z "$link" ] || die "$link is a symbolic link inside the source; replace it with the real files"
+  # A source the destination rule would refuse installs once and then locks its own copy.
+  looks_like_install "$SRC_P/$s" "$s" || die "the source $SOURCE/$s $WHY; an install of it could not be replaced later, so nothing is installed"
 done
 # Physical paths, so a destination that is a link to the source, such as
 # `.claude/skills -> ../.agents/skills`, or `<link to a skill>/..`, is caught here instead of being
@@ -166,18 +205,9 @@ for s in "${SKILLS[@]}"; do
   overlaps "$SELF_P" "$DEST_P/$s" && die "install.sh runs from inside the destination skill folder $DEST_ROOT/$s, which the install would remove; run it from a clone outside the skills folder"
 done
 
-echo "install: skills  ${SKILLS[*]}"
-echo "install: from    $SOURCE"
-echo "install: to      $DEST_ROOT"
-[ "$DEST_P" = "$DEST_ROOT" ] || echo "install: which is $DEST_P"
-for s in "${SKILLS[@]}"; do
-  if [ -e "$DEST_P/$s" ] || [ -L "$DEST_P/$s" ]; then echo "install: will REPLACE $DEST_ROOT/$s with the new copy"
-  else echo "install: will create $DEST_ROOT/$s"; fi
-done
-[ -z "$REL" ] || [ "$REL" = ".agents/skills" ] || echo "install: will point templates/review-gate.yml at $REL/pr-reviewer/scripts/"
-
-# Refuse before the first removal: a destination that is a symbolic link, a name this script does
-# not own, or a folder that is not a copy it made stops the whole run, in the dry run too. This holds
+# Refuse before the first removal, and before the plan below, so the plan never promises to replace a
+# folder it then refuses: a destination that is a symbolic link, a name this script does not own, or
+# a folder that does not pass looks_like_install stops the whole run, in the dry run too. This holds
 # whatever the path checks above concluded, so no path bug can remove a repository or a person's own
 # folder.
 for s in "${SKILLS[@]}"; do
@@ -185,12 +215,18 @@ for s in "${SKILLS[@]}"; do
   case "$dest" in */pr-reviewer|*/pr-fixer) ;; *) die "refusing to replace '$dest'" ;; esac
   if [ -L "$dest" ]; then die "$DEST_ROOT/$s is a symbolic link; remove it yourself first"; fi
   [ -e "$dest" ] || continue
-  [ -d "$dest" ] || die "$DEST_ROOT/$s is not a folder; move it away yourself first"
-  gitp="$(find "$dest" -name .git -print -quit 2>/dev/null)" || die "cannot read all of $DEST_ROOT/$s; nothing changed"
-  [ -z "$gitp" ] || die "$gitp exists: $DEST_ROOT/$s is or holds a repository (.git), not an install, and is never replaced; clone outside the skills folder, or move it away yourself"
-  grep -qx "name: $s" "$dest/SKILL.md" 2>/dev/null \
-    || die "$DEST_ROOT/$s does not look like an install of $s (no SKILL.md named $s); move it away yourself first"
+  looks_like_install "$dest" "$s" || die "$DEST_ROOT/$s $WHY, so it is never replaced; move it away yourself first (and clone outside the skills folder)"
 done
+
+echo "install: skills  ${SKILLS[*]}"
+echo "install: from    $SOURCE"
+echo "install: to      $DEST_ROOT"
+[ "$DEST_P" = "$DEST_ROOT" ] || echo "install: which is $DEST_P"
+for s in "${SKILLS[@]}"; do
+  if [ -e "$DEST_P/$s" ]; then echo "install: will REPLACE $DEST_ROOT/$s with the new copy"
+  else echo "install: will create $DEST_ROOT/$s"; fi
+done
+[ -z "$REL" ] || [ "$REL" = ".agents/skills" ] || echo "install: will point templates/review-gate.yml at $REL/pr-reviewer/scripts/"
 
 if [ "$YES" -ne 1 ]; then
   echo "install: dry run. Nothing changed. Run again with --yes to install."
@@ -206,11 +242,14 @@ for s in "${SKILLS[@]}"; do
     if [ -e "$f" ] || [ -L "$f" ]; then die "$f already exists and is not this run's; move it away, nothing installed"; fi
   done
 done
+LEFT=0
 for s in "${SKILLS[@]}"; do
   dest="$DEST_P/$s"
   # Copy to a sibling first and move it into place, so a failed copy leaves the old install alone.
   stage="$DEST_P/.$s.new.$$"
-  cp -R "$SRC_P/$s" "$stage" || { rm -rf -- "$stage"; die "copy of $s failed; the old install is untouched"; }
+  cp -R "$SRC_P/$s" "$stage" || { chmod -R u+w -- "$stage" 2>/dev/null; rm -rf -- "$stage"; die "copy of $s failed; the old install is untouched"; }
+  # `cp -R` keeps a read-only folder read-only, and the next run could not remove the copy.
+  find "$stage" -type d -exec chmod u+w {} + || { rm -rf -- "$stage"; die "could not make the copy of $s writable; the old install is untouched"; }
   old="$DEST_P/.$s.old.$$"
   if [ -e "$dest" ]; then mv -- "$dest" "$old" || { rm -rf -- "$stage"; die "could not set the old $s aside; it is untouched"; }; fi
   if ! mv -- "$stage" "$dest"; then
@@ -219,7 +258,13 @@ for s in "${SKILLS[@]}"; do
     mv -- "$old" "$dest" && die "could not move the new $s into place; the old one is back"
     die "could not move the new $s into place, nor the old one back; it is at $old"
   fi
-  rm -rf -- "$old"
+  # The old copy passed looks_like_install; an install made before its folders were made writable
+  # can still hold a read-only one, which rm -rf cannot empty.
+  [ -e "$old" ] && find "$old" -type d ! -perm -u+w -exec chmod u+w {} + 2>/dev/null
+  if [ -e "$old" ] && ! rm -rf -- "$old"; then
+    echo "install: the old copy of $s could not be removed in full; it is at $old, remove it yourself" >&2
+    LEFT=1
+  fi
   if [ -n "$REL" ] && [ "$REL" != ".agents/skills" ] && [ -f "$dest/templates/review-gate.yml" ]; then
     tmp="$dest/templates/review-gate.yml.tmp"
     sed "s|\.agents/skills/pr-reviewer/scripts/|$REL/pr-reviewer/scripts/|g" "$dest/templates/review-gate.yml" >"$tmp" \
@@ -230,3 +275,4 @@ for s in "${SKILLS[@]}"; do
   echo "install: installed $DEST_ROOT/$s (${ver:-unknown})"
 done
 echo "install: next, set REVIEW_MARKER_AUTHORS and run review-cycle.sh ensure-labels (README, 'Check the install')."
+[ "$LEFT" = 0 ] || exit 1

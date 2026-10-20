@@ -264,11 +264,17 @@ holds one at any depth, a destination that resolves to the source folder (for ex
 `.claude/skills` linked to `.agents/skills`) or lies inside it, a source or a clone of `install.sh`
 that lies inside a skill folder it would replace (a clone at `~/.claude/skills/pr-reviewer`, say:
 clone it somewhere else), and a path it cannot resolve. Whatever those checks conclude, it only
-replaces a folder that looks like a copy it made: an existing destination skill folder that is not a
-folder, holds a `.git` at any depth, or has no `SKILL.md` with that skill's name is refused, and so
-is a leftover folder with the name of this run's stage or set-aside copy. For a
-project install into a folder other than `.agents/skills`, it points the installed
-`templates/review-gate.yml` at the new script path.
+replaces a folder that looks like a copy it made. One rule decides that, for the source and the
+destination alike: a real folder, nothing named `.git` in any letter case at any depth, and a
+`SKILL.md` whose frontmatter has the line `name: <skill>` (CRLF line endings are fine). A source
+skill folder that fails the rule is refused, so the install never writes a copy it would refuse to
+replace later. An existing destination skill folder that fails it is refused before the plan is
+printed. The copy's folders are made writable, so the next run can remove it. Only with `--yes`, it
+also refuses a leftover folder with the name of this run's stage or set-aside copy, since that name
+carries the process id. The rule cannot tell your edited install from a fresh one: edits inside an
+installed skill folder are replaced, and a `.git` above that folder (a dotfiles repository at
+`~/.claude`, say) or a file system mounted inside it is not looked for. For a project install into a folder other than
+`.agents/skills`, it points the installed `templates/review-gate.yml` at the new script path.
 
 To do the same by hand, copy the folders:
 
@@ -347,7 +353,10 @@ Both skills ship under one semantic version. It is in `VERSION`, in `metadata.ve
 At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
 exists it prints one notice with the release link, and the agent asks you whether to update. The
 script never downloads or installs anything. To update, clone the new tag and run `install.sh` again
-with `--yes`, which replaces the installed folders. If you copy by hand, delete the two installed
+with `--yes`, which replaces the installed folders. It refuses to replace a folder that does not
+look like one of its copies, such as a clone, a folder with a `.git` inside, or a folder you made
+yourself under that name. It says which one and changes nothing; move that folder away and run it
+again. If you copy by hand, delete the two installed
 folders first, since `cp -R` leaves files the new release dropped; then re-apply the path prefix if
 you changed it. Each release carries `pr-reviewer-fixer-X.Y.Z.tar.gz` and a `SHA256SUMS` file. Download
 both and run `shasum -a 256 -c SHA256SUMS` (or `sha256sum -c`) to check the archive arrived intact.

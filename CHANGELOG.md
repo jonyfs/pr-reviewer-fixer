@@ -38,10 +38,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   clone stored as `~/.claude/skills/Pr-Reviewer`, passed the overlap checks and was still deleted by
   `--scope user --yes`. The overlap checks now also compare folder identity (`test -ef`, device and
   inode) along every parent. As a backstop that does not depend on path logic, an existing
-  destination skill folder is replaced only when it is a real folder holding a `SKILL.md` with that
-  skill's name and no `.git` at any depth; a file, a repository, or a person's own folder of that
-  name is refused before any change. A leftover folder with the name of the run's stage or set-aside
-  copy is refused instead of removed.
+  destination skill folder is replaced only when it looks like an install of that skill: a real
+  folder, nothing named `.git` in any letter case at any depth, and a `SKILL.md` whose frontmatter
+  (the first `---` block, not the body) has the line `name: <skill>`. A file, a repository, or a
+  person's own folder of that name is refused before any change, and before the dry run's plan, so
+  the plan never says it will replace a folder it then refuses. With `--yes`, a leftover folder with
+  the name of the run's stage or set-aside copy is refused instead of removed.
+- The same rule now holds the source to what the destination must be. A source skill folder with
+  CRLF line endings in `SKILL.md`, or with a `.git` inside, installed once and then refused its own
+  copy on every later run. A trailing CR is now ignored on both sides, and a source that fails the
+  rule is refused before any change. `cp -R` kept a read-only source folder read-only, so the next
+  run could not remove the old copy and left it beside the new one while reporting success. The
+  copy's folders are now made writable, an old copy holding a read-only folder is emptied in full,
+  and an old copy that still cannot be removed is named and the run exits 1.
+  `same_or_inside` returns at once on a relative path instead of looping (no caller passes one).
 - `install.sh` printed a shell error (`VERSION: No such file or directory`) when the source had no
   `VERSION` two folders up, because the redirection of stderr came after the failing `<`. It now
   prints `unknown` and no error.

@@ -8,7 +8,8 @@ T="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$T/../.." && pwd)"
 ORIG_IN="${1:-$ROOT/install.sh}"
 # The scratch tree holds copies of the skills, so it lives outside tests/ (run-all.sh greps tests/).
-W="$(mktemp -d "${TMPDIR:-/tmp}/install-test.XXXXXX")"; trap 'rm -rf "$W"' EXIT; mkdir -p "$W/proj" "$W/home"
+# A row leaves a read-only or immutable file behind when it fails, so the cleanup clears both first.
+W="$(mktemp -d "${TMPDIR:-/tmp}/install-test.XXXXXX")"; trap 'command -v chflags >/dev/null 2>&1 && chflags -R nouchg "$W" 2>/dev/null; chmod -R u+w "$W" 2>/dev/null; rm -rf "$W"' EXIT; mkdir -p "$W/proj" "$W/home"
 # Every row runs a copy of install.sh and of the skills next to it, inside $W, so a refusal that
 # regressed can only damage the scratch tree, never the checkout the suite was started from.
 ORIG_DIR="$(cd "$(dirname "$ORIG_IN")" && pwd -P)" || { echo "install suite: cannot enter the folder of $ORIG_IN" >&2; exit 1; }
@@ -58,9 +59,10 @@ check "--help prints the whole header, through the exit-codes sentence" \
   eval '[ $r = 0 ] && grep -q "EXIT CODES" "$W/out" && [ "$(tail -n 1 "$W/out")" = "$HDR_LAST" ]'
 # chmod 000 does not stop root from reading, so this case only runs for other users.
 if [ "$(id -u)" != 0 ]; then
-cp -R "$SRC" "$W/badsrc"; chmod 000 "$W/badsrc/pr-fixer/SKILL.md"; mkdir -p "$W/keep"; cp -R "$SRC/pr-fixer" "$W/keep/pr-fixer"; echo keep >"$W/keep/pr-fixer/old.md"
-r=$(ins --source "$W/badsrc" --target "$W/keep" --skill pr-fixer --yes); check "failed copy -> refused, old install untouched, no stage left" eval '[ $r = 1 ] && [ -f "$W/keep/pr-fixer/old.md" ] && [ -z "$(ls -A "$W/keep" | grep "^\.")" ]'
-chmod 644 "$W/badsrc/pr-fixer/SKILL.md"
+# An unreadable file other than SKILL.md: the source checks pass and the copy itself fails.
+cp -R "$SRC" "$W/badsrc"; chmod 000 "$W/badsrc/pr-fixer/references/lanes.md"; mkdir -p "$W/keep"; cp -R "$SRC/pr-fixer" "$W/keep/pr-fixer"; echo keep >"$W/keep/pr-fixer/old.md"
+r=$(ins --source "$W/badsrc" --target "$W/keep" --skill pr-fixer --yes); check "failed copy -> refused, old install untouched, no stage left" eval '[ $r = 1 ] && grep -q "copy of pr-fixer failed" "$W/out" && [ -f "$W/keep/pr-fixer/old.md" ] && [ -z "$(ls -A "$W/keep" | grep "^\.")" ]'
+chmod 644 "$W/badsrc/pr-fixer/references/lanes.md"
 else
   row "failed copy (root ignores chmod 000)" skip
 fi
@@ -209,6 +211,65 @@ done
 mkdir -p "$W/n12/a/b"; cp -R "$SRC" "$W/n12/a/b/skills"
 r=$(ins --source "$W/n12/a/b/skills" --target "$W/n12t" --skill pr-fixer --yes)
 check "a source with no VERSION -> installed as unknown, no shell error" eval '[ $r = 0 ] && grep -q "(unknown)" "$W/out" && ! grep -q "No such file" "$W/out"'
+
+# One rule decides "looks like an install of <skill>", for each source skill folder before any change
+# and for an existing destination before it is replaced, so whatever the install writes it accepts on
+# the next run. Each pair below installs, then installs again over its own copy.
+mkdir -p "$W/w3a"; cp -R "$SRC/pr-fixer" "$W/w3a/"; perl -pi -e 's/\n/\r\n/' "$W/w3a/pr-fixer/SKILL.md"
+r=$(ins --source "$W/w3a" --target "$W/w3at" --skill pr-fixer --yes); r2=$(ins --source "$W/w3a" --target "$W/w3at" --skill pr-fixer --yes)
+check "a source whose SKILL.md has CRLF line endings -> installs, and installs again over its copy" \
+  eval '[ $r = 0 ] && [ $r2 = 0 ] && grep -q "installed" "$W/out" && grep -q $'"'"'\r$'"'"' "$W/w3at/pr-fixer/SKILL.md"'
+mkdir -p "$W/w3b"; cp -R "$SRC/pr-reviewer" "$W/w3b/"; echo "gitdir: ../x" >"$W/w3b/pr-reviewer/.git"
+r=$(ins --source "$W/w3b" --target "$W/w3bt" --skill pr-reviewer); check "a source skill folder holding a .git -> refused in the dry run" eval '[ $r = 1 ] && grep -q "\.git" "$W/out"'
+r=$(ins --source "$W/w3b" --target "$W/w3bt" --skill pr-reviewer --yes)
+check "a source skill folder holding a .git -> refused before any change" eval '[ $r = 1 ] && grep -q "\.git" "$W/out" && [ ! -e "$W/w3bt" ]'
+mkdir -p "$W/w3c"; cp -R "$SRC/pr-fixer" "$W/w3c/"; mkdir "$W/w3c/pr-fixer/scripts/.GIT"
+r=$(ins --source "$W/w3c" --target "$W/w3ct" --skill pr-fixer --yes)
+check "a source skill folder holding .GIT, in other letter case -> refused before any change" eval '[ $r = 1 ] && grep -qi "\.git" "$W/out" && [ ! -e "$W/w3ct" ]'
+mkdir -p "$W/w3d"; cp -R "$SRC/pr-fixer" "$W/w3d/pr-fixer"; mkdir "$W/w3d/pr-fixer/.GIT"; echo x >"$W/w3d/pr-fixer/.GIT/HEAD"; W3D_SUM="$(tree_sum "$W/w3d")"
+r=$(ins --target "$W/w3d" --skill pr-fixer --yes)
+check "a destination copy holding .GIT, in other letter case -> refused, unchanged" eval '[ $r = 1 ] && [ "$(tree_sum "$W/w3d")" = "$W3D_SUM" ]'
+# The name counts only inside the frontmatter: the first block, from a first line of --- to the next.
+mkdir -p "$W/n16/pr-reviewer"; printf -- '---\ndescription: my notes\n---\n\nname: pr-reviewer\n' >"$W/n16/pr-reviewer/SKILL.md"; echo mine >"$W/n16/pr-reviewer/notes.md"
+r=$(ins --target "$W/n16" --skill pr-reviewer --yes)
+check "a destination whose SKILL.md names the skill only in its body -> refused, kept" \
+  eval '[ $r = 1 ] && grep -q "does not look like an install" "$W/out" && [ -f "$W/n16/pr-reviewer/notes.md" ]'
+mkdir -p "$W/n16s"; cp -R "$W/n16/pr-reviewer" "$W/n16s/"
+r=$(ins --source "$W/n16s" --target "$W/n16st" --skill pr-reviewer --yes)
+check "a source whose SKILL.md names the skill only in its body -> refused before any change" eval '[ $r = 1 ] && [ ! -e "$W/n16st" ]'
+# A refused destination is refused before the plan, so the dry run never says it will replace it.
+r=$(ins --target "$W/g3" --skill pr-fixer)
+check "the dry run does not promise to replace a folder it refuses" eval '[ $r = 1 ] && grep -q "does not look like an install" "$W/out" && ! grep -q "will REPLACE" "$W/out"'
+# `cp -R` keeps a read-only folder read-only, so the old copy could not be removed on the next run and
+# was left beside the new one. The install makes every folder of its copy writable by its owner.
+if [ "$(id -u)" != 0 ]; then
+  mkdir -p "$W/ro"; cp -R "$SRC/pr-fixer" "$W/ro/"; chmod 0555 "$W/ro/pr-fixer/references"
+  r=$(ins --source "$W/ro" --target "$W/rot" --skill pr-fixer --yes); r2=$(ins --source "$W/ro" --target "$W/rot" --skill pr-fixer --yes)
+  check "a source with a read-only folder -> installs again over its copy, nothing left beside it" \
+    eval '[ $r = 0 ] && [ $r2 = 0 ] && [ "$(ls -A "$W/rot")" = pr-fixer ]'
+  chmod 0755 "$W/ro/pr-fixer/references"
+  # An install made before that fix can still hold a read-only folder; it is replaced in full too.
+  mkdir -p "$W/rod"; cp -R "$SRC/pr-fixer" "$W/rod/"; chmod 0555 "$W/rod/pr-fixer/references"
+  r=$(ins --target "$W/rod" --skill pr-fixer --yes)
+  check "an installed copy holding a read-only folder -> replaced, nothing left beside it" eval '[ $r = 0 ] && [ "$(ls -A "$W/rod")" = pr-fixer ]'
+  # When the old copy still cannot be removed (an immutable file), the run says where it is and exits 1.
+  if command -v chflags >/dev/null 2>&1; then
+    mkdir -p "$W/imm"; cp -R "$SRC/pr-fixer" "$W/imm/"; chflags uchg "$W/imm/pr-fixer/references/lanes.md"
+    r=$(ins --target "$W/imm" --skill pr-fixer --yes)
+    check "an old copy that cannot be removed in full -> new copy in place, exit 1 naming the leftover" \
+      eval '[ $r = 1 ] && grep -q "could not be removed in full" "$W/out" && [ -f "$W/imm/pr-fixer/SKILL.md" ] && ls -A "$W/imm" | grep -q "^\.pr-fixer\.old\."'
+    chflags -R nouchg "$W/imm"
+  else
+    row "old copy that cannot be removed (no chflags here)" skip
+  fi
+else
+  row "read-only folder in the source (root ignores the mode)" skip
+fi
+# same_or_inside walks up with dirname; on a relative path dirname settles on `.` and the walk never
+# ended. It must return at once (killed after 3 s otherwise).
+SOI="$(awk '/^same_or_inside\(\)/,/^}/' "$IN")"
+r=$(perl -e 'alarm shift; exec @ARGV' 3 bash -c "$SOI"'; same_or_inside rel/path /; echo "rc=$?"' 2>&1); rc=$?
+check "same_or_inside on a relative path -> returns false at once" eval '[ $rc = 0 ] && [ "$r" = "rc=1" ]'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
