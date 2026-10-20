@@ -22,12 +22,19 @@
 # the installed copy of templates/review-gate.yml, so the gate calls the scripts where they now
 # live. The template in the source tree is not touched.
 #
-# Every path check compares physical paths (links and `..` resolved the way the kernel resolves them),
-# and the copy then writes to those resolved paths. Before any change, in the dry run too, it refuses
-# when a source skill folder and the destination skill folder of the same name are one folder or one
-# lies inside the other (the repository cloned as ~/.claude/skills/pr-reviewer, say), when the folder
-# this script runs from lies inside a destination skill folder, and when the destination lies inside
-# the source.
+# Every path check resolves physical paths (links and `..` resolved the way the kernel resolves them),
+# and the copy then writes to those resolved paths. Overlap is decided by folder identity (device and
+# inode, `test -ef`) as well as by spelling, so one folder reached under two names, in another letter
+# case on a case-insensitive file system or through a mount, still counts as one. Before any change,
+# in the dry run too, it refuses when a source skill folder and the destination skill folder of the
+# same name are one folder or one lies inside the other (the repository cloned as
+# ~/.claude/skills/pr-reviewer, say), when the folder this script runs from lies inside a destination
+# skill folder, and when the destination lies inside the source.
+#
+# Whatever the path checks miss, it only ever removes a folder that looks like a copy it made: an
+# existing destination skill folder must be a real folder that holds a SKILL.md with that skill's
+# name and no .git at any depth, or the run is refused. It never removes a stage or set-aside folder
+# it did not create in this run.
 #
 # EXIT CODES. 0 = done, or a dry run. 1 = refused (bad arguments, unknown harness, a source folder
 # that is not a skill or holds a symbolic link, a path it cannot resolve, a source and destination
@@ -91,9 +98,10 @@ fi
 [ -n "$DEST_ROOT" ] && [ "$DEST_ROOT" != "/" ] || die "refusing an empty or root destination"
 
 # Physical path of a folder that may not exist yet: the nearest existing parent, resolved with
-# `cd -P` (CDPATH cleared, so a relative name cannot be sent elsewhere), plus the missing rest as
-# written. It fails closed: a `.` or `..` in the missing rest, a missing part that exists as a file
-# or a dangling link, or a parent `cd -P` cannot enter makes it print nothing and return 1.
+# `cd -P`, plus the missing rest as written. The path is made absolute first, so `cd` never consults
+# CDPATH; clearing it as well is belt and braces, in case that first line ever changes. It fails
+# closed: a `.` or `..` in the missing rest, a missing part that exists as a file or a dangling
+# link, or a parent `cd -P` cannot enter makes it print nothing and return 1.
 physical() {
   local p="$1" rest="" base r
   case "$p" in /*) ;; *) p="$PWD/$p" ;; esac
@@ -112,6 +120,20 @@ physical() {
 }
 # True when $1 is $2 or lies inside it. The trailing `/` keeps `/a/skills2` out of `/a/skills`.
 within() { case "$1/" in "$2/"*) return 0 ;; esac; return 1; }
+# True when the existing folder $2 is $1 or one of $1's parents by identity (`-ef`: same device and
+# inode), whatever the spelling: on a case-insensitive file system `skills/Pr-Reviewer` and
+# `skills/pr-reviewer` are one folder. $1 need not exist; the walk starts at its nearest existing parent.
+same_or_inside() {
+  local a="$1" b="$2"
+  [ -d "$b" ] || return 1
+  while :; do
+    if [ -e "$a" ] && [ "$a" -ef "$b" ]; then return 0; fi
+    case "$a" in /|"") return 1 ;; esac
+    a="$(dirname -- "$a")"
+  done
+}
+# $1 is $2 or lies inside it, by spelling or by identity.
+overlaps() { within "$1" "$2" || same_or_inside "$1" "$2"; }
 
 SELF_P="$(physical "$(dirname -- "$0")")" || die "cannot resolve the folder install.sh runs from"
 if [ -z "$SOURCE" ]; then SOURCE="$SELF_P/.agents/skills"; fi
@@ -133,14 +155,15 @@ done
 # Physical paths, so a destination that is a link to the source, such as
 # `.claude/skills -> ../.agents/skills`, or `<link to a skill>/..`, is caught here instead of being
 # replaced by a copy of itself.
-[ "$SRC_P" != "$DEST_P" ] || die "source and destination are the same folder ($SRC_P)"
-within "$DEST_P" "$SRC_P" && die "the destination $DEST_ROOT is inside the source $SOURCE"
+{ [ "$SRC_P" = "$DEST_P" ] || { [ -d "$DEST_P" ] && [ "$SRC_P" -ef "$DEST_P" ]; }; } \
+  && die "source and destination are the same folder ($SRC_P)"
+overlaps "$DEST_P" "$SRC_P" && die "the destination $DEST_ROOT is inside the source $SOURCE"
 for s in "${SKILLS[@]}"; do
   # The swap below moves $DEST_P/$s aside and removes it, so a source inside it would go too.
-  within "$SRC_P/$s" "$DEST_P/$s" && die "the source $SOURCE/$s is inside the destination skill folder $DEST_ROOT/$s, which the install would remove; run install.sh from a clone outside the skills folder"
-  within "$DEST_P/$s" "$SRC_P/$s" && die "the destination $DEST_ROOT/$s is inside the source $SOURCE/$s"
+  overlaps "$SRC_P/$s" "$DEST_P/$s" && die "the source $SOURCE/$s is inside the destination skill folder $DEST_ROOT/$s, which the install would remove; run install.sh from a clone outside the skills folder"
+  overlaps "$DEST_P/$s" "$SRC_P/$s" && die "the destination $DEST_ROOT/$s is inside the source $SOURCE/$s"
   # The same holds for the clone this script runs from, when --source names another folder.
-  within "$SELF_P" "$DEST_P/$s" && die "install.sh runs from inside the destination skill folder $DEST_ROOT/$s, which the install would remove; run it from a clone outside the skills folder"
+  overlaps "$SELF_P" "$DEST_P/$s" && die "install.sh runs from inside the destination skill folder $DEST_ROOT/$s, which the install would remove; run it from a clone outside the skills folder"
 done
 
 echo "install: skills  ${SKILLS[*]}"
@@ -153,12 +176,20 @@ for s in "${SKILLS[@]}"; do
 done
 [ -z "$REL" ] || [ "$REL" = ".agents/skills" ] || echo "install: will point templates/review-gate.yml at $REL/pr-reviewer/scripts/"
 
-# Refuse before the first removal: a destination that is a symbolic link, or a name this script
-# does not own, stops the whole run, in the dry run too.
+# Refuse before the first removal: a destination that is a symbolic link, a name this script does
+# not own, or a folder that is not a copy it made stops the whole run, in the dry run too. This holds
+# whatever the path checks above concluded, so no path bug can remove a repository or a person's own
+# folder.
 for s in "${SKILLS[@]}"; do
   dest="$DEST_P/$s"
   case "$dest" in */pr-reviewer|*/pr-fixer) ;; *) die "refusing to replace '$dest'" ;; esac
   if [ -L "$dest" ]; then die "$DEST_ROOT/$s is a symbolic link; remove it yourself first"; fi
+  [ -e "$dest" ] || continue
+  [ -d "$dest" ] || die "$DEST_ROOT/$s is not a folder; move it away yourself first"
+  gitp="$(find "$dest" -name .git -print -quit 2>/dev/null)" || die "cannot read all of $DEST_ROOT/$s; nothing changed"
+  [ -z "$gitp" ] || die "$gitp exists: $DEST_ROOT/$s is or holds a repository (.git), not an install, and is never replaced; clone outside the skills folder, or move it away yourself"
+  grep -qx "name: $s" "$dest/SKILL.md" 2>/dev/null \
+    || die "$DEST_ROOT/$s does not look like an install of $s (no SKILL.md named $s); move it away yourself first"
 done
 
 if [ "$YES" -ne 1 ]; then
@@ -169,14 +200,18 @@ fi
 mkdir -p -- "$DEST_P" || die "cannot create $DEST_ROOT"
 # The folders it just created must resolve to the path it checked.
 [ "$(physical "$DEST_P")" = "$DEST_P" ] || die "$DEST_ROOT resolved to another folder after it was created; nothing installed"
+# The stage and set-aside names must be free: a folder already there is not this run's to remove.
+for s in "${SKILLS[@]}"; do
+  for f in "$DEST_P/.$s.new.$$" "$DEST_P/.$s.old.$$"; do
+    if [ -e "$f" ] || [ -L "$f" ]; then die "$f already exists and is not this run's; move it away, nothing installed"; fi
+  done
+done
 for s in "${SKILLS[@]}"; do
   dest="$DEST_P/$s"
   # Copy to a sibling first and move it into place, so a failed copy leaves the old install alone.
   stage="$DEST_P/.$s.new.$$"
-  rm -rf -- "$stage"
   cp -R "$SRC_P/$s" "$stage" || { rm -rf -- "$stage"; die "copy of $s failed; the old install is untouched"; }
   old="$DEST_P/.$s.old.$$"
-  rm -rf -- "$old"
   if [ -e "$dest" ]; then mv -- "$dest" "$old" || { rm -rf -- "$stage"; die "could not set the old $s aside; it is untouched"; }; fi
   if ! mv -- "$stage" "$dest"; then
     rm -rf -- "$stage"
@@ -190,6 +225,8 @@ for s in "${SKILLS[@]}"; do
     sed "s|\.agents/skills/pr-reviewer/scripts/|$REL/pr-reviewer/scripts/|g" "$dest/templates/review-gate.yml" >"$tmp" \
       && mv "$tmp" "$dest/templates/review-gate.yml"
   fi
-  echo "install: installed $DEST_ROOT/$s ($(tr -d '[:space:]' <"$SRC_P/../../VERSION" 2>/dev/null || echo unknown))"
+  # The braces put the redirection of stderr around the `<`, so a missing VERSION prints no error.
+  ver="$( { tr -d '[:space:]' <"$SRC_P/../../VERSION"; } 2>/dev/null)" || ver=""
+  echo "install: installed $DEST_ROOT/$s (${ver:-unknown})"
 done
 echo "install: next, set REVIEW_MARKER_AUTHORS and run review-cycle.sh ensure-labels (README, 'Check the install')."

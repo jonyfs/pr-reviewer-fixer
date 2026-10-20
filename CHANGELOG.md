@@ -33,9 +33,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   when a source skill folder and the destination skill folder of the same name are one folder or
   one lies inside the other, and when the folder `install.sh` runs from lies inside a destination
   skill folder (the same clone, with `--source` naming another folder).
+- `install.sh` compared paths as strings, so on a case-insensitive file system (the macOS default)
+  a clone at `~/.claude/skills/pr-reviewer` run as `~/.claude/SKILLS/pr-reviewer/install.sh`, or a
+  clone stored as `~/.claude/skills/Pr-Reviewer`, passed the overlap checks and was still deleted by
+  `--scope user --yes`. The overlap checks now also compare folder identity (`test -ef`, device and
+  inode) along every parent. As a backstop that does not depend on path logic, an existing
+  destination skill folder is replaced only when it is a real folder holding a `SKILL.md` with that
+  skill's name and no `.git` at any depth; a file, a repository, or a person's own folder of that
+  name is refused before any change. A leftover folder with the name of the run's stage or set-aside
+  copy is refused instead of removed.
+- `install.sh` printed a shell error (`VERSION: No such file or directory`) when the source had no
+  `VERSION` two folders up, because the redirection of stderr came after the failing `<`. It now
+  prints `unknown` and no error.
 - `install.sh` resolved paths with a logical `cd`, which reads `..` before following a link, so
   `--target <link to a source skill>/..` passed the same-folder check, set the source's skill folder
-  aside and then claimed it was back. Paths now resolve with `cd -P` and an empty `CDPATH`, the copy
+  aside and then claimed it was back. Paths are made absolute and resolve with `cd -P`, the copy
   writes to the resolved paths, and a path that cannot be resolved (a `..` after a folder that does
   not exist yet, a file in the way, a folder it cannot enter) is refused instead of kept as written.
   A failed swap names where the old copy is when it could not be put back.
@@ -44,7 +56,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `review-cycle.sh` discarded `pr-json.py`'s stderr, so a refused pull request argument (`status
   7x`) said only that the pull request could not be read. The reason now reaches stderr too.
 - The install test suite runs a copy of `install.sh` and the skills inside its own scratch
-  directory, so a refusal that regressed cannot touch the checkout it was started from.
+  directory, so a refusal that regressed cannot touch the checkout it was started from. Its header
+  says that its optional argument is an `install.sh` beside `.agents/skills` and `VERSION`, and it
+  stops before the first row when they are not there.
 - `triage-pr.sh` compared `TRIAGE_IGNORE_CHECKS` and `FIXER_COMMIT_AUTHORS` with every space
   removed, so a check named `CI Tests` or a commit author named `Fixer Bot` never matched. Entries
   are now trimmed and compared without case, as written.

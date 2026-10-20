@@ -255,12 +255,18 @@ cd <your-repository>
 skills folder directly. Without `--yes` it only prints the plan. With `--yes` it replaces each
 installed `pr-reviewer` and `pr-fixer` folder with a fresh copy, made next to the old one and
 swapped in, so a failed copy keeps the old install and a file a newer release dropped does not stay
-behind. It compares physical paths, with links and `..` resolved, and copies to those paths. Before
-it changes anything, in the dry run too, it refuses a destination skill folder that is a symbolic
-link, a source skill folder that is one or holds one at any depth, a destination that resolves to
-the source folder (for example `.claude/skills` linked to `.agents/skills`) or lies inside it, a
-source or a clone of `install.sh` that lies inside a skill folder it would replace (a clone at
-`~/.claude/skills/pr-reviewer`, say: clone it somewhere else), and a path it cannot resolve. For a
+behind. It resolves physical paths, with links and `..` resolved, and copies to those paths. It
+decides overlap by folder identity (`test -ef`) as well as by spelling, so one folder reached under
+two names, such as `skills/Pr-Reviewer` and `skills/pr-reviewer` on the case-insensitive file system
+macOS uses by default, counts as one folder. Before it changes anything, in the dry run too, it
+refuses a destination skill folder that is a symbolic link, a source skill folder that is one or
+holds one at any depth, a destination that resolves to the source folder (for example
+`.claude/skills` linked to `.agents/skills`) or lies inside it, a source or a clone of `install.sh`
+that lies inside a skill folder it would replace (a clone at `~/.claude/skills/pr-reviewer`, say:
+clone it somewhere else), and a path it cannot resolve. Whatever those checks conclude, it only
+replaces a folder that looks like a copy it made: an existing destination skill folder that is not a
+folder, holds a `.git` at any depth, or has no `SKILL.md` with that skill's name is refused, and so
+is a leftover folder with the name of this run's stage or set-aside copy. For a
 project install into a folder other than `.agents/skills`, it points the installed
 `templates/review-gate.yml` at the new script path.
 

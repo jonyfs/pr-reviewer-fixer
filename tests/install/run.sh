@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Drives install.sh in scratch directories. Prints a pass/fail table.
+# Usage: run.sh [path/to/install.sh]. The argument (default: install.sh at the repository root) must
+# sit beside the .agents/skills folder and the VERSION file it installs, as in a clone: the suite
+# copies all three into its scratch tree and fails before the first row when they are not there.
 set -u
 T="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$T/../.." && pwd)"
@@ -8,9 +11,13 @@ ORIG_IN="${1:-$ROOT/install.sh}"
 W="$(mktemp -d "${TMPDIR:-/tmp}/install-test.XXXXXX")"; trap 'rm -rf "$W"' EXIT; mkdir -p "$W/proj" "$W/home"
 # Every row runs a copy of install.sh and of the skills next to it, inside $W, so a refusal that
 # regressed can only damage the scratch tree, never the checkout the suite was started from.
+ORIG_DIR="$(cd "$(dirname "$ORIG_IN")" && pwd -P)" || { echo "install suite: cannot enter the folder of $ORIG_IN" >&2; exit 1; }
+for f in install.sh .agents/skills/pr-reviewer/SKILL.md .agents/skills/pr-fixer/SKILL.md VERSION; do
+  [ -f "$ORIG_DIR/$f" ] || { echo "install suite: $ORIG_DIR/$f not found; the argument must be an install.sh beside .agents/skills and VERSION" >&2; exit 1; }
+done
 mkdir -p "$W/repo/.agents"; cp "$ORIG_IN" "$W/repo/install.sh"
-cp -R "$(cd "$(dirname "$ORIG_IN")" && pwd -P)/.agents/skills" "$W/repo/.agents/skills"
-[ ! -f "$(dirname "$ORIG_IN")/VERSION" ] || cp "$(dirname "$ORIG_IN")/VERSION" "$W/repo/VERSION"
+cp -R "$ORIG_DIR/.agents/skills" "$W/repo/.agents/skills"
+cp "$ORIG_DIR/VERSION" "$W/repo/VERSION"
 IN="$W/repo/install.sh"
 # The checksum of every file under a folder, to show that a refused run left it byte for byte.
 tree_sum() { (cd "$1" && find . -type f -exec cksum {} + | LC_ALL=C sort); }
@@ -41,7 +48,7 @@ r=$(ins); check "no harness and no target -> refused" eq "$r" 1
 r=$(ins --harness codex --source "$W/empty" --yes); check "source without skills -> refused" eq "$r" 1
 mkdir -p "$W/linked-target" "$W/elsewhere"; ln -s "$W/elsewhere" "$W/linked-target/pr-fixer"
 r=$(ins --target "$W/linked-target" --skill pr-fixer --yes); check "destination that is a symlink -> refused, target kept" eval '[ $r = 1 ] && [ -d "$W/elsewhere" ]'
-mkdir -p "$W/half" "$W/elsewhere2"; ln -s "$W/elsewhere2" "$W/half/pr-fixer"; mkdir -p "$W/half/pr-reviewer"; echo keep >"$W/half/pr-reviewer/old.md"
+mkdir -p "$W/half" "$W/elsewhere2"; ln -s "$W/elsewhere2" "$W/half/pr-fixer"; cp -R "$SRC/pr-reviewer" "$W/half/pr-reviewer"; echo keep >"$W/half/pr-reviewer/old.md"
 r=$(ins --target "$W/half" --yes); check "both skills, second is a symlink -> refused before any removal" eval '[ $r = 1 ] && [ -f "$W/half/pr-reviewer/old.md" ]'
 r=$(ins --target "$W/half"); check "the symlink is refused in the dry run too" eq "$r" 1
 r=$(ins --help); check "--help does not print the shell options line" eval '[ $r = 0 ] && ! grep -q "set -uo" "$W/out"'
@@ -51,7 +58,7 @@ check "--help prints the whole header, through the exit-codes sentence" \
   eval '[ $r = 0 ] && grep -q "EXIT CODES" "$W/out" && [ "$(tail -n 1 "$W/out")" = "$HDR_LAST" ]'
 # chmod 000 does not stop root from reading, so this case only runs for other users.
 if [ "$(id -u)" != 0 ]; then
-cp -R "$SRC" "$W/badsrc"; chmod 000 "$W/badsrc/pr-fixer/SKILL.md"; mkdir -p "$W/keep/pr-fixer"; echo keep >"$W/keep/pr-fixer/old.md"
+cp -R "$SRC" "$W/badsrc"; chmod 000 "$W/badsrc/pr-fixer/SKILL.md"; mkdir -p "$W/keep"; cp -R "$SRC/pr-fixer" "$W/keep/pr-fixer"; echo keep >"$W/keep/pr-fixer/old.md"
 r=$(ins --source "$W/badsrc" --target "$W/keep" --skill pr-fixer --yes); check "failed copy -> refused, old install untouched, no stage left" eval '[ $r = 1 ] && [ -f "$W/keep/pr-fixer/old.md" ] && [ -z "$(ls -A "$W/keep" | grep "^\.")" ]'
 chmod 644 "$W/badsrc/pr-fixer/SKILL.md"
 else
@@ -125,11 +132,83 @@ r=$(ins --source "$W/n7" --target "$W/other/nonexist/../../n7/pr-fixer" --skill 
 check "--target with .. through a missing folder -> refused, nothing created" \
   eval '[ $r = 1 ] && grep -q "cannot resolve" "$W/out" && [ "$(tree_sum "$W/n7")" = "$N7_SUM" ] && [ ! -e "$W/other/nonexist" ]'
 # An exported CDPATH sends a relative `cd` elsewhere and makes it print the folder; the path checks
-# must still see the folder the copy writes to.
+# must still see the folder the copy writes to. What keeps this green is that physical() makes the
+# path absolute before its `cd`; the CDPATH='' beside it is belt and braces and this row does not
+# depend on it.
 mkdir -p "$W/n9/s" "$W/n9decoy/s"; cp -R "$SRC/pr-reviewer" "$SRC/pr-fixer" "$W/n9/s/"; N9_SUM="$(tree_sum "$W/n9/s")"
 r=$( (cd "$W/n9" && CDPATH="$W/n9decoy" HOME="$W/home" bash "$IN" --source "$W/n9/s" --target s --skill pr-reviewer --yes) >"$W/out" 2>&1; echo $?)
 check "exported CDPATH and a relative --target equal to the source -> refused, source unchanged" \
   eval '[ $r = 1 ] && grep -q "same folder" "$W/out" && [ "$(tree_sum "$W/n9/s")" = "$N9_SUM" ]'
+
+# Path strings are not folder identity. On a case-insensitive file system (the macOS default)
+# `SKILLS/pr-reviewer` and `skills/pr-reviewer`, or `skills/Pr-Reviewer` and `skills/pr-reviewer`, are
+# one folder, so the overlap checks compare folders by device and inode. These rows only mean
+# something where letter case does not matter, so a case-sensitive scratch file system skips them.
+mkdir "$W/CaseProbe"; if [ -e "$W/caseprobe" ]; then CI_FS=1; else CI_FS=0; fi
+# A clone of the repository with a .git and uncommitted work, as a person would have it.
+mk_clone() {
+  mkdir -p "$1/.agents" "$1/.git"; echo "ref: refs/heads/main" >"$1/.git/HEAD"
+  cp "$IN" "$1/install.sh"; cp -R "$SRC" "$1/.agents/skills"; cp "$W/repo/VERSION" "$1/VERSION"
+  echo "uncommitted work" >"$1/MYWORK.txt"
+}
+if [ "$CI_FS" = 1 ]; then
+  H="$W/c2a"; mk_clone "$H/.claude/skills/pr-reviewer"; C2A_SUM="$(tree_sum "$H/.claude/skills/pr-reviewer")"
+  r=$( (cd "$W/proj" && HOME="$H" bash "$H/.claude/SKILLS/pr-reviewer/install.sh" --harness claude-code --scope user --yes) >"$W/out" 2>&1; echo $?)
+  check "clone in a skill folder, run through a path in other letter case -> refused, clone unchanged" \
+    eval '[ $r = 1 ] && grep -q "inside the destination skill folder" "$W/out" && [ "$(tree_sum "$W/c2a/.claude/skills/pr-reviewer")" = "$C2A_SUM" ] && [ "$(ls -A "$W/c2a/.claude/skills")" = pr-reviewer ]'
+  H="$W/c2b"; mk_clone "$H/.claude/skills/Pr-Reviewer"; C2B_SUM="$(tree_sum "$H/.claude/skills/Pr-Reviewer")"
+  r=$( (cd "$W/proj" && HOME="$H" bash "$H/.claude/skills/Pr-Reviewer/install.sh" --harness claude-code --scope user) >"$W/out" 2>&1; echo $?)
+  check "clone stored as skills/Pr-Reviewer -> refused in the dry run" eval '[ $r = 1 ] && grep -q "inside the destination skill folder" "$W/out"'
+  r=$( (cd "$W/proj" && HOME="$H" bash "$H/.claude/skills/Pr-Reviewer/install.sh" --harness claude-code --scope user --yes) >"$W/out" 2>&1; echo $?)
+  check "clone stored as skills/Pr-Reviewer -> refused, clone unchanged" \
+    eval '[ $r = 1 ] && grep -q "inside the destination skill folder" "$W/out" && [ "$(tree_sum "$W/c2b/.claude/skills/Pr-Reviewer")" = "$C2B_SUM" ] && [ "$(ls -A "$W/c2b/.claude/skills")" = Pr-Reviewer ]'
+  mkdir -p "$W/c2c/skills"; cp -R "$SRC/pr-reviewer" "$SRC/pr-fixer" "$W/c2c/skills/"; C2C_SUM="$(tree_sum "$W/c2c")"
+  r=$(ins --source "$W/c2c/SKILLS" --target "$W/c2c/skills" --yes)
+  check "--source and --target one folder in two letter cases -> refused as the same folder" \
+    eval '[ $r = 1 ] && grep -q "same folder" "$W/out" && [ "$(tree_sum "$W/c2c")" = "$C2C_SUM" ]'
+  mkdir -p "$W/c2d"; cp -R "$SRC/pr-reviewer" "$SRC/pr-fixer" "$W/c2d/"; C2D_SUM="$(tree_sum "$W/c2d")"
+  r=$(ins --source "$W/c2d" --target "$W/C2D/PR-REVIEWER" --skill pr-fixer --yes)
+  check "destination inside the source in other letter case -> refused, nothing created in the source" \
+    eval '[ $r = 1 ] && grep -q "inside the source" "$W/out" && [ "$(tree_sum "$W/c2d")" = "$C2D_SUM" ]'
+else
+  row "clone run through a path in other letter case (file system is case-sensitive)" skip
+  row "clone stored as skills/Pr-Reviewer (file system is case-sensitive)" skip
+  row "--source and --target in two letter cases (file system is case-sensitive)" skip
+  row "destination inside the source in other letter case (file system is case-sensitive)" skip
+fi
+
+# Whatever the path checks miss, the install only replaces a folder that looks like one of its own
+# copies: a real folder holding SKILL.md with the skill's name and no .git anywhere. Runs everywhere.
+mkdir -p "$W/g1"; mk_clone "$W/g1/pr-reviewer"; G1_SUM="$(tree_sum "$W/g1")"
+r=$(ins --target "$W/g1" --skill pr-reviewer --yes)
+check "a repository clone as the destination skill folder, source elsewhere -> refused, clone unchanged" \
+  eval '[ $r = 1 ] && grep -q "\.git" "$W/out" && [ "$(tree_sum "$W/g1")" = "$G1_SUM" ]'
+mkdir -p "$W/g2"; cp -R "$SRC/pr-fixer" "$W/g2/pr-fixer"; mkdir -p "$W/g2/pr-fixer/scripts/.git"; echo x >"$W/g2/pr-fixer/scripts/.git/HEAD"; G2_SUM="$(tree_sum "$W/g2")"
+r=$(ins --target "$W/g2" --skill pr-fixer); check "an installed copy holding a .git at any depth -> refused in the dry run" eval '[ $r = 1 ] && grep -q "\.git" "$W/out"'
+r=$(ins --target "$W/g2" --skill pr-fixer --yes)
+check "an installed copy holding a .git at any depth -> refused, unchanged" eval '[ $r = 1 ] && [ "$(tree_sum "$W/g2")" = "$G2_SUM" ]'
+mkdir -p "$W/g3/pr-fixer"; echo "my notes" >"$W/g3/pr-fixer/notes.md"
+r=$(ins --target "$W/g3" --skill pr-fixer --yes)
+check "a destination skill folder with no SKILL.md of that skill -> refused, kept" eval '[ $r = 1 ] && grep -q "does not look like an install" "$W/out" && [ -f "$W/g3/pr-fixer/notes.md" ]'
+mkdir -p "$W/g4"; cp -R "$SRC/pr-reviewer" "$W/g4/pr-fixer"
+r=$(ins --target "$W/g4" --skill pr-fixer --yes)
+check "a destination pr-fixer that holds the pr-reviewer skill -> refused, kept" eval '[ $r = 1 ] && grep -q "does not look like an install" "$W/out" && grep -qx "name: pr-reviewer" "$W/g4/pr-fixer/SKILL.md"'
+mkdir -p "$W/g5"; echo "a file" >"$W/g5/pr-fixer"
+r=$(ins --target "$W/g5" --skill pr-fixer --yes)
+check "a destination pr-fixer that is a file -> refused, file kept" eval '[ $r = 1 ] && grep -q "not a folder" "$W/out" && [ "$(cat "$W/g5/pr-fixer")" = "a file" ]'
+# The stage and set-aside names carry the process id. `exec` keeps the shell's process id, so the
+# folders made here are the ones the run would name; they are someone else's and must survive.
+for kind in new old; do
+  mkdir -p "$W/g6$kind"; cp -R "$SRC/pr-fixer" "$W/g6$kind/pr-fixer"
+  r=$( (cd "$W/proj" && HOME="$W/home" sh -c 'mkdir "$1/.pr-fixer.$3.$$" && echo mine >"$1/.pr-fixer.$3.$$/keep.txt" && exec bash "$2" --target "$1" --skill pr-fixer --yes' sh "$W/g6$kind" "$IN" "$kind") >"$W/out" 2>&1; echo $?)
+  check "a folder already named like this run's .$kind folder -> refused, kept" \
+    eval '[ $r = 1 ] && grep -q "already exists" "$W/out" && [ "$(cat "$W/g6$kind"/.pr-fixer.$kind.*/keep.txt)" = mine ]'
+done
+# The version line reads VERSION two folders above the source; a source with none says unknown, and
+# the failed read prints no shell error.
+mkdir -p "$W/n12/a/b"; cp -R "$SRC" "$W/n12/a/b/skills"
+r=$(ins --source "$W/n12/a/b/skills" --target "$W/n12t" --skill pr-fixer --yes)
+check "a source with no VERSION -> installed as unknown, no shell error" eval '[ $r = 0 ] && grep -q "(unknown)" "$W/out" && ! grep -q "No such file" "$W/out"'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
