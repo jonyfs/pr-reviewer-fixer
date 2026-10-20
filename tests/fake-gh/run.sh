@@ -608,7 +608,9 @@ check "lint-report fails a report with a secret and does not print it" eval '[ $
 to5() { perl -e 'alarm shift; exec @ARGV' 5 "$@"; }
 reset "$(mk 7 $D '[{"name":"review:blocked"}]' "[$REAL_BLOCK]" OPEN)"
 for opt in "halt 7 --reason" "extend 7 --n" "export-audit 7 --out" "lint-report --report" "lint-report --report $REP --diff" \
-           "publish 7 --verdict" "publish 7 --report $REP --pass" "marker --author"; do
+           "publish 7 --verdict" "publish 7 --report $REP --pass" "publish 7 --sha" "publish 7 --report" \
+           "publish 7 --critical" "publish 7 --warning" "publish 7 --note" "publish 7 --model" \
+           "publish 7 --tier" "marker --author"; do
   # shellcheck disable=SC2086
   to5 "$RC" $opt </dev/null >"$W/out" 2>&1; r=$?
   check "review-cycle.sh $opt (no value) refuses at once, naming the option (rc 1)" \
