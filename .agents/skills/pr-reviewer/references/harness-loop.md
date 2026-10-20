@@ -70,8 +70,9 @@ all refuse until it is set, and `budget` prints `B_NEXT='none'` without reading 
 because every reader would ignore what they post.
 A marker comment that was edited after it was created is ignored by all of them as a verdict;
 its `pass=` still counts toward the highest pass, so an edit that keeps the number cannot lower
-the cycle count. An edit that rewrites the number counts as the new one (see rule 2 in
-[pr-protocol.md](pr-protocol.md)).
+the cycle count. An edit that rewrites the number counts as the new one, and a marker edited by
+anyone other than its author stops `publish` and `budget` until a person deletes or restores it
+(see rule 2 in [pr-protocol.md](pr-protocol.md)).
 
 ## The loop
 

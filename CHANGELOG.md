@@ -4,6 +4,31 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.10.0
+
+### Changed
+
+- A trusted verdict marker edited by anyone other than its author now stops the loop. GitHub lets
+  any collaborator with write access edit another login's comment, so such an edit could rewrite
+  `pass=` (and the cycle count) or turn a BLOCKED into a PASSED (N4 of #24). `pr-json.py` records
+  the login of the last edit (`IssueComment.editor`) in `editedComments`; `publish` refuses,
+  `budget` answers `none` and names the editor, and the gate counts that marker as BLOCKED history,
+  until a person deletes or restores the comment. An edit by the author is treated as before; an
+  editor GitHub no longer names counts as another login.
+- `budget` takes the highest pass from `parse()` instead of reading the edited comments again, so
+  `publish` and `budget` count edited markers the same way (N8 of #23).
+
+### Documentation
+
+- The gate says in a comment why it does not read a 0.7.x warning-only BLOCKED marker as published
+  under `warning`: it fails any marker that is not PASSED, so the inference could only turn a red
+  check into another red check (N3 of #23). The same inference in `parse()` and `budget` is covered
+  by the B6 rows that check `status` and `budget` together.
+- Rule 2 in `pr-protocol.md` no longer says it "stops an edit" without qualification, and no longer
+  calls every edit an edit by a trusted login (N2 and N4 of #24). The `pr-json.py` comment and the
+  `tests/budget/t.py` comment that still said an edit cannot lower the count now say it holds when
+  the edit keeps the number (N1 and N3 of #24).
+
 ## 0.9.1
 
 ### Documentation

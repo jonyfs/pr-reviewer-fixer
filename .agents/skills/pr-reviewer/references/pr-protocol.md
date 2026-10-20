@@ -77,12 +77,16 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    `gh pr view`. An edited marker by a trusted login is still counted in two places: a BLOCKED
    one stays BLOCKED history, and its `pass=` still counts toward the highest pass, so an edit that
    keeps the number cannot lower `B_NEXT_PASS` or `B_DONE`. Only the body after the edit is kept, so
-   an edit that rewrites the number counts as the new number: a lower one lowers the count (the
-   delete-and-repost case below), and a higher one raises it, up to sending `budget` to the
-   ceiling. Both are edits by a trusted login, and the higher one fails closed.
+   an edit that rewrites the number counts as the new number: a lower one lowers the count, and a
+   higher one raises it, up to sending `budget` to the ceiling, which fails closed. GitHub lets
+   anyone with write access edit another login's comment, so `pr-json.py` also records who made
+   the last edit (`IssueComment.editor`). A trusted marker edited by anyone other than its author,
+   or by an account GitHub no longer names, counts as BLOCKED history, `budget` answers `none` and
+   names the editor, and `publish` refuses, until a person deletes or restores that comment.
 
-Rule 2 stops an edit. It does not stop a delete and a repost by the same login; signing the marker
-would, and it is on the backlog. The agents publish with `gh` under the account the
+Rule 2 keeps an edited marker from being read as a verdict, and keeps an edit by another login from
+moving the count. It does not stop the author's own login from rewriting its number, or deleting
+the marker and posting another; signing the marker would, and it is on the backlog. The agents publish with `gh` under the account the
 person is signed in to, so the value is that login: `gh api user --jq .login`. Add the login of
 anyone else who publishes reviews. The markers then carry the person's own login, which means the
 gate cannot tell a marker the agent wrote from one the person typed. It checks that a trusted

@@ -19,11 +19,13 @@ def e(t, body, login=ME):
 def hist(counts):  # passes 1..n, last at head, the others at an older sha
     return [v(i + 1, "BLOCKED" if c else "PASSED", c, sha=(H if i == len(counts) - 1 else O)) for i, c in enumerate(counts)]
 
-def setup(comments, labels=("review:blocked",), state="OPEN", edited=()):
+def setup(comments, labels=("review:blocked",), state="OPEN", edited=(), edited_by=()):
     d = os.path.join(HERE, "state-" + os.environ.get("TEST_TAG", "main")); shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
     open(os.path.join(d, "calls.log"), "w").close()
     if edited:  # fake gh ids are IC_<index>; these comments read as edited after creation
         open(os.path.join(d, "edited-ids"), "w").write("\n".join(edited) + "\n")
+    if edited_by:  # (id, login): that comment was last edited by login, not by its author
+        open(os.path.join(d, "edited-by"), "w").write("".join("%s %s\n" % e for e in edited_by))
     json.dump({"number": 7, "headRefOid": H, "labels": [{"name": l} for l in labels],
                "comments": comments, "state": state}, open(os.path.join(d, "pr.json"), "w"))
     return d
@@ -33,8 +35,8 @@ def run(args, d, **env_extra):
     env.update({k: v for k, v in env_extra.items()})
     return subprocess.run(["bash", RC] + args, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
-def budget(comments, mx="5", hard="10", authors=ME, edited=()):
-    d = setup(comments, edited=edited)
+def budget(comments, mx="5", hard="10", authors=ME, edited=(), edited_by=()):
+    d = setup(comments, edited=edited, edited_by=edited_by)
     p = run(["budget", "7"], d, MAX_REVIEW_CYCLES=mx, MAX_REVIEW_CYCLES_HARD=hard, REVIEW_MARKER_AUTHORS=authors)
     if p.returncode:
         print(p.stdout, p.stderr); sys.exit(1)
@@ -92,7 +94,7 @@ cases = [
  ("marker SHA in capitals matches the head -> fix", [v(1, "BLOCKED", 1, sha=H.upper())], {}, {"next": "fix"}),
  ("fresh push after pass 2 -> none, but done and next_pass count both passes", hist([1, 1])[:1] + [v(2, "BLOCKED", 1, sha=O)], {}, {"next": "none", "done": "1", "next_pass": "3"}),
  # W1 of #23: an edited verdict comment is never read as a verdict, but its pass still counts, so
- # editing the newest marker cannot lower the count and let publish take that pass number again.
+ # an edit that keeps the number cannot lower the count and let publish take that pass number again.
  ("newest marker (pass 6) edited -> done and next_pass still count it", hist([1] * 6), {"edited": ("IC_5",)}, {"done": "5", "next_pass": "7"}),
  ("an older marker (pass 3 of 6) edited -> count unchanged", hist([1] * 6), {"edited": ("IC_2",)}, {"next": "ask", "done": "5", "next_pass": "7"}),
  ("tab-separated granted marker is honoured", hist([3, 3, 3, 2, 2, 2]) + [e("2026-10-14T11:51:00Z", "<!-- pr-skill-extension: state=granted\tcycle=5\tn=2 -->")], {}, {"next": "fix", "allowed": "7"}),
@@ -210,6 +212,20 @@ n = len(comments_posted(d))
 p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "6", "--sha", H, "--critical", "1", "--warning", "0", "--note", "0"], d)
 check("publish --pass 6 after the pass-6 marker was edited is refused, the next pass is 7",
       p.returncode != 0 and len(comments_posted(d)) == n and "the next pass on #7 is 7" in p.stderr, p.stderr + p.stdout)
+
+# N4 of #24: anyone with write access can edit a trusted marker. One edited by someone other than its
+# author may carry a rewritten pass= or verdict, so budget answers none and publish refuses.
+d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", "mallory"),))
+check("a trusted marker edited by another login -> budget none, names the editor",
+      d.get("next") == "none" and "edited by mallory" in d.get("why", ""), d)
+d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", ME),))
+check("a trusted marker edited by its own author -> budget unchanged (ask)", d.get("next") == "ask", d)
+d = setup(hist([1] * 6), labels=("review:running",), edited=("IC_2",), edited_by=(("IC_2", "mallory"),))
+rep = os.path.join(d, "report.md"); open(rep, "w").write("## findings\n- one\n")
+n = len(comments_posted(d))
+p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "7", "--sha", H, "--critical", "1", "--warning", "0", "--note", "0"], d)
+check("publish with a trusted marker edited by another login is refused, nothing posted",
+      p.returncode != 0 and len(comments_posted(d)) == n and "edited by mallory" in p.stderr, p.stderr + p.stdout)
 
 # A list of invisible characters names nobody: a stranger's grant must not raise the budget.
 d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")

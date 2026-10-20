@@ -390,12 +390,16 @@ def main() -> int:
             if m:
                 markers.append(m.groups())
         # An edited comment is never read as a verdict, but an edit must not be able to erase a BLOCKED
-        # marker from the history: BLOCKED history only tightens a rule.
+        # marker from the history: BLOCKED history only tightens a rule. A trusted marker edited by
+        # someone other than its author counts as BLOCKED history whatever it now says, since that
+        # edit could have turned a BLOCKED into a PASSED.
         edited_blocked = False
         for c in pr.get("editedComments", []) or []:
             if marker_author_allowed(c):
                 em = MARKER.match(c.get("body", "") or "")
-                if em and em.group(2).upper() == "BLOCKED":
+                author = str((c.get("author") or {}).get("login") or "").lower()
+                editor = str((c.get("editor") or {}).get("login") or "").lower()
+                if em and (em.group(2).upper() == "BLOCKED" or editor != author):
                     edited_blocked = True
         if not markers:
             errors.append(
@@ -411,6 +415,10 @@ def main() -> int:
             # The setting the marker was published under, when it names one. Judged under another
             # setting it means something else, so the gate does not judge it at all.
             marker_block_at = (markers[-1][8] or "").lower()
+            # Unlike `parse` and `budget` in review-cycle.sh, the gate does not read a 0.7.x BLOCKED
+            # marker with warnings and no block_at as published under `warning`: it fails any marker
+            # that is not PASSED below, so the inference could only turn that failure into
+            # INCONCLUSIVE, and both are a red check.
             at_head = head.startswith(sha) or sha.startswith(head[:len(sha)])
             if marker_block_at and marker_block_at != block_at and at_head:
                 print(f"  ⚠️  the newest marker on #{number} was published under REVIEW_BLOCK_AT="

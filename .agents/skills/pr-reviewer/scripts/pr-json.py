@@ -15,9 +15,9 @@ the same as approved.
 Usage: pr-json.py [<pr-number>]
 Output: one JSON object with number, headRefOid, labels, comments, state, isDraft, url,
 `commentsDroppedEdited` (how many comments were removed for having been edited) and
-`editedComments` (those comments, author and body only, never read as a verdict; kept so an edit
-cannot erase a BLOCKED marker from the history or lower the highest `pass=` while it keeps the
-number).
+`editedComments` (those comments, author, last editor and body only, never read as a verdict;
+kept so an edit cannot erase a BLOCKED marker from the history or lower the highest `pass=` while it
+keeps the number, and so an edit by someone other than the author is seen).
 """
 import json
 import re
@@ -28,7 +28,7 @@ FIELDS = "number,headRefOid,labels,comments,state,isDraft,url"
 QUERY = (
     "query($owner:String!,$repo:String!,$number:Int!,$after:String){"
     "repository(owner:$owner,name:$repo){pullRequest(number:$number){"
-    "comments(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt}}}}}"
+    "comments(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt editor{login}}}}}}"
 )
 MAX_PAGES = 100
 
@@ -65,7 +65,7 @@ def main():
     owner, repo, number = m.groups()
     comments = pr.get("comments") or []
 
-    seen, edited, after = set(), set(), None
+    seen, edited, editors, after = set(), set(), {}, None
     for _ in range(MAX_PAGES):
         args = ["api", "graphql", "-f", "query=" + QUERY, "-f", "owner=" + owner,
                 "-f", "repo=" + repo, "-F", "number=" + number]
@@ -86,6 +86,9 @@ def main():
             seen.add(n["id"])
             if n.get("lastEditedAt"):
                 edited.add(n["id"])
+                # The login of the last edit. None when GitHub names no one (a deleted account),
+                # which readers take as someone other than the author.
+                editors[n["id"]] = ((n.get("editor") or {}).get("login") or None)
         if not more:
             break
         if not cursor:
@@ -101,10 +104,12 @@ def main():
     kept = [c for c in comments if isinstance(c, dict) and c.get("id") not in edited]
     pr["comments"] = kept
     pr["commentsDroppedEdited"] = len(comments) - len(kept)
-    # An edited comment is never read as a verdict. It is kept aside, author and body only, for two
-    # purposes: an edit may hide a BLOCKED marker, and BLOCKED history only ever tightens a rule; and
-    # its `pass=` still counts toward the highest pass, so the cycle count does not drop.
-    pr["editedComments"] = [{"author": c.get("author"), "body": c.get("body")}
+    # An edited comment is never read as a verdict. It is kept aside, author, editor and body only,
+    # for two purposes: an edit may hide a BLOCKED marker, and BLOCKED history only ever tightens a
+    # rule; and its `pass=` still counts toward the highest pass, so an edit that keeps the number
+    # does not lower the cycle count. `editor` lets readers refuse an edit by someone other than the
+    # author, which could rewrite the number.
+    pr["editedComments"] = [{"author": c.get("author"), "editor": {"login": editors.get(c.get("id"))}, "body": c.get("body")}
                           for c in comments if isinstance(c, dict) and c.get("id") in edited]
     sys.stdout.write(json.dumps(pr))
     return 0
