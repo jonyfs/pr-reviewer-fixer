@@ -32,11 +32,14 @@ die() { echo "install: $*" >&2; exit 1; }
 HARNESS="" SCOPE=project SKILL=both TARGET="" SOURCE="" YES=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --harness) HARNESS="${2:-}"; shift 2 ;;
-    --scope)   SCOPE="${2:-}"; shift 2 ;;
-    --skill)   SKILL="${2:-}"; shift 2 ;;
-    --target)  TARGET="${2:-}"; shift 2 ;;
-    --source)  SOURCE="${2:-}"; shift 2 ;;
+    --harness|--scope|--skill|--target|--source)
+      # Given last with no value, `shift 2` fails and the loop would spin forever.
+      [ $# -ge 2 ] || die "$1 needs a value"
+      case "$1" in
+        --harness) HARNESS="$2" ;; --scope) SCOPE="$2" ;; --skill) SKILL="$2" ;;
+        --target) TARGET="$2" ;; --source) SOURCE="$2" ;;
+      esac
+      shift 2 ;;
     --yes)     YES=1; shift ;;
     -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     *) die "unknown argument '$1' (try --help)" ;;
@@ -83,8 +86,13 @@ if [ -z "$SOURCE" ]; then SOURCE="$(cd "$(dirname "$0")" && pwd)/.agents/skills"
 SKILLS=(); case "$SKILL" in both) SKILLS=(pr-reviewer pr-fixer) ;; *) SKILLS=("$SKILL") ;; esac
 for s in "${SKILLS[@]}"; do
   [ -f "$SOURCE/$s/SKILL.md" ] || die "$SOURCE/$s/SKILL.md not found; --source must hold the skill folders"
+  # `cp -R` copies a link as a link, so the install would point into the source and the template
+  # rewrite below would edit the source's own file.
+  [ ! -L "$SOURCE/$s" ] || die "$SOURCE/$s is a symbolic link; give --source the real folder"
 done
-if [ -d "$DEST_ROOT" ] && [ "$(cd "$SOURCE" && pwd)" = "$(cd "$DEST_ROOT" && pwd)" ]; then
+# Physical paths (`pwd -P`), so a destination that is a link to the source, such as
+# `.claude/skills -> ../.agents/skills`, is caught here instead of being replaced by a copy of itself.
+if [ -d "$DEST_ROOT" ] && [ "$(cd "$SOURCE" && pwd -P)" = "$(cd "$DEST_ROOT" && pwd -P)" ]; then
   die "source and destination are the same folder"
 fi
 

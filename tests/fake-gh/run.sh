@@ -602,6 +602,43 @@ printf 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n' >"$W/lrs.pa
 "$RC" lint-report --report "$W/lrs.md" --diff "$W/lrs.patch" >"$W/out" 2>&1; r=$?
 check "lint-report fails a report with a secret and does not print it" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
 
+# ---- options with no value, and pull request arguments that are not a number -------------------
+# An option given last with no value once made `shift 2` fail and the loop spin forever. Each run
+# is killed after 5 seconds (exit 142) so a regression shows as a failure, not a hung suite.
+to5() { perl -e 'alarm shift; exec @ARGV' 5 "$@"; }
+reset "$(mk 7 $D '[{"name":"review:blocked"}]' "[$REAL_BLOCK]" OPEN)"
+for opt in "halt 7 --reason" "extend 7 --n" "export-audit 7 --out" "lint-report --report" "lint-report --report $REP --diff" \
+           "publish 7 --verdict" "publish 7 --report $REP --pass" "marker --author"; do
+  # shellcheck disable=SC2086
+  to5 "$RC" $opt </dev/null >"$W/out" 2>&1; r=$?
+  check "review-cycle.sh $opt (no value) refuses at once, naming the option (rc 1)" \
+    eval '[ $r = 1 ] && grep -q -- "${opt##* } needs a value" "$W/out"'
+done
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$GOOD_PASS]" OPEN)"
+for arg in 7x "$(printf '\xd9\xa7')" "#7"; do
+  "$RC" status "$arg" >"$W/out" 2>&1; r1=$?
+  python3 -I "$GATE" "$arg" >/dev/null 2>&1; g1=$?
+  check "pull request argument '$arg' is refused, never read as the branch's own (status 2, gate 2)" \
+    eval '[ $r1 = 2 ] && [ $g1 = 2 ]'
+done
+python3 -I "$GATE" 7 8 >/dev/null 2>&1; g1=$?
+python3 -I "$SRC/pr-json.py" 7 8 >/dev/null 2>&1; j1=$?
+check "two pull request numbers are refused (gate 2, pr-json.py 1)" eval '[ $g1 = 2 ] && [ $j1 = 1 ]'
+# stale decides from markers, so it refuses an allowlist that names nobody, like status.
+FORGED_AT_D="$(mc mallory "<!-- adversarial-review: sha=$D verdict=PASSED pass=2 critical=0 warning=0 note=0 -->")"
+OLD_PASS="$(mc github-actions "<!-- adversarial-review: sha=$A verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$OLD_PASS,$FORGED_AT_D]" OPEN)"
+env -u REVIEW_MARKER_AUTHORS "$RC" stale 7 >"$W/out" 2>&1; r=$?
+check "stale with the allowlist unset refuses (rc 2) and moves no label" eval '[ $r = 2 ] && has review:passed && [ $(calls "pr edit") = 0 ]'
+REVIEW_MARKER_AUTHORS=github-actions "$RC" stale 7 >/dev/null 2>&1; r=$?
+check "stale with the allowlist set ignores the forged marker and retires review:passed" eval '[ $r = 0 ] && has review:pending && hasnt review:passed'
+# marker folds ASCII case only: a dotless i or a long s is not an i or an s.
+printf '<!-- adversarial-review: sha=%s verd\xc4\xb1ct=PASSED pass=1 -->\n' "$D" >"$W/m1.txt"
+printf '<!-- adversarial-review: \xc5\xbfha=%s verdict=PASSED pass=1 -->\n' "$D" >"$W/m2.txt"
+LC_ALL=en_US.UTF-8 "$RC" marker --author github-actions "$W/m1.txt" >/dev/null 2>&1; r1=$?
+LC_ALL=en_US.UTF-8 "$RC" marker --author github-actions "$W/m2.txt" >/dev/null 2>&1; r2=$?
+check "marker: a dotless i or a long s does not fold to ASCII (no marker, rc 1)" eval '[ $r1 = 1 ] && [ $r2 = 1 ]'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

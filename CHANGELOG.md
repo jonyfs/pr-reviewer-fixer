@@ -4,6 +4,42 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.5
+
+### Fixed
+
+- An option given last with no value (`halt 7 --reason`, `install.sh --harness`, `push-guard.sh 7
+  --allow`, and every other option that takes one) made `shift 2` fail, and with no `set -e` the
+  argument loop spun forever. Each option now checks that a value follows and refuses at once,
+  naming the option: `review-cycle.sh` and `install.sh` exit 1, `push-guard.sh` exits 2.
+- A pull request argument that is not a number (`7x`, `#7`, a non-ASCII digit) or a second number
+  was dropped by `pr-json.py` and the gate, which then read the branch's own pull request. Both now
+  refuse anything but one number in ASCII digits: the gate answers inconclusive (exit 2), and every
+  `review-cycle.sh` command that reads the pull request refuses as it does when the pull request
+  cannot be read.
+- `install.sh` resolves symbolic links before its same-folder check, so a destination such as
+  `.claude/skills` linked to `.agents/skills` is refused instead of being replaced by a copy of
+  itself with its template rewritten in the source tree. A source skill folder that is a symbolic
+  link is refused too, because `cp -R` would copy the link and the template rewrite would write
+  through it.
+- `triage-pr.sh` compared `TRIAGE_IGNORE_CHECKS` and `FIXER_COMMIT_AUTHORS` with every space
+  removed, so a check named `CI Tests` or a commit author named `Fixer Bot` never matched. Entries
+  are now trimmed and compared without case, as written.
+- `review-cycle.sh stale` refuses (exit 2, no label moved) when `REVIEW_MARKER_AUTHORS` names no
+  login, like `status`. Unset, it read every commenter's markers, so a forged marker at the new
+  head kept a stale `review:passed` standing.
+- `review-cycle.sh marker` matches in the C locale, so `nocasematch` folds ASCII letters only. Some
+  locales fold a dotless i or a long s onto `i` and `s`, which no other reader does. Not verified
+  on glibc, where that folding happens; macOS does not do it.
+- `budget` and `halt` split marker fields on the six ASCII whitespace characters written out, the
+  same set as `MARKER_WS`, instead of `\s` under a flag.
+- `harness-loop.md` and the fixer's references say to wait, at most two minutes, until GitHub
+  reports the pushed commit as the head before running `stale`. Run earlier, `stale` compared the
+  marker with the old head and changed nothing.
+- `tests/install/run.sh` takes the skills from beside the `install.sh` it tests. It always used
+  this checkout's `.agents/skills`, so testing another copy of `install.sh` that lacked the
+  same-folder refusal installed that copy over this checkout's skills.
+
 ## 0.8.4
 
 ### Security

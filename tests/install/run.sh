@@ -11,7 +11,9 @@ row() { if [ "$2" = skip ]; then ROWS+=("SKIP | $1"); elif [ "$2" = ok ]; then P
 eq() { [ "$1" = "$2" ]; }
 check() { local name="$1"; shift; if "$@"; then row "$name" ok; else row "$name" bad "assert failed"; fi; }
 ins() { (cd "$W/proj" && HOME="$W/home" bash "$IN" "$@") >"$W/out" 2>&1; echo $?; }
-SRC="$ROOT/.agents/skills"
+# The skills next to the install.sh under test, never this checkout's when another copy is tested:
+# "source equals destination" installs into $SRC if the refusal it checks for is missing.
+SRC="$(cd "$(dirname "$IN")" && pwd)/.agents/skills"
 TPL_BEFORE="$(cksum <"$SRC/pr-reviewer/templates/review-gate.yml")"
 
 r=$(ins --harness claude-code); check "dry run -> 0, nothing created" eval '[ $r = 0 ] && grep -q "dry run" "$W/out" && [ ! -e "$W/proj/.claude" ]'
@@ -46,6 +48,24 @@ else
   row "failed copy (root ignores chmod 000)" skip
 fi
 r=$(ins --target "$SRC" --yes); check "source equals destination -> refused" eval '[ $r = 1 ] && grep -q "same folder" "$W/out"'
+
+# An option given last with no value once spun forever on `shift 2`; each run is killed after 5 s.
+for opt in --harness --scope --skill --target --source; do
+  (cd "$W/proj" && HOME="$W/home" perl -e 'alarm shift; exec @ARGV' 5 bash "$IN" "$opt") >"$W/out" 2>&1; r=$?
+  check "$opt with no value -> refused at once, naming it" eval '[ $r = 1 ] && grep -q -- "$opt needs a value" "$W/out"'
+done
+# Symbolic links resolve before the same-folder check, and a source skill folder that is a link is
+# refused: either way the copy and the template rewrite would have written into the source tree.
+mkdir -p "$W/sc/skills" "$W/proj2/.claude"; cp -R "$SRC/pr-reviewer" "$SRC/pr-fixer" "$W/sc/skills/"
+SC_TPL="$(cksum <"$W/sc/skills/pr-reviewer/templates/review-gate.yml")"
+ln -s "$W/sc/skills" "$W/proj2/.claude/skills"
+r=$( (cd "$W/proj2" && HOME="$W/home" bash "$IN" --harness claude-code --source "$W/sc/skills" --yes) >"$W/out" 2>&1; echo $?)
+check "destination root linked to the source -> refused as the same folder, source untouched" \
+  eval '[ $r = 1 ] && grep -q "same folder" "$W/out" && [ "$(cksum <"$W/sc/skills/pr-reviewer/templates/review-gate.yml")" = "$SC_TPL" ]'
+mkdir -p "$W/sl"; ln -s "$W/sc/skills/pr-reviewer" "$W/sl/pr-reviewer"
+r=$(ins --harness claude-code --source "$W/sl" --skill pr-reviewer --yes)
+check "source skill folder that is a symlink -> refused, source untouched" \
+  eval '[ $r = 1 ] && grep -q "symbolic link" "$W/out" && [ "$(cksum <"$W/sc/skills/pr-reviewer/templates/review-gate.yml")" = "$SC_TPL" ]'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

@@ -255,7 +255,9 @@ cd <your-repository>
 skills folder directly. Without `--yes` it only prints the plan. With `--yes` it removes each
 installed `pr-reviewer` and `pr-fixer` folder with a fresh copy, made next to the old one and
 swapped in, so a failed copy keeps the old install and a file a newer release dropped does not stay
-behind; it refuses a destination that is a symbolic link before it changes anything. For a project install
+behind. Before it changes anything it refuses a destination skill folder that is a symbolic link, a
+source skill folder that is one, and a destination that resolves to the source folder (for example
+`.claude/skills` linked to `.agents/skills`). For a project install
 into a folder other than `.agents/skills`, it points the installed `templates/review-gate.yml` at
 the new script path.
 
@@ -374,7 +376,7 @@ Two steps are required:
 2. Set `REVIEW_MARKER_AUTHORS` to the login the agent publishes as, the account `gh` is signed in
    to. Export it in the shell that starts your harness:
    `export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"`. Without it, any commenter could
-   post a forged verdict marker, so `status`, `publish`, `extend`, `halt`, `export-audit` and the
+   post a forged verdict marker, so `status`, `stale`, `publish`, `extend`, `halt`, `export-audit` and the
    gate refuse to run when it is unset or names no login, and `budget` prints `B_NEXT='none'` without
    reading the budget. An entry counts only as ASCII letters, digits, hyphens and underscores, starting with a letter or digit, so a pasted BOM or
    no-break space names nobody. `publish`, `extend` and `halt --reason` also refuse when `gh` is signed in

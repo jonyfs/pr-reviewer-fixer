@@ -44,6 +44,11 @@ step 1. It moves a marker-backed label (`review:passed`, `review:blocked`, `revi
 another commit. The fixer runs it after its own push; nothing on GitHub runs it for a push made
 outside a session, so until the next loop the label is stale while the gate already fails.
 
+GitHub reports a new head a few seconds after a push, and `stale` run before that compares the
+marker with the old head and changes nothing. Wait first, at most two minutes, until
+`gh pr view <pr> --json headRefOid --jq .headRefOid` prints the commit you pushed (`git rev-parse
+HEAD`). If it never does, say so and run `stale` anyway.
+
 An optional Claude Code Stop hook can run `review-cycle.sh debt` and refuse to end a turn while a
 review is owed. It is a convenience. The rule above is the portable trigger.
 
@@ -59,7 +64,7 @@ export REVIEW_BLOCK_AT=critical   # or warning: a WARNING then blocks too; match
 to. Set the same value as the repository variable of that name, for the `review-gate` check. With
 it unset, or listing no login, anyone who can comment could forge a verdict marker. An entry counts
 only as ASCII letters, digits, hyphens and underscores, starting with a letter or digit once spaces are trimmed, so a lone comma, a BOM or a
-no-break space names nobody. Then `status`, `publish`, `extend`, `halt`, `export-audit` and the gate
+no-break space names nobody. Then `status`, `stale`, `publish`, `extend`, `halt`, `export-audit` and the gate
 all refuse until it is set, and `budget` prints `B_NEXT='none'` without reading the budget.
 `publish`, `extend` and `halt --reason` also refuse when the login `gh` is signed in to is not on the list,
 because every reader would ignore what they post.

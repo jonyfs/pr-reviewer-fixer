@@ -39,7 +39,8 @@ Announce the result: `pr-fixer: check <name> failed on PR #N, classified <class>
 4. Never skip, disable or loosen a test, a threshold or a lint rule to turn the check green. Never
    edit the CI configuration to make a check pass, unless the CI configuration itself is the
    defect; then say so in the commit message and the closure comment.
-5. Run the narrowest verification, then push, then `scripts/review-cycle.sh stale`, then one
+5. Run the narrowest verification, then push, then wait until `gh pr view <pr> --json headRefOid`
+   reports the pushed commit (at most two minutes), then `scripts/review-cycle.sh stale`, then one
    closure comment. The reviewer re-runs on the new head, and the push counts as a cycle.
 
 | Failure class | Fix |
