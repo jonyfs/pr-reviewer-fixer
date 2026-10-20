@@ -265,15 +265,22 @@ holds one at any depth, a destination that resolves to the source folder (for ex
 that lies inside a skill folder it would replace (a clone at `~/.claude/skills/pr-reviewer`, say:
 clone it somewhere else), and a path it cannot resolve. Whatever those checks conclude, it only
 replaces a folder that looks like a copy it made. One rule decides that, for the source and the
-destination alike: a real folder, nothing named `.git` in any letter case at any depth, and a
-`SKILL.md` whose frontmatter has the line `name: <skill>` (CRLF line endings are fine). A source
+destination alike: a real folder, nothing named `.git` in any letter case at any depth, no file
+system mounted inside it (found by device, and on Linux also by the mount table, which sees a bind
+mount from the same file system), and exactly one `SKILL.md` in any letter case, whose frontmatter has the
+line `name: <skill>` (CRLF line endings are fine). A source
 skill folder that fails the rule is refused, so the install never writes a copy it would refuse to
 replace later. An existing destination skill folder that fails it is refused before the plan is
 printed. The copy's folders are made writable, so the next run can remove it. Only with `--yes`, it
 also refuses a leftover folder with the name of this run's stage or set-aside copy, since that name
-carries the process id. The rule cannot tell your edited install from a fresh one: edits inside an
-installed skill folder are replaced, and a `.git` above that folder (a dotfiles repository at
-`~/.claude`, say) or a file system mounted inside it is not looked for. For a project install into a folder other than
+carries the process id. When the old copy cannot be removed in full after the new one is in place,
+it stays as `.<skill>.old.<pid>` next to it, the message names it (and says so when it still holds a
+`SKILL.md`), and the run exits 1. The rule cannot tell your edited install from a fresh one: edits
+inside an installed skill folder are replaced, and a `.git` above that folder (a dotfiles repository
+at `~/.claude`, say) is not looked for. Outside Linux a mount is found only by its device, so an
+empty file system, or a folder mounted from the same device, is not seen: removing the old copy
+then empties that folder or fails at the mount point, and the run exits 1. A refused mount says to
+unmount it first. For a project install into a folder other than
 `.agents/skills`, it points the installed `templates/review-gate.yml` at the new script path.
 
 To do the same by hand, copy the folders:

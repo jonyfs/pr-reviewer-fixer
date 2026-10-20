@@ -637,8 +637,8 @@ check "stale with the allowlist set ignores the forged marker and retires review
 # marker folds ASCII case only: a dotless i or a long s is not an i or an s.
 printf '<!-- adversarial-review: sha=%s verd\xc4\xb1ct=PASSED pass=1 -->\n' "$D" >"$W/m1.txt"
 printf '<!-- adversarial-review: \xc5\xbfha=%s verdict=PASSED pass=1 -->\n' "$D" >"$W/m2.txt"
-LC_ALL=en_US.UTF-8 "$RC" marker --author github-actions "$W/m1.txt" >/dev/null 2>&1; r1=$?
-LC_ALL=en_US.UTF-8 "$RC" marker --author github-actions "$W/m2.txt" >/dev/null 2>&1; r2=$?
+LC_ALL=C.UTF-8 "$RC" marker --author github-actions "$W/m1.txt" >/dev/null 2>&1; r1=$?
+LC_ALL=C.UTF-8 "$RC" marker --author github-actions "$W/m2.txt" >/dev/null 2>&1; r2=$?
 check "marker: a dotless i or a long s does not fold to ASCII (no marker, rc 1)" eval '[ $r1 = 1 ] && [ $r2 = 1 ]'
 
 printf '%s\n' "${ROWS[@]}"

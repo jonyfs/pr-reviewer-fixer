@@ -33,8 +33,10 @@
 #
 # Whatever the path checks miss, it only ever removes a folder that looks like a copy it made. One
 # rule decides that, for the source and the destination alike: a real folder, nothing named .git in
-# any letter case at any depth, and a SKILL.md whose frontmatter (the first `---` block) has the line
-# `name: <skill>`, a trailing CR allowed. A source skill folder that fails it is refused before any
+# any letter case at any depth, no file system mounted inside it (by device, and on Linux by the mount
+# table, which also sees a bind mount from the same file system), and exactly one SKILL.md in any
+# letter case, whose frontmatter (the first `---` block) has the line `name: <skill>`, a trailing CR
+# allowed. A source skill folder that fails it is refused before any
 # change, so an install never writes a copy it would refuse to replace on the next run; an existing
 # destination skill folder that fails it is refused before the plan is printed. The copy's folders
 # are made writable by their owner, so the next run can remove it. With --yes it also refuses a
@@ -42,14 +44,17 @@
 #
 # Limits: the rule cannot tell a person's edited install from a fresh one, so local edits inside an
 # installed skill folder are replaced, and a .git above the skill folder (a dotfiles repository at
-# ~/.claude, say) is not looked for. A file system mounted inside a destination skill folder is not
-# detected.
+# ~/.claude, say) is not looked for. Outside Linux, a mount is found only by its device, so an empty
+# file system, or a folder mounted from the same device (a nullfs mount, say), is not seen; removing
+# the old copy then empties that folder or fails at the mount point, and the run exits 1 naming it.
 #
 # EXIT CODES. 0 = done, or a dry run. 1 = refused (bad arguments, unknown harness, a source folder
 # that is not a skill, holds a symbolic link or would not pass the rule, a path it cannot resolve, a
-# source and destination that overlap, a destination that is not safe to replace), or an old copy
-# that could not be removed in full after the new one was put in place (the message names where it
-# is). It installs nothing it cannot check.
+# source and destination that overlap, a destination that is not safe to replace), or a step that
+# failed with --yes: the destination folder could not be created, a copy could not be made or made
+# writable, a folder could not be moved, or an old copy could not be removed in full after the new
+# one was put in place. A failed step names what it left and where. With --skill both, pr-reviewer
+# may already be replaced when a pr-fixer step fails. It installs nothing it cannot check.
 set -uo pipefail
 
 die() { echo "install: $*" >&2; exit 1; }
@@ -152,18 +157,47 @@ overlaps() { within "$1" "$2" || same_or_inside "$1" "$2"; }
 # copy the install made always passes it on the next run. The folder is a real folder, not a link;
 # nothing in it is named .git in any letter case, at any depth; it holds a SKILL.md, not a link, whose
 # first line is `---` and whose frontmatter, up to the next `---`, has the line `name: $2`. A trailing
-# CR is ignored on every line, so a checkout with CRLF line endings passes. On failure it returns 1
-# with the reason in WHY.
-WHY=""
+# CR is ignored on every line, so a checkout with CRLF line endings passes. A second SKILL.md in
+# another letter case is refused: copied to a case-insensitive file system, one would overwrite the
+# other. So is a file system mounted inside the folder, since removing the folder would empty it. A
+# mount is found two ways: as an entry that `find -xdev` does not reach (another device), and on
+# Linux as a mount point under the folder in /proc/self/mountinfo, which also finds a bind mount from
+# the same file system, whose device `-xdev` cannot tell apart. awk decodes the octal escapes
+# mountinfo writes for a space, a tab, a newline and a backslash (\040 and so on), and takes the
+# folder's path from the environment, which, unlike -v, leaves backslashes alone. awk runs in
+# the C locale, so a byte that is not UTF-8 in the frontmatter is read as a byte and not refused as an
+# error. On failure it returns 1 with the reason in WHY, and HINT holds the step to take when the
+# stock advice (move the folder away) is not it.
+WHY="" HINT=""
 looks_like_install() {
-  local d="$1" s="$2" gitp
-  WHY=""
+  local d="$1" s="$2" gitp all one mnt
+  WHY="" HINT=""
   if [ -L "$d" ]; then WHY="is a symbolic link"; return 1; fi
   [ -d "$d" ] || { WHY="is not a folder"; return 1; }
   gitp="$(find "$d" -iname .git -print -quit 2>/dev/null)" || { WHY="cannot be read in full"; return 1; }
   [ -z "$gitp" ] || { WHY="is or holds a repository ($gitp, a .git), which an install never is"; return 1; }
+  all="$(find "$d" 2>/dev/null | wc -l)"; one="$(find "$d" -xdev 2>/dev/null | wc -l)"
+  [ "$all" = "$one" ] || { WHY="holds a mounted file system, which an install never does"; HINT="unmount it first"; return 1; }
+  if [ -r /proc/self/mountinfo ]; then
+    mnt="$(MI_DIR="$d" LC_ALL=C awk '
+      function dec(s,  o, i, c) {
+        o = ""
+        for (i = 1; i <= length(s); i++) {
+          c = substr(s, i, 1)
+          if (c == "\\" && substr(s, i + 1, 3) ~ /^[0-7][0-7][0-7]$/) {
+            o = o sprintf("%c", substr(s, i + 1, 1) * 64 + substr(s, i + 2, 1) * 8 + substr(s, i + 3, 1)); i += 3
+          } else o = o c
+        }
+        return o
+      }
+      { m = dec($5) } index(m, ENVIRON["MI_DIR"] "/") == 1 { print m; exit }' /proc/self/mountinfo 2>/dev/null)" \
+      || { WHY="cannot be checked for mounts (/proc/self/mountinfo unreadable)"; return 1; }
+    [ -z "$mnt" ] || { WHY="holds a mounted file system ($mnt), which an install never does"; HINT="unmount it first"; return 1; }
+  fi
   if [ -L "$d/SKILL.md" ] || [ ! -f "$d/SKILL.md" ]; then WHY="does not look like an install of $s (no SKILL.md)"; return 1; fi
-  awk -v want="name: $s" '
+  [ "$(find "$d" -mindepth 1 -maxdepth 1 -iname SKILL.md | wc -l)" -eq 1 ] \
+    || { WHY="holds more than one SKILL.md in different letter case, which one copy cannot keep apart"; return 1; }
+  LC_ALL=C awk -v want="name: $s" '
     { sub(/\r$/, "") }
     NR == 1 { if ($0 != "---") exit; next }
     $0 == "---" { closed = 1; exit }
@@ -206,7 +240,7 @@ for s in "${SKILLS[@]}"; do
 done
 
 # Refuse before the first removal, and before the plan below, so the plan never promises to replace a
-# folder it then refuses: a destination that is a symbolic link, a name this script does not own, or
+# folder that the rule refuses: a destination that is a symbolic link, a name this script does not own, or
 # a folder that does not pass looks_like_install stops the whole run, in the dry run too. This holds
 # whatever the path checks above concluded, so no path bug can remove a repository or a person's own
 # folder.
@@ -215,7 +249,7 @@ for s in "${SKILLS[@]}"; do
   case "$dest" in */pr-reviewer|*/pr-fixer) ;; *) die "refusing to replace '$dest'" ;; esac
   if [ -L "$dest" ]; then die "$DEST_ROOT/$s is a symbolic link; remove it yourself first"; fi
   [ -e "$dest" ] || continue
-  looks_like_install "$dest" "$s" || die "$DEST_ROOT/$s $WHY, so it is never replaced; move it away yourself first (and clone outside the skills folder)"
+  looks_like_install "$dest" "$s" || die "$DEST_ROOT/$s $WHY, so it is never replaced; ${HINT:-move it away yourself first (and clone outside the skills folder)}"
 done
 
 echo "install: skills  ${SKILLS[*]}"
@@ -242,27 +276,37 @@ for s in "${SKILLS[@]}"; do
     if [ -e "$f" ] || [ -L "$f" ]; then die "$f already exists and is not this run's; move it away, nothing installed"; fi
   done
 done
+# Removes a stage this run made and could not finish. Every folder is made readable, writable and
+# searchable first, so a umask that left the copy unreadable does not keep it; a stage that still
+# cannot be removed is named, so it is not left behind unseen.
+drop_stage() {
+  chmod -R u+rwx -- "$1" 2>/dev/null
+  rm -rf -- "$1" 2>/dev/null || echo "install: the unfinished copy at $1 could not be removed; remove it yourself" >&2
+}
 LEFT=0
 for s in "${SKILLS[@]}"; do
   dest="$DEST_P/$s"
   # Copy to a sibling first and move it into place, so a failed copy leaves the old install alone.
   stage="$DEST_P/.$s.new.$$"
-  cp -R "$SRC_P/$s" "$stage" || { chmod -R u+w -- "$stage" 2>/dev/null; rm -rf -- "$stage"; die "copy of $s failed; the old install is untouched"; }
+  cp -R "$SRC_P/$s" "$stage" || { drop_stage "$stage"; die "copy of $s failed; the old install is untouched"; }
   # `cp -R` keeps a read-only folder read-only, and the next run could not remove the copy.
-  find "$stage" -type d -exec chmod u+w {} + || { rm -rf -- "$stage"; die "could not make the copy of $s writable; the old install is untouched"; }
+  find "$stage" -type d -exec chmod u+w {} + || { drop_stage "$stage"; die "could not make the copy of $s writable; the old install is untouched"; }
   old="$DEST_P/.$s.old.$$"
-  if [ -e "$dest" ]; then mv -- "$dest" "$old" || { rm -rf -- "$stage"; die "could not set the old $s aside; it is untouched"; }; fi
+  if [ -e "$dest" ]; then mv -- "$dest" "$old" || { drop_stage "$stage"; die "could not set the old $s aside; it is untouched"; }; fi
   if ! mv -- "$stage" "$dest"; then
-    rm -rf -- "$stage"
+    drop_stage "$stage"
     if [ ! -e "$old" ]; then die "could not move the new $s into place; there was no old one"; fi
     mv -- "$old" "$dest" && die "could not move the new $s into place; the old one is back"
     die "could not move the new $s into place, nor the old one back; it is at $old"
   fi
   # The old copy passed looks_like_install; an install made before its folders were made writable
-  # can still hold a read-only one, which rm -rf cannot empty.
-  [ -e "$old" ] && find "$old" -type d ! -perm -u+w -exec chmod u+w {} + 2>/dev/null
+  # can still hold a read-only one, which rm -rf cannot empty. `-xdev` keeps the chmod on this file
+  # system. rm -rf removes every file it can, so a SKILL.md stays only when it cannot be removed
+  # itself; the message then says so, since a harness that loads dot folders could load it.
+  [ -e "$old" ] && find "$old" -xdev -type d ! -perm -u+w -exec chmod u+w {} + 2>/dev/null
   if [ -e "$old" ] && ! rm -rf -- "$old"; then
-    echo "install: the old copy of $s could not be removed in full; it is at $old, remove it yourself" >&2
+    left_skill=""; [ -e "$old/SKILL.md" ] && left_skill=" It still holds a SKILL.md, so a harness that loads folders starting with a dot could load it."
+    echo "install: the old copy of $s could not be removed in full; it is at $old, remove it yourself.$left_skill" >&2
     LEFT=1
   fi
   if [ -n "$REL" ] && [ "$REL" != ".agents/skills" ] && [ -f "$dest/templates/review-gate.yml" ]; then

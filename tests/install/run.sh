@@ -9,7 +9,7 @@ ROOT="$(cd "$T/../.." && pwd)"
 ORIG_IN="${1:-$ROOT/install.sh}"
 # The scratch tree holds copies of the skills, so it lives outside tests/ (run-all.sh greps tests/).
 # A row leaves a read-only or immutable file behind when it fails, so the cleanup clears both first.
-W="$(mktemp -d "${TMPDIR:-/tmp}/install-test.XXXXXX")"; trap 'command -v chflags >/dev/null 2>&1 && chflags -R nouchg "$W" 2>/dev/null; chmod -R u+w "$W" 2>/dev/null; rm -rf "$W"' EXIT; mkdir -p "$W/proj" "$W/home"
+W="$(mktemp -d "${TMPDIR:-/tmp}/install-test.XXXXXX")"; trap 'command -v chflags >/dev/null 2>&1 && chflags -R nouchg "$W" 2>/dev/null; chmod -R u+rwx "$W" 2>/dev/null; rm -rf "$W"' EXIT; mkdir -p "$W/proj" "$W/home"
 # Every row runs a copy of install.sh and of the skills next to it, inside $W, so a refusal that
 # regressed can only damage the scratch tree, never the checkout the suite was started from.
 ORIG_DIR="$(cd "$(dirname "$ORIG_IN")" && pwd -P)" || { echo "install suite: cannot enter the folder of $ORIG_IN" >&2; exit 1; }
@@ -246,7 +246,7 @@ if [ "$(id -u)" != 0 ]; then
   mkdir -p "$W/ro"; cp -R "$SRC/pr-fixer" "$W/ro/"; chmod 0555 "$W/ro/pr-fixer/references"
   r=$(ins --source "$W/ro" --target "$W/rot" --skill pr-fixer --yes); r2=$(ins --source "$W/ro" --target "$W/rot" --skill pr-fixer --yes)
   check "a source with a read-only folder -> installs again over its copy, nothing left beside it" \
-    eval '[ $r = 0 ] && [ $r2 = 0 ] && [ "$(ls -A "$W/rot")" = pr-fixer ]'
+    eval '[ $r = 0 ] && [ $r2 = 0 ] && [ "$(ls -A "$W/rot")" = pr-fixer ] && [ -w "$W/rot/pr-fixer/references" ]'
   chmod 0755 "$W/ro/pr-fixer/references"
   # An install made before that fix can still hold a read-only folder; it is replaced in full too.
   mkdir -p "$W/rod"; cp -R "$SRC/pr-fixer" "$W/rod/"; chmod 0555 "$W/rod/pr-fixer/references"
@@ -258,12 +258,61 @@ if [ "$(id -u)" != 0 ]; then
     r=$(ins --target "$W/imm" --skill pr-fixer --yes)
     check "an old copy that cannot be removed in full -> new copy in place, exit 1 naming the leftover" \
       eval '[ $r = 1 ] && grep -q "could not be removed in full" "$W/out" && [ -f "$W/imm/pr-fixer/SKILL.md" ] && ls -A "$W/imm" | grep -q "^\.pr-fixer\.old\."'
+    check "an old copy left behind without its SKILL.md -> the message does not warn about one" \
+      eval '! ls "$W"/imm/.pr-fixer.old.*/SKILL.md >/dev/null 2>&1 && ! grep -q "still holds a SKILL.md" "$W/out"'
     chflags -R nouchg "$W/imm"
+    # A SKILL.md that cannot be removed stays in the old copy, and the message says so.
+    mkdir -p "$W/imm2"; cp -R "$SRC/pr-fixer" "$W/imm2/"; chflags uchg "$W/imm2/pr-fixer/SKILL.md"
+    r=$(ins --target "$W/imm2" --skill pr-fixer --yes)
+    check "an old copy whose SKILL.md cannot be removed -> exit 1, the message says it still holds one" \
+      eval '[ $r = 1 ] && grep -q "still holds a SKILL.md" "$W/out"'
+    chflags -R nouchg "$W/imm2"
   else
     row "old copy that cannot be removed (no chflags here)" skip
   fi
 else
   row "read-only folder in the source (root ignores the mode)" skip
+fi
+# A failed copy can leave a stage its owner cannot read (a umask of 0400, say); drop_stage restores
+# every mode bit it needs and removes it.
+DS="$(awk '/^drop_stage\(\)/,/^}/' "$IN")"
+mkdir -p "$W/ds/stage/a/b"; echo x >"$W/ds/stage/a/b/f"; chmod 0 "$W/ds/stage/a/b" "$W/ds/stage/a"
+r=$(bash -c "$DS"'; drop_stage "$1"; echo "rc=$?"' _ "$W/ds/stage" 2>&1)
+check "drop_stage removes a stage with folders its owner cannot read or enter" eval '[ "$r" = "rc=0" ] && [ ! -e "$W/ds/stage" ]'
+# A byte that is not UTF-8 in the frontmatter: awk under a UTF-8 locale gave up on it, so a copy
+# installed once was refused on the next run. The rule runs awk in the C locale.
+mkdir -p "$W/u8"; cp -R "$SRC/pr-fixer" "$W/u8/"
+printf -- '---\nname: pr-fixer\ndescription: caf\351\n---\nbody\n' >"$W/u8/pr-fixer/SKILL.md"
+r=$(LC_ALL=C.UTF-8 ins --source "$W/u8" --target "$W/u8t" --skill pr-fixer --yes); r2=$(LC_ALL=C.UTF-8 ins --source "$W/u8" --target "$W/u8t" --skill pr-fixer --yes)
+check "a SKILL.md with a byte that is not UTF-8, under a UTF-8 locale -> installs, and installs again" eval '[ $r = 0 ] && [ $r2 = 0 ]'
+# Two SKILL.md files that differ only in letter case exist only on a case-sensitive file system.
+mkdir -p "$W/cs/pr-fixer"; echo a >"$W/cs/pr-fixer/SKILL.md"; echo b >"$W/cs/pr-fixer/skill.md"
+if [ "$(cat "$W/cs/pr-fixer/SKILL.md")" = a ]; then
+  rm -rf "$W/cs"; mkdir -p "$W/cs"; cp -R "$SRC/pr-fixer" "$W/cs/"; cp "$W/cs/pr-fixer/SKILL.md" "$W/cs/pr-fixer/skill.md"
+  r=$(ins --source "$W/cs" --target "$W/cst" --skill pr-fixer --yes)
+  check "a source holding SKILL.md and skill.md -> refused before any change" eval '[ $r = 1 ] && grep -q "more than one SKILL.md" "$W/out" && [ ! -e "$W/cst" ]'
+else
+  row "SKILL.md and skill.md in one source (case-insensitive file system here)" skip
+fi
+# A bind mount from the same file system keeps the device number, so `find -xdev` walks into it and
+# the old device comparison let the folder pass; rm -rf of the old copy then emptied the bound
+# folder. On Linux the rule reads the mount table. Mounting needs root and a mount namespace that
+# allows it (a privileged container), so elsewhere the row is skipped. The path has a space, which
+# the mount table writes as \040.
+if [ "$(uname -s)" = Linux ] && [ "$(id -u)" = 0 ] && [ -r /proc/self/mountinfo ]; then
+  mkdir -p "$W/bm data" "$W/bm dest"; echo precious >"$W/bm data/keep.txt"
+  cp -R "$SRC/pr-fixer" "$W/bm dest/"; mkdir -p "$W/bm dest/pr-fixer/references/bound"
+  if mount --bind "$W/bm data" "$W/bm dest/pr-fixer/references/bound" 2>/dev/null; then
+    r=$(ins --target "$W/bm dest" --skill pr-fixer --yes)
+    # A regressed rule moves the mount point into the set-aside copy; unmount it there too.
+    for m in "$W/bm dest/pr-fixer/references/bound" "$W/bm dest"/.pr-fixer.old.*/references/bound; do umount "$m" 2>/dev/null; done
+    check "a bind mount from the same file system inside the destination -> refused, the bound folder kept" \
+      eval '[ $r = 1 ] && grep -q "holds a mounted file system" "$W/out" && grep -q "unmount it" "$W/out" && ! grep -q "will REPLACE" "$W/out" && [ "$(cat "$W/bm data/keep.txt" 2>/dev/null)" = precious ]'
+  else
+    row "bind mount inside the destination (mount --bind not allowed here)" skip
+  fi
+else
+  row "bind mount inside the destination (needs Linux and root)" skip
 fi
 # same_or_inside walks up with dirname; on a relative path dirname settles on `.` and the walk never
 # ended. It must return at once (killed after 3 s otherwise).
