@@ -456,6 +456,9 @@ lr 1 src/a.ts 11-40; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >
 check "lint-report range end outside the hunk -> 1" eq "$r" 1
 lr 1 src/a.ts abc; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
 check "lint-report line that is not a number -> 1" eval '[ $r = 1 ] && grep -q "not a line number" "$W/out"'
+# Arabic-indic 11: `\d` without re.ASCII would take it and int() would parse it as 11, inside the hunk.
+lr 1 src/a.ts $'\xd9\xa1\xd9\xa1'; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+check "lint-report line in non-ASCII digits -> 1" eval '[ $r = 1 ] && grep -q "not a line number" "$W/out"'
 printf 'diff --git a/src/s.sql b/src/s.sql\n--- a/src/s.sql\n+++ b/src/s.sql\n@@ -1,1 +1,3 @@\n a\n+++ evil\n+b\n' >"$W/d.patch"
 lr 1 src/s.sql 3; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
 check "lint-report added line that looks like a file header -> 0" eq "$r" 0

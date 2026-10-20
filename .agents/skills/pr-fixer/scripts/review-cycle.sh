@@ -113,7 +113,9 @@
 #                             at least one login: unset, empty, whitespace, a lone comma and only
 #                             invisible characters all make `status`, `publish`, `budget`,
 #                             `extend`, `halt`, `export-audit` refuse. `publish`, `extend` and
-#                             `halt` also refuse when `gh api user` is not on the list.
+#                             `halt --reason` also refuse when `gh api user` is not on the list
+#                             or cannot be resolved; `halt` without `--reason` posts nothing and
+#                             does not check it.
 #                             Only the bare `marker` subcommand still reads with the list unset.
 #                             A comment edited after it was created is never read (pr-json.py).
 #     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.

@@ -15,17 +15,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   marker forged by anyone made `status` print "Nothing owed" and the gate go green. Every reader now
   applies one rule: split on commas, trim ASCII spaces, tabs, CR and LF, and keep an entry only if
   it is ASCII letters, digits, hyphens and underscores, starting with a letter or digit. Anything else drops the entry whole. The shell computes
-  the kept list once (`marker_authors`) and hands it to the node and Python readers; the gate, the
-  `review-gate.yml` guard and the `jq` recipes in `pr-protocol.md` apply the same grammar. An empty
+  the kept list once (`marker_authors`) and hands it to the node and Python readers; the gate and
+  the `jq` recipes in `pr-protocol.md` apply the same grammar. The `review-gate.yml` guard is a
+  looser pre-check: it deletes every CR, splits on commas and LF, and passes when at least one entry
+  matches the grammar, leaving the reading itself to `status`. An empty
   kept list trusts nobody everywhere, including `budget`, which used to trust everyone then. The underscore
   keeps Enterprise Managed User logins (`handle_shortcode`) working. A `[bot]` suffix is outside the
   grammar, and an entry carrying one is dropped.
 - `publish`, `extend` and `halt --reason` refuse when the login `gh` is signed in to is not on
   `REVIEW_MARKER_AUTHORS`, or cannot be resolved. A marker posted as anyone else is one every reader
   ignores, so `status` owed the review forever and a halt was posted again on every run.
-- The Python marker, extension and lint-report regexes run with `re.ASCII`. `\d` took non-ASCII
-  digits, which `int()` then parsed, so the gate read `pass=١` as pass 1 while `status` read no
-  marker at all. Whitespace inside a marker is now the six ASCII characters (space, tab, LF, CR, FF,
+- The Python marker and extension regexes (`budget`, `halt`, `export-audit`, the gate) and the
+  lint-report regexes that read numbers (hunk headers, the `line:` value, the `counts:` line) run
+  with `re.ASCII`. The lint-report regexes that read a finding's `id:` and field lines do not, and
+  need not: they read no number and decide no trust. `\d` took non-ASCII digits, which `int()`
+  then parsed, so the gate read `pass=١` as pass 1 while `status` read no marker at all. Whitespace inside a marker is now the six ASCII characters (space, tab, LF, CR, FF,
   VT) in every reader: the node regex in `parse()` and the bash `MARKER_RE` spell them out instead of
   `\s` and `[[:space:]]`, so a no-break or ideographic space after `<!--` is no marker to `status`,
   `marker`, the gate, `budget` and `export-audit` alike, under any locale.
