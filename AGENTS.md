@@ -14,6 +14,7 @@ bash tests/fake-gh/run.sh .agents/skills/pr-reviewer/scripts       # review-cycl
 bash tests/fake-gh/triage/run.sh .agents/skills/pr-fixer/scripts   # triage-pr.sh
 bash tests/push-guard/run.sh .agents/skills/pr-fixer/scripts       # push-guard.sh, in a scratch git repo
 bash tests/install/run.sh                                          # install.sh, in scratch directories
+docker run --rm --privileged -v "$PWD":/src:ro -w /src debian:stable-slim bash tests/install/run.sh  # its Linux-only rows
 bash tests/eval/selftest.sh                                        # the review eval scorer, on canned reports
 bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-version.sh
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt

@@ -283,7 +283,10 @@ printed. The copy's folders are made writable, so the next run can remove it. On
 also refuses a leftover folder with the name of this run's stage or set-aside copy, since that name
 carries the process id. When the old copy cannot be removed in full after the new one is in place,
 it stays as `.<skill>.old.<pid>` next to it, the message names it (and says so when it still holds a
-`SKILL.md`), and the run exits 1. The rule cannot tell your edited install from a fresh one: edits
+`SKILL.md`), and the run exits 1. The rule runs again on the old copy right before it is removed:
+if a `.git` or a mount appeared there after the plan, the copy is kept at `.<skill>.old.<pid>`, the
+message says why, and the run exits 1. A change in the moment between that check and the removal is
+not seen. The rule cannot tell your edited install from a fresh one: edits
 inside an installed skill folder are replaced, and a `.git` above that folder (a dotfiles repository
 at `~/.claude`, say) is not looked for. Outside Linux a mount is found only by its device, so an
 empty file system, or a folder mounted from the same device, is not seen: removing the old copy
@@ -577,6 +580,14 @@ eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also
 fails if any workflow, template, script or test names a model action or a provider API key.
+
+Some `install.sh` rows run only on Linux: the `SKILL.md` and `skill.md` row needs a case-sensitive
+file system, and the bind-mount row also needs root in a container that may mount. On macOS they
+print `SKIP`. No Linux CI runs them, so run them by hand with Docker:
+
+```bash
+docker run --rm --privileged -v "$PWD":/src:ro -w /src debian:stable-slim bash tests/install/run.sh
+```
 
 The suite tests the scripts, not the quality of a review. `tests/eval/` measures that: seeded cases
 with known defects and `score.py`, which prints recall and precision for reports you produce in your

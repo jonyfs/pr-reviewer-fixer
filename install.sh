@@ -47,6 +47,9 @@
 # ~/.claude, say) is not looked for. Outside Linux, a mount is found only by its device, so an empty
 # file system, or a folder mounted from the same device (a nullfs mount, say), is not seen; removing
 # the old copy then empties that folder or fails at the mount point, and the run exits 1 naming it.
+# The rule runs once on every folder before the plan and again on the old copy right before it is
+# removed; a repository or mount added in the moment between that second check and the removal is
+# not seen.
 #
 # EXIT CODES. 0 = done, or a dry run. 1 = refused (bad arguments, unknown harness, a source folder
 # that is not a skill, holds a symbolic link or would not pass the rule, a path it cannot resolve, a
@@ -299,12 +302,23 @@ for s in "${SKILLS[@]}"; do
     mv -- "$old" "$dest" && die "could not move the new $s into place; the old one is back"
     die "could not move the new $s into place, nor the old one back; it is at $old"
   fi
-  # The old copy passed looks_like_install; an install made before its folders were made writable
-  # can still hold a read-only one, which rm -rf cannot empty. `-xdev` keeps the chmod on this file
-  # system. rm -rf removes every file it can, so a SKILL.md stays only when it cannot be removed
-  # itself; the message then says so, since a harness that loads dot folders could load it.
-  [ -e "$old" ] && find "$old" -xdev -type d ! -perm -u+w -exec chmod u+w {} + 2>/dev/null
-  if [ -e "$old" ] && ! rm -rf -- "$old"; then
+  # The old copy passed looks_like_install before the plan. The rule runs again on the set-aside
+  # copy right before the chmod and the removal, so a repository or a mount that appeared in between
+  # is seen and the copy is kept at $old instead of emptied. The window left is the one between this
+  # check and rm -rf.
+  if [ -e "$old" ] && ! looks_like_install "$old" "$s"; then
+    echo "install: the old copy of $s, set aside at $old, now $WHY, so it was not removed; check it and remove it yourself." >&2
+    LEFT=1
+    old_kept=1
+  else
+    old_kept=""
+  fi
+  # An install made before its folders were made writable can still hold a read-only one, which
+  # rm -rf cannot empty. `-xdev` keeps the chmod on this file system. rm -rf removes every file it
+  # can, so a SKILL.md stays only when it cannot be removed itself; the message then says so, since
+  # a harness that loads dot folders could load it.
+  [ -z "$old_kept" ] && [ -e "$old" ] && find "$old" -xdev -type d ! -perm -u+w -exec chmod u+w {} + 2>/dev/null
+  if [ -z "$old_kept" ] && [ -e "$old" ] && ! rm -rf -- "$old"; then
     left_skill=""; [ -e "$old/SKILL.md" ] && left_skill=" It still holds a SKILL.md, so a harness that loads folders starting with a dot could load it."
     echo "install: the old copy of $s could not be removed in full; it is at $old, remove it yourself.$left_skill" >&2
     LEFT=1

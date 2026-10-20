@@ -31,6 +31,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   published under `REVIEW_BLOCK_AT=warning`. `status` and `budget` now read it that way, so a shell
   under `critical` answers inconclusive and names the setting instead of acting on a BLOCKED with
   nothing blocking.
+- `install.sh` checked its install rule once, before the plan, so a `.git` or a mount added to the
+  old copy before its removal was not seen (N1 of #22). The rule now runs again on the set-aside
+  copy right before the `chmod` and `rm -rf`. A copy that fails it is kept, named, and the run
+  exits 1.
+
+### Documentation
+
+- The README tests section and `AGENTS.md` give the `docker run --privileged` line that runs the
+  Linux-only `install.sh` rows (N2 of #22), which no CI runs.
 
 ## 0.8.6
 
