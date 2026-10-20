@@ -121,7 +121,8 @@
 #                             or cannot be resolved; `halt` without `--reason` posts nothing and
 #                             does not check it.
 #                             Only the bare `marker` subcommand still reads with the list unset.
-#                             A comment edited after it was created is never read (pr-json.py).
+#                             A comment edited after it was created is never read as a verdict
+#                             (pr-json.py); its `pass=` still counts toward the highest pass.
 #     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
 #                             Default 5. Read by `budget` and `extend`.
 #     MAX_REVIEW_CYCLES_HARD  Absolute ceiling no answer passes. Default 10, clamped to 1..10.
@@ -495,11 +496,13 @@ parse() {
     for(const c of (JSON.parse(s).editedComments||[])){
       if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
       const mm=re.exec(c.body||"");
-      if(mm&&mm[2].toUpperCase()==="BLOCKED")blocked="yes";}
+      // An edited marker is never the verdict, but its pass still counts: an edit cannot lower the
+      // highest pass, so it cannot hand `publish` a pass number that was already used.
+      if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
       last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp].join(" "):
-      // No readable marker, but a BLOCKED one was seen (it may have been edited): keep the history.
-      (blocked==="yes"?["","","","-","-","-",blocked,"-","-","-",0].join(" "):""))
+      // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
+      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp].join(" "):""))
   }catch(e){}})')
   MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
   MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
@@ -524,7 +527,8 @@ parse() {
   # BLOCKED with nothing blocking. `budget` makes the same inference.
   if [ "$MARKER_BLOCK_AT" = - ] && [ "$MARKER_VERDICT" = BLOCKED ] && [ "$MARKER_CRITICAL" = 0 ] \
      && positivo "$MARKER_WARNING"; then MARKER_BLOCK_AT=warning; fi
-  # The highest `pass=` among the trusted markers, whatever commit they name, 0 when there is none.
+  # The highest `pass=` among the trusted markers, whatever commit they name, edited ones included,
+  # 0 when there is none.
   # `publish` takes only the next one, and `budget` counts cycles from it, so a head that returns to
   # an older commit, or a low `--pass`, cannot restart the count.
   MARKER_MAX_PASS=$(printf '%s' "$m" | cut -d' ' -f11)
@@ -802,7 +806,7 @@ cmd_status() {
     review:blocked)
       if [ -n "${HALTED:-}" ]; then
         echo "#$NUMBER head $short — findings open and the loop is halted; a person has to decide."
-        echo "  next: a person pushes a correction, or grants cycles in the session (review-cycle.sh budget $NUMBER, then extend); start refuses until one happens"
+        echo "  next: a person pushes a correction, or grants cycles in the session (review-cycle.sh budget $NUMBER, then extend) unless the hard ceiling was reached, where only a push helps; start refuses until one happens"
       else
         echo "#$NUMBER head $short — findings open."
         echo "  next: /pr-fixer, then /pr-reviewer again over the corrected diff (pass 2+)"
@@ -934,8 +938,13 @@ allow = set(os.environ["BUDGET_AUTHORS"].split(",")) - {""}
 trusted = [c for c in data.get("comments", [])
            if str((c.get("author") or {}).get("login") or "").lower() in allow]
 
-verdicts = []
-for c in trusted:
+# Edited comments (pr-json.py keeps them aside) are never a verdict, but their pass still counts,
+# so editing the newest marker cannot lower the count. parse() in the shell does the same.
+edited = [c for c in data.get("editedComments", [])
+          if str((c.get("author") or {}).get("login") or "").lower() in allow]
+
+verdicts, edited_passes = [], []
+for is_edited, c in [(False, c) for c in trusted] + [(True, c) for c in edited]:
     m = re.match(r"\s*<!--\s*adversarial-review:\s*(sha=[0-9a-f]{7,40}\s+verdict=(?:PASSED|BLOCKED)\s+pass=\d+"
                  r"(?:\s+critical=\d+\s+warning=\d+\s+note=\d+)?"
                  r"(?:\s+model=[A-Za-z0-9._:-]+\s+tier=(?:fast|standard|deep))?"
@@ -943,7 +952,9 @@ for c in trusted:
     if not m:
         continue
     f = fields(m.group(1))
-    if "pass" in f and "verdict" in f:
+    if "pass" in f and "verdict" in f and is_edited:
+        edited_passes.append(num(f["pass"], 0))
+    elif "pass" in f and "verdict" in f:
         verdicts.append({"sha": f["sha"].lower(), "verdict": f["verdict"].upper(), "pass": num(f["pass"], 0),
                          "block_at": f.get("block_at", "").lower(),
                          "raw_c": num(f.get("critical"), -1), "raw_w": num(f.get("warning"), -1),
@@ -956,7 +967,7 @@ if at and not at["block_at"] and at["verdict"] == "BLOCKED" and at["raw_c"] == 0
     at["block_at"] = "warning"
 # Cycles are counted from the highest trusted pass, never from the marker at the head, so a head
 # that returns to an older reviewed commit cannot restart the count.
-max_pass = max((v["pass"] for v in verdicts), default=0)
+max_pass = max([v["pass"] for v in verdicts] + edited_passes, default=0)
 
 ext = []
 for c in trusted:

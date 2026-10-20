@@ -417,7 +417,8 @@ Two steps are required:
    reading the budget. An entry counts only as ASCII letters, digits, hyphens and underscores, starting with a letter or digit, so a pasted BOM or
    no-break space names nobody. `publish`, `extend` and `halt --reason` also refuse when `gh` is signed in
    as a login that is not on the list. A marker comment edited after it was
-   created is ignored.
+   created is ignored as a verdict, though its `pass=` still counts, so an edit cannot lower the
+   cycle count.
 
 The rest hardens the setup and is recommended for a shared repository:
 

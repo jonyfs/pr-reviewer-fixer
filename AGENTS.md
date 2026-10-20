@@ -31,7 +31,7 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 **Mechanism lives in scripts, judgement lives in prose.**
 - `scripts/review-cycle.sh` is the state machine: it owns labels, publishes the verdict bound to the head SHA (it re-reads the head from GitHub and refuses a stale `--sha`), refuses inconsistent verdict arithmetic (a `BLOCKED` with no CRITICAL, a `PASSED` with one), computes the cycle budget (`budget`, `extend`, `halt`), refuses to start a correction on code from a fork or a non-collaborator (`fix`), and exports audit records (`export-audit`).
 - `scripts/gate-pr-review-state.py` is the check the `review-gate` required job runs.
-- `scripts/pr-json.py` is the only way the scripts read a pull request. It drops comments edited after creation and fails closed. Every marker rule (allowlist must name a login, edited comments ignored) is decided on its output.
+- `scripts/pr-json.py` is the only way the scripts read a pull request. It drops comments edited after creation and fails closed. Every marker rule (allowlist must name a login, edited comments never read as a verdict but still counted for BLOCKED history and the highest pass) is decided on its output.
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope. The reviewer has no copy.
 - `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.

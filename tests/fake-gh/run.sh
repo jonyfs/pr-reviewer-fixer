@@ -151,6 +151,10 @@ r1=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
 reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
 r2=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
 check "an edited BLOCKED marker still counts as BLOCKED history: PASSED pass 1 refused either way" eval '[ $r1 != 0 ] && [ $r2 != 0 ]'
+# W1 of #23: the edited pass-1 marker is not a verdict, but its pass still counts, so pass 1 is spent.
+reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
+r=$(pub --verdict BLOCKED --pass 1 --sha $D --critical 1 --warning 0 --note 0)
+check "an edited pass-1 marker still spends pass 1: BLOCKED --pass 1 refused, the next pass is 2" eval '[ $r = 1 ] && grep -q "the next pass on #7 is 2" "$W/out" && [ $(ncomments) = 1 ]'
 reset "$(mk 7 $D '[{"name":"review:blocked"}]' '[]' OPEN)"
 python3 -I - <<'PY'
 import json, os

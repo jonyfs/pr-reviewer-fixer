@@ -68,7 +68,8 @@ no-break space names nobody. Then `status`, `stale`, `publish`, `extend`, `halt`
 all refuse until it is set, and `budget` prints `B_NEXT='none'` without reading the budget.
 `publish`, `extend` and `halt --reason` also refuse when the login `gh` is signed in to is not on the list,
 because every reader would ignore what they post.
-A marker comment that was edited after it was created is ignored by all of them.
+A marker comment that was edited after it was created is ignored by all of them as a verdict;
+its `pass=` still counts toward the highest pass, so an edit cannot lower the cycle count.
 
 ## The loop
 

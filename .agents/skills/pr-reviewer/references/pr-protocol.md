@@ -74,14 +74,19 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    time, so `scripts/pr-json.py` asks GraphQL (`IssueComment.lastEditedAt`), pages through all
    comments, drops every edited one, and fails closed when edits cannot be checked or a page is
    truncated. Read comments through `pr-json.py`, as the filters below do, not through
-   `gh pr view`.
+   `gh pr view`. An edited marker by a trusted login is still counted in two places: a BLOCKED
+   one stays BLOCKED history, and its `pass=` still counts toward the highest pass, so editing the
+   newest marker cannot lower `B_NEXT_PASS` or `B_DONE`.
 
 Rule 2 stops an edit. It does not stop a delete and a repost by the same login; signing the marker
 would, and it is on the backlog. The agents publish with `gh` under the account the
 person is signed in to, so the value is that login: `gh api user --jq .login`. Add the login of
 anyone else who publishes reviews. The markers then carry the person's own login, which means the
 gate cannot tell a marker the agent wrote from one the person typed. It checks that a trusted
-account published the verdict, not that a different account did.
+account published the verdict, not that a different account did. A marker a trusted login types by
+hand with `gh pr comment` also moves the pass count: one that says `pass=99` makes the next
+`publish` require `--pass 100` and sends `budget` to the ceiling. That fails closed, since the loop
+stops rather than runs on, but one such comment ends the automatic loop.
 
 Agents apply the same rule when they read a verdict or closure comment themselves: the filters
 below take the list as `$authors` and drop every comment by any other login, ignoring case. An

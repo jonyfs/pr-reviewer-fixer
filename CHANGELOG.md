@@ -22,6 +22,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 
+- The highest trusted pass ignored edited verdict comments, so editing the newest marker lowered
+  `B_NEXT_PASS` and `B_DONE`, and `publish` then accepted that pass number a second time (W1 of
+  #23). `parse` and `budget` now count `pass=` from edited trusted markers too; an edited marker is
+  still never read as a verdict.
+- The `status` line on a halted pull request offered `extend` even after a ceiling halt, where
+  `extend` refuses; it now says only a push helps there.
 - `review-cycle.sh extend` left `review:needs-human` on a halted pull request, so the fixer and
   triage still refused it and the grant changed nothing. `extend` now removes the label after it
   posts the granted marker.

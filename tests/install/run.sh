@@ -299,10 +299,10 @@ fi
 # plan and the removal.
 mkdir -p "$W/n1shim" "$W/n1"; REAL_MV="$(command -v mv)"
 printf '#!/usr/bin/env bash\n"%s" "$@" || exit $?\ncase "${@: -1}" in */.pr-fixer.old.*) mkdir -p "${@: -1}/.git" ;; esac\n' "$REAL_MV" >"$W/n1shim/mv"; chmod +x "$W/n1shim/mv"
-r=$(ins --target "$W/n1" --skill pr-fixer --yes)
+r0=$(ins --target "$W/n1" --skill pr-fixer --yes)
 r=$( (cd "$W/proj" && PATH="$W/n1shim:$PATH" HOME="$W/home" bash "$IN" --target "$W/n1" --skill pr-fixer --yes) >"$W/out" 2>&1; echo $?)
 check "a .git added to the old copy after the plan -> old copy kept, named, exit 1, new copy in place" \
-  eval '[ $r = 1 ] && grep -q "was not removed" "$W/out" && grep -q "holds a repository" "$W/out" && [ -d "$(echo "$W/n1"/.pr-fixer.old.*)/.git" ] && [ -f "$W/n1/pr-fixer/SKILL.md" ]'
+  eval '[ $r0 = 0 ] && [ $r = 1 ] && grep -q "was not removed" "$W/out" && grep -q "holds a repository" "$W/out" && [ -d "$(echo "$W/n1"/.pr-fixer.old.*)/.git" ] && [ -f "$W/n1/pr-fixer/SKILL.md" ]'
 
 # A bind mount from the same file system keeps the device number, so `find -xdev` walks into it and
 # the old device comparison let the folder pass; rm -rf of the old copy then emptied the bound

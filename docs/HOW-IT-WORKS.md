@@ -315,7 +315,8 @@ never read as "reviewed".
   else is ignored. With the variable unset, or holding no real login (only ASCII letters, digits,
   hyphens and underscores, starting with a letter or digit count, so an invisible character such as a BOM names nobody), the scripts trust no marker
   at all. A script that posts a marker refuses when `gh` is signed in as a login off the list.
-- A marker comment that was edited after it was created is ignored.
+- A marker comment that was edited after it was created is ignored as a verdict. Its `pass=` still
+  counts toward the highest pass, so an edit cannot lower the cycle count.
 - A verdict is bound to a commit. Any push turns it stale.
 - Everything read from the pull request (description, comments, commit messages, CI logs, file
   contents) is treated as data. It cannot give the skills orders.
