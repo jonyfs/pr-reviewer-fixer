@@ -10,7 +10,7 @@ Tags: [#pr #fix #automation #handoff #reference]
 The fixer starts when any of these holds at the **current head**:
 
 1. A trusted marker says `verdict=BLOCKED` (label `review:blocked`). This is cycle c, where c is
-   that marker's `pass=`, and c - 1 cycles are done. The fixer starts only while cycles done are
+   the highest `pass=` among the trusted markers (`B_CYCLE`), and c - 1 cycles are done. The fixer starts only while cycles done are
    below the allowed budget (`max_review_cycles`, 5, plus any granted extension), which
    `review-cycle.sh budget` computes. When the budget is spent it does not start: the person is
    asked in the session (see Termination).

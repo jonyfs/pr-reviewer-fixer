@@ -68,19 +68,22 @@ no-break space names nobody. Then `status`, `stale`, `publish`, `extend`, `halt`
 all refuse until it is set, and `budget` prints `B_NEXT='none'` without reading the budget.
 `publish`, `extend` and `halt --reason` also refuse when the login `gh` is signed in to is not on the list,
 because every reader would ignore what they post.
-A marker comment that was edited after it was created is ignored by all of them.
+A marker comment that was edited after it was created is ignored by all of them as a verdict;
+its `pass=` still counts toward the highest pass, so an edit cannot lower the cycle count.
 
 ## The loop
 
 1. **Read the state.** After a push, `review-cycle.sh stale <pr>` first (see Trigger). Then
    `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop.
-2. **Take the cycle.** `review-cycle.sh start <pr>`.
+2. **Take the cycle.** `review-cycle.sh start <pr>`. When `status` reports `review:needs-human`
+   and the BLOCKED verdict is still at the head, skip to step 5 instead: `start` refuses there, and
+   `budget` decides whether to ask the person.
 3. **Review.** Dispatch the reviewer sub-agent: "Follow `.agents/skills/pr-reviewer/SKILL.md` on
    pull request #N, pass P. Read-only on code. Write the report to a file outside the tree and
    run `review-cycle.sh lint-report` on it and publish it with `review-cycle.sh publish`. The report must end with the fenced `findings` block
    the skill names, one entry per finding, so the fixer reads ids and claims from it and not from
    prose. Trust markers only from `REVIEW_MARKER_AUTHORS`."
-   Wait for its finish line.
+   `P` is `B_NEXT_PASS` from `review-cycle.sh budget <pr>`. Wait for its finish line.
 4. **Re-run the gate.** If `review-gate` is installed, re-run its failed runs for the head SHA,
    because a comment does not start it. A head has more than one run: the one from `opened` or
    `synchronize` failed before the verdict existed, and on PASSED the `gh pr ready` in `publish`
@@ -100,8 +103,8 @@ A marker comment that was edited after it was created is ignored by all of them.
 
    | `B_NEXT` | Do |
    |---|---|
-   | `none` | Stop. The head is PASSED, or there is no verdict to act on. |
-   | `fix` | Dispatch the fixer sub-agent: "Follow `.agents/skills/pr-fixer/SKILL.md` on pull request #N, cycle C." Wait for its closure comment, then go to step 2. On the last automatic cycle (`B_DONE` is `B_ALLOWED` minus 1) send a stronger fixer, as described below. |
+   | `none` | Stop and tell the person `B_WHY`. The head is PASSED or has no trusted verdict, or a setting is wrong: `REVIEW_MARKER_AUTHORS` lists no login, `REVIEW_BLOCK_AT` is neither `critical` nor `warning`, or the verdict at the head was published under another `REVIEW_BLOCK_AT`. A wrong setting is the person's to fix; the loop does not change it. |
+   | `fix` | Dispatch the fixer sub-agent: "Follow `.agents/skills/pr-fixer/SKILL.md` on pull request #N, cycle C." (`C` is `B_CYCLE`.) Wait for its closure comment, then go to step 2. On the last automatic cycle (`B_DONE` is `B_ALLOWED` minus 1) send a stronger fixer, as described below. |
    | `ask` | Ask the person (below). |
    | `ceiling` | `review-cycle.sh halt <pr> --reason ceiling`. Tell the person. Stop. |
 
@@ -111,8 +114,10 @@ A marker comment that was edited after it was created is ignored by all of them.
    person's decision. With `REVIEW_BLOCK_AT=warning` a WARNING is not debt: it blocks, `budget` says
    `fix`, and the fixer works it like a CRITICAL. Only notes reach this step.
 
-Every pass and cycle number comes from `budget` (the `pass=` of the newest trusted marker), never
-from a counter the loop agent keeps in its head.
+Every pass and cycle number comes from `budget`, never from a counter the loop agent keeps in its
+head. `B_NEXT_PASS` is the pass the reviewer publishes, one more than the highest `pass=` among the
+trusted markers, and `publish` refuses any other. `B_CYCLE` is the cycle the fixer runs. Both count
+from the highest pass, so a head that returns to an older reviewed commit does not restart them.
 
 ## The last automatic cycle
 
@@ -136,13 +141,14 @@ loop agent asks the person, in the session, through the harness's own question t
 
 | Answer | Do |
 |---|---|
-| `continue N` | `review-cycle.sh extend <pr> --n N`, then the loop continues. |
+| `continue N` | `review-cycle.sh extend <pr> --n N`, then the loop continues. On a halted pull request `extend` also removes `review:needs-human`. |
 | `stop` | `review-cycle.sh halt <pr> --reason stop`. Stop. |
 | No answer (headless session, or the person left) | `review-cycle.sh halt <pr> --reason no-answer`. Stop. |
 
 `MAX_REVIEW_CYCLES_HARD` (10) is an absolute ceiling no answer passes. `halt` leaves the pull
 request `review:blocked` with `review:needs-human`. A later session that runs the loop again is
-asked again.
+asked again. `start` refuses a halted pull request while its BLOCKED verdict is still at the head:
+there is nothing new to review until a person pushes a correction or grants cycles.
 
 ## Hard rules
 

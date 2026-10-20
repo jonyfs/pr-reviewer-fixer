@@ -22,7 +22,7 @@ check with `cmp`.
 | Debt block | `pr-fixer` (Declare debt) | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-- pr-debt:start -->` and `<!-- pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
 | Thread replies | `pr-fixer` comment lane | The comment's author, `pr-reviewer` pass 2+ | `Closed in <sha7> (C1)` and the thread resolved, or `Declined (C1): <reason>` and the thread left open | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed on reply. A decline stays open until its author agrees |
 | Status comment | The skill run that is in progress | People watching the PR | `<!-- pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
-| Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-- pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-- pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then one human-readable line | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
+| Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-- pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-- pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then one human-readable line | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling, and `extend` removes `review:needs-human`. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
 
 ## Labels: who writes which state
 
@@ -33,7 +33,7 @@ check with `cmp`.
 | `review:passed` | `review-cycle.sh publish --verdict PASSED` | Marker at the head says PASSED |
 | `review:blocked` | `review-cycle.sh publish --verdict BLOCKED` | Marker at the head says BLOCKED |
 | `review:fixing` | `review-cycle.sh fix` | A correction is in flight; the head is about to move |
-| `review:needs-human` | `review-cycle.sh halt`, only over `review:blocked`; withdrawn by `start`, `fix`, `stale` and any `publish` | The loop paused or stopped (budget spent, stop, or no answer) and a person has to decide |
+| `review:needs-human` | `review-cycle.sh halt`, only over `review:blocked`; withdrawn by `start` (which refuses while the BLOCKED verdict is still at the head), `fix`, `stale`, `extend` and any `publish` | The loop paused or stopped (budget spent, stop, or no answer) and a person has to decide |
 
 `review-cycle.sh publish --verdict PASSED` also marks a draft pull request ready for review
 (`gh pr ready`), after the marker and the label. BLOCKED leaves it a draft. A failure to mark it
@@ -74,14 +74,19 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    time, so `scripts/pr-json.py` asks GraphQL (`IssueComment.lastEditedAt`), pages through all
    comments, drops every edited one, and fails closed when edits cannot be checked or a page is
    truncated. Read comments through `pr-json.py`, as the filters below do, not through
-   `gh pr view`.
+   `gh pr view`. An edited marker by a trusted login is still counted in two places: a BLOCKED
+   one stays BLOCKED history, and its `pass=` still counts toward the highest pass, so editing the
+   newest marker cannot lower `B_NEXT_PASS` or `B_DONE`.
 
 Rule 2 stops an edit. It does not stop a delete and a repost by the same login; signing the marker
 would, and it is on the backlog. The agents publish with `gh` under the account the
 person is signed in to, so the value is that login: `gh api user --jq .login`. Add the login of
 anyone else who publishes reviews. The markers then carry the person's own login, which means the
 gate cannot tell a marker the agent wrote from one the person typed. It checks that a trusted
-account published the verdict, not that a different account did.
+account published the verdict, not that a different account did. A marker a trusted login types by
+hand with `gh pr comment` also moves the pass count: one that says `pass=99` makes the next
+`publish` require `--pass 100` and sends `budget` to the ceiling. That fails closed, since the loop
+stops rather than runs on, but one such comment ends the automatic loop.
 
 Agents apply the same rule when they read a verdict or closure comment themselves: the filters
 below take the list as `$authors` and drop every comment by any other login, ignoring case. An
@@ -186,13 +191,15 @@ python3 <skill folder>/scripts/pr-json.py <n> \
 
 ## Numbering: pass and cycle
 
-- **Pass p** is the p-th published verdict on the pull request. The next pass is F2's `pass=` plus
-  one, or 1 when there is no marker.
-- **Cycle c** is the fixer's answer to the BLOCKED verdict of pass c, so `c` is the `pass=` of the
-  newest trusted marker when the fixer starts. Pass c+1 is the review of that answer.
+- **Pass p** is the p-th published verdict on the pull request. The next pass is the highest
+  `pass=` among the trusted markers plus one, whatever commit that marker names, or 1 when there is
+  none. `budget` prints it as `B_NEXT_PASS`, and `publish` refuses any other number.
+- **Cycle c** is the fixer's answer to the BLOCKED verdict of pass c, so `c` is the highest trusted
+  `pass=` when the fixer starts (`B_CYCLE`). Pass c+1 is the review of that answer.
 - Pass c+1 is owed when the closure comment for cycle c is newer than the pass-c marker, even if
   the head did not move (a cycle that only refused findings pushes nothing).
-- Cycles done = c - 1 when the marker at the head is BLOCKED pass c. Pass 1 is the starting point
+- Cycles done = c - 1, where c is the highest trusted `pass=` (`B_DONE`). A head that returns to an
+  older reviewed commit does not lower it. Pass 1 is the starting point
   and pass k+1 is the result of cycle k.
 - **Budget.** `review-cycle.sh budget <n>` computes it from the trusted markers; nothing keeps a
   counter. `allowed` is `max_review_cycles` (5), or `c + N` when the newest granted marker says
@@ -218,7 +225,8 @@ python3 <skill folder>/scripts/pr-json.py <n> \
 ## Writing artifacts
 
 **Verdict comment.** Only `review-cycle.sh publish --verdict V --pass P --sha <head> --report FILE
---critical C --warning W --note N`. The script writes the marker, refuses a stale `--sha`, refuses
+--critical C --warning W --note N`. `P` is exactly one more than the highest `pass=` among the
+trusted markers (`budget` prints it as `B_NEXT_PASS`). The script writes the marker, refuses a stale `--sha`, refuses
 counts that contradict the verdict, refuses a report that holds a token or private key (it names
 the kind and never prints the value), and does not rewrite the report (a login is written as `@login` in backticks so that it notifies nobody). It also refuses a marker plus report over 60000 bytes (GitHub
 rejects comment bodies over 65536 characters), and it refuses when the login `gh` is signed in to

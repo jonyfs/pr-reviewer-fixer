@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: 0.8.6
+  version: 0.9.0
 ---
 
 # PR Fixer
@@ -93,8 +93,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
 ## Workflow
 
 1. **Wait for closure.** Read the marker at the head (`scripts/review-cycle.sh status`). While
-   waiting, take no state-changing action. The cycle number c is the `pass=` of the newest trusted
-   marker, and c - 1 cycles are done. While cycles done are below the allowed budget (5, plus any
+   waiting, take no state-changing action. The cycle number c is `B_CYCLE` from
+   `scripts/review-cycle.sh budget`, the highest trusted `pass=`, and c - 1 cycles are done. While cycles done are below the allowed budget (5, plus any
    granted extension), start cycle c. When the budget is spent, do not start: `budget` says `ask`
    and the review loop agent asks the person (below). Do not start either while the pull request
    carries `review:needs-human`.

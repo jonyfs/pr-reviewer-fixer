@@ -56,7 +56,11 @@ check "stale after head change -> review:pending" eval 'has review:pending && ha
 
 "$RC" start 7 >/dev/null 2>&1
 r=$(pub --verdict PASSED --pass 1 --sha $C --critical 0 --warning 0 --note 0)
-check "publish PASSED pass=1 over BLOCKED history -> refused" eval '[ $r = 1 ] && grep -q "already carries a BLOCKED marker" "$W/out" && [ $(ncomments) = 1 ]'
+check "publish PASSED pass=1 over BLOCKED history -> refused, the next pass is 2" eval '[ $r = 1 ] && grep -q "the next pass on #7 is 2" "$W/out" && [ $(ncomments) = 1 ]'
+r=$(pub --verdict PASSED --pass 3 --sha $C --critical 0 --warning 0 --note 0)
+check "publish --pass 3 after pass 1 -> refused, a pass cannot be skipped" eval '[ $r = 1 ] && grep -q "the next pass on #7 is 2" "$W/out" && [ $(ncomments) = 1 ]'
+b="$("$RC" budget 7 2>/dev/null)"
+check "budget names the next pass after pass 1 -> B_NEXT_PASS=2" eval 'printf "%s" "$b" | grep -q "^B_NEXT_PASS=2$"'
 
 r=$(pub --verdict PASSED --pass 2 --sha $C --critical 0 --warning 1 --note 0)
 check "publish PASSED pass=2 -> review:passed" eval '[ $r = 0 ] && has review:passed && hasnt review:running'
@@ -147,6 +151,10 @@ r1=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
 reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
 r2=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
 check "an edited BLOCKED marker still counts as BLOCKED history: PASSED pass 1 refused either way" eval '[ $r1 != 0 ] && [ $r2 != 0 ]'
+# W1 of #23: the edited pass-1 marker is not a verdict, but its pass still counts, so pass 1 is spent.
+reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
+r=$(pub --verdict BLOCKED --pass 1 --sha $D --critical 1 --warning 0 --note 0)
+check "an edited pass-1 marker still spends pass 1: BLOCKED --pass 1 refused, the next pass is 2" eval '[ $r = 1 ] && grep -q "the next pass on #7 is 2" "$W/out" && [ $(ncomments) = 1 ]'
 reset "$(mk 7 $D '[{"name":"review:blocked"}]' '[]' OPEN)"
 python3 -I - <<'PY'
 import json, os
@@ -214,8 +222,10 @@ reset "$(mk 7 $D '[{"name":"review:blocked"}]' "[$BLK]" OPEN)"
 check "halt on review:blocked -> adds review:needs-human, keeps blocked" eval '[ $r = 0 ] && has review:needs-human && has review:blocked'
 "$RC" status 7 >"$W/out" 2>&1; r=$?
 check "status on halted -> 1 and says a person has to decide" eval '[ $r = 1 ] && grep -q "a person has to decide" "$W/out"'
-"$RC" start 7 >/dev/null 2>&1
-check "start withdraws review:needs-human" eval 'has review:running && hasnt review:needs-human'
+"$RC" start 7 >"$W/out" 2>&1; r=$?
+check "start on halted with BLOCKED still at the head -> refused, halt kept" eval '[ $r = 1 ] && grep -q "nothing new to review" "$W/out" && has review:needs-human && hasnt review:running'
+sethead $A; "$RC" start 7 >/dev/null 2>&1; r=$?
+check "start on halted after a push -> review:running, review:needs-human withdrawn" eval '[ $r = 0 ] && has review:running && hasnt review:needs-human'
 reset "$(mk 7 $D '[{"name":"review:blocked"},{"name":"review:needs-human"}]' "[$BLK]" OPEN)"
 "$RC" fix 7 >/dev/null 2>&1
 check "fix withdraws review:needs-human" eval 'has review:fixing && hasnt review:needs-human'
@@ -489,6 +499,10 @@ b="$(REVIEW_BLOCK_AT=warning "$RC" budget 7 2>/dev/null)"
 check "block-at warning: budget says fix on a warning-only BLOCKED and counts it in progress" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?fix" && printf "%s" "$b" | grep -q "pass 1: 2"'
 b="$("$RC" budget 7 2>/dev/null)"
 check "default: budget progress counts criticals only" eval 'printf "%s" "$b" | grep -q "pass 1: 0"'
+# A 0.7.x BLOCKED marker with warnings, no critical and no block_at was published under warning.
+check "default: an old warning-only BLOCKED -> budget none, names REVIEW_BLOCK_AT=warning" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "REVIEW_BLOCK_AT=warning"'
+"$RC" status 7 >"$W/out" 2>&1; r=$?
+check "default: an old warning-only BLOCKED -> status inconclusive (2), names REVIEW_BLOCK_AT=warning" eval '[ $r = 2 ] && grep -q "REVIEW_BLOCK_AT=warning" "$W/out"'
 b="$(REVIEW_BLOCK_AT=nonsense "$RC" budget 7 2>/dev/null)"
 check "block-at with another value -> budget answers none" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "REVIEW_BLOCK_AT must be"'
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$WP]" OPEN)"

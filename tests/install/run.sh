@@ -294,6 +294,16 @@ if [ "$(cat "$W/cs/pr-fixer/SKILL.md")" = a ]; then
 else
   row "SKILL.md and skill.md in one source (case-insensitive file system here)" skip
 fi
+# N1 of #22: the rule runs again on the set-aside copy right before it is removed. A `mv` on PATH
+# adds a .git to the old copy as it is set aside, standing in for a concurrent actor between the
+# plan and the removal.
+mkdir -p "$W/n1shim" "$W/n1"; REAL_MV="$(command -v mv)"
+printf '#!/usr/bin/env bash\n"%s" "$@" || exit $?\ncase "${@: -1}" in */.pr-fixer.old.*) mkdir -p "${@: -1}/.git" ;; esac\n' "$REAL_MV" >"$W/n1shim/mv"; chmod +x "$W/n1shim/mv"
+r0=$(ins --target "$W/n1" --skill pr-fixer --yes)
+r=$( (cd "$W/proj" && PATH="$W/n1shim:$PATH" HOME="$W/home" bash "$IN" --target "$W/n1" --skill pr-fixer --yes) >"$W/out" 2>&1; echo $?)
+check "a .git added to the old copy after the plan -> old copy kept, named, exit 1, new copy in place" \
+  eval '[ $r0 = 0 ] && [ $r = 1 ] && grep -q "was not removed" "$W/out" && grep -q "holds a repository" "$W/out" && [ -d "$(echo "$W/n1"/.pr-fixer.old.*)/.git" ] && [ -f "$W/n1/pr-fixer/SKILL.md" ]'
+
 # A bind mount from the same file system keeps the device number, so `find -xdev` walks into it and
 # the old device comparison let the folder pass; rm -rf of the old copy then emptied the bound
 # folder. On Linux the rule reads the mount table. Mounting needs root and a mount namespace that

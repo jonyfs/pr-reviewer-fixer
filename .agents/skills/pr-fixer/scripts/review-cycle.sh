@@ -56,7 +56,8 @@
 #
 #     status [pr]          what the cycle owes, and the next command (exit codes below)
 #     debt [pr]            the same answer as an exit code only, for hooks and CI
-#     start [pr]           review:running, and review:needs-human withdrawn
+#     start [pr]           review:running, and review:needs-human withdrawn. Refused on a halted
+#                          pull request whose BLOCKED verdict is still at the head
 #     fix [pr]             review:fixing, and review:needs-human withdrawn. Refused first when the
 #                          pull request is from a fork or any author is not a collaborator with
 #                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup)
@@ -68,6 +69,7 @@
 #                          next (fix, ask, ceiling or none) as B_<KEY>='<value>' lines. With
 #                          REVIEW_MARKER_AUTHORS unset it answers none and trusts nothing.
 #     extend [pr] --n <n>  records that a person granted n more cycles (`state=granted` marker)
+#                          and withdraws review:needs-human
 #     export-audit [pr] [--out <dir>]
 #                          writes <dir>/<pr>-<pass>.json (default docs/compliance-records) from
 #                          the trusted marker and the PR timeline; refuses when the head moved
@@ -83,7 +85,8 @@
 #     answers inconclusive instead of judging it.
 #     publish [pr] --verdict PASSED|BLOCKED --pass <n> --sha <40hex> --report <file>
 #             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
-#                          posts the marker comment, then moves the label. On PASSED, a draft
+#                          posts the marker comment, then moves the label. `--pass` must be one
+#                          more than the highest trusted `pass=` (budget's B_NEXT_PASS). On PASSED, a draft
 #                          pull request is marked ready for review (`gh pr ready`). Refuses a
 #                          report that holds a token or private key (never printed), and a gh
 #                          login that is not on REVIEW_MARKER_AUTHORS. It does not rewrite the
@@ -118,7 +121,8 @@
 #                             or cannot be resolved; `halt` without `--reason` posts nothing and
 #                             does not check it.
 #                             Only the bare `marker` subcommand still reads with the list unset.
-#                             A comment edited after it was created is never read (pr-json.py).
+#                             A comment edited after it was created is never read as a verdict
+#                             (pr-json.py); its `pass=` still counts toward the highest pass.
 #     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
 #                             Default 5. Read by `budget` and `extend`.
 #     MAX_REVIEW_CYCLES_HARD  Absolute ceiling no answer passes. Default 10, clamped to 1..10.
@@ -484,19 +488,21 @@ parse() {
   m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
     const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
     const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
-    let last=null,blocked="no";
+    let last=null,blocked="no",maxp=0;
     for(const c of (JSON.parse(s).comments||[])){
       if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
       const mm=re.exec(c.body||"");
-      if(mm){last=mm;if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+      if(mm){last=mm;maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
     for(const c of (JSON.parse(s).editedComments||[])){
       if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
       const mm=re.exec(c.body||"");
-      if(mm&&mm[2].toUpperCase()==="BLOCKED")blocked="yes";}
+      // An edited marker is never the verdict, but its pass still counts: an edit cannot lower the
+      // highest pass, so it cannot hand `publish` a pass number that was already used.
+      if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
-      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase()].join(" "):
-      // No readable marker, but a BLOCKED one was seen (it may have been edited): keep the history.
-      (blocked==="yes"?["","","","-","-","-",blocked,"-","-","-"].join(" "):""))
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp].join(" "):
+      // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
+      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp].join(" "):""))
   }catch(e){}})')
   MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
   MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
@@ -515,6 +521,18 @@ parse() {
   MARKER_TIER=$(printf '%s' "$m" | cut -d' ' -f9)
   # The REVIEW_BLOCK_AT the marker was published under, `-` when it names none (critical, or older).
   MARKER_BLOCK_AT=$(printf '%s' "$m" | cut -d' ' -f10)
+  # A BLOCKED marker that counts no CRITICAL but a WARNING, and names no setting, was published
+  # under `warning` before `block_at=` existed (0.7.x): `publish` never writes one under `critical`.
+  # It is read as `warning`, so a reader under `critical` answers inconclusive instead of reading
+  # BLOCKED with nothing blocking. `budget` makes the same inference.
+  if [ "$MARKER_BLOCK_AT" = - ] && [ "$MARKER_VERDICT" = BLOCKED ] && [ "$MARKER_CRITICAL" = 0 ] \
+     && positivo "$MARKER_WARNING"; then MARKER_BLOCK_AT=warning; fi
+  # The highest `pass=` among the trusted markers, whatever commit they name, edited ones included,
+  # 0 when there is none.
+  # `publish` takes only the next one, and `budget` counts cycles from it, so a head that returns to
+  # an older commit, or a low `--pass`, cannot restart the count.
+  MARKER_MAX_PASS=$(printf '%s' "$m" | cut -d' ' -f11)
+  case "$MARKER_MAX_PASS" in ''|*[!0-9]*) MARKER_MAX_PASS=0 ;; esac
 }
 
 # Reads ONE marker, through `MARKER_RE`, from a file or from stdin, and prints
@@ -788,7 +806,7 @@ cmd_status() {
     review:blocked)
       if [ -n "${HALTED:-}" ]; then
         echo "#$NUMBER head $short — findings open and the loop is halted; a person has to decide."
-        echo "  next: a person fixes by hand or runs /pr-fixer, then review-cycle.sh start $NUMBER  →  /pr-reviewer"
+        echo "  next: a person pushes a correction, or grants cycles in the session (review-cycle.sh budget $NUMBER, then extend) unless the hard ceiling was reached, where only a push helps; start refuses until one happens"
       else
         echo "#$NUMBER head $short — findings open."
         echo "  next: /pr-fixer, then /pr-reviewer again over the corrected diff (pass 2+)"
@@ -871,13 +889,15 @@ if last and last.get("state") == "halted" and last.get("reason") == os.environ["
 # The cycle budget, read from the trusted markers and nothing else. Prints one `B_<KEY>='<value>'`
 # line per field. `B_NEXT` is what the loop does now:
 #
-#     fix      cycle `B_PASS` of at most `B_ALLOWED`: dispatch the fixer
+#     fix      cycle `B_CYCLE` of at most `B_ALLOWED`: dispatch the fixer
 #     ask      the automatic cycles are spent and a blocking finding is open: ask a person (`extend` or halt)
 #     ceiling  the hard ceiling was reached: halt, no answer passes it
 #     none     nothing to do: no trusted verdict at the head, or the verdict there is not BLOCKED, or
 #              the ceiling halt is already posted
 #
-# The cycle number is the `pass=` of the newest trusted marker at the head, never a constant. A
+# Cycles are counted from the highest `pass=` among the trusted markers, whatever commit they name,
+# never from a constant and never from the marker at the head alone: `B_DONE` is that pass minus 1,
+# `B_CYCLE` the one about to run, `B_NEXT_PASS` the only `--pass` that `publish` accepts. A
 # granted extension is the newest `state=granted` marker by a trusted login: it allows `cycle + n`
 # cycles in all, clamped to the hard ceiling. A `state=halted` marker other than the ceiling one
 # does not stop a later run from asking again. `B_SUGGESTED` is the number of further cycles the
@@ -912,14 +932,19 @@ block_warn = os.environ.get("BUDGET_BLOCK_AT") == "warning"
 data = json.load(sys.stdin)
 hard = min(max(num(os.environ["BUDGET_HARD"], 10), 1), 10)
 mx = min(max(num(os.environ["BUDGET_MAX"], 5), 1), hard)
-head = data.get("headRefOid") or ""
+head = (data.get("headRefOid") or "").lower()
 # The kept logins (see marker_authors). An empty list trusts nobody; the caller refused it already.
 allow = set(os.environ["BUDGET_AUTHORS"].split(",")) - {""}
 trusted = [c for c in data.get("comments", [])
            if str((c.get("author") or {}).get("login") or "").lower() in allow]
 
-verdicts = []
-for c in trusted:
+# Edited comments (pr-json.py keeps them aside) are never a verdict, but their pass still counts,
+# so editing the newest marker cannot lower the count. parse() in the shell does the same.
+edited = [c for c in data.get("editedComments", [])
+          if str((c.get("author") or {}).get("login") or "").lower() in allow]
+
+verdicts, edited_passes = [], []
+for is_edited, c in [(False, c) for c in trusted] + [(True, c) for c in edited]:
     m = re.match(r"\s*<!--\s*adversarial-review:\s*(sha=[0-9a-f]{7,40}\s+verdict=(?:PASSED|BLOCKED)\s+pass=\d+"
                  r"(?:\s+critical=\d+\s+warning=\d+\s+note=\d+)?"
                  r"(?:\s+model=[A-Za-z0-9._:-]+\s+tier=(?:fast|standard|deep))?"
@@ -927,12 +952,22 @@ for c in trusted:
     if not m:
         continue
     f = fields(m.group(1))
-    if "pass" in f and "verdict" in f:
-        verdicts.append({"sha": f["sha"], "verdict": f["verdict"].upper(), "pass": num(f["pass"], 0),
+    if "pass" in f and "verdict" in f and is_edited:
+        edited_passes.append(num(f["pass"], 0))
+    elif "pass" in f and "verdict" in f:
+        verdicts.append({"sha": f["sha"].lower(), "verdict": f["verdict"].upper(), "pass": num(f["pass"], 0),
                          "block_at": f.get("block_at", "").lower(),
+                         "raw_c": num(f.get("critical"), -1), "raw_w": num(f.get("warning"), -1),
                          "critical": (num(f["critical"], 0) + (num(f.get("warning"), 0) if block_warn else 0))
                                      if "critical" in f else None})
 at = next((v for v in reversed(verdicts) if head.startswith(v["sha"])), None)
+# A BLOCKED marker with counts and no block_at that counts no CRITICAL but a WARNING was published
+# under warning before the field existed (0.7.x); parse() in the shell makes the same inference.
+if at and not at["block_at"] and at["verdict"] == "BLOCKED" and at["raw_c"] == 0 and at["raw_w"] > 0:
+    at["block_at"] = "warning"
+# Cycles are counted from the highest trusted pass, never from the marker at the head, so a head
+# that returns to an older reviewed commit cannot restart the count.
+max_pass = max([v["pass"] for v in verdicts] + edited_passes, default=0)
 
 ext = []
 for c in trusted:
@@ -957,7 +992,7 @@ elif n >= 2 and xs[n-1] < xs[0]:
 else:
     rule = 0
 
-done = 0 if at is None else at["pass"] - 1
+done = max(max_pass - 1, 0)
 remaining = max(hard - done, 0)
 mine = os.environ.get("BUDGET_BLOCK_AT")
 if at is None:
@@ -967,7 +1002,7 @@ elif at["block_at"] and at["block_at"] != mine:
 elif at["verdict"] != "BLOCKED":
     nxt, why = "none", "verdict at the head is " + at["verdict"]
 elif done < allowed:
-    nxt, why = "fix", "cycle %d of at most %d" % (at["pass"], allowed)
+    nxt, why = "fix", "cycle %d of at most %d" % (done + 1, allowed)
 elif done >= hard:
     if last_ext and last_ext.get("state") == "halted" and last_ext.get("reason") == "ceiling":
         nxt, why = "none", "the ceiling halt is already posted"
@@ -980,6 +1015,7 @@ out = {
     "next": nxt, "why": why,
     "verdict": at["verdict"] if at else "NONE", "pass": at["pass"] if at else 0,
     "crit": "" if not at or at["critical"] is None else at["critical"],
+    "cycle": done + 1, "next_pass": max_pass + 1,
     "done": done, "allowed": allowed, "max": mx, "hard": hard, "remaining": remaining,
     "suggested": min(rule, remaining), "rule": rule,
     "progress": ", ".join("pass %d: %d" % (v["pass"], v["critical"]) for v in counts),
@@ -1016,7 +1052,13 @@ cmd_extend() {
   printf '<!-- pr-skill-extension: state=granted cycle=%s n=%s -->\npr-skill: %s more review-fix cycles granted on #%s after cycle %s.\n' \
     "$B_DONE" "$n" "$n" "$NUMBER" "$B_DONE" | gh pr comment "$NUMBER" --body-file - >/dev/null \
     || die "review-cycle: could not post the granted marker on #$NUMBER"
-  echo "#$NUMBER → $n more cycles granted after cycle $B_DONE (allowed becomes $((B_DONE + n)))"
+  # The grant ends a halt: the fixer and triage refuse a pull request labelled review:needs-human, so
+  # leaving the label would make the grant do nothing. Marker first, label second, as in `halt`.
+  if [ -n "${HALTED:-}" ]; then
+    gh pr edit "$NUMBER" --remove-label review:needs-human >/dev/null \
+      || die "review-cycle: granted marker posted, but could not remove review:needs-human on #$NUMBER; remove it by hand"
+  fi
+  echo "#$NUMBER → $n more cycles granted after cycle $B_DONE (allowed becomes $((B_DONE + n)))${HALTED:+, review:needs-human withdrawn}"
 }
 
 # Debt, reduced to an exit code, for hooks and CI. Prints nothing on success.
@@ -1025,6 +1067,14 @@ cmd_debt() { cmd_status "${1:-}" >/dev/null 2>&1; return $?; }
 cmd_start() {
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
   parse "$json"
+  # A halted pull request whose BLOCKED verdict is still at the head has nothing new to review: a
+  # pass now would only spend a cycle against the ceiling. A push moves the head (and `stale` drops
+  # the halt), and `extend` withdraws it when a person grants cycles.
+  if [ -n "${HALTED:-}" ] && [ "$MARKER_VERDICT" = BLOCKED ] && [ -n "$MARKER_SHA" ] \
+     && [ "${HEAD:0:${#MARKER_SHA}}" = "$MARKER_SHA" ]; then
+    die "review-cycle: REFUSED. #$NUMBER is halted (review:needs-human) and its BLOCKED verdict is still at the head ${HEAD:0:12}, so there is nothing new to review.
+   A person pushes a correction, or grants more cycles in the session (review-cycle.sh extend $NUMBER --n N, when budget says ask)."
+  fi
   gh pr edit "$NUMBER" --add-label review:running ${HALTED:+--remove-label review:needs-human} \
       $(remove_states_except review:running) >/dev/null \
     || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
@@ -1327,6 +1377,11 @@ cmd_publish() {
   #
   # It is read from the marker history rather than from the label, because the label carries one
   # state at a time and `publish` is itself the thing about to overwrite it.
+  # The pass number is the next one after the highest trusted marker, exactly. A lower one (or the
+  # same one again) would let `budget` restart the cycle count, and a higher one would skip cycles.
+  local want_pass=$(( ${MARKER_MAX_PASS:-0} + 1 ))
+  [ "$passno" -eq "$want_pass" ] || die "review-cycle: REFUSED. --pass $passno, and the next pass on #$NUMBER is $want_pass (the highest trusted marker says pass ${MARKER_MAX_PASS:-0}).
+   Publish with --pass $want_pass. \`review-cycle.sh budget $NUMBER\` prints it as B_NEXT_PASS."
   if [ "$verdict" = "PASSED" ] && [ "$passno" -lt 2 ] && [ "${MARKER_BLOCKED_SEEN:-no}" = "yes" ]; then
     die "review-cycle: REFUSED. PASSED at pass $passno, and #$NUMBER already carries a BLOCKED marker.
    A correction was demanded, so there IS one to review, and the cycle wants the reviewer to have

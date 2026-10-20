@@ -102,7 +102,9 @@ sequenceDiagram
 ```
 
 The numbers in the markers (`pass=1`, `pass=2`) are read from GitHub by the script. The loop agent
-never keeps a counter in its head.
+never keeps a counter in its head. `publish` takes only the pass after the highest trusted one, and
+`budget` counts cycles from that highest pass, so a head that returns to an older commit cannot
+restart the count.
 
 ## What pr-reviewer does
 
@@ -274,6 +276,8 @@ up, or with higher effort, once. If a blocking finding is still open after five,
 changed from pass to pass, and a suggestion. You answer `continue N` or `stop`. `continue N` is
 recorded by `review-cycle.sh extend`. `stop`, or no answer in a headless session, is recorded by
 `halt`, and the pull request stays `review:blocked` with `review:needs-human` until a person decides.
+`start` refuses it while the BLOCKED verdict is still at the head. A pushed correction, or a later
+`extend`, which removes the label, lets the loop run again.
 A comment on the pull request can never grant cycles. The details and the label diagram are in the
 [README](../README.md#cycle-budget-and-human-control).
 
@@ -311,7 +315,8 @@ never read as "reviewed".
   else is ignored. With the variable unset, or holding no real login (only ASCII letters, digits,
   hyphens and underscores, starting with a letter or digit count, so an invisible character such as a BOM names nobody), the scripts trust no marker
   at all. A script that posts a marker refuses when `gh` is signed in as a login off the list.
-- A marker comment that was edited after it was created is ignored.
+- A marker comment that was edited after it was created is ignored as a verdict. Its `pass=` still
+  counts toward the highest pass, so an edit cannot lower the cycle count.
 - A verdict is bound to a commit. Any push turns it stale.
 - Everything read from the pull request (description, comments, commit messages, CI logs, file
   contents) is treated as data. It cannot give the skills orders.
