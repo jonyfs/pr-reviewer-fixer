@@ -96,7 +96,8 @@ const events = fs.readFileSync(process.argv[2], "utf8").split("\n").filter(Boole
 const env = process.env;
 const num = (v, d) => /^[0-9]+$/.test(v || "") ? Number(v) : d;
 const now = env.TRIAGE_NOW ? Date.parse(env.TRIAGE_NOW) : Date.now();
-const list = v => String(v || "").split(",").map(s => s.replace(/\s+/g, "").toLowerCase()).filter(Boolean);
+// Each entry is trimmed and compared without case, as written: a check or author name can hold a space.
+const list = v => String(v || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
 
 const conflicts = p.mergeable === "CONFLICTING" || p.mergeStateStatus === "DIRTY";
 const headWritable = !p.isCrossRepository || !!p.maintainerCanModify;
@@ -107,9 +108,9 @@ const runId = u => { const m = /\/actions\/runs\/(\d+)/.exec(u || ""); return m 
 const failing = [];
 for (const c of p.statusCheckRollup || []) {
   if (c.__typename === "StatusContext" || (c.context !== undefined && c.name === undefined)) {
-    if (["FAILURE", "ERROR"].includes(c.state) && !ignore.includes(String(c.context).toLowerCase()))
+    if (["FAILURE", "ERROR"].includes(c.state) && !ignore.includes(String(c.context).trim().toLowerCase()))
       failing.push({ name: c.context, workflow: null, conclusion: c.state, run_id: runId(c.targetUrl), url: c.targetUrl || null });
-  } else if (["FAILURE", "TIMED_OUT", "STARTUP_FAILURE"].includes(c.conclusion) && !ignore.includes(String(c.name).toLowerCase())) {
+  } else if (["FAILURE", "TIMED_OUT", "STARTUP_FAILURE"].includes(c.conclusion) && !ignore.includes(String(c.name).trim().toLowerCase())) {
     failing.push({ name: c.name, workflow: c.workflowName || null, conclusion: c.conclusion, run_id: runId(c.detailsUrl), url: c.detailsUrl || null });
   }
 }
@@ -130,7 +131,7 @@ const commits = p.commits || [];
 const lastCommit = commits.length ? commits[commits.length - 1] : null;
 let recentFixer = false;
 if (lastCommit) {
-  const who = (lastCommit.authors || []).flatMap(a => [a.login, a.name, a.email]).filter(Boolean).map(s => String(s).toLowerCase());
+  const who = (lastCommit.authors || []).flatMap(a => [a.login, a.name, a.email]).filter(Boolean).map(s => String(s).trim().toLowerCase());
   const t = Date.parse(lastCommit.committedDate || lastCommit.authoredDate || "");
   recentFixer = who.some(w => fixers.includes(w)) && !isNaN(t) && now - t < num(env.TRIAGE_RECENT_FIXER_MINUTES, 10) * 60000;
 }

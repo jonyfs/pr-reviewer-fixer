@@ -64,9 +64,12 @@ Each step that touches the PR follows [pr-protocol.md](pr-protocol.md).
    overwrite the author's text.
 6. Post one closure comment with the `pr-fixer-closure` marker. It is the finish message.
 7. Stop. Do not set `review:pending` by hand: a label set by the half that made the change is that
-   half marking its own homework. Run `scripts/review-cycle.sh stale` right after the push: it retires
+   half marking its own homework. Run `scripts/review-cycle.sh stale` after the push: it retires
    `review:fixing` to `review:pending` once the head has moved past the marker, and only the
    reviewer's next pass sets `review:passed`. A refusal stays a claim until that pass judges it.
+   GitHub reports the new head a few seconds after the push, and `stale` run earlier changes
+   nothing, so first wait, at most two minutes, until `gh pr view <pr> --json headRefOid --jq
+   .headRefOid` equals `git rev-parse HEAD`.
 
 ## Termination
 

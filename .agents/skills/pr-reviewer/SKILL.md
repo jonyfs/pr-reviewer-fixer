@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.8.4"
+  version: "0.8.5"
 ---
 
 # PR Reviewer

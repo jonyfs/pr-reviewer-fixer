@@ -103,6 +103,17 @@ unset FIXER_COMMIT_AUTHORS
 reset; pr '{"commits": [{"oid": "dddddddddddddddddddddddddddddddddddddddd", "committedDate": "2026-10-14T11:59:00Z", "authors": [{"login": "alice", "name": "Alice", "email": "a@x"}]}]}'
 expect "human commit 1 min ago: no skip" '.skip_reason == null'
 
+# A configured name that holds a space is compared as written, trimmed and without case. Removing
+# every space from the setting made "CI Tests" and "Fixer Bot" match nothing.
+reset; pr '{"statusCheckRollup": [{"__typename": "CheckRun", "name": "CI Tests", "workflowName": "CI", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://github.com/o/r/actions/runs/7/job/1"}]}'
+export TRIAGE_IGNORE_CHECKS=" ci tests ,review-gate"
+expect "ignored check whose name has a space is not counted failing" '.failing_checks == []'
+unset TRIAGE_IGNORE_CHECKS
+reset; pr '{"commits": [{"oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "committedDate": "2026-10-14T11:58:00Z", "authors": [{"login": "", "name": "Fixer Bot", "email": "fixer@example.com"}]}]}'
+export FIXER_COMMIT_AUTHORS=" fixer bot "
+expect "fixer commit author whose name has a space is recognised" '.skip_reason == "recent-fixer-commit"'
+unset FIXER_COMMIT_AUTHORS
+
 reset; pr '{"mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN"}' pr.1.json; pr '{"mergeable": "CONFLICTING", "mergeStateStatus": "DIRTY"}'
 expect "UNKNOWN mergeable is re-read: conflict found on the second read" '.conflicts == true and .mergeable == "CONFLICTING"'
 check_reads=$(grep -c '^gh pr view' "$FAKE_DIR/calls.log"); [ "$check_reads" = 2 ] && row "UNKNOWN re-read made exactly 2 reads" ok || row "UNKNOWN re-read made exactly 2 reads" bad "reads=$check_reads"

@@ -71,7 +71,10 @@ thing, and says it identically in both modes.
     0  read it; the claim holds
     1  read it and REFUSED: a decision against
     2  NOTHING to read: there is no pull request for this branch, or `gh` is offline, or the
-       pull request was CLOSED without merging so there is no claim to hold
+       pull request was CLOSED without merging so there is no claim to hold. Also every refusal
+       to judge: the arguments name no single pull request number, REVIEW_MARKER_AUTHORS names
+       no login, REVIEW_BLOCK_AT is neither critical nor warning, or the newest marker at the
+       head was published under another REVIEW_BLOCK_AT
     3  read it and DECIDED: MERGED without a valid `review:passed`. Recorded, not blocked.
     4  could NOT read what EXISTS: `gh` failed on a pull request that is really there, the JSON
        is undecipherable, the head is missing, the Python version bail, an unhandled exception.
@@ -230,7 +233,12 @@ def main() -> int:
     # An explicit number is how this gate gets proved against a real pull request from a branch
     # that is not the one carrying it. Without it, the only way to see red would be to open a
     # deliberately broken pull request, and what matters is seeing the red, not staging theatre.
-    explicit = [a for a in sys.argv[1:] if a.isdigit()]
+    # Anything that is not a flag must be one pull request number in ASCII digits. A `7x` or a
+    # second number used to be dropped, and the gate then judged the branch's own pull request.
+    explicit = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(explicit) > 1 or (explicit and not re.fullmatch(r"[0-9]+", explicit[0], re.ASCII)):
+        print(f"  ⚠️  {' '.join(explicit)!r} is not one pull request number — gate INCONCLUSIVE")
+        return INCONCLUSIVE
     # Fail closed. With no login to trust, every marker is forgeable, and a gate that reads them anyway
     # answers a question it cannot answer. Inconclusive is not approved: in strict mode it is a failure.
     if not allowlist():

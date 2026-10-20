@@ -38,8 +38,11 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "push-guard: not i
 PR="" FINDINGS="" ALLOW=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --findings) FINDINGS="${2:-}"; shift 2 ;;
-    --allow)    ALLOW+=("${2:-}"); shift 2 ;;
+    --findings|--allow)
+      # Given last with no value, `shift 2` fails and the loop would spin forever.
+      [ $# -ge 2 ] || { echo "push-guard: $1 needs a value" >&2; exit 2; }
+      if [ "$1" = --findings ]; then FINDINGS="$2"; else ALLOW+=("$2"); fi
+      shift 2 ;;
     *) PR="$1"; shift ;;
   esac
 done

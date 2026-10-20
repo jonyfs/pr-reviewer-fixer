@@ -252,12 +252,29 @@ cd <your-repository>
 `--harness` takes `claude-code`, `codex`, `copilot`, `gemini`, `cursor`, `opencode`, `amp`, `roo`,
 `cline`, `kiro`, `windsurf`, `zed` or `junie`. `--scope user` installs under your home directory,
 `--skill pr-reviewer` or `--skill pr-fixer` installs one of the two, and `--target <dir>` names a
-skills folder directly. Without `--yes` it only prints the plan. With `--yes` it removes each
+skills folder directly. Without `--yes` it only prints the plan. With `--yes` it replaces each
 installed `pr-reviewer` and `pr-fixer` folder with a fresh copy, made next to the old one and
 swapped in, so a failed copy keeps the old install and a file a newer release dropped does not stay
-behind; it refuses a destination that is a symbolic link before it changes anything. For a project install
-into a folder other than `.agents/skills`, it points the installed `templates/review-gate.yml` at
-the new script path.
+behind. It resolves physical paths, with links and `..` resolved, and copies to those paths. It
+decides overlap by folder identity (`test -ef`) as well as by spelling, so one folder reached under
+two names, such as `skills/Pr-Reviewer` and `skills/pr-reviewer` on the case-insensitive file system
+macOS uses by default, counts as one folder. Before it changes anything, in the dry run too, it
+refuses a destination skill folder that is a symbolic link, a source skill folder that is one or
+holds one at any depth, a destination that resolves to the source folder (for example
+`.claude/skills` linked to `.agents/skills`) or lies inside it, a source or a clone of `install.sh`
+that lies inside a skill folder it would replace (a clone at `~/.claude/skills/pr-reviewer`, say:
+clone it somewhere else), and a path it cannot resolve. Whatever those checks conclude, it only
+replaces a folder that looks like a copy it made. One rule decides that, for the source and the
+destination alike: a real folder, nothing named `.git` in any letter case at any depth, and a
+`SKILL.md` whose frontmatter has the line `name: <skill>` (CRLF line endings are fine). A source
+skill folder that fails the rule is refused, so the install never writes a copy it would refuse to
+replace later. An existing destination skill folder that fails it is refused before the plan is
+printed. The copy's folders are made writable, so the next run can remove it. Only with `--yes`, it
+also refuses a leftover folder with the name of this run's stage or set-aside copy, since that name
+carries the process id. The rule cannot tell your edited install from a fresh one: edits inside an
+installed skill folder are replaced, and a `.git` above that folder (a dotfiles repository at
+`~/.claude`, say) or a file system mounted inside it is not looked for. For a project install into a folder other than
+`.agents/skills`, it points the installed `templates/review-gate.yml` at the new script path.
 
 To do the same by hand, copy the folders:
 
@@ -336,7 +353,10 @@ Both skills ship under one semantic version. It is in `VERSION`, in `metadata.ve
 At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
 exists it prints one notice with the release link, and the agent asks you whether to update. The
 script never downloads or installs anything. To update, clone the new tag and run `install.sh` again
-with `--yes`, which replaces the installed folders. If you copy by hand, delete the two installed
+with `--yes`, which replaces the installed folders. It refuses to replace a folder that does not
+look like one of its copies, such as a clone, a folder with a `.git` inside, or a folder you made
+yourself under that name. It says which one and changes nothing; move that folder away and run it
+again. If you copy by hand, delete the two installed
 folders first, since `cp -R` leaves files the new release dropped; then re-apply the path prefix if
 you changed it. Each release carries `pr-reviewer-fixer-X.Y.Z.tar.gz` and a `SHA256SUMS` file. Download
 both and run `shasum -a 256 -c SHA256SUMS` (or `sha256sum -c`) to check the archive arrived intact.
@@ -374,7 +394,7 @@ Two steps are required:
 2. Set `REVIEW_MARKER_AUTHORS` to the login the agent publishes as, the account `gh` is signed in
    to. Export it in the shell that starts your harness:
    `export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"`. Without it, any commenter could
-   post a forged verdict marker, so `status`, `publish`, `extend`, `halt`, `export-audit` and the
+   post a forged verdict marker, so `status`, `stale`, `publish`, `extend`, `halt`, `export-audit` and the
    gate refuse to run when it is unset or names no login, and `budget` prints `B_NEXT='none'` without
    reading the budget. An entry counts only as ASCII letters, digits, hyphens and underscores, starting with a letter or digit, so a pasted BOM or
    no-break space names nobody. `publish`, `extend` and `halt --reason` also refuse when `gh` is signed in

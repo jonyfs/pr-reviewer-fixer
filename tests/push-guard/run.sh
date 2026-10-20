@@ -77,6 +77,11 @@ RENAME_BASE="$(g rev-parse HEAD)"; mkdir -p "$W/repo/tests"; g mv src/secret.yml
 prjson OPEN feat/r "$RENAME_BASE" false
 r=$(run --findings "$W/rep.md"); check "rename of an out-of-scope file to a test name -> refused" eval '[ $r = 1 ] && grep -q "src/secret.yml" "$W/out"'
 
+for opt in --findings --allow; do
+  (cd "$W/repo" && perl -e 'alarm shift; exec @ARGV' 5 "$PG" 7 "$opt") >"$W/out" 2>&1; r=$?
+  check "$opt with no value -> refused at once (rc 2), naming it" eval '[ $r = 2 ] && grep -q -- "$opt needs a value" "$W/out"'
+done
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

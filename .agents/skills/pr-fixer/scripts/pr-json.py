@@ -46,7 +46,11 @@ def fail(msg):
 
 
 def main():
-    explicit = [a for a in sys.argv[1:] if a.isdigit()]
+    # One pull request number in ASCII digits, or none for the branch's own. Anything else is
+    # refused: dropping it would read a different pull request than the caller named.
+    explicit = sys.argv[1:]
+    if len(explicit) > 1 or (explicit and not re.fullmatch(r"[0-9]+", explicit[0], re.ASCII)):
+        return fail("%r is not one pull request number" % " ".join(explicit))
     out = gh("pr", "view", *explicit, "--json", FIELDS)
     if out is None:
         return 1

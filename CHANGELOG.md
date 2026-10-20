@@ -4,6 +4,89 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.5
+
+### Fixed
+
+- An option given last with no value (`halt 7 --reason`, `install.sh --harness`, `push-guard.sh 7
+  --allow`, and the other options that read their value as `${2:-}`) made `shift 2` fail, and with
+  no `set -e` the argument loop spun forever. The `publish` options read `$2` under `set -u`, so
+  they did not hang but exited 1 with `$2: unbound variable`. Every option that takes a value now
+  checks that one follows and refuses at once, naming the option: `review-cycle.sh` and
+  `install.sh` exit 1, `push-guard.sh` exits 2.
+- A pull request argument that is not a number (`7x`, `#7`, a non-ASCII digit) or a second number
+  was dropped by `pr-json.py` and the gate, which then read the branch's own pull request. Both now
+  refuse anything but one number in ASCII digits: the gate answers inconclusive (exit 2), and every
+  `review-cycle.sh` command that reads the pull request refuses as it does when the pull request
+  cannot be read.
+- `install.sh` resolves symbolic links before its same-folder check, so a destination such as
+  `.claude/skills` linked to `.agents/skills` is refused instead of being replaced by a copy of
+  itself with its template rewritten in the source tree. A source skill folder that is a symbolic
+  link, or that holds one at any depth (a linked `templates/`, say), is refused before any change,
+  because `cp -R` would copy the link and the template rewrite would write through it. A
+  destination inside the source (`--target <source>/pr-reviewer`) is refused too, by physical path,
+  instead of putting a copy of the skill inside the source skill.
+- `install.sh` deleted its own source when the source lay inside a skill folder it replaces: the
+  repository cloned as `~/.claude/skills/pr-reviewer` and run with `--scope user --yes` lost the
+  whole clone, `.git` and uncommitted work included, to the `rm -rf` of the old install, and then
+  printed that the old install was untouched. It now refuses before any change, in the dry run too,
+  when a source skill folder and the destination skill folder of the same name are one folder or
+  one lies inside the other, and when the folder `install.sh` runs from lies inside a destination
+  skill folder (the same clone, with `--source` naming another folder).
+- `install.sh` compared paths as strings, so on a case-insensitive file system (the macOS default)
+  a clone at `~/.claude/skills/pr-reviewer` run as `~/.claude/SKILLS/pr-reviewer/install.sh`, or a
+  clone stored as `~/.claude/skills/Pr-Reviewer`, passed the overlap checks and was still deleted by
+  `--scope user --yes`. The overlap checks now also compare folder identity (`test -ef`, device and
+  inode) along every parent. As a backstop that does not depend on path logic, an existing
+  destination skill folder is replaced only when it looks like an install of that skill: a real
+  folder, nothing named `.git` in any letter case at any depth, and a `SKILL.md` whose frontmatter
+  (the first `---` block, not the body) has the line `name: <skill>`. A file, a repository, or a
+  person's own folder of that name is refused before any change, and before the dry run's plan, so
+  the plan never says it will replace a folder it then refuses. With `--yes`, a leftover folder with
+  the name of the run's stage or set-aside copy is refused instead of removed.
+- The same rule now holds the source to what the destination must be. A source skill folder with
+  CRLF line endings in `SKILL.md`, or with a `.git` inside, installed once and then refused its own
+  copy on every later run. A trailing CR is now ignored on both sides, and a source that fails the
+  rule is refused before any change. `cp -R` kept a read-only source folder read-only, so the next
+  run could not remove the old copy and left it beside the new one while reporting success. The
+  copy's folders are now made writable, an old copy holding a read-only folder is emptied in full,
+  and an old copy that still cannot be removed is named and the run exits 1.
+  `same_or_inside` returns at once on a relative path instead of looping (no caller passes one).
+- `install.sh` printed a shell error (`VERSION: No such file or directory`) when the source had no
+  `VERSION` two folders up, because the redirection of stderr came after the failing `<`. It now
+  prints `unknown` and no error.
+- `install.sh` resolved paths with a logical `cd`, which reads `..` before following a link, so
+  `--target <link to a source skill>/..` passed the same-folder check, set the source's skill folder
+  aside and then claimed it was back. Paths are made absolute and resolve with `cd -P`, the copy
+  writes to the resolved paths, and a path that cannot be resolved (a `..` after a folder that does
+  not exist yet, a file in the way, a folder it cannot enter) is refused instead of kept as written.
+  A failed swap names where the old copy is when it could not be put back.
+- `install.sh --help` printed a fixed line range that no longer reached the end of the header and
+  cut the exit-codes sentence. It now prints the whole header comment.
+- `review-cycle.sh` discarded `pr-json.py`'s stderr, so a refused pull request argument (`status
+  7x`) said only that the pull request could not be read. The reason now reaches stderr too.
+- The install test suite runs a copy of `install.sh` and the skills inside its own scratch
+  directory, so a refusal that regressed cannot touch the checkout it was started from. Its header
+  says that its optional argument is an `install.sh` beside `.agents/skills` and `VERSION`, and it
+  stops before the first row when they are not there.
+- `triage-pr.sh` compared `TRIAGE_IGNORE_CHECKS` and `FIXER_COMMIT_AUTHORS` with every space
+  removed, so a check named `CI Tests` or a commit author named `Fixer Bot` never matched. Entries
+  are now trimmed and compared without case, as written.
+- `review-cycle.sh stale` refuses (exit 2, no label moved) when `REVIEW_MARKER_AUTHORS` names no
+  login, like `status`. Unset, it read every commenter's markers, so a forged marker at the new
+  head kept a stale `review:passed` standing.
+- `review-cycle.sh marker` matches in the C locale, so `nocasematch` folds ASCII letters only. Some
+  locales fold a dotless i or a long s onto `i` and `s`, which no other reader does. Not verified
+  on glibc, where that folding happens; macOS does not do it.
+- `budget` and `halt` split marker fields on the six ASCII whitespace characters written out, the
+  same set as `MARKER_WS`, instead of `\s` under a flag.
+- `harness-loop.md` and the fixer's references say to wait, at most two minutes, until GitHub
+  reports the pushed commit as the head before running `stale`. Run earlier, `stale` compared the
+  marker with the old head and changed nothing.
+- `tests/install/run.sh` takes the skills from beside the `install.sh` it tests. It always used
+  this checkout's `.agents/skills`, so testing another copy of `install.sh` that lacked the
+  same-folder refusal installed that copy over this checkout's skills.
+
 ## 0.8.4
 
 ### Security

@@ -71,7 +71,8 @@
 #     export-audit [pr] [--out <dir>]
 #                          writes <dir>/<pr>-<pass>.json (default docs/compliance-records) from
 #                          the trusted marker and the PR timeline; refuses when the head moved
-#     stale [pr]           a marker-backed state whose head moved goes back to review:pending
+#     stale [pr]           a marker-backed state whose head moved goes back to review:pending.
+#                          Refuses (exit 2) when REVIEW_MARKER_AUTHORS names no login.
 #     marker [file] [--author <login>]
 #                          reads one marker from a file or stdin
 #     REVIEW_BLOCK_AT=critical|warning (default critical) decides which findings block: `publish`
@@ -111,8 +112,8 @@
 #                             pull request can post an invisible PASSED marker, because the marker
 #                             is an HTML comment and every comment is scanned. The list must name
 #                             at least one login: unset, empty, whitespace, a lone comma and only
-#                             invisible characters all make `status`, `publish`, `budget`,
-#                             `extend`, `halt`, `export-audit` refuse. `publish`, `extend` and
+#                             invisible characters all make `status`, `stale`, `publish`,
+#                             `budget`, `extend`, `halt`, `export-audit` refuse. `publish`, `extend` and
 #                             `halt --reason` also refuse when `gh api user` is not on the list
 #                             or cannot be resolved; `halt` without `--reason` posts nothing and
 #                             does not check it.
@@ -166,9 +167,9 @@
 # Four more 2s live outside `cmd_status` and belong in the same list: the `command -v gh` check
 # at the top of the file exits 2 when `gh` is not installed, `parse()` exits 2 when the payload
 # holds no readable pull request number (so every subcommand that parses, `stale` included, ends
-# there on an unreadable payload), `cmd_stale` returns 2 when there is no pull request to read,
-# and `cmd_ensure_labels` returns 2 when `gh` could not create a label (offline, no token, no
-# permission). None of them is a decision about a review either.
+# there on an unreadable payload), `cmd_stale` returns 2 when there is no pull request to read
+# or when REVIEW_MARKER_AUTHORS names no login, and `cmd_ensure_labels` returns 2 when `gh` could
+# not create a label (offline, no token, no permission). None of them is a decision about a review either.
 #
 # Today nothing branches on the difference: the callers speak only at rc=1 and treat every
 # 2 as silence, so the conflation is inert. It stays inert by being declared, not by luck: the
@@ -370,7 +371,7 @@ marker_authors() {
 marker_authors_active() { case "${REVIEW_MARKER_AUTHORS:-}" in *[!\ $'\t\r\n']*) return 0 ;; *) return 1 ;; esac; }
 # READY is stricter than active: at least one login must be kept. Unset, empty, whitespace, a lone
 # comma and a list of invisible characters are all not ready, and every command that decides from
-# markers (`status`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuses to guess then.
+# markers (`status`, `stale`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuses to guess then.
 marker_authors_ready() { [ -n "$(marker_authors)" ]; }
 NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
 # One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
@@ -428,8 +429,11 @@ command -v gh >/dev/null 2>&1 || { echo "review-cycle: gh is not installed — I
 pr_json() {
   local n="${1:-}"
   # Read through pr-json.py, which drops every comment edited after it was created and fails closed
-  # when edits cannot be checked. Nothing here reads comments from `gh pr view` directly.
-  python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"} 2>/dev/null
+  # when edits cannot be checked. Nothing here reads comments from `gh pr view` directly. Its own
+  # refusals ("pr-json: ...", a pull request argument that is not one number, say) reach stderr,
+  # so the caller's generic "could not read" is not the only reason printed; gh's own errors are
+  # captured inside it and never printed.
+  python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"}
 }
 
 # Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS.
@@ -474,7 +478,7 @@ parse() {
   # `author.login` is not on the list is skipped before the regex runs, so it can supply neither
   # the current verdict nor the BLOCKED history below. Both answers come out of this one loop,
   # which is why the filter lives here and not in a second pass. Callers that decide
-  # (`status`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
+  # (`status`, `stale`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
   # before they get here; an empty list skips nothing.
   local m
   m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
@@ -525,10 +529,13 @@ parse() {
 # carries no author of its own, so the caller has to say it, and not saying it is not trusted.
 # Unset, `--author` is accepted and ignored.
 cmd_marker() {
+  # The C locale, so `nocasematch` below folds ASCII letters only. Under some locales bash folds a
+  # dotless i or a long s onto `i` and `s`, which no other reader does.
+  local LC_ALL=C
   local body file="" author=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --author) [ $# -ge 2 ] || die "review-cycle: --author needs a login"; author="$2"; shift 2 ;;
+      --author) [ $# -ge 2 ] || die "review-cycle: --author needs a value (a login)"; author="$2"; shift 2 ;;
       *)        [ -z "$file" ] || die "review-cycle: marker takes one file, got '$file' and '$1'"
                 file="$1"; shift ;;
     esac
@@ -814,7 +821,7 @@ cmd_halt() {
   local reason="" pr=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --reason) reason="${2:-}"; shift 2 ;;
+      --reason) [ $# -ge 2 ] || die "review-cycle: --reason needs a value"; reason="${2:-}"; shift 2 ;;
       *) pr="$1"; shift ;;
     esac
   done
@@ -845,7 +852,7 @@ for c in comments:
     who = str(((c or {}).get("author") or {}).get("login") or "").lower()
     m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", (c or {}).get("body") or "", re.ASCII)
     if who in allow and m:
-        last = dict(re.findall(r"([a-z_]+)=([^\s>]+)", m.group(1), re.ASCII))  # the split `budget` makes
+        last = dict(re.findall(r"([a-z_]+)=([^ \t\n\r\f\v>]+)", m.group(1)))  # MARKER_WS, as `budget` splits
 if last and last.get("state") == "halted" and last.get("reason") == os.environ["R"]:
     print("yes")
 ' 2>/dev/null)"
@@ -899,7 +906,7 @@ def num(v, d):
 # A value ends at any of the six ASCII whitespace characters (`\s` under re.ASCII), the set the marker
 # regex below accepts between fields, so a two-line or tab-separated marker reads as every reader reads it.
 def fields(text):
-    return {m.group(1).lower(): m.group(2) for m in re.finditer(r"([A-Za-z_]+)=([^\s>]+)", text, re.ASCII)}
+    return {m.group(1).lower(): m.group(2) for m in re.finditer(r"([A-Za-z_]+)=([^ \t\n\r\f\v>]+)", text)}
 
 block_warn = os.environ.get("BUDGET_BLOCK_AT") == "warning"
 data = json.load(sys.stdin)
@@ -991,7 +998,7 @@ cmd_extend() {
   local pr="" n=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --n) n="${2:-}"; shift 2 ;;
+      --n) [ $# -ge 2 ] || die "review-cycle: --n needs a value"; n="${2:-}"; shift 2 ;;
       *) pr="$1"; shift ;;
     esac
   done
@@ -1139,6 +1146,9 @@ cmd_fix() {
 # A push over a reviewed head does not make the review wrong; it makes it about another commit.
 # Resetting to `pending` REMOVES a claim, which is why it is safe to do without asking.
 cmd_stale() {
+  # Decides from markers, so it refuses a list that names nobody, as `status` does: unset, the
+  # reader would trust any commenter, and a forged marker at the head would keep a stale label.
+  marker_authors_ready || { echo "review-cycle: $NOT_READY_MSG — INCONCLUSIVE" >&2; return 2; }
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || return 2
   parse "$json"
   [ "$STATE" = "OPEN" ] || return 0
@@ -1199,15 +1209,15 @@ cmd_publish() {
   local verdict="" passno="" sha="" report="" number="" crit="" warn="" note="" model="" tier=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --verdict)  verdict="$2"; shift 2 ;;
-      --pass)     passno="$2";  shift 2 ;;
-      --sha)      sha="$(printf '%s' "$2" | tr 'A-Z' 'a-z')"; shift 2 ;;
-      --report)   report="$2";  shift 2 ;;
-      --critical) crit="$2";    shift 2 ;;
-      --warning)  warn="$2";    shift 2 ;;
-      --note)     note="$2";    shift 2 ;;
-      --model)    model="$2";   shift 2 ;;
-      --tier)     tier="$2";    shift 2 ;;
+      --verdict)  [ $# -ge 2 ] || die "review-cycle: --verdict needs a value"; verdict="$2"; shift 2 ;;
+      --pass)     [ $# -ge 2 ] || die "review-cycle: --pass needs a value"; passno="$2";  shift 2 ;;
+      --sha)      [ $# -ge 2 ] || die "review-cycle: --sha needs a value"; sha="$(printf '%s' "$2" | tr 'A-Z' 'a-z')"; shift 2 ;;
+      --report)   [ $# -ge 2 ] || die "review-cycle: --report needs a value"; report="$2";  shift 2 ;;
+      --critical) [ $# -ge 2 ] || die "review-cycle: --critical needs a value"; crit="$2";    shift 2 ;;
+      --warning)  [ $# -ge 2 ] || die "review-cycle: --warning needs a value"; warn="$2";    shift 2 ;;
+      --note)     [ $# -ge 2 ] || die "review-cycle: --note needs a value"; note="$2";    shift 2 ;;
+      --model)    [ $# -ge 2 ] || die "review-cycle: --model needs a value"; model="$2";   shift 2 ;;
+      --tier)     [ $# -ge 2 ] || die "review-cycle: --tier needs a value"; tier="$2";    shift 2 ;;
       *)          number="$1";  shift ;;
     esac
   done
@@ -1421,7 +1431,7 @@ cmd_export_audit() {
   local pr="" out="docs/compliance-records"
   while [ $# -gt 0 ]; do
     case "$1" in
-      --out) out="${2:-}"; shift 2 ;;
+      --out) [ $# -ge 2 ] || die "review-cycle: --out needs a value"; out="${2:-}"; shift 2 ;;
       *) pr="$1"; shift ;;
     esac
   done
@@ -1517,8 +1527,8 @@ cmd_lint_report() {
   local pr="" report="" diff=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --report) report="${2:-}"; shift 2 ;;
-      --diff)   diff="${2:-}"; shift 2 ;;
+      --report) [ $# -ge 2 ] || die "review-cycle: --report needs a value"; report="${2:-}"; shift 2 ;;
+      --diff)   [ $# -ge 2 ] || die "review-cycle: --diff needs a value"; diff="${2:-}"; shift 2 ;;
       *) pr="$1"; shift ;;
     esac
   done

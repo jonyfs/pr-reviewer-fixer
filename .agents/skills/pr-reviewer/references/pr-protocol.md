@@ -47,7 +47,7 @@ When they disagree, `review-cycle.sh status` reports it and exits non-zero.
 ## Trust: who may supply a marker
 
 A marker is only a string, and anyone who can comment can type one, or edit one they typed. Two
-rules decide whether a marker counts, in `status`, `publish`, `budget`, `extend`, `halt`,
+rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`, `extend`, `halt`,
 `export-audit` and the gate alike:
 
 1. The author is on `REVIEW_MARKER_AUTHORS`, a comma-separated list of GitHub logins compared
@@ -55,7 +55,7 @@ rules decide whether a marker counts, in `status`, `publish`, `budget`, `extend`
    letters, digits, hyphens and underscores, starting with a letter or digit. Any other character (a BOM, a no-break space, a zero-width space)
    drops the entry whole. The list must name at least one login. **Unset, empty, whitespace, a lone
    comma and only invisible characters all fail closed**: `publish`, `export-audit`, `extend` and
-   `halt` refuse, `status` and the gate answer inconclusive (exit 2), and `budget` prints
+   `halt` refuse, `status`, `stale` and the gate answer inconclusive (exit 2), and `budget` prints
    `B_NEXT='none'` and exits 0, instead of reading every comment. `publish`, `extend` and
    `halt --reason` (the commands that post a marker) also refuse when the login `gh` is signed in to
    is not on the list. Only the bare `marker` subcommand, which reads a text you
