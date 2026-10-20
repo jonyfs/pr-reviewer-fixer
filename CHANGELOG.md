@@ -4,6 +4,18 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.3
+
+### Fixed
+
+- The comment above `block_at_mismatch` in `review-cycle.sh` no longer says every caller applies
+  it: only `status` calls it, and `budget` and the gate make the same comparison in Python, each
+  only at the head (N1 of #18).
+- The test row for `budget` on a stale `block_at=warning` marker matches the exact `B_WHY` reason
+  instead of a negative grep on the mismatch message, so rewording that message cannot make it
+  pass without testing anything (N3 of #18). The stale gate check now sits right after the gate run
+  it reads (N2 of #18).
+
 ## 0.8.2
 
 ### Fixed

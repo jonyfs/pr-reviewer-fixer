@@ -366,10 +366,11 @@ BLOCK_AT_MSG='REVIEW_BLOCK_AT must be critical or warning'
 # A marker published under `warning` says so (`block_at=warning`). Read under `critical` it would
 # look like a BLOCKED with nothing blocking, and a fixer in that shell would find no work, so a
 # reader whose setting differs refuses to judge it. block_at_mismatch only compares the settings;
-# each caller applies it to a marker at the head and nothing else. A marker on an older commit is
-# stale under either setting: `status` owes the review, the gate fails, and `budget` says `none`
-# (no verdict at the head). A marker naming no setting is judged by the reader's own, as before:
-# it was published under `critical`, or before the field existed.
+# `status` applies it to a marker at the head and nothing else, and `budget` and the gate make the
+# same comparison in Python, also only at the head. A marker on an older commit is stale under
+# either setting: `status` owes the review, the gate fails, and `budget` says `none` (no verdict
+# at the head). A marker naming no setting is judged by the reader's own, as before: it was
+# published under `critical`, or before the field existed.
 block_at_mismatch() { [ -n "${1:-}" ] && [ "$1" != - ] && [ "$1" != "${REVIEW_BLOCK_AT:-critical}" ]; }
 # critical warning -> how many findings block under the current setting ("-" counts as 0).
 blocking_count() {

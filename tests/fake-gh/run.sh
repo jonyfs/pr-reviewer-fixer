@@ -461,10 +461,10 @@ reset "$(mk 7 $A '[{"name":"review:pending"}]' "[$WBA]" OPEN)"
 reset "$(mk 7 $A '[{"name":"review:passed"}]' "[$WPA]" OPEN)"
 python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
 check "block_at mismatch on a marker the head left behind -> review owed (1), not inconclusive" eq "$r0" 1
+check "gate: block_at mismatch on a marker the head left behind -> the stale pass fails (1), not inconclusive" eval '[ $g1 = 1 ] && grep -q "a push after the review invalidates the pass" "$W/gout"'
 reset "$(mk 7 $A '[{"name":"review:blocked"}]' "[$WBA]" OPEN)"
 b="$("$RC" budget 7 2>/dev/null)"
-check "budget: block_at mismatch on a marker the head left behind -> none for no verdict at the head, not the mismatch" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "no trusted verdict marker at the head" && ! printf "%s" "$b" | grep -q "published under REVIEW_BLOCK_AT"'
-check "gate: block_at mismatch on a marker the head left behind -> the stale pass fails (1), not inconclusive" eval '[ $g1 = 1 ] && grep -q "a push after the review invalidates the pass" "$W/gout"'
+check "budget: block_at mismatch on a marker the head left behind -> none for no verdict at the head, not the mismatch" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "^B_WHY=.no trusted verdict marker at the head.$"'
 printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 1, note: 0}\nfindings:\n  - id: W1\n    severity: WARNING\n    file: src/a.ts\n    line: 11\n    claim: "x"\n```\n' >"$W/lw.md"
 printf 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -10,2 +10,3 @@\n x\n+y\n z\n' >"$W/lw.patch"
 "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r0=$?
