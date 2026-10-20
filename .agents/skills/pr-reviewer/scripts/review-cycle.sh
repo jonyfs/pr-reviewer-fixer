@@ -355,21 +355,20 @@ marker_authors_ready() {
   return 1
 }
 NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
+# One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
+# state `parse()` found, joined by spaces, and gh takes one name per flag, so a pull request that
+# carries two states at once leaves with exactly the one the caller asked for.
+remove_states_except() {
+  local l
+  for l in $LABEL; do [ "$l" = "$1" ] || printf -- '--remove-label %s ' "$l"; done
+  return 0
+}
 # **What blocks is a setting, not a constant.** `REVIEW_BLOCK_AT=critical` (the default) means only a
 # CRITICAL blocks, as before. `REVIEW_BLOCK_AT=warning` means a WARNING blocks too, so a verdict
 # with `warning>0` is BLOCKED and the fixer runs on it instead of the finding being declared as
 # debt. The marker carries the same three counts either way; only the arithmetic over them moves,
 # and every reader (this script, the gate) applies the same one. Any other value is refused rather
 # than guessed, because guessing "critical" would quietly turn the stricter setting off.
-# One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
-# state `parse()` found, joined by spaces, so with two at once a single `--remove-label "$LABEL"`
-# split into two words and real gh refused the call ("accepts at most 1 arg(s)"). Each label move
-# then died and the pull request stayed in two states until a person cleared them by hand.
-remove_states_except() {
-  local l
-  for l in $LABEL; do [ "$l" = "$1" ] || printf -- '--remove-label %s ' "$l"; done
-  return 0
-}
 block_at_ready() { case "${REVIEW_BLOCK_AT:-critical}" in critical|warning) return 0 ;; *) return 1 ;; esac; }
 BLOCK_AT_MSG='REVIEW_BLOCK_AT must be critical or warning'
 # A marker published under `warning` says so (`block_at=warning`). Read under `critical` it would

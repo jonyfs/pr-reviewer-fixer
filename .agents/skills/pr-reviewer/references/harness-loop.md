@@ -73,17 +73,21 @@ A marker comment that was edited after it was created is ignored by all of them.
    the skill names, one entry per finding, so the fixer reads ids and claims from it and not from
    prose. Trust markers only from `REVIEW_MARKER_AUTHORS`."
    Wait for its finish line.
-4. **Re-run the gate.** If `review-gate` is installed, re-run every failed, cancelled or timed-out
-   run for the head SHA, because a comment does not start it. A head has more than one run: the one
-   from `opened` or `synchronize` failed before the verdict existed, and on PASSED the `gh pr ready`
-   in `publish` starts a `ready_for_review` run that is already green. Re-running only the newest
-   one leaves the red one on the pull request. The workflow cancels a run in progress when another
-   starts for the same pull request, so first wait until no run for the head is queued or in
-   progress, then re-run the failed ids one at a time, each with
-   `gh run rerun <id> && gh run watch <id> --exit-status`. Re-run each id once per verdict, never
-   in a loop: after a BLOCKED verdict, or with the repository variable `REVIEW_MARKER_AUTHORS`
-   unset, the gate fails again on purpose. A failure after the re-run is the gate's answer, so go
-   on to step 5. See `templates/review-gate.yml`.
+4. **Re-run the gate.** If `review-gate` is installed, re-run its failed runs for the head SHA,
+   because a comment does not start it. A head has more than one run: the one from `opened` or
+   `synchronize` failed before the verdict existed, and on PASSED the `gh pr ready` in `publish`
+   starts a `ready_for_review` run that is already green. The workflow cancels a run in progress
+   when another starts for the same pull request, so:
+   1. Wait at most 10 minutes until no run for the head is queued or in progress. If one still is,
+      tell the person and go to step 5.
+   2. List the failed, cancelled and timed-out run ids for the head, once.
+   3. Re-run every id on that list, one at a time, with
+      `gh run rerun <id> && gh run watch <id> --exit-status`. A run that fails again does not stop
+      the list.
+
+   Then go to step 5, without listing again. After a BLOCKED verdict, or with the repository
+   variable `REVIEW_MARKER_AUTHORS` unset, the gate fails on purpose, and that failure is its
+   answer. See `templates/review-gate.yml`.
 5. **Decide.** `review-cycle.sh budget <pr>` prints `B_NEXT`:
 
    | `B_NEXT` | Do |
