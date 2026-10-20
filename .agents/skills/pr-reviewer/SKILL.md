@@ -159,8 +159,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    `scripts/review-cycle.sh publish --verdict V --pass N --sha <head> --report FILE --critical C --warning W --note N [--model <id> --tier fast|standard|deep]`.
    Pass `--model` and `--tier` when the harness reports the model; they are self-attested
    ([references/execution-profiles.md](references/execution-profiles.md)).
-   The script re-reads the head, refuses a stale `--sha`, and refuses a marker plus report over
-   60000 bytes. On PASSED it also marks a draft pull request ready for review (`gh pr ready`),
+   The script re-reads the head, refuses a stale `--sha`, refuses when `gh` is signed in as a login
+   that is not on `REVIEW_MARKER_AUTHORS`, and refuses a marker plus report over 60000 bytes. On PASSED it also marks a draft pull request ready for review (`gh pr ready`),
    after the marker and the label are written. Never post the marker with `gh pr comment`. What the verdict comment, inline
    comments and status comment look like, and the comment budget:
    [references/pr-protocol.md](references/pr-protocol.md). In the automatic run, post no GitHub

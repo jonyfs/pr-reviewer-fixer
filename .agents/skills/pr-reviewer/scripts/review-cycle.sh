@@ -472,7 +472,7 @@ parse() {
   # `author.login` is not on the list is skipped before the regex runs, so it can supply neither
   # the current verdict nor the BLOCKED history below. Both answers come out of this one loop,
   # which is why the filter lives here and not in a second pass. Callers that decide
-  # (`status`, `publish`, `budget`, `extend`, `export-audit`) refuse an unset or login-less list
+  # (`status`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
   # before they get here; an empty list skips nothing.
   local m
   m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{

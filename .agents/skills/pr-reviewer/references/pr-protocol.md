@@ -47,8 +47,8 @@ When they disagree, `review-cycle.sh status` reports it and exits non-zero.
 ## Trust: who may supply a marker
 
 A marker is only a string, and anyone who can comment can type one, or edit one they typed. Two
-rules decide whether a marker counts, in `status`, `publish`, `budget`, `extend`, `export-audit`
-and the gate alike:
+rules decide whether a marker counts, in `status`, `publish`, `budget`, `extend`, `halt`,
+`export-audit` and the gate alike:
 
 1. The author is on `REVIEW_MARKER_AUTHORS`, a comma-separated list of GitHub logins compared
    without case. An entry counts only if, with ASCII spaces, tabs, CR and LF trimmed, it is ASCII
@@ -221,7 +221,8 @@ python3 <skill folder>/scripts/pr-json.py <n> \
 --critical C --warning W --note N`. The script writes the marker, refuses a stale `--sha`, refuses
 counts that contradict the verdict, refuses a report that holds a token or private key (it names
 the kind and never prints the value), and does not rewrite the report (a login is written as `@login` in backticks so that it notifies nobody). It also refuses a marker plus report over 60000 bytes (GitHub
-rejects comment bodies over 65536 characters). Never type the marker with `gh pr comment`.
+rejects comment bodies over 65536 characters), and it refuses when the login `gh` is signed in to
+is not on `REVIEW_MARKER_AUTHORS` or cannot be resolved. Never type the marker with `gh pr comment`.
 Before it, run `review-cycle.sh lint-report <n> --report FILE`: it exits 1 when a finding names a file
 the diff does not touch, a line no hunk shows, or when the `counts:` line differs from the open
 entries. It posts nothing, and `publish` does not call it.
@@ -283,7 +284,9 @@ comment serves the whole run of a skill.
 **Extension answer.** Only `review-cycle.sh extend <n> --n N` and `review-cycle.sh halt <n>
 --reason R`, which write the marker as the first line and refuse anything the budget would not
 honour. They publish from the login `gh` is signed in to, which must be in
-`REVIEW_MARKER_AUTHORS`, otherwise no reader trusts the marker. Nobody types an extension marker by
+`REVIEW_MARKER_AUTHORS`, otherwise no reader trusts the marker, so both refuse and post nothing
+when it is not on the list or cannot be resolved (`halt` without `--reason` posts no marker and
+skips that check). Nobody types an extension marker by
 hand.
 
 ## Audit trail
