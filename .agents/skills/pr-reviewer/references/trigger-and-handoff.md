@@ -33,7 +33,7 @@ agent asks the person, in the session, with the open blocking finding ids and cl
 pass, a suggestion and the choices `continue N` or `stop`. `continue N` grants N more cycles; `stop`
 or no answer halts and the PR stays `review:blocked` with `review:needs-human`.
 `max_review_cycles_hard` (10) is an absolute ceiling that no answer passes. The cycle number is the
-`pass=` of the newest trusted marker, never a constant. Only a new blocking finding (a CRITICAL, or a
+highest `pass=` among the trusted markers, never a constant. Only a new blocking finding (a CRITICAL, or a
 WARNING under `REVIEW_BLOCK_AT=warning`) restarts a cycle. Any other WARNING or NOTE about a
 correction joins the debt. Automerge stays off unless the repository opted
 in. Numbering, budget and suggestion rules: [pr-protocol.md](pr-protocol.md).

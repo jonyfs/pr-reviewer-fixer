@@ -74,13 +74,15 @@ A marker comment that was edited after it was created is ignored by all of them.
 
 1. **Read the state.** After a push, `review-cycle.sh stale <pr>` first (see Trigger). Then
    `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop.
-2. **Take the cycle.** `review-cycle.sh start <pr>`.
+2. **Take the cycle.** `review-cycle.sh start <pr>`. When `status` reports `review:needs-human`
+   and the BLOCKED verdict is still at the head, skip to step 5 instead: `start` refuses there, and
+   `budget` decides whether to ask the person.
 3. **Review.** Dispatch the reviewer sub-agent: "Follow `.agents/skills/pr-reviewer/SKILL.md` on
    pull request #N, pass P. Read-only on code. Write the report to a file outside the tree and
    run `review-cycle.sh lint-report` on it and publish it with `review-cycle.sh publish`. The report must end with the fenced `findings` block
    the skill names, one entry per finding, so the fixer reads ids and claims from it and not from
    prose. Trust markers only from `REVIEW_MARKER_AUTHORS`."
-   Wait for its finish line.
+   `P` is `B_NEXT_PASS` from `review-cycle.sh budget <pr>`. Wait for its finish line.
 4. **Re-run the gate.** If `review-gate` is installed, re-run its failed runs for the head SHA,
    because a comment does not start it. A head has more than one run: the one from `opened` or
    `synchronize` failed before the verdict existed, and on PASSED the `gh pr ready` in `publish`

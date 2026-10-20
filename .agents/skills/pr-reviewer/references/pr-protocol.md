@@ -186,13 +186,15 @@ python3 <skill folder>/scripts/pr-json.py <n> \
 
 ## Numbering: pass and cycle
 
-- **Pass p** is the p-th published verdict on the pull request. The next pass is F2's `pass=` plus
-  one, or 1 when there is no marker.
-- **Cycle c** is the fixer's answer to the BLOCKED verdict of pass c, so `c` is the `pass=` of the
-  newest trusted marker when the fixer starts. Pass c+1 is the review of that answer.
+- **Pass p** is the p-th published verdict on the pull request. The next pass is the highest
+  `pass=` among the trusted markers plus one, whatever commit that marker names, or 1 when there is
+  none. `budget` prints it as `B_NEXT_PASS`, and `publish` refuses any other number.
+- **Cycle c** is the fixer's answer to the BLOCKED verdict of pass c, so `c` is the highest trusted
+  `pass=` when the fixer starts (`B_CYCLE`). Pass c+1 is the review of that answer.
 - Pass c+1 is owed when the closure comment for cycle c is newer than the pass-c marker, even if
   the head did not move (a cycle that only refused findings pushes nothing).
-- Cycles done = c - 1 when the marker at the head is BLOCKED pass c. Pass 1 is the starting point
+- Cycles done = c - 1, where c is the highest trusted `pass=` (`B_DONE`). A head that returns to an
+  older reviewed commit does not lower it. Pass 1 is the starting point
   and pass k+1 is the result of cycle k.
 - **Budget.** `review-cycle.sh budget <n>` computes it from the trusted markers; nothing keeps a
   counter. `allowed` is `max_review_cycles` (5), or `c + N` when the newest granted marker says
