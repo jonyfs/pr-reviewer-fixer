@@ -38,6 +38,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Documentation
 
+- The `none` row of `harness-loop.md` listed only a PASSED head and a missing verdict. It now names
+  the setting errors that also answer `none` (no login in `REVIEW_MARKER_AUTHORS`, a bad or
+  mismatched `REVIEW_BLOCK_AT`) and tells the loop agent to report `B_WHY` to the person.
 - The README tests section and `AGENTS.md` give the `docker run --privileged` line that runs the
   Linux-only `install.sh` rows (N2 of #22), which no CI runs.
 

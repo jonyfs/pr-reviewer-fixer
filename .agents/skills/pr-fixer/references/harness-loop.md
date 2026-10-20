@@ -100,7 +100,7 @@ A marker comment that was edited after it was created is ignored by all of them.
 
    | `B_NEXT` | Do |
    |---|---|
-   | `none` | Stop. The head is PASSED, or there is no verdict to act on. |
+   | `none` | Stop and tell the person `B_WHY`. The head is PASSED or has no trusted verdict, or a setting is wrong: `REVIEW_MARKER_AUTHORS` lists no login, `REVIEW_BLOCK_AT` is neither `critical` nor `warning`, or the verdict at the head was published under another `REVIEW_BLOCK_AT`. A wrong setting is the person's to fix; the loop does not change it. |
    | `fix` | Dispatch the fixer sub-agent: "Follow `.agents/skills/pr-fixer/SKILL.md` on pull request #N, cycle C." (`C` is `B_CYCLE`.) Wait for its closure comment, then go to step 2. On the last automatic cycle (`B_DONE` is `B_ALLOWED` minus 1) send a stronger fixer, as described below. |
    | `ask` | Ask the person (below). |
    | `ceiling` | `review-cycle.sh halt <pr> --reason ceiling`. Tell the person. Stop. |
