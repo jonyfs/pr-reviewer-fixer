@@ -163,23 +163,26 @@ MARKER = re.compile(
     r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
     r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?"
     r"(?:\s+block_at=(critical|warning))?\s*-->",
-    re.I,
+    re.I | re.ASCII,
 )
 
 # The marker author allowlist, read from `REVIEW_MARKER_AUTHORS`: a comma-separated list of GitHub
 # logins as `gh pr view --json comments` prints them in `author.login` (the account the harness
 # session publishes as). The marker is an HTML comment, so without a list anyone who can comment
-# can post an invisible PASSED one. The rules are the same three `review-cycle.sh` applies: the
-# list is active when the variable holds anything other than whitespace, each entry has all
-# whitespace removed, and the compare ignores case. With no login left after that (unset, empty,
-# whitespace or a lone comma) the gate has nobody to trust and answers inconclusive, which is never
-# the same as approved.
+# can post an invisible PASSED one. The rule is the one `review-cycle.sh` applies (`marker_authors`):
+# split on commas, trim ASCII spaces, tabs, CR and LF, and keep an entry only if what is left is
+# ASCII letters, digits and hyphens. Anything else, a BOM or a no-break space included, drops the
+# entry whole. The compare ignores case. With no login kept (unset, empty, whitespace, a lone comma
+# or only invisible characters) the gate has nobody to trust and answers inconclusive, which is
+# never the same as approved.
+LOGIN = re.compile(r"[A-Za-z0-9-]+", re.ASCII)
+
+
 def allowlist() -> set:
-    """The normalised logins. Empty means the gate has nobody to trust and must not guess."""
+    """The kept logins, lowercased. Empty means the gate has nobody to trust and must not guess."""
     raw = os.environ.get("REVIEW_MARKER_AUTHORS", "")
-    allow = {re.sub(r"\s+", "", x).lower() for x in raw.split(",")}
-    allow.discard("")
-    return allow
+    entries = (x.strip(" \t\r\n") for x in raw.split(","))
+    return {x.lower() for x in entries if LOGIN.fullmatch(x)}
 
 
 def marker_author_allowed(comment: dict) -> bool:

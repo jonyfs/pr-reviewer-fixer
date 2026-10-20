@@ -84,8 +84,9 @@
 #             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
 #                          posts the marker comment, then moves the label. On PASSED, a draft
 #                          pull request is marked ready for review (`gh pr ready`). Refuses a
-#                          report that holds a token or private key (never printed), and wraps a
-#                          bare @login in backticks so the comment notifies nobody.
+#                          report that holds a token or private key (never printed), and a gh
+#                          login that is not on REVIEW_MARKER_AUTHORS. It does not rewrite the
+#                          report: write a login as `@login` in backticks so it notifies nobody.
 #     lint-report [pr] --report <file> [--diff <file>]
 #                          checks that every finding names a file and a line the diff shows, and
 #                          that the `counts:` line matches the open entries, and that the coverage note says what was
@@ -100,15 +101,19 @@
 #     REVIEW_MARKER_AUTHORS   Required comma-separated allowlist of GitHub logins, as `gh pr view
 #                             --json comments` prints them in `author.login`. Set it to the
 #                             login the harness session publishes as (`gh api user --jq .login`).
-#                             When this variable
-#                             holds anything other than whitespace, a comment supplies a marker
-#                             only if its author is on the list (compared case-insensitively),
+#                             An entry counts only if, with ASCII spaces, tabs, CR and LF trimmed,
+#                             it is ASCII letters, digits and hyphens; anything else (a BOM, a
+#                             no-break space) drops the entry whole. When this variable holds
+#                             anything other than ASCII whitespace, a comment supplies a marker
+#                             only if its author is a kept entry (compared case-insensitively),
 #                             in every reader: `parse()` here, `marker --author`, and
 #                             gate-pr-review-state.py. Without it, anyone who can comment on the
 #                             pull request can post an invisible PASSED marker, because the marker
 #                             is an HTML comment and every comment is scanned. The list must name
-#                             at least one login: unset, empty, whitespace and a lone comma all
-#                             make `status`, `publish`, `budget`, `extend`, `export-audit` refuse.
+#                             at least one login: unset, empty, whitespace, a lone comma and only
+#                             invisible characters all make `status`, `publish`, `budget`,
+#                             `extend`, `halt`, `export-audit` refuse. `publish`, `extend` and
+#                             `halt` also refuse when `gh api user` is not on the list.
 #                             Only the bare `marker` subcommand still reads with the list unset.
 #                             A comment edited after it was created is never read (pr-json.py).
 #     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
@@ -338,22 +343,27 @@ numero() {
 # "Nothing owed." at exit 0 over the very marker the CI check refuses by name.
 positivo() { case "${1:-}" in ''|-|*[!0-9]*) return 1 ;; *[!0]*) return 0 ;; *) return 1 ;; esac; }
 
-# The marker author allowlist, the shell half. The node reader in `parse()` and the gate apply the
-# same three rules: the list is active when the variable holds anything other than whitespace, each
-# entry has all whitespace removed (a login never contains any), and the compare ignores case.
-marker_authors_active() { case "${REVIEW_MARKER_AUTHORS:-}" in *[![:space:]]*) return 0 ;; *) return 1 ;; esac; }
-# READY is stricter than active: at least one login must survive the normalisation. Unset, empty,
-# whitespace and a lone comma are all not ready, and every command that decides from markers
-# (`status`, `publish`, `budget`, and so `extend`) refuses to guess in that case. The marker reader
-# applies the same rule, so the commands cannot disagree about what "," means.
-marker_authors_ready() {
-  local entry list=()
-  IFS=, read -r -a list <<<"${REVIEW_MARKER_AUTHORS:-}"
-  for entry in ${list[@]+"${list[@]}"}; do
-    [ -n "$(printf '%s' "$entry" | tr -d '[:space:]')" ] && return 0
-  done
-  return 1
+# The marker author allowlist, the shell half. One rule, applied the same way by the node reader in
+# `parse()`, the Python readers below and gate-pr-review-state.py: split on commas, trim ASCII
+# spaces, tabs, CR and LF from each entry, and keep the entry only if what is left is a GitHub login
+# (ASCII letters, digits and hyphens, nothing else). An entry with any other character, a BOM, a
+# no-break space or a zero-width space included, is dropped whole and never repaired, because
+# "whitespace" means something different in every language and locale and an invisible character
+# once made a list that names nobody look like a list. The compare ignores case.
+# `marker_authors` prints the kept logins, lowercased and comma-joined, and nothing when none is kept.
+marker_authors() {
+  printf '%s' "${REVIEW_MARKER_AUTHORS:-}" | LC_ALL=C awk 'BEGIN { RS = ","; n = 0 } {
+    gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "")
+    if ($0 ~ /^[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-]+$/) {
+      printf "%s%s", (n++ ? "," : ""), tolower($0) } }'
 }
+# ACTIVE means the variable holds anything at all other than ASCII whitespace. An active list that
+# keeps no login trusts nobody.
+marker_authors_active() { case "${REVIEW_MARKER_AUTHORS:-}" in *[!\ $'\t\r\n']*) return 0 ;; *) return 1 ;; esac; }
+# READY is stricter than active: at least one login must be kept. Unset, empty, whitespace, a lone
+# comma and a list of invisible characters are all not ready, and every command that decides from
+# markers (`status`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuses to guess then.
+marker_authors_ready() { [ -n "$(marker_authors)" ]; }
 NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
 # One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
 # state `parse()` found, joined by spaces, and gh takes one name per flag, so a pull request that
@@ -389,16 +399,20 @@ blocking_count() {
 }
 blocker_word() { if [ "${REVIEW_BLOCK_AT:-critical}" = warning ]; then echo "CRITICAL or WARNING"; else echo "CRITICAL"; fi; }
 marker_author_allowed() {
-  local want entry list=()
-  want="$(printf '%s' "${1:-}" | tr -d '[:space:]' | tr 'A-Z' 'a-z')"
-  [ -n "$want" ] || return 1
-  # `read -a` and not an unquoted expansion, so an entry such as `*` is never globbed.
-  IFS=, read -r -a list <<<"${REVIEW_MARKER_AUTHORS:-}"
-  for entry in ${list[@]+"${list[@]}"}; do
-    entry="$(printf '%s' "$entry" | tr -d '[:space:]' | tr 'A-Z' 'a-z')"
-    [ -n "$entry" ] && [ "$entry" = "$want" ] && return 0
-  done
-  return 1
+  local want
+  want="$(printf '%s' "${1:-}" | LC_ALL=C tr 'A-Z' 'a-z')"
+  case "$want" in ''|*,*) return 1 ;; esac
+  case ",$(marker_authors)," in *",$want,"*) return 0 ;; *) return 1 ;; esac
+}
+# The login `gh` publishes as must be on the list before a command posts a marker as it: a marker
+# by anyone else is one every reader ignores, so `status` would owe the review forever and `budget`
+# would never see the halt. Refuses when the login cannot be resolved.
+publisher_on_list() {
+  local who
+  who="$(gh api user --jq .login 2>/dev/null)" || who=""
+  [ -n "$who" ] || die "review-cycle: REFUSED. could not resolve the login gh publishes as (gh api user)"
+  marker_author_allowed "$who" \
+    || die "review-cycle: REFUSED. gh is signed in as '$who', which is not on REVIEW_MARKER_AUTHORS, so every reader would ignore what this posts"
 }
 command -v gh >/dev/null 2>&1 || { echo "review-cycle: gh is not installed — INCONCLUSIVE" >&2; exit 2; }
 
@@ -455,10 +469,9 @@ parse() {
   # (`status`, `publish`, `budget`, `extend`, `export-audit`) refuse an unset or login-less list
   # before they get here; an empty list skips nothing.
   local m
-  m=$(printf '%s' "$json" | REVIEW_MARKER_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
+  m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
     const re=/^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?(?:\s+block_at=(critical|warning))?\s*-->/i;
-    const env=process.env.REVIEW_MARKER_AUTHORS||"",active=/\S/.test(env);
-    const allow=env.split(",").map(x=>x.replace(/\s+/g,"").toLowerCase()).filter(Boolean);
+    const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
     let last=null,blocked="no";
     for(const c of (JSON.parse(s).comments||[])){
       if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
@@ -799,6 +812,7 @@ cmd_halt() {
   done
   case "$reason" in ''|*[!A-Za-z0-9_.-]*) [ -z "$reason" ] || die "review-cycle: --reason takes letters, digits, dot, dash and underscore only" ;; esac
   marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  publisher_on_list
   local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to halt"
   parse "$json"
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop left to halt"
@@ -810,9 +824,9 @@ cmd_halt() {
   local posted=""
   if [ -n "$reason" ]; then
     local have
-    have="$(printf '%s' "$json" | R="$reason" A="${REVIEW_MARKER_AUTHORS:-}" python3 -I -c '
+    have="$(printf '%s' "$json" | R="$reason" A="$(marker_authors)" python3 -I -c '
 import json, os, re, sys
-allow = {x.strip().lower() for x in os.environ["A"].split(",") if x.strip()}
+allow = set(os.environ["A"].split(",")) - {""}
 try:
     comments = json.load(sys.stdin).get("comments") or []
 except ValueError:
@@ -820,9 +834,9 @@ except ValueError:
 last = None
 for c in comments:
     who = str(((c or {}).get("author") or {}).get("login") or "").lower()
-    m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", (c or {}).get("body") or "")
+    m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", (c or {}).get("body") or "", re.ASCII)
     if who in allow and m:
-        last = dict(re.findall(r"([a-z_]+)=([^ >]+)", m.group(1)))
+        last = dict(re.findall(r"([a-z_]+)=([^ >]+)", m.group(1), re.ASCII))
 if last and last.get("state") == "halted" and last.get("reason") == os.environ["R"]:
     print("yes")
 ' 2>/dev/null)"
@@ -866,7 +880,7 @@ cmd_budget() {
     printf "B_NEXT='none'\nB_WHY='%s, so the budget is not read'\n" "$BLOCK_AT_MSG"
     return 0
   fi
-  printf '%s' "$json" | BUDGET_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" BUDGET_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
+  printf '%s' "$json" | BUDGET_AUTHORS="$(marker_authors)" BUDGET_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
     BUDGET_HARD="${MAX_REVIEW_CYCLES_HARD:-10}" python3 -I -c '
 import json, os, re, shlex, sys
 
@@ -874,23 +888,24 @@ def num(v, d):
     return int(v) if isinstance(v, str) and re.fullmatch(r"[0-9]+", v) else d
 
 def fields(text):
-    return {m.group(1).lower(): m.group(2) for m in re.finditer(r"([A-Za-z_]+)=([^ >]+)", text)}
+    return {m.group(1).lower(): m.group(2) for m in re.finditer(r"([A-Za-z_]+)=([^ >]+)", text, re.ASCII)}
 
 block_warn = os.environ.get("BUDGET_BLOCK_AT") == "warning"
 data = json.load(sys.stdin)
 hard = min(max(num(os.environ["BUDGET_HARD"], 10), 1), 10)
 mx = min(max(num(os.environ["BUDGET_MAX"], 5), 1), hard)
 head = data.get("headRefOid") or ""
-allow = [a.strip().lower() for a in os.environ["BUDGET_AUTHORS"].split(",") if a.strip()]
+# The kept logins (see marker_authors). An empty list trusts nobody; the caller refused it already.
+allow = set(os.environ["BUDGET_AUTHORS"].split(",")) - {""}
 trusted = [c for c in data.get("comments", [])
-           if not allow or str((c.get("author") or {}).get("login") or "").lower() in allow]
+           if str((c.get("author") or {}).get("login") or "").lower() in allow]
 
 verdicts = []
 for c in trusted:
     m = re.match(r"\s*<!--\s*adversarial-review:\s*(sha=[0-9a-f]{7,40}\s+verdict=(?:PASSED|BLOCKED)\s+pass=\d+"
                  r"(?:\s+critical=\d+\s+warning=\d+\s+note=\d+)?"
                  r"(?:\s+model=[A-Za-z0-9._:-]+\s+tier=(?:fast|standard|deep))?"
-                 r"(?:\s+block_at=(?:critical|warning))?)\s*-->", c.get("body") or "", re.I)
+                 r"(?:\s+block_at=(?:critical|warning))?)\s*-->", c.get("body") or "", re.I | re.ASCII)
     if not m:
         continue
     f = fields(m.group(1))
@@ -903,7 +918,7 @@ at = next((v for v in reversed(verdicts) if head.startswith(v["sha"])), None)
 
 ext = []
 for c in trusted:
-    m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", c.get("body") or "")
+    m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", c.get("body") or "", re.ASCII)
     if m:
         ext.append(fields(m.group(1)))
 last_ext = ext[-1] if ext else None
@@ -970,6 +985,8 @@ cmd_extend() {
     esac
   done
   case "$n" in ''|*[!0-9]*) die "review-cycle: extend needs --n <whole number>" ;; esac
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  publisher_on_list
   local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to extend"
   parse "$json"
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop to extend"
@@ -1233,6 +1250,7 @@ cmd_publish() {
    arithmetic that produced it. Close them with /pr-fixer and review the correction."
 
   marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  publisher_on_list
   local json; json="$(pr_json "$number")"; [ -n "$json" ] || die "review-cycle: no pull request to publish on"
   parse "$json"
 
@@ -1403,21 +1421,21 @@ cmd_export_audit() {
   events="$(gh api "repos/{owner}/{repo}/issues/$NUMBER/events?per_page=100" --paginate 2>/dev/null)" \
     || die "review-cycle: could not read the timeline of #$NUMBER, and an export without it would be incomplete"
   mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
-  X_JSON="$json" X_EVENTS="$events" X_AUTHORS="${REVIEW_MARKER_AUTHORS:-}" X_OUT="$out" python3 -I - <<'PY' || exit 1
+  X_JSON="$json" X_EVENTS="$events" X_AUTHORS="$(marker_authors)" X_OUT="$out" python3 -I - <<'PY' || exit 1
 import json, os, re, sys
 
 MARK = re.compile(
     r"^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
     r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
     r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?"
-    r"(?:\s+block_at=(critical|warning))?\s*-->", re.I)
+    r"(?:\s+block_at=(critical|warning))?\s*-->", re.I | re.ASCII)
 
 def die(msg):
     print("review-cycle: REFUSED. " + msg, file=sys.stderr)
     sys.exit(1)
 
 pr = json.loads(os.environ["X_JSON"])
-allow = {re.sub(r"\s+", "", x).lower() for x in os.environ["X_AUTHORS"].split(",")} - {""}
+allow = set(os.environ["X_AUTHORS"].split(",")) - {""}
 head = (pr.get("headRefOid") or "").lower()
 trusted, ignored = [], []
 for c in pr.get("comments", []):
@@ -1540,12 +1558,12 @@ for ln in diff:
             cur = new[2:] if new.startswith("b/") else new
             ranges.setdefault(cur, [])
     elif ln.startswith("@@") and cur is not None:
-        m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", ln)
+        m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", ln, re.ASCII)
         if m:
             start, n = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
             ranges[cur].append((start, start + max(n, 1) - 1))
     if ln.startswith("@@"):
-        h = re.match(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@", ln)
+        h = re.match(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@", ln, re.ASCII)
         if h:
             rem_old = int(h.group(1)) if h.group(1) is not None else 1
             rem_new = int(h.group(2)) if h.group(2) is not None else 1
@@ -1584,7 +1602,7 @@ for f in entries:
     if path not in ranges:
         problems.append("%s: %s is not in the diff" % (fid, path))
         continue
-    lm = re.fullmatch(r"(\d+)(?:-(\d+))?", line or "")
+    lm = re.fullmatch(r"(\d+)(?:-(\d+))?", line or "", re.ASCII)
     if not lm:
         problems.append("%s: line '%s' is not a line number or a range, so it cannot be checked" % (fid, line or ""))
         continue
@@ -1596,7 +1614,7 @@ if not re.search(r"Declined to judge:", report):
     problems.append("the coverage note has no `Declined to judge:` line (write `none` when nothing was skipped)")
 
 # The counts line equals the entries that still count: open or refused-rejected.
-cm = re.search(r"^counts:\s*\{\s*critical:\s*(\d+),\s*warning:\s*(\d+),\s*note:\s*(\d+)\s*\}", block, re.M)
+cm = re.search(r"^counts:\s*\{\s*critical:\s*(\d+),\s*warning:\s*(\d+),\s*note:\s*(\d+)\s*\}", block, re.M | re.ASCII)
 if cm:
     want = {"CRITICAL": 0, "WARNING": 0, "NOTE": 0}
     for f in entries:

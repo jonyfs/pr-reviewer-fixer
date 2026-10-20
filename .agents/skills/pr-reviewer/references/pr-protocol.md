@@ -51,10 +51,13 @@ rules decide whether a marker counts, in `status`, `publish`, `budget`, `extend`
 and the gate alike:
 
 1. The author is on `REVIEW_MARKER_AUTHORS`, a comma-separated list of GitHub logins compared
-   without case. The list must name at least one login. **Unset, empty, whitespace and a lone
-   comma all fail closed**: `publish`, `export-audit` and `halt` refuse, `status` and the gate answer
-   inconclusive (exit 2), `budget` prints `B_NEXT='none'` and exits 0, and `extend` stops because
-   `budget` says `none`, instead of reading every comment. Only the bare `marker` subcommand, which reads a text you
+   without case. An entry counts only if, with ASCII spaces, tabs, CR and LF trimmed, it is ASCII
+   letters, digits and hyphens. Any other character (a BOM, a no-break space, a zero-width space)
+   drops the entry whole. The list must name at least one login. **Unset, empty, whitespace, a lone
+   comma and only invisible characters all fail closed**: `publish`, `export-audit`, `extend` and
+   `halt` refuse, `status` and the gate answer inconclusive (exit 2), and `budget` prints
+   `B_NEXT='none'` and exits 0, instead of reading every comment. `publish`, `extend` and `halt`
+   also refuse when the login `gh` is signed in to is not on the list. Only the bare `marker` subcommand, which reads a text you
    hand it, still accepts an unset list.
    The same commands read one more setting, `REVIEW_BLOCK_AT` (`critical` by default, or `warning`).
    It says which findings block: with `warning`, a marker carrying `warning>=1` cannot be `PASSED`
@@ -119,7 +122,7 @@ that reads a marker carries the same allowlist line, built from `$authors`.
 python3 <skill folder>/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" '
     .headRefOid as $head
-    | ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
+    | ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9-]+$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
         | select(.body | test("<!-- adversarial-review: sha=[0-9a-f]{7,40} "))
@@ -141,7 +144,7 @@ F1 without the `$head | startswith($s)` line. Its `pass=` is the latest pass.
 ```bash
 python3 <skill folder>/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" --arg cycle "<c>" '
-    ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
+    ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9-]+$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
         | select(.body | startswith("<!-- pr-fixer-closure: cycle=" + $cycle + " ")) ]
@@ -159,7 +162,7 @@ gh pr view <n> --json body --jq .body | awk '/<!-- pr-debt:start -->/,/<!-- pr-d
 ```bash
 python3 <skill folder>/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" --arg skill "<name>" '
-    ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
+    ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9-]+$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
         | select(.body | startswith("<!-- pr-skill-status: skill=" + $skill + " ")) ]
@@ -173,7 +176,7 @@ A run that created the comment keeps the id it got back instead of searching.
 ```bash
 python3 <skill folder>/scripts/pr-json.py <n> \
 | jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" '
-    ($authors | ascii_downcase | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) as $allow
+    ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9-]+$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
         | select(.body | startswith("<!-- pr-skill-extension: ")) ]
