@@ -167,9 +167,9 @@
 # Four more 2s live outside `cmd_status` and belong in the same list: the `command -v gh` check
 # at the top of the file exits 2 when `gh` is not installed, `parse()` exits 2 when the payload
 # holds no readable pull request number (so every subcommand that parses, `stale` included, ends
-# there on an unreadable payload), `cmd_stale` returns 2 when there is no pull request to read,
-# and `cmd_ensure_labels` returns 2 when `gh` could not create a label (offline, no token, no
-# permission). None of them is a decision about a review either.
+# there on an unreadable payload), `cmd_stale` returns 2 when there is no pull request to read
+# or when REVIEW_MARKER_AUTHORS names no login, and `cmd_ensure_labels` returns 2 when `gh` could
+# not create a label (offline, no token, no permission). None of them is a decision about a review either.
 #
 # Today nothing branches on the difference: the callers speak only at rc=1 and treat every
 # 2 as silence, so the conflation is inert. It stays inert by being declared, not by luck: the

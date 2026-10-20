@@ -47,7 +47,7 @@ When they disagree, `review-cycle.sh status` reports it and exits non-zero.
 ## Trust: who may supply a marker
 
 A marker is only a string, and anyone who can comment can type one, or edit one they typed. Two
-rules decide whether a marker counts, in `status`, `publish`, `budget`, `extend`, `halt`,
+rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`, `extend`, `halt`,
 `export-audit` and the gate alike:
 
 1. The author is on `REVIEW_MARKER_AUTHORS`, a comma-separated list of GitHub logins compared
