@@ -4,6 +4,41 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.6
+
+### Fixed
+
+- `install.sh` read the frontmatter with `awk` in the caller's locale. Under a UTF-8 locale, macOS
+  `awk` stops on a byte that is not UTF-8, so a copy installed without a locale was refused on the
+  next run with a message saying the `name:` line was missing. The rule now runs `awk` with
+  `LC_ALL=C`.
+- A file system mounted inside a destination skill folder had its files removed with the old copy,
+  and the `chmod` before the removal crossed into it. The rule now refuses a folder that holds a
+  mount point (an entry `find -xdev` does not reach), and the `chmod` runs with `-xdev`. An empty
+  mounted file system is not seen; removing the old copy then fails at the mount point and the run
+  exits 1, naming it.
+- A source holding both `SKILL.md` and `skill.md`, possible on a case-sensitive file system, passed
+  the rule, and the copy into a case-insensitive destination kept only one of them. The rule now
+  refuses more than one `SKILL.md` in any letter case.
+- A failed copy left its stage behind when its folders could not be read (a umask of `0400`, say),
+  and said nothing about it. The cleanup now restores `u+rwx` before removing the stage, and names
+  the stage when it still cannot be removed.
+- An old copy that cannot be removed in full now says when it still holds a `SKILL.md`, since a
+  harness that loads folders starting with a dot could load it.
+- The `install.sh` header listed only refusals and the old-copy removal under exit 1. It now also
+  lists a failed `mkdir`, copy or move with `--yes`, and says that with `--skill both`, `pr-reviewer`
+  may already be replaced when a `pr-fixer` step fails. The README says what happens to an old copy
+  that cannot be removed.
+
+### Tests
+
+- The install suite checks that the copy of a read-only source folder is writable (the row passed
+  with that `chmod` removed), and adds rows for a frontmatter byte that is not UTF-8 under
+  `C.UTF-8`, a stage its owner cannot read, an old copy whose `SKILL.md` cannot be removed, and
+  `SKILL.md` beside `skill.md` (skipped on a case-insensitive file system).
+- The `marker` locale row runs under `C.UTF-8`, which both macOS and glibc systems ship. On Debian 12
+  (glibc 2.36) it fails with the `LC_ALL=C` line removed from `cmd_marker` and passes with it.
+
 ## 0.8.5
 
 ### Fixed
@@ -42,7 +77,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   folder, nothing named `.git` in any letter case at any depth, and a `SKILL.md` whose frontmatter
   (the first `---` block, not the body) has the line `name: <skill>`. A file, a repository, or a
   person's own folder of that name is refused before any change, and before the dry run's plan, so
-  the plan never says it will replace a folder it then refuses. With `--yes`, a leftover folder with
+  the plan never says it will replace a folder that the rule refuses. With `--yes`, a leftover folder with
   the name of the run's stage or set-aside copy is refused instead of removed.
 - The same rule now holds the source to what the destination must be. A source skill folder with
   CRLF line endings in `SKILL.md`, or with a `.git` inside, installed once and then refused its own
