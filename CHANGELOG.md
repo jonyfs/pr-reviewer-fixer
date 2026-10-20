@@ -32,6 +32,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 
+- `budget` split the fields of a marker it had matched on a space only. A trusted marker with a tab,
+  LF, CR, FF or VT between fields, such as the two-line form the gate's docstring shows, read as
+  pass 0 (so the hard ceiling never tripped) or as no marker at all, while `status`, `marker`, the
+  gate and `export-audit` read it right. `budget` and `halt` now end a field value at any of the six
+  ASCII whitespace characters, in verdict and extension markers alike.
 - The `review-cycle.sh` header said `publish` wraps a bare `@login` in backticks. It does not; the
   report's author does, as `pr-protocol.md` says.
 

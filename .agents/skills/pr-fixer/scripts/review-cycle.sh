@@ -843,7 +843,7 @@ for c in comments:
     who = str(((c or {}).get("author") or {}).get("login") or "").lower()
     m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", (c or {}).get("body") or "", re.ASCII)
     if who in allow and m:
-        last = dict(re.findall(r"([a-z_]+)=([^ >]+)", m.group(1), re.ASCII))
+        last = dict(re.findall(r"([a-z_]+)=([^\s>]+)", m.group(1), re.ASCII))  # the split `budget` makes
 if last and last.get("state") == "halted" and last.get("reason") == os.environ["R"]:
     print("yes")
 ' 2>/dev/null)"
@@ -894,8 +894,10 @@ import json, os, re, shlex, sys
 def num(v, d):
     return int(v) if isinstance(v, str) and re.fullmatch(r"[0-9]+", v) else d
 
+# A value ends at any of the six ASCII whitespace characters (`\s` under re.ASCII), the set the marker
+# regex below accepts between fields, so a two-line or tab-separated marker reads as every reader reads it.
 def fields(text):
-    return {m.group(1).lower(): m.group(2) for m in re.finditer(r"([A-Za-z_]+)=([^ >]+)", text, re.ASCII)}
+    return {m.group(1).lower(): m.group(2) for m in re.finditer(r"([A-Za-z_]+)=([^\s>]+)", text, re.ASCII)}
 
 block_warn = os.environ.get("BUDGET_BLOCK_AT") == "warning"
 data = json.load(sys.stdin)

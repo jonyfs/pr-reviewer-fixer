@@ -42,6 +42,14 @@ def budget(comments, mx="5", hard="10", authors=ME):
         out[k[2:].lower()] = val.strip("'")
     return out
 
+def ML(p, sha=H):  # the two-line marker form the gate docstring shows
+    return {"author": {"login": ME}, "createdAt": f"2026-10-14T10:{p:02d}:30Z",
+            "body": f"<!-- adversarial-review: sha={sha} verdict=BLOCKED pass={p}\n    critical=1 warning=0 note=0 -->\nreport"}
+
+def TB(p, sha=H):  # every separator a tab
+    return {"author": {"login": ME}, "createdAt": f"2026-10-14T10:{p:02d}:30Z",
+            "body": f"<!-- adversarial-review:\tsha={sha}\tverdict=BLOCKED\tpass={p}\tcritical=1\twarning=0\tnote=0\t-->\nreport"}
+
 G = lambda cycle, n: e("2026-10-14T11:51:00Z", f"<!-- pr-skill-extension: state=granted cycle={cycle} n={n} -->")
 cases = [
  ("pass 1 BLOCKED -> fix", hist([2]), {}, {"next": "fix", "done": "0"}),
@@ -71,6 +79,12 @@ cases = [
  ("hard 15 clamped to 10", hist([1] * 6), {"hard": "15"}, {"hard": "10", "remaining": "5"}),
  ("max 3 config", hist([1] * 4), {"mx": "3"}, {"next": "ask", "max": "3"}),
  ("garbage config -> defaults", hist([1] * 2), {"mx": "x", "hard": ""}, {"max": "5", "hard": "10"}),
+ # W4 of #20: budget re-split the captured fields on a space only, so a valid marker with another
+ # ASCII whitespace separator read as pass 0 (two-line form) or as no marker at all (tabs).
+ ("two-line marker (the gate docstring form) -> fix, pass 2", hist([1]) + [ML(2)], {}, {"next": "fix", "pass": "2", "done": "1"}),
+ ("tab-separated marker -> fix, pass 2", hist([1]) + [TB(2)], {}, {"next": "fix", "pass": "2", "done": "1"}),
+ ("eleven two-line markers -> ceiling", [ML(i + 1, sha=(H if i == 10 else O)) for i in range(11)] + [G(5, 5)], {}, {"next": "ceiling", "pass": "11", "done": "10"}),
+ ("tab-separated granted marker is honoured", hist([3, 3, 3, 2, 2, 2]) + [e("2026-10-14T11:51:00Z", "<!-- pr-skill-extension: state=granted\tcycle=5\tn=2 -->")], {}, {"next": "fix", "allowed": "7"}),
 ]
 ok = 0
 for name, comments, kw, want in cases:
@@ -130,6 +144,11 @@ run(["halt", "7", "--reason", "stop"], d)
 n = len(comments_posted(d))
 p = run(["halt", "7", "--reason", "stop"], d)
 check("a second halt on a halted pull request posts no second marker", p.returncode == 0 and len(comments_posted(d)) == n, p.stderr)
+
+d = setup(hist([1] * 6) + [e("2026-10-14T11:51:00Z", "<!-- pr-skill-extension: state=halted\treason=stop -->")])
+n = len(comments_posted(d))
+p = run(["halt", "7", "--reason", "stop"], d)
+check("halt reads a tab-separated halted marker and posts no second one", p.returncode == 0 and len(comments_posted(d)) == n, p.stderr)
 
 d = setup(hist([1] * 6), labels=("review:blocked", "review:needs-human"))
 p = run(["halt", "7", "--reason", "ceiling"], d)
