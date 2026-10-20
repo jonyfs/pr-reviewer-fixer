@@ -39,6 +39,7 @@ jobs:
             # Plain assignments, so `set -e` stops the step when a lookup fails.
             draft="$(gh release view "v$version" --json isDraft --jq .isDraft)"
             target="$(gh release view "v$version" --json targetCommitish --jq .targetCommitish)"
+            assets="$(gh release view "v$version" --json assets --jq '.assets[].name')"
             if [ "$draft" = true ]; then
               # `gh release create` uploads the files to a draft and publishes it last, so a failure in
               # that last call leaves a draft. A rerun publishes it, but only the draft this commit made.
@@ -46,10 +47,12 @@ jobs:
               gh release upload "v$version" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/SHA256SUMS" --clobber
               gh release edit "v$version" --draft=false
               echo "v$version was a draft; files attached and published"
-            elif gh release view "v$version" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS; then
+            elif printf '%s\n' "$assets" | grep -qx SHA256SUMS; then
               echo "v$version already released"
             else
-              # A rerun after a failed upload attaches the files a release is missing.
+              # A rerun after a failed upload attaches the files a release is missing, but only to the
+              # release of this commit.
+              [ "$target" = "$GITHUB_SHA" ] || { echo "v$version targets $target, not $GITHUB_SHA; a person decides" >&2; exit 1; }
               gh release upload "v$version" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/SHA256SUMS" --clobber
             fi
             exit 0

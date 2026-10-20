@@ -78,9 +78,12 @@ A marker comment that was edited after it was created is ignored by all of them.
    from `opened` or `synchronize` failed before the verdict existed, and on PASSED the `gh pr ready`
    in `publish` starts a `ready_for_review` run that is already green. Re-running only the newest
    one leaves the red one on the pull request. The workflow cancels a run in progress when another
-   starts for the same pull request, so wait until no run for the head is queued or in progress,
-   re-run one id, wait for it to finish (`gh run watch <id>`), then list again. See
-   `templates/review-gate.yml`.
+   starts for the same pull request, so first wait until no run for the head is queued or in
+   progress, then re-run the failed ids one at a time, each with
+   `gh run rerun <id> && gh run watch <id> --exit-status`. Re-run each id once per verdict, never
+   in a loop: after a BLOCKED verdict, or with the repository variable `REVIEW_MARKER_AUTHORS`
+   unset, the gate fails again on purpose. A failure after the re-run is the gate's answer, so go
+   on to step 5. See `templates/review-gate.yml`.
 5. **Decide.** `review-cycle.sh budget <pr>` prints `B_NEXT`:
 
    | `B_NEXT` | Do |

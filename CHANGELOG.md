@@ -17,13 +17,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   cancelled or timed-out run for the head SHA, one at a time, waiting for each, because the
   workflow cancels a run in progress when another starts. Re-running only the newest run picked the
   green `ready_for_review` run that `publish` starts on PASSED and left the red `opened` run on the
-  pull request.
+  pull request. Each id is re-run once per verdict, not in a loop: after BLOCKED the gate fails
+  again on purpose, and that failure is its answer.
 - `harness-loop.md` and the README say who runs `review-cycle.sh stale`: the fixer after its push, and
   the review loop after any push (now in its Roles table and step 1). Nothing ran it for a push the
   loop agent or a person made. `docs/HOW-IT-WORKS.md` no longer draws it as something GitHub does.
 - A rerun of `release.yml` publishes a release left as a draft, after checking that the draft targets
-  the commit being released and attaching both files again. A failed lookup stops the step instead
-  of passing. Before, it saw `SHA256SUMS` and stopped, so v0.8.2 stayed a draft.
+  the commit being released and attaching both files again. It attaches missing files to a
+  published release only when that release targets the same commit. Every release lookup is a plain
+  assignment, so a failed lookup stops the step instead of passing. Before, it saw `SHA256SUMS` and stopped, so v0.8.2 stayed a draft.
 - The comment above `block_at_mismatch` in `review-cycle.sh` no longer says every caller applies
   it: only `status` calls it, and `budget` and the gate make the same comparison in Python, each
   only at the head (N1 of #18).
