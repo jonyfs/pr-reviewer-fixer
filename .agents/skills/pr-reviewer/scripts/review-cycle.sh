@@ -429,8 +429,11 @@ command -v gh >/dev/null 2>&1 || { echo "review-cycle: gh is not installed — I
 pr_json() {
   local n="${1:-}"
   # Read through pr-json.py, which drops every comment edited after it was created and fails closed
-  # when edits cannot be checked. Nothing here reads comments from `gh pr view` directly.
-  python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"} 2>/dev/null
+  # when edits cannot be checked. Nothing here reads comments from `gh pr view` directly. Its own
+  # refusals ("pr-json: ...", a pull request argument that is not one number, say) reach stderr,
+  # so the caller's generic "could not read" is not the only reason printed; gh's own errors are
+  # captured inside it and never printed.
+  python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"}
 }
 
 # Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS.

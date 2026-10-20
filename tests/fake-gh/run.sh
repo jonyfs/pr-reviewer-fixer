@@ -620,8 +620,8 @@ reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$GOOD_PASS]" OPEN)"
 for arg in 7x "$(printf '\xd9\xa7')" "#7"; do
   "$RC" status "$arg" >"$W/out" 2>&1; r1=$?
   python3 -I "$GATE" "$arg" >/dev/null 2>&1; g1=$?
-  check "pull request argument '$arg' is refused, never read as the branch's own (status 2, gate 2)" \
-    eval '[ $r1 = 2 ] && [ $g1 = 2 ]'
+  check "pull request argument '$arg' is refused, never read as the branch's own (status 2, gate 2), and status names why" \
+    eval '[ $r1 = 2 ] && [ $g1 = 2 ] && grep -q "is not one pull request number" "$W/out"'
 done
 python3 -I "$GATE" 7 8 >/dev/null 2>&1; g1=$?
 python3 -I "$SRC/pr-json.py" 7 8 >/dev/null 2>&1; j1=$?
