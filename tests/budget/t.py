@@ -84,6 +84,11 @@ cases = [
  ("two-line marker (the gate docstring form) -> fix, pass 2", hist([1]) + [ML(2)], {}, {"next": "fix", "pass": "2", "done": "1"}),
  ("tab-separated marker -> fix, pass 2", hist([1]) + [TB(2)], {}, {"next": "fix", "pass": "2", "done": "1"}),
  ("eleven two-line markers -> ceiling", [ML(i + 1, sha=(H if i == 10 else O)) for i in range(11)] + [G(5, 5)], {}, {"next": "ceiling", "pass": "11", "done": "10"}),
+ # 0.9.0: cycles are counted from the highest trusted pass, and the SHA is compared ignoring case.
+ ("head back at the pass-1 commit after two more passes -> fix, cycle 3", [v(1, "BLOCKED", 1), v(2, "BLOCKED", 1, sha=O), v(3, "BLOCKED", 1, sha=O)], {}, {"next": "fix", "pass": "1", "done": "2", "cycle": "3", "next_pass": "4"}),
+ ("head back at the pass-1 commit after five more passes -> ask, not fix", [v(1, "BLOCKED", 1)] + [v(i, "BLOCKED", 1, sha=O) for i in range(2, 7)], {}, {"next": "ask", "done": "5"}),
+ ("marker SHA in capitals matches the head -> fix", [v(1, "BLOCKED", 1, sha=H.upper())], {}, {"next": "fix"}),
+ ("fresh push after pass 2 -> none, but done and next_pass count both passes", hist([1, 1])[:1] + [v(2, "BLOCKED", 1, sha=O)], {}, {"next": "none", "done": "1", "next_pass": "3"}),
  ("tab-separated granted marker is honoured", hist([3, 3, 3, 2, 2, 2]) + [e("2026-10-14T11:51:00Z", "<!-- pr-skill-extension: state=granted\tcycle=5\tn=2 -->")], {}, {"next": "fix", "allowed": "7"}),
 ]
 ok = 0
@@ -110,6 +115,12 @@ posted = comments_posted(d)
 check("extend --n 2 at cycle 5 posts a granted marker", p.returncode == 0 and "<!-- pr-skill-extension: state=granted cycle=5 n=2 -->" in posted[-1], p.stderr)
 p2 = run(["budget", "7"], d, MAX_REVIEW_CYCLES="5", MAX_REVIEW_CYCLES_HARD="10")
 check("budget honours the marker extend posted", "B_NEXT=fix" in p2.stdout and "B_ALLOWED=7" in p2.stdout, p2.stdout)
+
+d = setup(hist([3, 3, 2, 2, 2, 2]), labels=("review:blocked", "review:needs-human"))
+p = run(["extend", "7", "--n", "2"], d)
+pr = json.load(open(os.path.join(d, "pr.json")))
+check("extend on a halted pull request withdraws review:needs-human",
+      p.returncode == 0 and [l["name"] for l in pr["labels"]] == ["review:blocked"], p.stderr)
 
 d = setup(hist([2, 2]))
 p = run(["extend", "7", "--n", "2"], d)

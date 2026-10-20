@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: 0.8.6
+  version: 0.9.0
 ---
 
 # PR Reviewer
@@ -120,7 +120,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    rule is never a finding; an existing comment is never restated as new.
    [references/targets-and-context.md](references/targets-and-context.md)
 1. **Take the cycle.** `scripts/review-cycle.sh start` moves the label to `review:running` and
-   withdraws `review:needs-human`. Do this before reading files for review, unless the review loop
+   withdraws `review:needs-human`. It refuses a halted pull request whose BLOCKED verdict is still at
+   the head: stop and tell the person. Do this before reading files for review, unless the review loop
    agent already did (the label is `review:running` at this head).
 2. **Pass 1 only: fix the acceptance conditions.** Before any agent runs, write the numbered list of
    conditions that would make this pull request pass, from the change's own stated purpose, each
@@ -157,6 +158,7 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    finding whose file or line the diff does not show, or a `counts:` line that disagrees with the
    entries), then run
    `scripts/review-cycle.sh publish --verdict V --pass N --sha <head> --report FILE --critical C --warning W --note N [--model <id> --tier fast|standard|deep]`.
+   `N` is `B_NEXT_PASS` from `scripts/review-cycle.sh budget`; `publish` refuses any other number.
    Pass `--model` and `--tier` when the harness reports the model; they are self-attested
    ([references/execution-profiles.md](references/execution-profiles.md)).
    The script re-reads the head, refuses a stale `--sha`, refuses when `gh` is signed in as a login

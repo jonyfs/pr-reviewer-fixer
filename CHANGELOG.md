@@ -4,6 +4,34 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.9.0
+
+### Changed
+
+- `review-cycle.sh budget` counts cycles from the highest `pass=` among the trusted markers,
+  whatever commit it names, not from the marker at the head. A head that went back to an older
+  reviewed commit restarted the count at that commit's pass. `B_DONE` is now that highest pass
+  minus 1 on every path, and `budget` prints two new fields: `B_CYCLE`, the cycle about to run, and
+  `B_NEXT_PASS`, the pass number the next verdict must carry.
+- `review-cycle.sh publish` accepts only `--pass` equal to `B_NEXT_PASS`. A lower number, the same
+  number again, or a skipped one is refused. Callers that kept their own pass counter must read it
+  from `budget`.
+- `review-cycle.sh start` refuses a halted pull request (`review:needs-human`) whose BLOCKED verdict
+  is still at the head, since a pass there has nothing new to review and only spends a cycle. A
+  pushed correction or a grant ends the refusal.
+
+### Fixed
+
+- `review-cycle.sh extend` left `review:needs-human` on a halted pull request, so the fixer and
+  triage still refused it and the grant changed nothing. `extend` now removes the label after it
+  posts the granted marker.
+- `budget` compared the marker SHA with the head case-sensitively, so a marker with capital hex
+  digits matched in `status` but not in `budget`.
+- A BLOCKED marker from 0.7.x that counts warnings, no critical and names no `block_at` was
+  published under `REVIEW_BLOCK_AT=warning`. `status` and `budget` now read it that way, so a shell
+  under `critical` answers inconclusive and names the setting instead of acting on a BLOCKED with
+  nothing blocking.
+
 ## 0.8.6
 
 ### Fixed

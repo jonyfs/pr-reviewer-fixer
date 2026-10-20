@@ -196,7 +196,8 @@ stateDiagram-v2
     fixing --> pending: push moves the head
     passed --> pending: new push moves the head
     blocked --> needs_human: loop paused or halted, a person decides
-    needs_human --> running: person restarts the cycle
+    needs_human --> pending: a push moves the head
+    needs_human --> blocked: person grants cycles (extend)
     needs_human --> fixing: person or pr-fixer takes the cycle
     state "blocked + review:needs-human" as needs_human
 ```
@@ -224,9 +225,16 @@ and a suggestion:
 - if there was no progress, it suggests none and recommends that a person decides.
 
 You answer `continue N` or `stop`. `continue N` runs `review-cycle.sh extend`, which records the
-grant in a marker comment so it survives the session. `stop`, or no answer in a headless session,
+grant in a marker comment so it survives the session, and removes `review:needs-human` if the pull
+request was halted. `stop`, or no answer in a headless session,
 runs `review-cycle.sh halt`: the pull request stays `review:blocked`, now with
-`review:needs-human`, and a comment states why. A comment on the pull request cannot grant cycles.
+`review:needs-human`, and a comment states why. While the BLOCKED verdict is still at the head,
+`review-cycle.sh start` refuses a halted pull request, so a new review pass needs a pushed
+correction or a grant. A comment on the pull request cannot grant cycles.
+
+Cycles are counted from the highest `pass=` among the trusted markers, whatever commit it names.
+`publish` takes only the next pass number (`budget` prints it as `B_NEXT_PASS`), so a head that goes
+back to an older reviewed commit, or a low `--pass`, cannot restart the count.
 
 ## Install
 
