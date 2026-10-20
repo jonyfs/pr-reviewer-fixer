@@ -15,7 +15,7 @@ The same file ships in both skills.
 
 | Role | Who | May write |
 |---|---|---|
-| Review loop agent | The session's own agent. It owns the loop and is the only one that dispatches the other two. It reads the budget, asks the person, and never reviews or edits code itself. | Only through `review-cycle.sh` (`start`, `budget`, `extend`, `halt`) |
+| Review loop agent | The session's own agent. It owns the loop and is the only one that dispatches the other two. It reads the budget, asks the person, and never reviews or edits code itself. | Only through `review-cycle.sh` (`stale`, `start`, `budget`, `extend`, `halt`) |
 | Reviewer | A fresh-context sub-agent that follows the `pr-reviewer` skill. | Nothing in the working tree. It publishes only through `review-cycle.sh publish`. |
 | Fixer | A fresh-context sub-agent that follows the `pr-fixer` skill. | The PR branch, and the PR comments and body the skill names. |
 
@@ -38,6 +38,12 @@ Run the loop, without being asked, when any of these happens in the session:
 Do not wait for CI, a bot or a person to start it. If the session ends before the loop does, the
 next session starts it from `review-cycle.sh status`, which exits 1 while a review is owed.
 
+After any push to the branch, by the agent or by a person, run `review-cycle.sh stale <pr>` before
+step 1. It moves a marker-backed label (`review:passed`, `review:blocked`, `review:fixing`) back to
+`review:pending` once the head has left the marker, so the label stops claiming a verdict about
+another commit. The fixer runs it after its own push; nothing on GitHub runs it for a push made
+outside a session, so until the next loop the label is stale while the gate already fails.
+
 An optional Claude Code Stop hook can run `review-cycle.sh debt` and refuse to end a turn while a
 review is owed. It is a convenience. The rule above is the portable trigger.
 
@@ -58,7 +64,8 @@ A marker comment that was edited after it was created is ignored by all of them.
 
 ## The loop
 
-1. **Read the state.** `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop.
+1. **Read the state.** After a push, `review-cycle.sh stale <pr>` first (see Trigger). Then
+   `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop.
 2. **Take the cycle.** `review-cycle.sh start <pr>`.
 3. **Review.** Dispatch the reviewer sub-agent: "Follow `.agents/skills/pr-reviewer/SKILL.md` on
    pull request #N, pass P. Read-only on code. Write the report to a file outside the tree and
@@ -66,8 +73,21 @@ A marker comment that was edited after it was created is ignored by all of them.
    the skill names, one entry per finding, so the fixer reads ids and claims from it and not from
    prose. Trust markers only from `REVIEW_MARKER_AUTHORS`."
    Wait for its finish line.
-4. **Re-run the gate.** If `review-gate` is installed, `gh run rerun` its run for the head, because a
-   comment does not start it. See `templates/review-gate.yml`.
+4. **Re-run the gate.** If `review-gate` is installed, re-run its failed runs for the head SHA,
+   because a comment does not start it. A head has more than one run: the one from `opened` or
+   `synchronize` failed before the verdict existed, and on PASSED the `gh pr ready` in `publish`
+   starts a `ready_for_review` run that is already green. The workflow cancels a run in progress
+   when another starts for the same pull request, so:
+   1. Wait at most 10 minutes until no run for the head is queued or in progress. If one still is,
+      tell the person and go to step 5.
+   2. List the failed, cancelled and timed-out run ids for the head, once.
+   3. Re-run every id on that list, one at a time, with
+      `gh run rerun <id> && gh run watch <id> --exit-status`. A run that fails again does not stop
+      the list.
+
+   Then go to step 5, without listing again. After a BLOCKED verdict, or with the repository
+   variable `REVIEW_MARKER_AUTHORS` unset, the gate fails on purpose, and that failure is its
+   answer. See `templates/review-gate.yml`.
 5. **Decide.** `review-cycle.sh budget <pr>` prints `B_NEXT`:
 
    | `B_NEXT` | Do |

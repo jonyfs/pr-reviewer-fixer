@@ -52,6 +52,18 @@ if args[:2] == ["api", "graphql"]:
         "pageInfo": {"hasNextPage": more, "endCursor": str(start + size) if more else None}, "nodes": nodes}}}}}))
     sys.exit(0)
 if args[:2] == ["pr", "edit"]:
+    # Real gh takes one positional (the pull request) and rejects a second before any API call:
+    # "accepts at most 1 arg(s), received 2". A label list split on a space produces exactly that.
+    valued = {"--add-label", "--remove-label", "--body", "-b", "--body-file", "-F", "--title", "-t",
+              "--base", "-B", "--milestone", "--add-assignee", "--remove-assignee",
+              "--add-reviewer", "--remove-reviewer", "--add-project", "--remove-project", "--repo", "-R"}
+    positional, j = [], 2
+    while j < len(args):
+        if args[j] in valued: j += 2
+        elif args[j].startswith("-"): j += 1
+        else: positional.append(args[j]); j += 1
+    if len(positional) > 1:
+        print(f"accepts at most 1 arg(s), received {len(positional)}", file=sys.stderr); sys.exit(1)
     pr = load(); names = [l["name"] for l in pr["labels"]]
     i = 3
     while i < len(args):

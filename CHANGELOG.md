@@ -4,6 +4,44 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.3
+
+### Fixed
+
+- A pull request carrying two `review:*` states at once could not leave them. `start`, `fix` and
+  `publish` passed both names to one `--remove-label`, real `gh` refused the call ("accepts at most
+  1 arg(s)"), and the only way out was clearing labels by hand. Each state is now removed with its own
+  flag, and `status` names `start` as the way out. The fake `gh` in the tests now refuses a second
+  positional argument the way real `gh` does, which is why the suite never caught this.
+- The gate re-run step in `harness-loop.md` and the `review-gate.yml` template re-runs every failed,
+  cancelled or timed-out run for the head SHA, one at a time, waiting for each, because the
+  workflow cancels a run in progress when another starts. Re-running only the newest run picked the
+  green `ready_for_review` run that `publish` starts on PASSED and left the red `opened` run on the
+  pull request. The wait is bounded at 10 minutes, the failed ids are listed once and every one is
+  re-run, and the loop then moves on without listing again: after BLOCKED, or with
+  `REVIEW_MARKER_AUTHORS` unset, the gate fails on purpose, and that failure is its answer.
+- `harness-loop.md` and the README say who runs `review-cycle.sh stale`: the fixer after its push, and
+  the review loop after any push (now in its Roles table and step 1). Nothing ran it for a push the
+  loop agent or a person made. `docs/HOW-IT-WORKS.md` no longer draws it as something GitHub does.
+- A rerun of `release.yml` publishes a release left as a draft, after checking that the draft targets
+  the commit being released and attaching both files again. Before, it saw `SHA256SUMS` and
+  stopped, so a draft stayed a draft; v0.8.2, left that way, is published by hand. A published
+  release that already has `SHA256SUMS` ends the run green, naming the commit it targets, with no
+  tag lookup. On every other path, creating a release included, the step looks the tag up through
+  `git/matching-refs` (exact ref only, an annotated tag followed to its commit) and refuses when
+  the tag points at another commit. A failed tag lookup stops the step instead of reading as "no
+  tag". Missing files are attached to a published release only when it targets this commit and
+  its tag points at it. The reads of the release's fields and of the tag are plain assignments, so
+  a failed read stops the step, and each refusal names what to delete before a rerun (W15, W16 of
+  #19).
+- The comment above `block_at_mismatch` in `review-cycle.sh` no longer says every caller applies
+  it: only `status` calls it, and `budget` and the gate make the same comparison in Python, each
+  only at the head (N1 of #18).
+- The test row for `budget` on a stale `block_at=warning` marker matches the exact `B_WHY` reason
+  instead of a negative grep on the mismatch message, so rewording that message cannot make it
+  pass without testing anything (N3 of #18). The stale gate check now sits right after the gate run
+  it reads (N2 of #18).
+
 ## 0.8.2
 
 ### Fixed

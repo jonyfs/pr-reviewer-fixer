@@ -15,9 +15,20 @@
 #
 # TIMING. The job runs when the pull request is opened or pushed to, before the harness has
 # published a verdict, so it fails then (absence reads as not reviewed). A comment does not start a
-# pull_request workflow, so after `review-cycle.sh publish` the agent re-runs this check:
-#   gh run list --workflow review-gate.yml --branch <head branch> --limit 1 --json databaseId --jq '.[0].databaseId'
-#   gh run rerun <that id>
+# pull_request workflow, so after `review-cycle.sh publish` the agent re-runs every failed,
+# cancelled or timed-out run of this check for the head SHA. The newest run alone is not enough: on
+# PASSED, `publish` marks the draft ready, which starts a `ready_for_review` run that is already
+# green while the `opened` or `synchronize` run stays red. `cancel-in-progress` below cancels a run
+# when another starts for the same pull request, so re-run one at a time. First wait, at most 10
+# minutes, until this list is empty (no run for the head queued or in progress):
+#   gh run list --workflow review-gate.yml --commit <head sha> --limit 100 --json databaseId,status \
+#     --jq '.[] | select(.status != "completed") | .databaseId'
+# Then list the failed ids once and re-run every one of them, waiting for each:
+#   gh run list --workflow review-gate.yml --commit <head sha> --limit 100 --json databaseId,conclusion \
+#     --jq '.[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | .databaseId'
+#   gh run rerun <id> && gh run watch <id> --exit-status
+# Do not list again afterwards. After a BLOCKED verdict, or with REVIEW_MARKER_AUTHORS unset, the
+# check fails on purpose, and that failure is its answer.
 #
 # MARKER AUTHORS. The repository variable REVIEW_MARKER_AUTHORS must list the GitHub login or logins
 # the harness publishes as (the account `gh` is authenticated as, for example `jonyfs`). With it

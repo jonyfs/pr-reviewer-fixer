@@ -355,6 +355,14 @@ marker_authors_ready() {
   return 1
 }
 NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
+# One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
+# state `parse()` found, joined by spaces, and gh takes one name per flag, so a pull request that
+# carries two states at once leaves with exactly the one the caller asked for.
+remove_states_except() {
+  local l
+  for l in $LABEL; do [ "$l" = "$1" ] || printf -- '--remove-label %s ' "$l"; done
+  return 0
+}
 # **What blocks is a setting, not a constant.** `REVIEW_BLOCK_AT=critical` (the default) means only a
 # CRITICAL blocks, as before. `REVIEW_BLOCK_AT=warning` means a WARNING blocks too, so a verdict
 # with `warning>0` is BLOCKED and the fixer runs on it instead of the finding being declared as
@@ -366,10 +374,11 @@ BLOCK_AT_MSG='REVIEW_BLOCK_AT must be critical or warning'
 # A marker published under `warning` says so (`block_at=warning`). Read under `critical` it would
 # look like a BLOCKED with nothing blocking, and a fixer in that shell would find no work, so a
 # reader whose setting differs refuses to judge it. block_at_mismatch only compares the settings;
-# each caller applies it to a marker at the head and nothing else. A marker on an older commit is
-# stale under either setting: `status` owes the review, the gate fails, and `budget` says `none`
-# (no verdict at the head). A marker naming no setting is judged by the reader's own, as before:
-# it was published under `critical`, or before the field existed.
+# `status` applies it to a marker at the head and nothing else, and `budget` and the gate make the
+# same comparison in Python, also only at the head. A marker on an older commit is stale under
+# either setting: `status` owes the review, the gate fails, and `budget` says `none` (no verdict
+# at the head). A marker naming no setting is judged by the reader's own, as before: it was
+# published under `critical`, or before the field existed.
 block_at_mismatch() { [ -n "${1:-}" ] && [ "$1" != - ] && [ "$1" != "${REVIEW_BLOCK_AT:-critical}" ]; }
 # critical warning -> how many findings block under the current setting ("-" counts as 0).
 blocking_count() {
@@ -687,7 +696,8 @@ cmd_status() {
     return 1
   fi
   case "$LABEL" in
-    *" "*) echo "#$NUMBER carries several review states at once ($LABEL) — the projection has to project one thing"; return 1 ;;
+    *" "*) echo "#$NUMBER carries several review states at once ($LABEL) — the projection has to project one thing"
+           echo "  next: review-cycle.sh start $NUMBER (it clears every other state), then /pr-reviewer"; return 1 ;;
   esac
 
   # A PASSED marker that counts a CRITICAL is the reviewer contradicting its own arithmetic, and it
@@ -981,7 +991,7 @@ cmd_start() {
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
   parse "$json"
   gh pr edit "$NUMBER" --add-label review:running ${HALTED:+--remove-label review:needs-human} \
-      $( [ -n "$LABEL" ] && [ "$LABEL" != "review:running" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
+      $(remove_states_except review:running) >/dev/null \
     || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
   echo "#$NUMBER → review:running (head ${HEAD:0:12})"
 }
@@ -1093,7 +1103,7 @@ cmd_fix() {
   # Before any label moves: a refused correction leaves the pull request exactly as it was.
   fix_guard "$NUMBER" || die "review-cycle: #$NUMBER was not claimed for correction"
   gh pr edit "$NUMBER" --add-label review:fixing ${HALTED:+--remove-label review:needs-human} \
-      $( [ -n "$LABEL" ] && [ "$LABEL" != "review:fixing" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
+      $(remove_states_except review:fixing) >/dev/null \
     || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
   echo "#$NUMBER → review:fixing (head ${HEAD:0:12})${HALTED:+, review:needs-human withdrawn}"
 }
@@ -1324,7 +1334,7 @@ cmd_publish() {
     cat "$report"; } | gh pr comment "$NUMBER" --body-file - >/dev/null \
     || die "review-cycle: could not post the marker on #$NUMBER"
   gh pr edit "$NUMBER" --add-label "$label" $halted_rm \
-      $( [ -n "$LABEL" ] && [ "$LABEL" != "$label" ] && printf -- "--remove-label %s" "$LABEL" ) >/dev/null \
+      $(remove_states_except "$label") >/dev/null \
     || die "review-cycle: marker posted but the label did not move on #$NUMBER; fix by hand; labels may be missing: run review-cycle.sh ensure-labels, then move the label to $label"
   echo "#$NUMBER → $label${halted_rm:+, review:needs-human withdrawn}, marker bound to ${HEAD:0:12}, pass $passno, critical=$crit warning=$warn note=$note"
   # An approved pull request stops being a draft. This is the one thing publish does beyond the

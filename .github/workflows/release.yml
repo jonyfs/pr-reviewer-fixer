@@ -35,11 +35,49 @@ jobs:
           archive="pr-reviewer-fixer-$version.tar.gz"
           git archive --format=tar.gz --prefix="pr-reviewer-fixer-$version/" -o "$RUNNER_TEMP/$archive" "$GITHUB_SHA"
           (cd "$RUNNER_TEMP" && sha256sum "$archive" > SHA256SUMS)
+          exists=no
           if gh release view "v$version" >/dev/null 2>&1; then
-            # A rerun after a failed upload attaches the files a release is missing.
-            if gh release view "v$version" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS; then
-              echo "v$version already released"
+            exists=yes
+            # Plain assignments, so `set -e` stops the step when a lookup fails.
+            draft="$(gh release view "v$version" --json isDraft --jq .isDraft)"
+            target="$(gh release view "v$version" --json targetCommitish --jq .targetCommitish)"
+            assets="$(gh release view "v$version" --json assets --jq '.assets[].name')"
+            # A published release with SHA256SUMS is complete whatever commit its tag is on, so a
+            # later push that leaves VERSION unchanged stays green and needs no tag lookup.
+            if [ "$draft" != true ] && printf '%s\n' "$assets" | grep -qx SHA256SUMS; then
+              echo "v$version already released from $target"; exit 0
+            fi
+          fi
+          # The commit the tag points to, which is what a published release ships: GitHub ignores
+          # target_commitish once the tag exists. matching-refs answers an empty list when there is no
+          # tag and fails on any other error, which stops the step here. It matches by prefix, so only
+          # the exact ref counts, and an annotated tag is followed to its commit.
+          refs="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v$version" --jq '.[] | "\(.ref) \(.object.type) \(.object.sha)"')"
+          tag_sha=""
+          while read -r ref type sha; do
+            [ "$ref" = "refs/tags/v$version" ] || continue
+            if [ "$type" = tag ]; then
+              deref="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq '"\(.object.type) \(.object.sha)"')"
+              type="${deref%% *}"; sha="${deref#* }"
+            fi
+            [ "$type" = commit ] && [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "tag v$version resolves to '$type $sha', not a commit" >&2; exit 1; }
+            tag_sha="$sha"
+          done <<< "$refs"
+          if [ -n "$tag_sha" ] && [ "$tag_sha" != "$GITHUB_SHA" ]; then
+            echo "tag v$version is on $tag_sha, not $GITHUB_SHA; delete or move the tag (and its release), then rerun" >&2; exit 1
+          fi
+          if [ "$exists" = yes ]; then
+            if [ "$draft" = true ]; then
+              # `gh release create` uploads the files to a draft and publishes it last, so a failure in
+              # that last call leaves a draft. A rerun publishes it, but only the draft this commit made.
+              [ "$target" = "$GITHUB_SHA" ] || { echo "draft v$version targets $target, not $GITHUB_SHA; delete the draft, then rerun" >&2; exit 1; }
+              gh release upload "v$version" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/SHA256SUMS" --clobber
+              gh release edit "v$version" --draft=false
+              echo "v$version was a draft; files attached and published"
             else
+              # A rerun after a failed upload attaches the files a release is missing, but only to the
+              # release of this commit.
+              [ "$target" = "$GITHUB_SHA" ] && [ -n "$tag_sha" ] || { echo "v$version targets $target (tag on ${tag_sha:-nothing}), not $GITHUB_SHA; delete the release, then rerun" >&2; exit 1; }
               gh release upload "v$version" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/SHA256SUMS" --clobber
             fi
             exit 0
