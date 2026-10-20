@@ -35,8 +35,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Tests
 
-- Rows for a foreign edit that breaks the marker shape, in `budget`, `publish` and the gate (W1 of
-  #25).
+- Rows for a foreign edit that breaks the marker shape, in `budget`, `publish` and the gate, and a
+  row for an editor GitHub no longer names (the fake `gh` reads `-` in `edited-by` as a null login)
+  (W1 and N3 of #25).
 
 ## 0.9.1
 

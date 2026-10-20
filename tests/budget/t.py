@@ -245,6 +245,10 @@ n = len(comments_posted(d))
 p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "2", "--sha", H, "--critical", "1", "--warning", "0", "--note", "0"], d)
 check("publish --pass 2 after another login broke the markers is refused, nothing posted",
       p.returncode != 0 and len(comments_posted(d)) == n and "edited by mallory" in p.stderr, p.stderr + p.stdout)
+# N3 of #25: GitHub names no editor (a deleted account); the fake gh reads "-" as a null login.
+d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", "-"),))
+check("a trusted marker edited by an unnamed account -> budget none, edited by unknown",
+      d.get("next") == "none" and "edited by unknown" in d.get("why", ""), d)
 
 # A list of invisible characters names nobody: a stranger's grant must not raise the budget.
 d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")

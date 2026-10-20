@@ -51,8 +51,9 @@ if args[:2] == ["api", "graphql"]:
         chunk, more = chunk[:-1], False
     # edited-by: "<id> <login>" lines naming who edited a comment; by default its author did.
     by = dict(l.split(None, 1) for l in open(os.path.join(d, "edited-by")).read().splitlines() if l.strip()) if os.path.exists(os.path.join(d, "edited-by")) else {}
+    # A login of "-" stands for GitHub naming no editor (a deleted account): the login is null.
     nodes = [{"id": c["id"], "lastEditedAt": ("2026-10-15T00:00:00Z" if c["id"] in edited else None),
-              "editor": ({"login": by.get(c["id"], ((c.get("author") or {}).get("login")))} if c["id"] in edited else None)} for c in chunk]
+              "editor": ({"login": (lambda l: None if l == "-" else l)(by.get(c["id"], ((c.get("author") or {}).get("login"))))} if c["id"] in edited else None)} for c in chunk]
     print(json.dumps({"data": {"repository": {"pullRequest": {"comments": {
         "pageInfo": {"hasNextPage": more, "endCursor": str(start + size) if more else None}, "nodes": nodes}}}}}))
     sys.exit(0)
