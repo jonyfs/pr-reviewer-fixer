@@ -24,10 +24,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   the review loop after any push (now in its Roles table and step 1). Nothing ran it for a push the
   loop agent or a person made. `docs/HOW-IT-WORKS.md` no longer draws it as something GitHub does.
 - A rerun of `release.yml` publishes a release left as a draft, after checking that the draft targets
-  the commit being released and attaching both files again. It attaches missing files to a
-  published release only when its tag points at the same commit, and refuses a draft whose existing
-  tag points elsewhere. Every release lookup is a plain
-  assignment, so a failed lookup stops the step instead of passing. Before, it saw `SHA256SUMS` and stopped, so v0.8.2 stayed a draft.
+  the commit being released and attaching both files again. Before, it saw `SHA256SUMS` and
+  stopped, so a draft stayed a draft; v0.8.2, left that way, is published by hand. A published
+  release that already has `SHA256SUMS` ends the run green, naming the commit it targets, with no
+  tag lookup. On every other path, creating a release included, the step looks the tag up through
+  `git/matching-refs` (exact ref only, an annotated tag followed to its commit) and refuses when
+  the tag points at another commit. A failed tag lookup stops the step instead of reading as "no
+  tag". Missing files are attached to a published release only when it targets this commit and
+  its tag points at it. The reads of the release's fields and of the tag are plain assignments, so
+  a failed read stops the step, and each refusal names what to delete before a rerun (W15, W16 of
+  #19).
 - The comment above `block_at_mismatch` in `review-cycle.sh` no longer says every caller applies
   it: only `status` calls it, and `budget` and the gate make the same comparison in Python, each
   only at the head (N1 of #18).
