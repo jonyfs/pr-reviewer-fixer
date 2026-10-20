@@ -294,6 +294,26 @@ if [ "$(cat "$W/cs/pr-fixer/SKILL.md")" = a ]; then
 else
   row "SKILL.md and skill.md in one source (case-insensitive file system here)" skip
 fi
+# A bind mount from the same file system keeps the device number, so `find -xdev` walks into it and
+# the old device comparison let the folder pass; rm -rf of the old copy then emptied the bound
+# folder. On Linux the rule reads the mount table. Mounting needs root and a mount namespace that
+# allows it (a privileged container), so elsewhere the row is skipped. The path has a space, which
+# the mount table writes as \040.
+if [ "$(uname -s)" = Linux ] && [ "$(id -u)" = 0 ] && [ -r /proc/self/mountinfo ]; then
+  mkdir -p "$W/bm data" "$W/bm dest"; echo precious >"$W/bm data/keep.txt"
+  cp -R "$SRC/pr-fixer" "$W/bm dest/"; mkdir -p "$W/bm dest/pr-fixer/references/bound"
+  if mount --bind "$W/bm data" "$W/bm dest/pr-fixer/references/bound" 2>/dev/null; then
+    r=$(ins --target "$W/bm dest" --skill pr-fixer --yes)
+    # A regressed rule moves the mount point into the set-aside copy; unmount it there too.
+    for m in "$W/bm dest/pr-fixer/references/bound" "$W/bm dest"/.pr-fixer.old.*/references/bound; do umount "$m" 2>/dev/null; done
+    check "a bind mount from the same file system inside the destination -> refused, the bound folder kept" \
+      eval '[ $r = 1 ] && grep -q "holds a mounted file system" "$W/out" && grep -q "unmount it" "$W/out" && ! grep -q "will REPLACE" "$W/out" && [ "$(cat "$W/bm data/keep.txt" 2>/dev/null)" = precious ]'
+  else
+    row "bind mount inside the destination (mount --bind not allowed here)" skip
+  fi
+else
+  row "bind mount inside the destination (needs Linux and root)" skip
+fi
 # same_or_inside walks up with dirname; on a relative path dirname settles on `.` and the walk never
 # ended. It must return at once (killed after 3 s otherwise).
 SOI="$(awk '/^same_or_inside\(\)/,/^}/' "$IN")"

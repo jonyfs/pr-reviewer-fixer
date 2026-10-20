@@ -33,7 +33,8 @@
 #
 # Whatever the path checks miss, it only ever removes a folder that looks like a copy it made. One
 # rule decides that, for the source and the destination alike: a real folder, nothing named .git in
-# any letter case at any depth, no file system mounted inside it, and exactly one SKILL.md in any
+# any letter case at any depth, no file system mounted inside it (by device, and on Linux by the mount
+# table, which also sees a bind mount from the same file system), and exactly one SKILL.md in any
 # letter case, whose frontmatter (the first `---` block) has the line `name: <skill>`, a trailing CR
 # allowed. A source skill folder that fails it is refused before any
 # change, so an install never writes a copy it would refuse to replace on the next run; an existing
@@ -43,8 +44,9 @@
 #
 # Limits: the rule cannot tell a person's edited install from a fresh one, so local edits inside an
 # installed skill folder are replaced, and a .git above the skill folder (a dotfiles repository at
-# ~/.claude, say) is not looked for. An empty file system mounted inside a skill folder is not seen
-# by the rule; removing the old copy then fails at the mount point, and the run exits 1 naming it.
+# ~/.claude, say) is not looked for. Outside Linux, a mount is found only by its device, so an empty
+# file system, or a folder mounted from the same device (a nullfs mount, say), is not seen; removing
+# the old copy then empties that folder or fails at the mount point, and the run exits 1 naming it.
 #
 # EXIT CODES. 0 = done, or a dry run. 1 = refused (bad arguments, unknown harness, a source folder
 # that is not a skill, holds a symbolic link or would not pass the rule, a path it cannot resolve, a
@@ -157,20 +159,41 @@ overlaps() { within "$1" "$2" || same_or_inside "$1" "$2"; }
 # first line is `---` and whose frontmatter, up to the next `---`, has the line `name: $2`. A trailing
 # CR is ignored on every line, so a checkout with CRLF line endings passes. A second SKILL.md in
 # another letter case is refused: copied to a case-insensitive file system, one would overwrite the
-# other. So is a file system mounted inside the folder, found as an entry that `find -xdev` does not
-# reach, since removing the folder would empty it. awk runs in the C locale, so a byte that is not
-# UTF-8 in the frontmatter is read as a byte and not refused as an error. On failure it returns 1 with
-# the reason in WHY.
-WHY=""
+# other. So is a file system mounted inside the folder, since removing the folder would empty it. A
+# mount is found two ways: as an entry that `find -xdev` does not reach (another device), and on
+# Linux as a mount point under the folder in /proc/self/mountinfo, which also finds a bind mount from
+# the same file system, whose device `-xdev` cannot tell apart. awk decodes the octal escapes
+# mountinfo writes for a space, a tab, a newline and a backslash (\040 and so on), and takes the
+# folder's path from the environment, which, unlike -v, leaves backslashes alone. awk runs in
+# the C locale, so a byte that is not UTF-8 in the frontmatter is read as a byte and not refused as an
+# error. On failure it returns 1 with the reason in WHY, and HINT holds the step to take when the
+# stock advice (move the folder away) is not it.
+WHY="" HINT=""
 looks_like_install() {
-  local d="$1" s="$2" gitp all one
-  WHY=""
+  local d="$1" s="$2" gitp all one mnt
+  WHY="" HINT=""
   if [ -L "$d" ]; then WHY="is a symbolic link"; return 1; fi
   [ -d "$d" ] || { WHY="is not a folder"; return 1; }
   gitp="$(find "$d" -iname .git -print -quit 2>/dev/null)" || { WHY="cannot be read in full"; return 1; }
   [ -z "$gitp" ] || { WHY="is or holds a repository ($gitp, a .git), which an install never is"; return 1; }
   all="$(find "$d" 2>/dev/null | wc -l)"; one="$(find "$d" -xdev 2>/dev/null | wc -l)"
-  [ "$all" = "$one" ] || { WHY="holds a mounted file system, which an install never does"; return 1; }
+  [ "$all" = "$one" ] || { WHY="holds a mounted file system, which an install never does"; HINT="unmount it first"; return 1; }
+  if [ -r /proc/self/mountinfo ]; then
+    mnt="$(MI_DIR="$d" LC_ALL=C awk '
+      function dec(s,  o, i, c) {
+        o = ""
+        for (i = 1; i <= length(s); i++) {
+          c = substr(s, i, 1)
+          if (c == "\\" && substr(s, i + 1, 3) ~ /^[0-7][0-7][0-7]$/) {
+            o = o sprintf("%c", substr(s, i + 1, 1) * 64 + substr(s, i + 2, 1) * 8 + substr(s, i + 3, 1)); i += 3
+          } else o = o c
+        }
+        return o
+      }
+      { m = dec($5) } index(m, ENVIRON["MI_DIR"] "/") == 1 { print m; exit }' /proc/self/mountinfo 2>/dev/null)" \
+      || { WHY="cannot be checked for mounts (/proc/self/mountinfo unreadable)"; return 1; }
+    [ -z "$mnt" ] || { WHY="holds a mounted file system ($mnt), which an install never does"; HINT="unmount it first"; return 1; }
+  fi
   if [ -L "$d/SKILL.md" ] || [ ! -f "$d/SKILL.md" ]; then WHY="does not look like an install of $s (no SKILL.md)"; return 1; fi
   [ "$(find "$d" -mindepth 1 -maxdepth 1 -iname SKILL.md | wc -l)" -eq 1 ] \
     || { WHY="holds more than one SKILL.md in different letter case, which one copy cannot keep apart"; return 1; }
@@ -226,7 +249,7 @@ for s in "${SKILLS[@]}"; do
   case "$dest" in */pr-reviewer|*/pr-fixer) ;; *) die "refusing to replace '$dest'" ;; esac
   if [ -L "$dest" ]; then die "$DEST_ROOT/$s is a symbolic link; remove it yourself first"; fi
   [ -e "$dest" ] || continue
-  looks_like_install "$dest" "$s" || die "$DEST_ROOT/$s $WHY, so it is never replaced; move it away yourself first (and clone outside the skills folder)"
+  looks_like_install "$dest" "$s" || die "$DEST_ROOT/$s $WHY, so it is never replaced; ${HINT:-move it away yourself first (and clone outside the skills folder)}"
 done
 
 echo "install: skills  ${SKILLS[*]}"

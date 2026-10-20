@@ -14,9 +14,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `LC_ALL=C`.
 - A file system mounted inside a destination skill folder had its files removed with the old copy,
   and the `chmod` before the removal crossed into it. The rule now refuses a folder that holds a
-  mount point (an entry `find -xdev` does not reach), and the `chmod` runs with `-xdev`. An empty
-  mounted file system is not seen; removing the old copy then fails at the mount point and the run
-  exits 1, naming it.
+  mount point, and the `chmod` runs with `-xdev`. A mount point is an entry `find -xdev` does not
+  reach and, on Linux, a mount target under the folder in `/proc/self/mountinfo`, so a bind mount
+  from the same file system, which keeps the device number, is refused too instead of being emptied
+  with the old copy. The refusal says to unmount it first, not to move the folder away. Outside
+  Linux an empty mounted file system, or a folder mounted from the same device, is not seen;
+  removing the old copy then empties it or fails at the mount point, and the run exits 1, naming it.
 - A source holding both `SKILL.md` and `skill.md`, possible on a case-sensitive file system, passed
   the rule, and the copy into a case-insensitive destination kept only one of them. The rule now
   refuses more than one `SKILL.md` in any letter case.
@@ -35,7 +38,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - The install suite checks that the copy of a read-only source folder is writable (the row passed
   with that `chmod` removed), and adds rows for a frontmatter byte that is not UTF-8 under
   `C.UTF-8`, a stage its owner cannot read, an old copy whose `SKILL.md` cannot be removed, and
-  `SKILL.md` beside `skill.md` (skipped on a case-insensitive file system).
+  `SKILL.md` beside `skill.md` (skipped on a case-insensitive file system), and a bind mount from
+  the same file system inside the destination, at a path with a space (runs only as root on Linux,
+  in a privileged container; it fails without the mount-table check).
 - The `marker` locale row runs under `C.UTF-8`, which both macOS and glibc systems ship. On Debian 12
   (glibc 2.36) it fails with the `LC_ALL=C` line removed from `cmd_marker` and passes with it.
 
