@@ -30,6 +30,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   calls every edit an edit by a trusted login (N2 and N4 of #24). The `pr-json.py` comment and the
   `tests/budget/t.py` comment that still said an edit cannot lower the count now say it holds when
   the edit keeps the number (N1 and N3 of #24).
+- The `none` row of the step-5 table in `harness-loop.md` lists a trusted comment edited by another
+  login among the reasons (N1 of #25).
 
 ### Tests
 
