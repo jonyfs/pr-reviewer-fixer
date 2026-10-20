@@ -67,6 +67,25 @@ r=$(ins --harness claude-code --source "$W/sl" --skill pr-reviewer --yes)
 check "source skill folder that is a symlink -> refused, source untouched" \
   eval '[ $r = 1 ] && grep -q "symbolic link" "$W/out" && [ "$(cksum <"$W/sc/skills/pr-reviewer/templates/review-gate.yml")" = "$SC_TPL" ]'
 
+# A link nested inside a source skill folder is kept by `cp -R`, and the template rewrite would write
+# through it into the source: any link anywhere under the skill folder is refused before any change.
+mkdir -p "$W/nl" "$W/realtpl"; cp -R "$SRC/pr-reviewer" "$W/nl/"
+mv "$W/nl/pr-reviewer/templates/"* "$W/realtpl/"; rmdir "$W/nl/pr-reviewer/templates"; ln -s "$W/realtpl" "$W/nl/pr-reviewer/templates"
+NL_TPL="$(cksum <"$W/realtpl/review-gate.yml")"
+r=$(ins --harness claude-code --source "$W/nl" --skill pr-reviewer --yes)
+check "link nested in a source skill folder -> refused, linked template untouched" \
+  eval '[ $r = 1 ] && grep -q "symbolic link" "$W/out" && [ "$(cksum <"$W/realtpl/review-gate.yml")" = "$NL_TPL" ]'
+r=$(ins --harness claude-code --source "$W/nl" --skill pr-reviewer); check "the nested link is refused in the dry run too" eq "$r" 1
+# A destination inside the source would put a copy of the skill inside the source skill itself.
+mkdir -p "$W/n5"; cp -R "$SRC/pr-reviewer" "$SRC/pr-fixer" "$W/n5/"
+r=$(ins --source "$W/n5" --target "$W/n5/pr-reviewer" --skill pr-reviewer --yes)
+check "destination inside the source -> refused, nothing created in the source" \
+  eval '[ $r = 1 ] && grep -q "inside the source" "$W/out" && [ ! -e "$W/n5/pr-reviewer/pr-reviewer" ]'
+r=$(ins --source "$W/n5" --target "$W/n5/pr-fixer/not/yet" --skill pr-reviewer --yes)
+check "destination not yet created, inside the source -> refused" eval '[ $r = 1 ] && [ ! -e "$W/n5/pr-fixer/not" ]'
+r=$(ins --source "$W/n5" --target "$W/n5-sibling" --skill pr-reviewer --yes)
+check "destination whose name only starts like the source -> installed" eval '[ $r = 0 ] && [ -f "$W/n5-sibling/pr-reviewer/SKILL.md" ]'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

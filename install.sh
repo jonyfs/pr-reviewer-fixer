@@ -23,8 +23,8 @@
 # live. The template in the source tree is not touched.
 #
 # EXIT CODES. 0 = done, or a dry run. 1 = refused (bad arguments, unknown harness, a source folder
-# that is not a skill, a destination that is not safe to replace). It installs nothing it cannot
-# check.
+# that is not a skill or holds a symbolic link, a destination that is the source, lies inside it or
+# is not safe to replace). It installs nothing it cannot check.
 set -uo pipefail
 
 die() { echo "install: $*" >&2; exit 1; }
@@ -86,15 +86,25 @@ if [ -z "$SOURCE" ]; then SOURCE="$(cd "$(dirname "$0")" && pwd)/.agents/skills"
 SKILLS=(); case "$SKILL" in both) SKILLS=(pr-reviewer pr-fixer) ;; *) SKILLS=("$SKILL") ;; esac
 for s in "${SKILLS[@]}"; do
   [ -f "$SOURCE/$s/SKILL.md" ] || die "$SOURCE/$s/SKILL.md not found; --source must hold the skill folders"
-  # `cp -R` copies a link as a link, so the install would point into the source and the template
-  # rewrite below would edit the source's own file.
+  # `cp -R` copies a link as a link, at any depth, so the install would point into the source and
+  # the template rewrite below would edit the source's own file. Any link under the skill folder,
+  # the folder itself included, is refused.
   [ ! -L "$SOURCE/$s" ] || die "$SOURCE/$s is a symbolic link; give --source the real folder"
+  link="$(find "$SOURCE/$s" -type l -print 2>/dev/null | head -n 1)"
+  [ -z "$link" ] || die "$link is a symbolic link inside the source; replace it with the real files"
 done
+# Physical path of a folder that may not exist yet: the nearest existing parent, resolved, plus the
+# rest of the path as written.
+physical() {
+  local p="$1" rest=""
+  while [ ! -d "$p" ]; do rest="/$(basename "$p")$rest"; p="$(dirname "$p")"; done
+  echo "$(cd "$p" && pwd -P)$rest"
+}
 # Physical paths (`pwd -P`), so a destination that is a link to the source, such as
 # `.claude/skills -> ../.agents/skills`, is caught here instead of being replaced by a copy of itself.
-if [ -d "$DEST_ROOT" ] && [ "$(cd "$SOURCE" && pwd -P)" = "$(cd "$DEST_ROOT" && pwd -P)" ]; then
-  die "source and destination are the same folder"
-fi
+SRC_P="$(cd "$SOURCE" && pwd -P)"; DEST_P="$(physical "$DEST_ROOT")"
+[ "$SRC_P" != "$DEST_P" ] || die "source and destination are the same folder"
+case "$DEST_P/" in "$SRC_P/"*) die "the destination $DEST_ROOT is inside the source $SOURCE" ;; esac
 
 echo "install: skills  ${SKILLS[*]}"
 echo "install: from    $SOURCE"

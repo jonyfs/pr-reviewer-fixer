@@ -256,8 +256,8 @@ skills folder directly. Without `--yes` it only prints the plan. With `--yes` it
 installed `pr-reviewer` and `pr-fixer` folder with a fresh copy, made next to the old one and
 swapped in, so a failed copy keeps the old install and a file a newer release dropped does not stay
 behind. Before it changes anything it refuses a destination skill folder that is a symbolic link, a
-source skill folder that is one, and a destination that resolves to the source folder (for example
-`.claude/skills` linked to `.agents/skills`). For a project install
+source skill folder that is one or holds one at any depth, and a destination that resolves to the
+source folder (for example `.claude/skills` linked to `.agents/skills`) or lies inside it. For a project install
 into a folder other than `.agents/skills`, it points the installed `templates/review-gate.yml` at
 the new script path.
 

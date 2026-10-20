@@ -9,9 +9,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Fixed
 
 - An option given last with no value (`halt 7 --reason`, `install.sh --harness`, `push-guard.sh 7
-  --allow`, and every other option that takes one) made `shift 2` fail, and with no `set -e` the
-  argument loop spun forever. Each option now checks that a value follows and refuses at once,
-  naming the option: `review-cycle.sh` and `install.sh` exit 1, `push-guard.sh` exits 2.
+  --allow`, and the other options that read their value as `${2:-}`) made `shift 2` fail, and with
+  no `set -e` the argument loop spun forever. The `publish` options read `$2` under `set -u`, so
+  they did not hang but exited 1 with `$2: unbound variable`. Every option that takes a value now
+  checks that one follows and refuses at once, naming the option: `review-cycle.sh` and
+  `install.sh` exit 1, `push-guard.sh` exits 2.
 - A pull request argument that is not a number (`7x`, `#7`, a non-ASCII digit) or a second number
   was dropped by `pr-json.py` and the gate, which then read the branch's own pull request. Both now
   refuse anything but one number in ASCII digits: the gate answers inconclusive (exit 2), and every
@@ -20,8 +22,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `install.sh` resolves symbolic links before its same-folder check, so a destination such as
   `.claude/skills` linked to `.agents/skills` is refused instead of being replaced by a copy of
   itself with its template rewritten in the source tree. A source skill folder that is a symbolic
-  link is refused too, because `cp -R` would copy the link and the template rewrite would write
-  through it.
+  link, or that holds one at any depth (a linked `templates/`, say), is refused before any change,
+  because `cp -R` would copy the link and the template rewrite would write through it. A
+  destination inside the source (`--target <source>/pr-reviewer`) is refused too, by physical path,
+  instead of putting a copy of the skill inside the source skill.
 - `triage-pr.sh` compared `TRIAGE_IGNORE_CHECKS` and `FIXER_COMMIT_AUTHORS` with every space
   removed, so a check named `CI Tests` or a commit author named `Fixer Bot` never matched. Entries
   are now trimmed and compared without case, as written.
