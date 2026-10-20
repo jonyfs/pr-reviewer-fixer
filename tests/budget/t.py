@@ -119,7 +119,7 @@ check("allowlist unset: budget answers none and trusts nothing", d.get("next") =
 
 d = setup(hist([1] * 6))
 p = run(["extend", "7", "--n", "2"], d, REVIEW_MARKER_AUTHORS="")
-check("allowlist unset: extend is refused", p.returncode != 0 and len(comments_posted(d)) == 6, p.stderr)
+check("allowlist unset: extend is refused, saying the list names no login", p.returncode != 0 and len(comments_posted(d)) == 6 and "is not set or lists no login" in p.stderr, p.stderr)
 
 d = setup(hist([1] * 6))
 p = run(["halt", "7", "--reason", "no-answer"], d)
@@ -158,6 +158,14 @@ p = run(["halt", "7"], d, FAKE_LOGIN="mallory")
 pr = json.load(open(os.path.join(d, "pr.json")))
 check("halt without --reason as a login off the allowlist adds the label and posts nothing",
       p.returncode == 0 and "review:needs-human" in " ".join(l["name"] for l in pr["labels"]) and len(pr["comments"]) == 6, p.stderr)
+
+# When gh cannot say who it is signed in as, nothing that posts a marker may guess.
+for name, args, counts in (("extend", ["extend", "7", "--n", "2"], [3, 3, 2, 2, 2, 2]),
+                           ("halt --reason stop", ["halt", "7", "--reason", "stop"], [1] * 6)):
+    d = setup(hist(counts)); open(os.path.join(d, "user-fail"), "w").close()
+    p = run(args, d)
+    check(f"{name} with gh api user failing is refused and posts nothing",
+          p.returncode != 0 and len(comments_posted(d)) == 6 and "could not resolve the login" in p.stderr, p.stderr)
 
 # A list of invisible characters names nobody: a stranger's grant must not raise the budget.
 d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")

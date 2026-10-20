@@ -347,6 +347,10 @@ reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"
 r=$(FAKE_LOGIN=mallory pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
 check "publish signed in as a login off the allowlist is refused, posts nothing" \
   eval '[ $r = 1 ] && [ $(ncomments) = 0 ] && grep -q mallory "$W/out"'
+reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN)"; touch "$FAKE_DIR/user-fail"
+r=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
+check "publish when gh api user fails is refused, posts nothing" \
+  eval '[ $r = 1 ] && [ $(ncomments) = 0 ] && grep -q "could not resolve the login" "$W/out"'
 # ---- comment edits (GraphQL lastEditedAt) ------------------------------------------------------
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$GOOD_PASS]" OPEN)"
 "$RC" status 7 >/dev/null 2>&1; r0=$?
