@@ -102,7 +102,7 @@
 #                             --json comments` prints them in `author.login`. Set it to the
 #                             login the harness session publishes as (`gh api user --jq .login`).
 #                             An entry counts only if, with ASCII spaces, tabs, CR and LF trimmed,
-#                             it is ASCII letters, digits, hyphens and underscores; anything else (a BOM, a
+#                             it is ASCII letters, digits, hyphens and underscores, starting with a letter or digit; anything else (a BOM, a
 #                             no-break space) drops the entry whole. When this variable holds
 #                             anything other than ASCII whitespace, a comment supplies a marker
 #                             only if its author is a kept entry (compared case-insensitively),
@@ -346,7 +346,7 @@ positivo() { case "${1:-}" in ''|-|*[!0-9]*) return 1 ;; *[!0]*) return 0 ;; *) 
 # The marker author allowlist, the shell half. One rule, applied the same way by the node reader in
 # `parse()`, the Python readers below and gate-pr-review-state.py: split on commas, trim ASCII
 # spaces, tabs, CR and LF from each entry, and keep the entry only if what is left is a GitHub login
-# (ASCII letters, digits, hyphens and underscores, nothing else). An entry with any other character, a BOM, a
+# (ASCII letters, digits, hyphens and underscores, starting with a letter or digit, nothing else). An entry with any other character, a BOM, a
 # no-break space or a zero-width space included, is dropped whole and never repaired, because
 # "whitespace" means something different in every language and locale and an invisible character
 # once made a list that names nobody look like a list. The compare ignores case.
@@ -354,7 +354,7 @@ positivo() { case "${1:-}" in ''|-|*[!0-9]*) return 1 ;; *[!0]*) return 0 ;; *) 
 marker_authors() {
   printf '%s' "${REVIEW_MARKER_AUTHORS:-}" | LC_ALL=C awk 'BEGIN { RS = ","; n = 0 } {
     gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "")
-    if ($0 ~ /^[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-]+$/) {
+    if ($0 ~ /^[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz][0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-]*$/) {
       printf "%s%s", (n++ ? "," : ""), tolower($0) } }'
 }
 # ACTIVE means the variable holds anything at all other than ASCII whitespace. An active list that

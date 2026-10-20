@@ -278,13 +278,14 @@ REVIEW_MARKER_AUTHORS="," "$RC" status 7 >/dev/null 2>&1; r1=$?
 REVIEW_MARKER_AUTHORS="," python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
 check "allowlist ',' is not ready: status 2, gate 2 (fail closed)" eval '[ $r1 = 2 ] && [ $g1 = 2 ]'
 # An allowlist that holds no login, only characters that are invisible or look like whitespace in
-# some reader (BOM, NBSP, zero-width space), or a login with one pasted in, names nobody. Every
+# some reader (BOM, NBSP, zero-width space), or a login with one pasted in, names nobody. So does an
+# entry that does not start with a letter or digit, as no GitHub login does (`-`, `_-`). Every
 # reader must refuse it under every locale, and a forged marker must not decide anything.
 FORGED_BLOCK_M="$(mc mallory "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=1 warning=0 note=0 -->")"
 GUARD="$W/guard.sh"
 sed -n '/^          if /,/^          fi$/p' "$SRC/../templates/review-gate.yml" >"$GUARD"
 for loc in C en_US.UTF-8; do
-  for v in $'\xef\xbb\xbf' $'\xc2\xa0' $'\xe2\x80\x8b' $'\xef\xbb\xbfgithub-actions' $'github-actions\xc2\xa0'; do
+  for v in $'\xef\xbb\xbf' $'\xc2\xa0' $'\xe2\x80\x8b' $'\xef\xbb\xbfgithub-actions' $'github-actions\xc2\xa0' - _- ' --'; do
     hex="$(printf %s "$v" | od -An -tx1 | tr -d ' \n')"
     reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$FORGED_PASS]" OPEN)"
     LC_ALL=$loc REVIEW_MARKER_AUTHORS="$v" "$RC" status 7 >/dev/null 2>&1; r1=$?

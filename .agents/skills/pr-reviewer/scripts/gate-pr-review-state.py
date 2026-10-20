@@ -171,11 +171,11 @@ MARKER = re.compile(
 # session publishes as). The marker is an HTML comment, so without a list anyone who can comment
 # can post an invisible PASSED one. The rule is the one `review-cycle.sh` applies (`marker_authors`):
 # split on commas, trim ASCII spaces, tabs, CR and LF, and keep an entry only if what is left is
-# ASCII letters, digits, hyphens and underscores. Anything else, a BOM or a no-break space included, drops the
+# ASCII letters, digits, hyphens and underscores, starting with a letter or digit. Anything else, a BOM or a no-break space included, drops the
 # entry whole. The compare ignores case. With no login kept (unset, empty, whitespace, a lone comma
 # or only invisible characters) the gate has nobody to trust and answers inconclusive, which is
 # never the same as approved.
-LOGIN = re.compile(r"[A-Za-z0-9_-]+", re.ASCII)
+LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*", re.ASCII)
 
 
 def allowlist() -> set:
