@@ -95,7 +95,7 @@ sequenceDiagram
     F->>GH: fix: label review:fixing
     F->>F: reproduce, test red, fix, test green, suite
     F->>GH: push, closure comment, pr-debt block
-    GH-->>GH: stale: label back to review:pending
+    F->>GH: stale: label back to review:pending
     L->>R: dispatch for pass 2
     R->>GH: verdict PASSED, label review:passed, draft marked ready
     P->>GH: reads the verdict, merges

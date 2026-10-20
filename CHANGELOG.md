@@ -13,13 +13,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   1 arg(s)"), and the only way out was clearing labels by hand. Each state is now removed with its own
   flag, and `status` names `start` as the way out. The fake `gh` in the tests now refuses a second
   positional argument the way real `gh` does, which is why the suite never caught this.
-- The gate re-run step in `harness-loop.md` and the `review-gate.yml` template re-runs every failed or
-  cancelled run for the head SHA. Re-running only the newest run picked the green `ready_for_review`
-  run that `publish` starts on PASSED and left the red `opened` run on the pull request.
+- The gate re-run step in `harness-loop.md` and the `review-gate.yml` template re-runs every failed,
+  cancelled or timed-out run for the head SHA, one at a time, waiting for each, because the
+  workflow cancels a run in progress when another starts. Re-running only the newest run picked the
+  green `ready_for_review` run that `publish` starts on PASSED and left the red `opened` run on the
+  pull request.
 - `harness-loop.md` and the README say who runs `review-cycle.sh stale`: the fixer after its push, and
-  the review loop after any push. Nothing ran it for a push the loop agent or a person made.
-- A rerun of `release.yml` publishes a release that was left as a draft with its files attached.
-  Before, it saw `SHA256SUMS` and stopped, so v0.8.2 stayed a draft.
+  the review loop after any push (now in its Roles table and step 1). Nothing ran it for a push the
+  loop agent or a person made. `docs/HOW-IT-WORKS.md` no longer draws it as something GitHub does.
+- A rerun of `release.yml` publishes a release left as a draft, after checking that the draft targets
+  the commit being released and attaching both files again. A failed lookup stops the step instead
+  of passing. Before, it saw `SHA256SUMS` and stopped, so v0.8.2 stayed a draft.
 - The comment above `block_at_mismatch` in `review-cycle.sh` no longer says every caller applies
   it: only `status` calls it, and `budget` and the gate make the same comparison in Python, each
   only at the head (N1 of #18).

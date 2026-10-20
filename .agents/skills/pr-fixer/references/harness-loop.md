@@ -15,7 +15,7 @@ The same file ships in both skills.
 
 | Role | Who | May write |
 |---|---|---|
-| Review loop agent | The session's own agent. It owns the loop and is the only one that dispatches the other two. It reads the budget, asks the person, and never reviews or edits code itself. | Only through `review-cycle.sh` (`start`, `budget`, `extend`, `halt`) |
+| Review loop agent | The session's own agent. It owns the loop and is the only one that dispatches the other two. It reads the budget, asks the person, and never reviews or edits code itself. | Only through `review-cycle.sh` (`stale`, `start`, `budget`, `extend`, `halt`) |
 | Reviewer | A fresh-context sub-agent that follows the `pr-reviewer` skill. | Nothing in the working tree. It publishes only through `review-cycle.sh publish`. |
 | Fixer | A fresh-context sub-agent that follows the `pr-fixer` skill. | The PR branch, and the PR comments and body the skill names. |
 
@@ -64,7 +64,8 @@ A marker comment that was edited after it was created is ignored by all of them.
 
 ## The loop
 
-1. **Read the state.** `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop.
+1. **Read the state.** After a push, `review-cycle.sh stale <pr>` first (see Trigger). Then
+   `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop.
 2. **Take the cycle.** `review-cycle.sh start <pr>`.
 3. **Review.** Dispatch the reviewer sub-agent: "Follow `.agents/skills/pr-reviewer/SKILL.md` on
    pull request #N, pass P. Read-only on code. Write the report to a file outside the tree and
@@ -72,11 +73,14 @@ A marker comment that was edited after it was created is ignored by all of them.
    the skill names, one entry per finding, so the fixer reads ids and claims from it and not from
    prose. Trust markers only from `REVIEW_MARKER_AUTHORS`."
    Wait for its finish line.
-4. **Re-run the gate.** If `review-gate` is installed, re-run every failed or cancelled run for the
-   head SHA, because a comment does not start it. A head has more than one run: the one from
-   `opened` or `synchronize` failed before the verdict existed, and on PASSED the `gh pr ready` in
-   `publish` starts a `ready_for_review` run that is already green. Re-running only the newest one
-   leaves the red one on the pull request. See `templates/review-gate.yml`.
+4. **Re-run the gate.** If `review-gate` is installed, re-run every failed, cancelled or timed-out
+   run for the head SHA, because a comment does not start it. A head has more than one run: the one
+   from `opened` or `synchronize` failed before the verdict existed, and on PASSED the `gh pr ready`
+   in `publish` starts a `ready_for_review` run that is already green. Re-running only the newest
+   one leaves the red one on the pull request. The workflow cancels a run in progress when another
+   starts for the same pull request, so wait until no run for the head is queued or in progress,
+   re-run one id, wait for it to finish (`gh run watch <id>`), then list again. See
+   `templates/review-gate.yml`.
 5. **Decide.** `review-cycle.sh budget <pr>` prints `B_NEXT`:
 
    | `B_NEXT` | Do |

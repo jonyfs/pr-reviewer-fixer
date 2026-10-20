@@ -439,6 +439,17 @@ check "two states: fix -> review:fixing alone" eval '[ $r = 0 ] && [ "$(labels)"
 reset "$(mk 7 $A '[{"name":"review:pending"},{"name":"review:running"}]' '[]' OPEN)"
 r=$(pub --verdict PASSED --pass 1 --sha $A --critical 0 --warning 0 --note 0)
 check "two states: publish PASSED -> review:passed alone" eval '[ $r = 0 ] && [ "$(labels)" = "review:passed" ]'
+reset "$(mk 7 $A '[{"name":"review:pending"},{"name":"review:running"}]' '[]' OPEN)"
+r=$(pub --verdict BLOCKED --pass 1 --sha $A --critical 1 --warning 0 --note 0)
+check "two states: publish BLOCKED -> review:blocked alone" eval '[ $r = 0 ] && [ "$(labels)" = "review:blocked" ]'
+reset "$(mk 7 $A '[{"name":"review:blocked"},{"name":"review:running"},{"name":"review:needs-human"}]' '[]' OPEN)"
+"$RC" start 7 >"$W/out" 2>&1; r=$?
+check "two states with review:needs-human: start -> review:running alone" eval '[ $r = 0 ] && [ "$(labels)" = "review:running" ]'
+reset "$(mk 7 $A "$TWO" '[]' OPEN)"
+gh pr edit 7 --add-label review:running --remove-label review:blocked review:running >"$W/out" 2>&1; r=$?
+check "fake gh refuses a second positional argument to pr edit, as real gh does" eval '[ $r = 1 ] && grep -q "accepts at most 1 arg(s), received 2" "$W/out"'
+gh pr edit 7 -t x --base main --add-label review:running --remove-label review:blocked >"$W/out" 2>&1; r=$?
+check "fake gh pr edit: flags that take a value are not counted as positional" eval '[ $r = 0 ]'
 # ---- block_at in the marker: a reader with another setting does not judge it ----------------------
 lastbody() { python3 -I -c "import json,sys;print(json.load(open(sys.argv[1]))[\"comments\"][-1][\"body\"])" "$FAKE_DIR/pr.json" | head -1; }
 r=$(REVIEW_BLOCK_AT=warning bp --verdict BLOCKED --critical 0 --warning 2)
