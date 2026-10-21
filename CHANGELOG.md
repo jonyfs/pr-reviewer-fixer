@@ -22,9 +22,9 @@ Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items
   assignment: a `password` or `passwd` key given a quoted value of eight or more characters, or, at
   the start of a line, an unquoted one. A value that reads as code (an identifier, a dotted name, a
   call, an index), a path or a placeholder is not counted, so `password = self.password` passes.
-  The limit that follows: an unquoted value made only of letters, digits, underscores and dots
-  (`PASSWORD=` followed by one plain word) reads as an identifier and is not screened, since
-  refusing it would refuse every assignment of a variable (#12 N1).
+  The limit that follows: an unquoted value shaped like a variable name (a letter or underscore,
+  then letters, digits, underscores and dots, such as `PASSWORD=` followed by one plain word) is not
+  screened, since refusing it would refuse every assignment of a variable (#12 N1).
 - `fetch-feedback.py` items carry `minimized`, and two new actions: `skip: minimized` and
   `skip: dismissed` (#27 N5).
 - `review-cycle.sh` can be sourced: run as a command it dispatches; sourced, it only defines its

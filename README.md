@@ -500,9 +500,9 @@ sandbox and permission allowlist), and this project does not simulate it. `refer
 Stripe, Google API keys and OAuth tokens, npm, GitLab, JWT, `sk-` keys, bearer headers whose value
 is not a placeholder such as `${TOKEN}`) or a password assignment (`password = "<a quoted value of
 eight or more characters>"`, or `DB_PASSWORD=<value>` at the start of a line; a value that reads as
-code, a path or a placeholder is not counted, and neither is an unquoted value made only of
-letters, digits, underscores and dots, which cannot be told from a variable name), and tells you to
-replace it with `[REDACTED]`. It
+code, a path or a placeholder is not counted, and neither is an unquoted value shaped like a
+variable name, a letter or underscore followed by letters, digits, underscores and dots), and tells
+you to replace it with `[REDACTED]`. It
 does not rewrite the report, and it does not screen high-entropy strings, because a commit SHA would
 always match. `lint-report` applies the same screen, and `review-cycle.sh screen --file <file>`
 applies it to any other text an agent posts: the fixer screens its closure comment and the new PR
