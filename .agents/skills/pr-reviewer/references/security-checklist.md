@@ -5,7 +5,7 @@ Tags: [#pr #review #security #owasp #reference]
 
 # Security Review Checklist
 
-Run this pass on every review. A confirmed, exploitable hit is a **CRITICAL** finding; a hit with no demonstrable path is a WARNING. Never report a hit you cannot trace to the diff.
+Run this pass on every review. A confirmed, exploitable hit is a **CRITICAL** finding; a hit with no demonstrable path is a WARNING. Never report a hit you cannot trace to the diff. Changes to CI or agent configuration have their own section below.
 
 - **Injection**: SQL/NoSQL/OS-command/LDAP: parameterized queries / prepared statements only; no
   string-built queries; ORM used safely.
@@ -24,6 +24,36 @@ Run this pass on every review. A confirmed, exploitable hit is a **CRITICAL** fi
 - **Dependency CVEs**: no known-vulnerable versions; new deps pinned and verified; run SCA where available.
 - **Errors / logging**: no sensitive data leaked in errors or logs; fail closed.
 - **Web**: CSRF tokens, secure cookie flags, security headers, safe CORS.
+
+## CI, Workflow and Agent Configuration
+
+A change to `.github/workflows/**`, `.github/actions/**`, an `action.yml`, CODEOWNERS, a Dockerfile
+or the agent configuration (`.agents/skills/**`, `.claude/**`, `.mcp.json`) changes what runs with
+the repository's tokens, or what an agent obeys. `scripts/path-floor.sh` makes security mandatory at
+`max` for these paths. Check each one:
+
+- **`pull_request_target` and `workflow_run`**: they run with a write token and the secrets, in the
+  base repository's context. Checking out or running the pull request's code there (`ref:
+  ${{ github.event.pull_request.head.sha }}`, `head.ref`, a build or test step on that tree) is a
+  "pwn request": anyone who can open a pull request runs code with those credentials. CRITICAL when
+  the checkout and an execution step both appear.
+- **Expression injection**: `${{ github.event.* }}` fields an outsider controls (issue and pull
+  request title and body, comment body, branch name `head_ref`, commit message, review body, label
+  name) expanded inside `run:` or an `actions/github-script` `script:` become shell or JavaScript.
+  Pass them through `env:` and quote the variable. CRITICAL when the event can be triggered by
+  someone without write access.
+- **Unpinned actions**: a third-party `uses:` that names a tag or branch (`@v4`, `@main`) runs
+  whatever that ref points to later. Pin it to a full 40-character commit SHA with the version in a
+  comment. A local action (`./...`) and a `docker://` image pinned by digest are fine. WARNING by
+  default; CRITICAL when the job holds a write token or secrets.
+- **`permissions`**: a workflow with no `permissions:` block inherits the repository default, which
+  can be write-all. Require an explicit, least-privilege block at the workflow or job level; flag a
+  new `write` scope, `id-token: write`, or `permissions: write-all` that the job does not need.
+- **Secrets and tokens**: no secret printed, echoed into a file the job uploads, or passed to a step
+  that runs pull request code; `persist-credentials: false` on a checkout of untrusted code.
+- **Agent configuration**: a new or widened tool permission, hook, MCP server or skill instruction
+  is a change to what an agent may do. Read it as code: what can it run, read or post, and on whose
+  behalf?
 
 ## Mechanical Floor: Committed Credentials
 

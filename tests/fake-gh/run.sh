@@ -914,6 +914,63 @@ LC_ALL=C.UTF-8 "$RC" marker --author github-actions "$W/m1.txt" >/dev/null 2>&1;
 LC_ALL=C.UTF-8 "$RC" marker --author github-actions "$W/m2.txt" >/dev/null 2>&1; r2=$?
 check "marker: a dotless i or a long s does not fold to ASCII (no marker, rc 1)" eval '[ $r1 = 1 ] && [ $r2 = 1 ]'
 
+# ---- 0.14.0: the path floor (I50) ------------------------------------------------------------------
+PF="$(cd "$SRC" && pwd)/path-floor.sh"
+pg="$W/pfrepo"; rm -rf "$pg"; mkdir -p "$pg"
+( cd "$pg" && git init -q && git config user.email t@t && git config user.name t \
+  && mkdir -p src docs && echo a >src/a.ts && echo a >.github-not && git add -A && git commit -qm base \
+  && mkdir -p .github/workflows .github/actions/x .agents/skills/s .claude db/migrations sub lib/Auth \
+  && echo x >.github/workflows/ci.yml && echo x >.github/actions/x/action.yml && echo x >CODEOWNERS \
+  && echo x >.agents/skills/s/SKILL.md && echo x >.claude/settings.json && echo x >.mcp.json \
+  && echo x >Dockerfile && echo x >sub/action.yaml && echo x >db/migrations/001.sql && echo x >lib/Auth/token.py \
+  && echo x >src/crypto.ts && echo x >package.json && echo x >requirements-dev.txt && echo x >go.sum \
+  && echo x >docs/authors.md && echo x >src/b.ts && git add -A && git commit -qm change \
+  && git mv src/a.ts .github/workflows/moved.yml && git commit -qm move ) >/dev/null 2>&1
+( cd "$pg" && "$PF" HEAD~2 HEAD ) >"$W/pf.out" 2>&1; r=$?
+pfhas() { grep -qxF "$1" "$W/pf.out"; }
+check "path-floor: workflows, actions, CODEOWNERS, skills, .claude, .mcp.json, Dockerfile, action.yaml -> security max (I50)" \
+  eval '[ $r = 0 ] && pfhas "security max .github/workflows/ci.yml" && pfhas "security max .github/actions/x/action.yml" && pfhas "security max CODEOWNERS" && pfhas "security max .agents/skills/s/SKILL.md" && pfhas "security max .claude/settings.json" && pfhas "security max .mcp.json" && pfhas "security max Dockerfile" && pfhas "security max sub/action.yaml"'
+check "path-floor: a migration -> security and data-integrity; auth and crypto -> security max (I50)" \
+  eval 'pfhas "security standard db/migrations/001.sql" && pfhas "data-integrity standard db/migrations/001.sql" && pfhas "security max lib/Auth/token.py" && pfhas "security max src/crypto.ts"'
+check "path-floor: manifests and lockfiles -> dependencies (I50)" \
+  eval 'pfhas "dependencies standard package.json" && pfhas "dependencies standard requirements-dev.txt" && pfhas "dependencies standard go.sum"'
+check "path-floor: an ordinary file and authors.md summon nothing (I50)" eval '! grep -q "src/b.ts\|authors.md" "$W/pf.out"'
+check "path-floor: a rename into .github/workflows counts its new path and its old one is listed by --no-renames (I50)" \
+  eval '( cd "$pg" && "$PF" HEAD~1 HEAD ) | grep -qxF "security max .github/workflows/moved.yml"'
+( cd "$pg" && "$PF" HEAD~2 nope ) >/dev/null 2>&1; r=$?
+check "path-floor: git cannot resolve a commit -> 2 (I50)" eq "$r" 2
+printf 'diff --git a/.github/workflows/x.yml b/.github/workflows/y.yml\nsimilarity index 90%%\nrename from .github/workflows/x.yml\nrename to docs/y.yml\ndiff --git a/img.png b/img.png\nBinary files a/img.png and b/img.png differ\ndiff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1 +1,2 @@\n x\n+++ b/.mcp.json\n' >"$W/pf.patch"
+"$PF" --diff "$W/pf.patch" >"$W/pf.out" 2>&1; r=$?
+check "path-floor --diff: a rename's old path counts; a hunk line that reads like a header does not (I50)" \
+  eval '[ $r = 0 ] && pfhas "security max .github/workflows/x.yml" && pfhas "dependencies standard package.json" && ! grep -q mcp "$W/pf.out"'
+printf 'diff --git "a/x y" "b/x z"\nold mode 100644\nnew mode 100755\n' >"$W/pf2.patch"
+"$PF" --diff "$W/pf2.patch" >/dev/null 2>&1; r=$?
+check "path-floor --diff: a section that names no readable path -> 2, the floor is unknown (I50)" eq "$r" 2
+"$PF" --diff "$W/missing.patch" >/dev/null 2>&1; r=$?
+check "path-floor --diff: an unreadable diff -> 2 (I50)" eq "$r" 2
+printf 'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n--- a/.github/workflows/ci.yml\n+++ b/.github/workflows/ci.yml\n@@ -1 +1,2 @@\n x\n+y\ndiff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1 +1,2 @@\n x\n+y\n' >"$W/fl.patch"
+lf() { printf '## Review\n\n### Coverage note\n%sDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 1}\nfindings:\n  - id: N1\n    severity: NOTE\n    file: package.json\n    line: 2\n    claim: "x"\n```\n' "$1" >"$W/lf.md"; }
+lf ''; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: a workflow and a manifest in the diff, no Mandatory units line -> 1, it names both (I50)" \
+  eval '[ $r = 1 ] && grep -q "dependencies, security (max) mandatory" "$W/out"'
+lf 'Mandatory units: security (max): run; dependencies: run\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: each mandatory unit listed as run, security at max -> 0 (I50)" eq "$r" 0
+lf '- **Mandatory units:** `security (max): run`, `dependencies: run (deep)`\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: the line as a bold list item with code spans -> 0 (I50)" eq "$r" 0
+lf 'Mandatory units: security: run; dependencies: run\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: security listed without (max) where the floor says max -> 1 (I50)" \
+  eval '[ $r = 1 ] && grep -q "must run at max effort" "$W/out"'
+lf 'Mandatory units: security (max): run; dependencies: declined, docs only\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: a mandatory unit listed as declined -> 1, a diff cannot argue it away (I50)" \
+  eval '[ $r = 1 ] && grep -q "dependencies (package.json) is not listed as run" "$W/out"'
+lf 'Mandatory units: security (max): not run; dependencies: run\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: \"not run\" is not run -> 1 (I50)" eq "$r" 1
+lr 1 src/a.ts 11; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11 @@\n x\n' >"$W/d.patch"
+"$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: no mandatory unit in the diff, no Mandatory units line -> 0, as before (I50)" eq "$r" 0
+"$RC" lint-report --report "$W/lf.md" --diff "$W/pf2.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: path-floor cannot read the diff's paths -> 2 (I50)" eval '[ $r = 2 ] && grep -q "mandatory units are unknown" "$W/out"'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

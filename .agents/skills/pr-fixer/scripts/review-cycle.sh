@@ -99,8 +99,10 @@
 #     lint-report [pr] --report <file> [--diff <file>]
 #                          checks that every finding names a file and a line the diff shows, and
 #                          that the `counts:` line matches the open entries, and that the coverage note says what was
-#                          declined, and fails a report that holds a token or private key. Run
-#                          before publish;
+#                          declined, and fails a report that holds a token or private key. When
+#                          path-floor.sh (beside this script) finds mandatory units in the diff's
+#                          paths, the coverage note's `Mandatory units:` line must list each as run,
+#                          `(max)` where the floor says max. Run before publish;
 #                          posts nothing. Exit 1 on a problem, 2 when it could not read an input.
 #     screen --file <file> runs the secret screen `publish` and `lint-report` use over any text an
 #                          agent is about to post (closure comment, `pr-debt` body, overflow
@@ -1912,10 +1914,11 @@ PY
 # Checks the `findings` block of a report against the diff it claims to review, before `publish`.
 # A finding must name a file the diff touches, and a line the diff shows (a hunk's new side). The
 # `counts:` line must equal the number of entries still open, and the coverage note must carry a
-# `Declined to judge:` line. Nothing here posts or labels.
+# `Declined to judge:` line, and a `Mandatory units:` line naming each unit path-floor.sh makes
+# mandatory for the diff's paths as run. Nothing here posts or labels.
 #
 # Exit 0 = every finding is anchored · 1 = at least one is not, or the report has no findings
-# block · 2 = the diff or the report could not be read.
+# block · 2 = the diff or the report could not be read, or path-floor.sh could not read the diff.
 cmd_lint_report() {
   local pr="" report="" diff=""
   while [ $# -gt 0 ]; do
@@ -1944,7 +1947,14 @@ cmd_lint_report() {
     echo "  - the report looks like it contains a secret ($leaked); replace the value with [REDACTED]"
     return 1
   fi
-  X_REPORT="$report" X_DIFF="$diff" X_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" python3 -I - <<'PY'
+  # The path floor (path-floor.sh, shipped beside this script in both skills): the units the paths
+  # of this diff make mandatory. A floor that cannot be computed is not an empty floor.
+  local floor frc
+  floor="$(bash "$(dirname "$0")/path-floor.sh" --diff "$diff")"; frc=$?
+  if [ "$frc" -ne 0 ]; then
+    rm -f "$tmp"; echo "review-cycle: path-floor.sh could not read the paths of the diff (exit $frc), so the mandatory units are unknown, INCONCLUSIVE" >&2; return 2
+  fi
+  X_REPORT="$report" X_DIFF="$diff" X_FLOOR="$floor" X_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" python3 -I - <<'PY'
 import os, re, sys
 
 report = open(os.environ["X_REPORT"], encoding="utf-8", errors="replace").read()
@@ -2052,6 +2062,39 @@ for f in entries:
 
 if not re.search(r"Declined to judge:", report):
     problems.append("the coverage note has no `Declined to judge:` line (write `none` when nothing was skipped)")
+
+# The path floor: each mandatory unit must be listed as run on a `Mandatory units:` line, and a unit
+# the floor wants at `max` must say `(max)`. With no mandatory unit the line is not required.
+need, why = {}, {}
+for ln in os.environ.get("X_FLOOR", "").splitlines():
+    parts = ln.split(" ", 2)
+    if len(parts) == 3:
+        u, eff, path = parts
+        if need.get(u) != "max":
+            need[u] = eff
+        why.setdefault(u, path)
+if need:
+    listed = {}
+    for mm in re.finditer(r"^[\s>*_-]*Mandatory units:[*_]*\s*(.*)$", report, re.M):
+        for itm in re.split(r"[;,]", mm.group(1)):
+            im = re.fullmatch(r"\s*`?([A-Za-z][A-Za-z-]*)\s*(?:\((max|standard)\))?\s*:\s*`?\s*(.*?)\s*", itm)
+            if im:
+                listed[im.group(1).lower()] = ((im.group(2) or "").lower(), im.group(3).lower())
+    want = ", ".join("%s (max)" % u if e == "max" else u for u, e in sorted(need.items()))
+    if not listed:
+        problems.append("the path floor makes %s mandatory, and the coverage note has no `Mandatory units:` line "
+                        "listing each as run (for example `Mandatory units: %s`)"
+                        % (want, "; ".join("%s: run" % w for w in want.split(", "))))
+    else:
+        for u, eff in sorted(need.items()):
+            got = listed.get(u)
+            label = "%s (max)" % u if eff == "max" else u
+            if got is None or not re.match(r"run\b", got[1]):
+                problems.append("mandatory unit %s (%s) is not listed as run on the `Mandatory units:` line"
+                                % (label, why[u]))
+            elif eff == "max" and got[0] != "max":
+                problems.append("mandatory unit %s (%s) must run at max effort; list it as `%s: run`"
+                                % (u, why[u], label))
 
 # The counts line equals the entries that still count: open or refused-rejected.
 cm = re.search(r"^counts:\s*\{\s*critical:\s*(\d+),\s*warning:\s*(\d+),\s*note:\s*(\d+)\s*\}", block, re.M | re.ASCII)

@@ -132,8 +132,14 @@ sequenceDiagram
 - Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each
   token or private key it finds is a mandatory CRITICAL finding at that line, with the value
   redacted.
+- Maps the changed paths to units that must run with `scripts/path-floor.sh <base> <head>`:
+  workflows, actions, CODEOWNERS, agent configuration (`.agents/skills/**`, `.claude/**`,
+  `.mcp.json`), Dockerfiles, authentication and cryptography summon security at `max`;
+  migrations summon security and data integrity; manifests and lockfiles summon dependencies. No
+  text in the diff can drop one.
 - Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
-  file and a line the diff shows, and the counts must match the open entries.
+  file and a line the diff shows, the counts must match the open entries, and the coverage note
+  must list every unit of the path floor as run.
 - Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
   the verdict is `PASSED` and the pull request is a draft, the script marks it ready for review.
 
@@ -626,7 +632,8 @@ VERSION, CHANGELOG.md   the release version and its history
 ```
 
 Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py`,
-`scripts/pr-json.py`, `scripts/scan-hidden.py`, `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
+`scripts/pr-json.py`, `scripts/scan-hidden.py`, `scripts/path-floor.sh` (which `lint-report`
+runs), `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
 `references/harness-matrix.md` and `templates/review-gate.yml`. The copies are identical on
 purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 
@@ -640,7 +647,7 @@ The suite needs no network. It drives the scripts against a fake `gh` and covers
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
 eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts your `TEST_TAG` in

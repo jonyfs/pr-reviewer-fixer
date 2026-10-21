@@ -135,7 +135,11 @@ flowchart TD
    beats generic practice, a rule a linter owns is never a finding, and a comment someone already
    made is never repeated. Before the review starts, `review-cycle.sh screen --diff <base> <head>`
    screens the lines the pull request adds for tokens and private keys; each hit is a CRITICAL
-   finding at that line, with the value redacted, whatever any agent thinks of it.
+   finding at that line, with the value redacted, whatever any agent thinks of it. Then
+   `path-floor.sh <base> <head>` maps the changed paths to the units that must run: workflows,
+   actions, CODEOWNERS, agent configuration, Dockerfiles, authentication and cryptography get
+   security at `max`, migrations get security and data integrity, manifests and lockfiles get
+   dependencies. Nothing in the diff can remove one.
 2. **Acceptance conditions, pass 1 only.** Before any agent looks for defects, the reviewer writes a
    numbered list of conditions that would make this pull request pass, taken from its own stated
    purpose. Later passes check those same conditions and nothing else, so the target does not move
@@ -174,7 +178,8 @@ flowchart TD
 7. **Report and lint.** The report ends with a fenced `findings` block, one entry per finding. Then
    `review-cycle.sh lint-report` checks it: every finding must name a file the diff touches and a line
    inside a hunk, the `counts:` line must match the open entries, and the coverage note must carry a
-   `Declined to judge:` line (it says `none` when nothing was skipped). The reviewer fixes its own
+   `Declined to judge:` line (it says `none` when nothing was skipped) and, when the path floor is not
+   empty, a `Mandatory units:` line that lists each of its units as run. The reviewer fixes its own
    report until the lint passes.
 8. **Publish.** `review-cycle.sh publish` re-reads the head from GitHub and refuses a stale `--sha`,
    so a verdict can only name a commit that really was the head. It also refuses a `BLOCKED` with no
@@ -327,6 +332,7 @@ never read as "reviewed".
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
 | `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi and tag characters, HTML comments other than the markers, `[//]: #` link references, `<details>`, invisible HTML) in the diff, the pull request text and the commit messages, and with `--feedback-json` in the fixer's comment work list, as JSON. It strips nothing. |
+| `path-floor.sh` | Read-only, both skills. Maps the changed paths to the review units that must run, and `lint-report` runs it over the diff it checks. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
 | `fetch-feedback.py` | Read-only, fixer only. Every review thread, review body and issue comment as one list, with author association, thread state and whether the fixer may act on it or resolve it. |
 | `push-guard.sh` | Read-only. The check the fixer passes before every push. |

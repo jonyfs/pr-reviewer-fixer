@@ -50,7 +50,7 @@ cmp -s "$ROOT/.agents/skills/pr-reviewer/scripts/review-cycle.sh" "$ROOT/.agents
   && cmp -s "$ROOT/.agents/skills/pr-reviewer/scripts/gate-pr-review-state.py" "$ROOT/.agents/skills/pr-fixer/scripts/gate-pr-review-state.py" \
   && echo "== shared scripts identical" || { echo "== shared scripts DIFFER"; fail=1; }
 # Shared reference files and the gate template ship in both skills and must stay identical.
-for f in scripts/pr-json.py scripts/scan-hidden.py references/pr-protocol.md references/harness-matrix.md references/harness-loop.md templates/review-gate.yml; do
+for f in scripts/pr-json.py scripts/scan-hidden.py scripts/path-floor.sh references/pr-protocol.md references/harness-matrix.md references/harness-loop.md templates/review-gate.yml; do
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-fixer/$f" \
     && echo "== $f identical" || { echo "== $f DIFFERS between the skills"; fail=1; }
 done

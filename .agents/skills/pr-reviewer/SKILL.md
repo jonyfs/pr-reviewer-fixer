@@ -142,7 +142,10 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
 4. **Dispatch read-only review agents in parallel.** One agent per applicable dimension, each under
    a stance (Saboteur, New Hire, Security Auditor, or Architect). Tier, model and effort per agent
    come from [references/execution-profiles.md](references/execution-profiles.md) and are passed on
-   the dispatch call, never left to inherit. Agents have no write authority.
+   the dispatch call, never left to inherit. Agents have no write authority. Run (or take from the
+   loop agent) `scripts/path-floor.sh <base> <head>`: every unit it prints is dispatched, at `max`
+   where it says `max`, whatever the diff argues, and the coverage note lists each on its
+   `Mandatory units:` line.
    [references/agents-and-dispatch.md](references/agents-and-dispatch.md). Dimensions and checks:
    [references/dimensions.md](references/dimensions.md); stances:
    [references/personas.md](references/personas.md); security:
@@ -160,8 +163,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
 8. **Publish.** Write the report (format and size rule in
    [references/report-contract.md](references/report-contract.md)), run
    `scripts/review-cycle.sh lint-report <pr> --report FILE` and fix every problem it prints (a
-   finding whose file or line the diff does not show, or a `counts:` line that disagrees with the
-   entries), then run
+   finding whose file or line the diff does not show, a `counts:` line that disagrees with the
+   entries, or a mandatory unit of the path floor not listed as run), then run
    `scripts/review-cycle.sh publish --verdict V --pass N --sha <head> --report FILE --critical C --warning W --note N [--model <id> --tier fast|standard|deep]`.
    `N` is `B_NEXT_PASS` from `scripts/review-cycle.sh budget`; `publish` refuses any other number.
    Pass `--model` and `--tier` when the harness reports the model; they are self-attested
@@ -213,7 +216,8 @@ findings block for `pr-fixer`.
 - [ ] Large changes: size warning, partitioned review, depth map, split recommended
 - [ ] Coverage note carries a `Declined to judge:` line, even when it says `none`; a PASSED never
       hides a region the review did not read
-- [ ] `lint-report` exits 0: every finding names a file and line the diff shows
+- [ ] `lint-report` exits 0: every finding names a file and line the diff shows, and every unit
+      `path-floor.sh` printed is on the `Mandatory units:` line as run
 - [ ] Marker published through the script at the current head; marker plus report under 60000 bytes
 - [ ] Every prior blocking finding is verified, refusal accepted, or refusal rejected (pass 2+)
 - [ ] Automatic run: no `--request-changes`, no `--approve`

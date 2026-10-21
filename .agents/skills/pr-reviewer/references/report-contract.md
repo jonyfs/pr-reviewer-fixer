@@ -34,7 +34,11 @@ Tags: [#pr #review #contract #reference]
  Agents dispatched with tier, and any substitution in force.
  Declined to judge: files or regions the review did not assess, each with the reason (too large,
  generated, binary, context missing, tool unavailable). Write `Declined to judge: none` when it
- read everything. Never leave the line out.>
+ read everything. Never leave the line out.
+ Mandatory units: each unit `scripts/path-floor.sh` printed for this diff, as `<unit>: run`,
+ separated by `;`, with `(max)` after a unit it printed at `max`. For example
+ `Mandatory units: security (max): run; dependencies: run`. Required whenever the floor is not
+ empty; `lint-report` refuses a report that leaves a unit out or lists it as anything but run.>
 
 ### Prior findings
 <Re-review only. Each earlier finding with one status: verified (closed, red and green re-run by
