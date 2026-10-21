@@ -21,8 +21,10 @@ Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items
 - The secret screen (`publish`, `lint-report`, `screen`, `push-guard.sh`) refuses a password
   assignment: a `password` or `passwd` key given a quoted value of eight or more characters, or, at
   the start of a line, an unquoted one. A value that reads as code (an identifier, a dotted name, a
-  call, an index), a path or a placeholder is not counted, so `password = self.password` passes
-  (#12 N1).
+  call, an index), a path or a placeholder is not counted, so `password = self.password` passes.
+  The limit that follows: an unquoted value made only of letters, digits, underscores and dots
+  (`PASSWORD=` followed by one plain word) reads as an identifier and is not screened, since
+  refusing it would refuse every assignment of a variable (#12 N1).
 - `fetch-feedback.py` items carry `minimized`, and two new actions: `skip: minimized` and
   `skip: dismissed` (#27 N5).
 - `review-cycle.sh` can be sourced: run as a command it dispatches; sourced, it only defines its
@@ -98,8 +100,10 @@ Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items
   `tests/fake-gh/run.sh` 22 (screen exit codes, placeholders, password assignments, quoted paths,
   lint-report paths and ranges, `parse()` sourced on crafted payloads, upper-case `block_at=` for
   `parse()`, `status` and the gate, two states with `review:needs-human` for `publish` and `fix`,
-  `stale` on two states). Run against v0.12.0, 11, 4, 5 and 16 of them fail; the rest pin behaviour
-  that was already right or values that must not be refused. The T3 rows were also checked against
+  `stale` on two states). Run against v0.12.0, 11 of the feedback rows, 4 of the push-guard rows,
+  5 of the scan-hidden rows and 16 fake-gh rows fail (14 new, and the 2 existing `screen` rows
+  whose expected exit changed from 1 to 2); the rest pin behaviour that was already right or values
+  that must not be refused. The T3 rows were also checked against
   a copy of the scripts with the case fold of `block_at` removed from `parse()` and the gate: they
   fail there (T3, #19 N26).
 - `tests/fake-gh/run.sh`: the section header "secrets and mentions" is now "secrets in a published
