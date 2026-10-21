@@ -648,7 +648,7 @@ purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 bash tests/run-all.sh
 ```
 
-The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
+The suite needs no network, only bash, python3, node, jq, git and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
