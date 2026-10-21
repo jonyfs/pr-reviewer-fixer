@@ -230,6 +230,67 @@ sym "an ordinary symlink" src/link evil
 r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow src/link)
 check "a symlink at a path no class covers -> ok (W3)" eq "$r" 0
 g checkout -q -f feat/x
+# W7 (0.12.0 pass 2): a link the pull request head already holds. With .claude/skills -> ../skills on
+# the base, an edit of skills/x/SKILL.md is an edit of .claude/skills/x/SKILL.md, though no pushed
+# commit names a sensitive path.
+blink() { # link target edited: the PR head adds skills/x/SKILL.md and link -> target, the fixer edits `edited`
+  g checkout -q -f -B feat/blink "$HEAD_OID"; mkdir -p "$W/repo/skills/x" "$W/repo/$(dirname "$1")"
+  echo s >"$W/repo/skills/x/SKILL.md"; ln -s "$2" "$W/repo/$1"; g add skills/x/SKILL.md "$1"; g commit -q -m "base link $1"
+  prjson OPEN feat/blink "$(g rev-parse HEAD)" false
+  echo evil >>"$W/repo/$3"; g add "$3"; g commit -q -m "fixer edits $3"
+}
+blink .claude/skills ../skills skills/x/SKILL.md
+r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
+check "a link .claude/skills -> ../skills on the base, the fixer edits its target -> refused, sensitive-path (W7)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: skills/x/SKILL.md (claude via the symlink .claude/skills)" "$W/out"'
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=claude run --findings "$W/rep.md" --allow skills/x/SKILL.md)
+check "the same with PUSH_GUARD_ALLOW_SENSITIVE=claude -> ok, the person allowed that class (W7)" eq "$r" 0
+blink .claude/skills ../skills src/a.ts
+r=$(run --findings "$W/rep.md")
+check "a link .claude/skills -> ../skills on the base, the fixer edits a file outside its target -> ok (W7)" eq "$r" 0
+blink .Claude/Skills ../SKILLS skills/x/SKILL.md
+r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
+check "the same link in other case -> refused, sensitive-path (W7)" eval '[ $r = 1 ] && grep -q "sensitive-path: skills/x/SKILL.md (claude" "$W/out"'
+blink .agents ./skills/x skills/x/SKILL.md
+r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
+check "a link at the parent .agents -> skills/x on the base, the fixer edits under it -> refused (W7)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: skills/x/SKILL.md (skills via the symlink .agents)" "$W/out"'
+# A chain: .claude/skills -> ../a and a -> skills. The edit lands at the end of the chain.
+g checkout -q -f -B feat/chain "$HEAD_OID"; mkdir -p "$W/repo/skills/x" "$W/repo/.claude"
+echo s >"$W/repo/skills/x/SKILL.md"; ln -s ../a "$W/repo/.claude/skills"; ln -s skills "$W/repo/a"
+g add skills/x/SKILL.md .claude/skills a; g commit -q -m "base chain"
+prjson OPEN feat/chain "$(g rev-parse HEAD)" false
+echo evil >>"$W/repo/skills/x/SKILL.md"; g add skills/x/SKILL.md; g commit -q -m "fixer edits through a chain"
+r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
+check "a chain .claude/skills -> ../a -> skills on the base, the fixer edits the end -> refused (W7)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: skills/x/SKILL.md (claude via the symlink .claude/skills)" "$W/out"'
+blink .claude /abs/elsewhere src/a.ts
+r=$(run --findings "$W/rep.md")
+check "a link .claude -> an absolute path on the base -> 2, it may lead back into the repository (W7)" \
+  eval '[ $r = 2 ] && grep -q "symlink .claude leads outside the repository" "$W/out"'
+blink .claude ../../outside src/a.ts
+r=$(run --findings "$W/rep.md")
+check "a link .claude -> ../../outside on the base -> 2 (W7)" eq "$r" 2
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=claude run --findings "$W/rep.md")
+check "the same with PUSH_GUARD_ALLOW_SENSITIVE=claude -> ok, nothing to follow (W7)" eq "$r" 0
+blink src/link ../skills skills/x/SKILL.md
+r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
+check "an ordinary link src/link -> ../skills on the base, the fixer edits its target -> ok (W7)" eq "$r" 0
+# A gitlink (mode 160000) at a sensitive directory moves its files to another repository.
+glink() { # path: the fixer's commit adds a gitlink at path
+  g checkout -q -f -B feat/glink "$HEAD_OID"; prjson OPEN feat/glink "$HEAD_OID" false
+  g update-index --add --cacheinfo "160000,$HEAD_OID,$1"; g commit -q -m "gitlink $1"
+}
+glink .claude
+r=$(run --findings "$W/rep.md" --allow .claude)
+check "a gitlink added at .claude, --allow'ed -> refused, sensitive-path (W7)" eval '[ $r = 1 ] && grep -q "sensitive-path: .claude (gitlink over claude)" "$W/out"'
+glink .github
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions,codeowners run --findings "$W/rep.md" --allow .github)
+check "a gitlink at .github with every class it covers allowed -> ok (W7)" eq "$r" 0
+glink src/sub
+r=$(run --findings "$W/rep.md" --allow src/sub)
+check "a gitlink at a path no class covers -> ok (W7)" eq "$r" 0
+g checkout -q -f feat/x
 
 for opt in --findings --allow; do
   (cd "$W/repo" && perl -e 'alarm shift; exec @ARGV' 5 "$PG" 7 "$opt") >"$W/out" 2>&1; r=$?

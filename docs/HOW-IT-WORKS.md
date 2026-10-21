@@ -266,8 +266,9 @@ flowchart TD
    refused. The lines those commits add go through the same secret screen as a verdict, and a
    token or private key refuses the push (the fixer already screens each commit with
    `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows, actions,
-   CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, or a symlink at one of them or at a
-   parent such as `.claude` or `.agents`) is refused even when a finding names it, and the finding goes to a person, unless the person opted that class in with
+   CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, a symlink or gitlink at one of them
+   or at a parent such as `.claude` or `.agents`, or the target of a symlink the branch already
+   holds there, such as `skills/` under `.claude/skills -> ../skills`) is refused even when a finding names it, and the finding goes to a person, unless the person opted that class in with
    `PUSH_GUARD_ALLOW_SENSITIVE`. If the head is not writable, the fixer delivers a patch and
    replies instead.
 7. **Close the loop.** The push moves the head, and `review-cycle.sh stale` moves the label back to

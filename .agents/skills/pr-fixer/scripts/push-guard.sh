@@ -42,7 +42,13 @@
 #      sensitive directory or file, or at a parent of one (.github, .github/workflows,
 #      .github/actions, .agents, .agents/skills, .claude, docs, a CODEOWNERS path, .mcp.json), is
 #      refused the same way, since it moves the real files to a path no class covers; it passes only
-#      when every class it covers is named (.github covers workflows, actions and codeowners).
+#      when every class it covers is named (.github covers workflows, actions and codeowners). A
+#      gitlink (mode 160000, a submodule) added or moved at one of those paths is refused the same
+#      way. A symlink the pull request head or the local HEAD already holds at one of those paths
+#      (`.claude/skills -> ../skills`) makes its target sensitive too: a touched path equal to the
+#      target, or under it, is refused with the link's class, following a chain of links. A link at
+#      one of those paths whose target leaves the repository (an absolute path, `..` above the root)
+#      or loops cannot be followed, so the guard stops INCONCLUSIVE unless its class is allowed.
 #   6. no commit adds a line that looks like a token or a private key: the added lines of each
 #      commit's own changes (as in 4) go through `review-cycle.sh screen --patch`, the screen
 #      `publish` uses. The patch is made with --text --no-textconv, so a file git treats as binary
@@ -227,6 +233,76 @@ commit_paths() {
   fi
   git -c core.quotePath=false diff-tree -r --no-renames "${fmt[@]}" "$tree" "$c^{tree}" 2>/dev/null
 }
+# Links the trees already hold (check 5). Every symlink in the pull request head and in the local HEAD,
+# NUL-delimited as: link path, ok|outside|loop, and the path its target resolves to inside the
+# repository, lower case, following a chain of links. A pushed commit records the real path, so an
+# edit made through `.claude/skills -> ../skills` shows as skills/..., which no class names.
+tree_links() {
+  node -e '
+    const { execFileSync } = require("child_process");
+    const git = (a) => execFileSync("git", a, { maxBuffer: 1 << 30 });
+    const links = new Map();
+    for (const t of process.argv.slice(1)) {
+      for (const rec of git(["ls-tree", "-r", "-z", "--full-tree", t]).toString("latin1").split("\0")) {
+        const m = /^120000 blob ([0-9a-f]+)\t([\s\S]+)$/.exec(rec);
+        if (!m || links.has(m[2])) continue;
+        links.set(m[2], git(["cat-file", "blob", m[1]]).toString("latin1"));
+      }
+    }
+    const low = new Map([...links].map(([p, t]) => [p.toLowerCase(), t]));
+    const resolve = (p) => {
+      let parts = p.split("/"), out = [], hops = 0;
+      while (parts.length) {
+        const c = parts.shift();
+        if (c === "" || c === ".") continue;
+        if (c === "..") { if (!out.length) return ["outside", ""]; out.pop(); continue; }
+        out.push(c.toLowerCase());
+        const t = low.get(out.join("/"));
+        if (t === undefined) continue;
+        if (++hops > 40) return ["loop", ""];
+        if (t.startsWith("/") || t.includes("\0")) return ["outside", ""];
+        out.pop(); parts = t.split("/").concat(parts);
+      }
+      return ["ok", out.join("/")];
+    };
+    for (const [p, t] of links) {
+      const dir = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
+      const [st, r] = t.startsWith("/") || t.includes("\0") ? ["outside", ""] : resolve(dir + "/" + t);
+      process.stdout.write(Buffer.from(p + "\0" + st + "\0" + r + "\0", "latin1"));
+    }
+  ' "$@"
+}
+# A sensitive link's target, its classes not all allowed: LINK_PFX (lower case, "" is the whole
+# repository), LINK_CLS and LINK_SRC, index for index.
+LINK_PFX=() LINK_CLS=() LINK_SRC=()
+if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
+  LINKS="$(mktemp)"
+  tree_links "$HEAD_OID" HEAD >"$LINKS" 2>/dev/null \
+    || { rm -f "$LINKS"; echo "push-guard: could not list the symlinks in the trees, INCONCLUSIVE" >&2; exit 2; }
+  while IFS= read -r -d '' L && IFS= read -r -d '' st && IFS= read -r -d '' R; do
+    cls="$(symlink_classes "$L")"; [ -n "$cls" ] || cls="$(sensitive_class "$L")"; [ -n "$cls" ] || continue
+    need=""
+    for k in $cls; do case "$SENS_OK" in *",$k,"*) ;; *) need=1 ;; esac; done
+    [ -n "$need" ] || continue
+    if [ "$st" != ok ]; then
+      rm -f "$LINKS"
+      echo "push-guard: the symlink $(printf '%q' "$L") leads outside the repository or loops ($st), so what it makes sensitive is unknown, INCONCLUSIVE" >&2; exit 2
+    fi
+    LINK_PFX+=("$R"); LINK_CLS+=("$cls"); LINK_SRC+=("$L")
+  done <"$LINKS"
+  rm -f "$LINKS"
+fi
+# Whether a touched path is a sensitive link's target or under it; sets LINK_HIT for the reason.
+through_link() {
+  local p i n="${#LINK_PFX[@]}"
+  p="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  for ((i = 0; i < n; i++)); do
+    if [ -z "${LINK_PFX[$i]}" ] || [ "$p" = "${LINK_PFX[$i]}" ] || case "$p" in "${LINK_PFX[$i]}"/*) true ;; *) false ;; esac; then
+      LINK_HIT="${LINK_CLS[$i]} via the symlink ${LINK_SRC[$i]}"; return 0
+    fi
+  done
+  return 1
+}
 PATCH="$(mktemp)"; trap 'rm -f "$SCOPE" "$PATCH"' EXIT
 if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
   while IFS= read -r c; do
@@ -234,13 +310,13 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     PATHS="$(mktemp)"
     if ! commit_paths "$c" >"$PATHS"; then REASONS+=("$(cat "$PATHS")"); rm -f "$PATHS"; continue; fi
     commit_paths "$c" patch >>"$PATCH" || true
-    # Symlinks this commit adds or changes, checked against symlink_classes (check 5).
+    # Symlinks and gitlinks this commit adds or changes, checked against symlink_classes (check 5).
     while IFS= read -r -d '' meta && IFS= read -r -d '' f; do
       set -- $meta
-      [ "${2:-}" = 120000 ] || continue
-      cls="$(symlink_classes "$f")"; [ -n "$cls" ] || continue
+      case "${2:-}" in 120000) kind=symlink ;; 160000) kind=gitlink ;; *) continue ;; esac
+      cls="$(symlink_classes "$f")"; [ -n "$cls" ] || cls="$(sensitive_class "$f")"; [ -n "$cls" ] || continue
       for k in $cls; do
-        case "$SENS_OK" in *",$k,"*) ;; *) SENS+=("$f (symlink over $cls)"); break ;; esac
+        case "$SENS_OK" in *",$k,"*) ;; *) SENS+=("$f ($kind over $cls)"); break ;; esac
       done
     done < <(commit_paths "$c" raw 2>/dev/null)
     while IFS= read -r -d '' f; do
@@ -250,6 +326,7 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
       if [ -n "$cls" ]; then
         case "$SENS_OK" in *",$cls,"*) ;; *) SENS+=("$f ($cls)"); continue ;; esac
       fi
+      if through_link "$f"; then SENS+=("$f ($LINK_HIT)"); continue; fi
       in_scope "$f" && continue
       is_test "$f" && continue
       OUT+=("$f")

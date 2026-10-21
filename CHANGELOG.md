@@ -65,6 +65,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   parent of one (`.claude -> evil`, `.agents -> ag`, `.github/workflows -> ../ci`), which moved the
   real files to a path no class covers. It passes only when every class the path covers is named
   in `PUSH_GUARD_ALLOW_SENSITIVE` (#27 W3).
+- `push-guard.sh` check 5 also follows the symlinks the pull request head and the local HEAD
+  already hold at a sensitive path or a parent of one: with `.claude/skills -> ../skills` on the
+  base, an edit of `skills/x/SKILL.md` is refused as `claude`, through a chain of links too. Such a
+  link that leaves the repository or loops stops the guard INCONCLUSIVE (exit 2) unless its class
+  is allowed. A gitlink (mode 160000) added at a sensitive path or parent is refused like a
+  symlink (#27 W7).
 - The comment lane prescribes `Escalated (C1): <what the person must decide>` for an escalation,
   so `fetch-feedback.py` reads it back as the fixer's own reply instead of a work order (#27 W5).
 - In a resolved thread, a comment after the fixer's last reply keeps its own action (`act`, or
