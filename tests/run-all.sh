@@ -14,10 +14,13 @@ start "review-cycle.sh and gate (reviewer copy)" env TEST_TAG=rev bash "$HERE/fa
 start "review-cycle.sh and gate (fixer copy)"    env TEST_TAG=fix bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "triage-pr.sh"                             bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "push-guard.sh"                             env TEST_TAG=run bash "$HERE/push-guard/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "fetch-feedback.py"                        env TEST_TAG=run python3 "$HERE/feedback/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "review eval scorer"                       env TEST_TAG=run bash "$HERE/eval/selftest.sh"
 start "install.sh"                                env TEST_TAG=run bash "$HERE/install/run.sh" "$ROOT/install.sh"
 start "cycle budget and extend (reviewer copy)"  env TEST_TAG=rev python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "cycle budget and extend (fixer copy)"     env TEST_TAG=fix python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "scan-hidden.py (reviewer copy)"          env TEST_TAG=rev python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "scan-hidden.py (fixer copy)"             env TEST_TAG=fix python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "check-version.sh (reviewer copy)"         env TEST_TAG=rev bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "check-version.sh (fixer copy)"            env TEST_TAG=fix bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 wait "${pids[@]}"
@@ -41,7 +44,7 @@ cmp -s "$ROOT/.agents/skills/pr-reviewer/scripts/review-cycle.sh" "$ROOT/.agents
   && cmp -s "$ROOT/.agents/skills/pr-reviewer/scripts/gate-pr-review-state.py" "$ROOT/.agents/skills/pr-fixer/scripts/gate-pr-review-state.py" \
   && echo "== shared scripts identical" || { echo "== shared scripts DIFFER"; fail=1; }
 # Shared reference files and the gate template ship in both skills and must stay identical.
-for f in scripts/pr-json.py references/pr-protocol.md references/harness-matrix.md references/harness-loop.md templates/review-gate.yml; do
+for f in scripts/pr-json.py scripts/scan-hidden.py references/pr-protocol.md references/harness-matrix.md references/harness-loop.md templates/review-gate.yml; do
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-fixer/$f" \
     && echo "== $f identical" || { echo "== $f DIFFERS between the skills"; fail=1; }
 done

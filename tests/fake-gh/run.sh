@@ -4,6 +4,7 @@ set -u
 T="$(cd "$(dirname "$0")" && pwd)"
 SRC="${1:-$T/../../.agents/skills/pr-reviewer/scripts}"
 RC="$SRC/review-cycle.sh"; GATE="$SRC/gate-pr-review-state.py"
+RCABS="$(cd "$SRC" && pwd)/review-cycle.sh"
 # Scratch files live in a directory per run so two runs can go at the same time (TEST_TAG names it).
 W="$T/work-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W"
 export PATH="$T/bin:$PATH"
@@ -160,6 +161,34 @@ rm -rf "$EXPORT" "$W/real-out"; mkdir -p "$W/real-out"; ln -s "$W/real-out" "$EX
 check "export-audit: the output directory is a symlink -> refused, nothing written (S9)" \
   eval '[ $r != 0 ] && grep -q "symbolic link" "$W/err" && [ -z "$(ls -A "$W/real-out")" ]'
 rm -f "$EXPORT"
+# N3 of #26: the whole --out path is resolved, symbolic links followed, and must stay inside the
+# repository top level. The last-component check above misses a link earlier in the path.
+OUTSIDE="$(mktemp -d)"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
+rm -rf "$W/link"; ln -s "$OUTSIDE" "$W/link"
+"$RC" export-audit 7 --out "$W/link/" >/dev/null 2>"$W/err"; r=$?
+check "export-audit --out link/ (a symlink to outside the repository) -> refused, nothing written there (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "outside the repository top level" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+rm -rf "$OUTSIDE"; mkdir -p "$OUTSIDE"; "$RC" export-audit 7 --out "$W/link/records" >/dev/null 2>"$W/err"; r=$?
+check "export-audit --out link/records -> refused, no directory created through the link (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "outside the repository top level" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+rm -rf "$OUTSIDE"; mkdir -p "$OUTSIDE"; "$RC" export-audit 7 --out "$OUTSIDE/records" >/dev/null 2>"$W/err"; r=$?
+check "export-audit --out a plain directory outside the repository -> refused (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "outside the repository top level" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+# A checkout whose committed `docs` is a link: the default docs/compliance-records goes through it.
+rm -rf "$W/docslink"; mkdir -p "$W/docslink"; git -C "$W/docslink" init -q
+ln -s "$OUTSIDE" "$W/docslink/docs"; git -C "$W/docslink" add docs
+git -C "$W/docslink" -c user.name=t -c user.email=t@example.com commit -q -m "docs is a link"
+rm -rf "$OUTSIDE"; mkdir -p "$OUTSIDE"; (cd "$W/docslink" && "$RCABS" export-audit 7) >/dev/null 2>"$W/err"; r=$?
+check "export-audit with a committed docs symlink and the default --out -> refused, nothing written (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "outside the repository top level" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+rm -rf "$OUTSIDE"; mkdir -p "$OUTSIDE"; (cd "$OUTSIDE" && "$RCABS" export-audit 7 --out records) >/dev/null 2>"$W/err"; r=$?
+check "export-audit outside any git work tree -> refused, nothing written (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "not inside a git work tree" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+rm -rf "$EXPORT"; o="$("$RC" export-audit 7 --out "$EXPORT" 2>"$W/err")"; r=$?
+check "export-audit into a real directory inside the repository still writes the record (N3 of #26)" \
+  eval '[ $r = 0 ] && [ "$o" = "$EXPORT/7-2.json" ] && [ -f "$EXPORT/7-2.json" ]'
+rm -rf "$OUTSIDE" "$W/link" "$W/docslink" "$EXPORT"
 # R6: a pull request whose JSON is larger than one environment string may be (1.5 MB here) still exports.
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
 python3 -I - <<'PY'
@@ -688,6 +717,63 @@ printf 'closure quoting a log line: export TOKEN=%s\n' "$gh_tok" >"$W/leak.md"
 check "screen --file on a text with a token -> 1, names the kind, never the value (S3)" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
 "$RC" screen --file "$W/no-such-file.md" >"$W/out" 2>&1; r=$?
 check "screen --file on a missing file -> 2 (S3)" eq "$r" 2
+# I53: --staged screens the added lines of the index, --patch those of a given diff. Each hit is
+# `path:line kind`, the value never printed.
+SR="$W/screen-repo"; rm -rf "$SR"; mkdir -p "$SR"; sg() { git -C "$SR" -c user.name=t -c user.email=t@example.com "$@"; }
+sg init -q; printf 'old %s\n' "$gh_tok" >"$SR/old.txt"; printf 'a\n' >"$SR/a.py"; sg add -A; sg commit -q -m base
+(cd "$SR" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?
+check "screen --staged with nothing staged -> 0 (I53)" eq "$r" 0
+printf 'a\nkey = "%s"\n' "$aws_key" >"$SR/a.py"; sg add a.py
+(cd "$SR" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?
+check "screen --staged on an added AWS key id -> 1, names a.py:2 and the kind, not the value (I53)" \
+  eval '[ $r = 1 ] && grep -q "^a.py:2 AWS access key id$" "$W/out" && ! grep -q "$aws_key" "$W/out"'
+sg reset -q; printf 'a\n' >"$SR/a.py"; sg rm -q old.txt
+(cd "$SR" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?
+check "screen --staged on a removed line holding a token -> 0, a removal adds nothing (I53)" eq "$r" 0
+sg reset -q --hard
+NOGIT="$(mktemp -d)"; (cd "$NOGIT" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?; rm -rf "$NOGIT"
+check "screen --staged outside a git work tree -> 2 (I53)" eq "$r" 2
+printf 'diff --git a/x.env b/x.env\n--- a/x.env\n+++ b/x.env\n@@ -3,0 +4,2 @@\n+fine\n+TOKEN=%s\n' "$gh_tok" >"$W/p.patch"
+"$RC" screen --patch "$W/p.patch" >"$W/out" 2>&1; r=$?
+check "screen --patch: a token on the second added line of a hunk at +4 -> x.env:5 (I53)" \
+  eval '[ $r = 1 ] && grep -q "^x.env:5 GitHub token$" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+# W1 (0.12.0 pass 1): inside a hunk, an added line whose text starts with "++ " reads "+++ ...".
+# It is an added line, not a file header, and "++ /dev/null" does not end the file.
+printf 'diff --git a/n.md b/n.md\n--- a/n.md\n+++ b/n.md\n@@ -1,0 +2,3 @@\n+++ /dev/null\n+++ token %s\n+later %s\n' "$gh_tok" "$aws_key" >"$W/pp.patch"
+"$RC" screen --patch "$W/pp.patch" >"$W/out" 2>&1; r=$?
+check "screen --patch: added lines starting with '++ ' are screened, under the right path (W1)" \
+  eval '[ $r = 1 ] && grep -q "^n.md:3 GitHub token$" "$W/out" && grep -q "^n.md:4 AWS access key id$" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+"$RC" screen --patch "$W/no-such.patch" >"$W/out" 2>&1; r=$?
+check "screen --patch on a missing file -> 2 (I53)" eq "$r" 2
+# I54: --diff <base> <head> screens what a pull request adds, from the merge base.
+sg checkout -q -b feat; printf 'a\nkey = "%s"\n' "$aws_key" >"$SR/a.py"; sg commit -q -am "feature adds a key"
+sg checkout -q -; printf 'later %s\n' "$gh_tok" >"$SR/base_later.txt"; sg add -A; sg commit -q -m "base moves on"
+(cd "$SR" && "$RCABS" screen --diff HEAD feat) >"$W/out" 2>&1; r=$?
+check "screen --diff base feat: the feature's AWS key id -> 1, a.py:2 named, value not shown (I54)" \
+  eval '[ $r = 1 ] && grep -q "^a.py:2 AWS access key id$" "$W/out" && ! grep -q "$aws_key" "$W/out"'
+check "screen --diff: the base's own later token and the removed old.txt line are not the pull request's (I54)" \
+  eval '! grep -q "base_later.txt" "$W/out" && ! grep -q "old.txt" "$W/out"'
+(cd "$SR" && "$RCABS" screen --diff feat HEAD) >"$W/out" 2>&1; r=$?
+check "screen --diff the other way round reads only the base's addition -> 1, base_later.txt:1 (I54)" \
+  eval '[ $r = 1 ] && grep -q "^base_later.txt:1 GitHub token$" "$W/out" && ! grep -q "a.py" "$W/out"'
+(cd "$SR" && "$RCABS" screen --diff HEAD no-such-ref) >"$W/out" 2>&1; r=$?
+check "screen --diff with a commit not in the clone -> 2, fetch first (I54)" eval '[ $r = 2 ] && grep -q "fetch both commits" "$W/out"'
+(cd "$SR" && "$RCABS" screen --diff HEAD) >"$W/out" 2>&1; r=$?
+check "screen --diff with one commit -> refused (I54)" eval '[ $r = 1 ] && grep -q "needs <base> and <head>" "$W/out"'
+# W2 (0.12.0 pass 1): a file git treats as binary (a -diff attribute, a NUL byte) is still read
+# as text, by --diff and by --staged.
+sg checkout -q -b bin; printf 'token %s\n' "$gh_tok" >"$SR/k.cfg"; printf '\000x\nkey %s\n' "$aws_key" >"$SR/blob.dat"
+mkdir -p "$SR/.git/info"; printf '*.cfg -diff\n' >"$SR/.git/info/attributes"; sg add k.cfg blob.dat
+(cd "$SR" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?
+check "screen --staged reads a -diff attribute file and a NUL-byte file as text -> 1, both named (W2)" \
+  eval '[ $r = 1 ] && grep -q "^k.cfg:1 GitHub token$" "$W/out" && grep -q "^blob.dat:2 AWS access key id$" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+sg commit -q -m "binary-looking files"
+(cd "$SR" && "$RCABS" screen --diff HEAD~1 HEAD) >"$W/out" 2>&1; r=$?
+check "screen --diff reads a -diff attribute file and a NUL-byte file as text -> 1, both named (W2)" \
+  eval '[ $r = 1 ] && grep -q "^k.cfg:1 GitHub token$" "$W/out" && grep -q "^blob.dat:2 AWS access key id$" "$W/out"'
+rm -f "$SR/.git/info/attributes"; sg checkout -q -
+"$RC" screen --staged --file "$W/clean.md" >"$W/out" 2>&1; r=$?
+check "screen with two modes -> refused with usage (I53)" eval '[ $r = 1 ] && grep -q "usage" "$W/out"'
 
 # ---- options with no value, and pull request arguments that are not a number -------------------
 # An option given last with no value once made `shift 2` fail and the loop spin forever. Each run

@@ -32,5 +32,7 @@ export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"
 git add docs/compliance-records/<pr-number>-<pass>.json   # then open a pull request
 ```
 
-`export-audit` refuses when the allowlist is empty, when no trusted marker remains, and when the head
-moved after the last trusted marker. Run the review loop again and export after it.
+`export-audit` refuses when the allowlist is empty, when no trusted marker remains, when the head
+moved after the last trusted marker, and when the output directory resolves outside the repository
+it runs in (a symbolic link anywhere in the path, such as a committed `docs` link, is followed
+before that check). Run the review loop again and export after it.

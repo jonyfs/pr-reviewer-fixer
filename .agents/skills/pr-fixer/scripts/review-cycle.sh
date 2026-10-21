@@ -56,9 +56,10 @@
 #
 #     status [pr]          what the cycle owes, and the next command (exit codes below)
 #     debt [pr]            the same answer as an exit code only, for hooks and CI
-#     start [pr]           review:running, and review:needs-human withdrawn. Refused on a halted
-#                          pull request whose BLOCKED verdict is still at the head, and while a
-#                          trusted comment stands edited or deleted by another login
+#     start [pr]           review:running, and review:needs-human withdrawn. Refused when
+#                          REVIEW_MARKER_AUTHORS names no login, on a halted pull request whose
+#                          BLOCKED verdict is still at the head, and while a trusted comment
+#                          stands edited or deleted by another login
 #     fix [pr]             review:fixing, and review:needs-human withdrawn. Refused first when the
 #                          pull request is from a fork or any author is not a collaborator with
 #                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup;
@@ -74,7 +75,9 @@
 #                          and withdraws review:needs-human
 #     export-audit [pr] [--out <dir>]
 #                          writes <dir>/<pr>-<pass>.json (default docs/compliance-records) from
-#                          the trusted marker and the PR timeline; refuses when the head moved
+#                          the trusted marker and the PR timeline; refuses when the head moved,
+#                          and when <dir> resolves (symbolic links followed) outside the
+#                          repository top level
 #     stale [pr]           a marker-backed state whose head moved goes back to review:pending.
 #                          Refuses (exit 2) when REVIEW_MARKER_AUTHORS names no login.
 #     marker [file] [--author <login>]
@@ -104,6 +107,14 @@
 #                          comment). Exit 0 clean, 1 when it holds a token or private key (the
 #                          kind is named, never the value), 2 when the file cannot be read.
 #                          Posts nothing.
+#     screen --staged      the same screen over the added lines of `git diff --cached` (the fixer
+#                          runs it before each commit); prints `path:line kind` per hit
+#     screen --patch <file>
+#                          the same over the added lines of a unified diff (push-guard.sh hands it
+#                          the commits it is about to push)
+#     screen --diff <base> <head>
+#                          the same over the added lines of `git diff <base>...<head>` (the loop
+#                          runs it on the pull request before dispatching the reviewer)
 #     ensure-labels        creates or updates the six review:* labels in the current repository
 #                          (gh resolves the repository from the working directory or GH_REPO)
 #
@@ -122,7 +133,7 @@
 #                             pull request can post an invisible PASSED marker, because the marker
 #                             is an HTML comment and every comment is scanned. The list must name
 #                             at least one login: unset, empty, whitespace, a lone comma and only
-#                             invisible characters all make `status`, `stale`, `publish`,
+#                             invisible characters all make `status`, `stale`, `start`, `publish`,
 #                             `budget`, `extend`, `halt`, `export-audit` refuse. `publish`, `extend` and
 #                             `halt --reason` also refuse when `gh api user` is not on the list
 #                             or cannot be resolved; `halt` without `--reason` posts nothing and
@@ -388,7 +399,7 @@ marker_authors() {
 marker_authors_active() { case "${REVIEW_MARKER_AUTHORS:-}" in *[!\ $'\t\r\n']*) return 0 ;; *) return 1 ;; esac; }
 # READY is stricter than active: at least one login must be kept. Unset, empty, whitespace, a lone
 # comma and a list of invisible characters are all not ready, and every command that decides from
-# markers (`status`, `stale`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuses to guess then.
+# markers (`status`, `stale`, `start`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuses to guess then.
 marker_authors_ready() { [ -n "$(marker_authors)" ]; }
 NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
 # One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
@@ -495,7 +506,7 @@ parse() {
   # `author.login` is not on the list is skipped before the regex runs, so it can supply neither
   # the current verdict nor the BLOCKED history below. Both answers come out of this one loop,
   # which is why the filter lives here and not in a second pass. Callers that decide
-  # (`status`, `stale`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
+  # (`status`, `stale`, `start`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
   # before they get here. Only a list that is not active (unset, empty or ASCII whitespace) skips
   # nothing; an active list that keeps no login (a lone comma, invisible characters) skips every
   # comment, since `allow` is then empty.
@@ -579,19 +590,21 @@ parse() {
   MARKER_FOREIGN_WHERE=$(printf '%s' "$m" | cut -d' ' -f15)
 }
 
-# One sentence, no newline, naming the comment a foreign edit touched and the only ways to clear it.
+# One line, no newline, naming the comment a foreign edit touched and the way to clear it. For an
+# edit, deleting the comment also clears it, and the message warns what that loses instead of
+# offering it.
 # `publish`, `start`, `status` and `budget` all print this, so they cannot give different remedies.
 foreign_msg() {
   local who="${MARKER_FOREIGN_AUTHOR:--}" where="${MARKER_FOREIGN_WHERE:--}"
   [ "$who" != - ] || who="its author"
   if [ "${MARKER_FOREIGN_KIND:-}" = delete ]; then
-    printf 'a comment by %s was deleted by %s at %s, not by its author, so the pass numbers and verdicts cannot be trusted (it may have been a verdict marker). A deletion cannot be undone and a new comment does not clear this: the automatic loop stops on this pull request, and a person decides how to go on' \
+    printf 'a comment by %s was deleted by %s at %s, not by its author, so the pass numbers and verdicts cannot be trusted (it may have been a verdict marker). A deletion cannot be undone and a new comment does not clear this: the automatic loop stops on this pull request. The way out is a person'"'"'s: read the timeline to see what was deleted, then close this pull request and open a new one from the same branch, where the review starts again at pass 1 with no history to doubt' \
       "$who" "$MARKER_FOREIGN_EDIT" "$where"
     return 0
   fi
   [ "$where" != - ] || where="(GitHub gave no url)"
-  printf 'the comment %s by %s was edited by %s, not by its author, so the pass numbers and verdicts cannot be trusted (the edit may have rewritten or broken a verdict marker). A person reads its edit history on GitHub, then %s edits it back or %s deletes it; a new comment does not clear this' \
-    "$where" "$who" "$MARKER_FOREIGN_EDIT" "$who" "$who"
+  printf 'the comment %s by %s was edited by %s, not by its author, so the pass numbers and verdicts cannot be trusted (the edit may have rewritten or broken a verdict marker). A person reads its edit history on GitHub, then %s edits it back to what it said; a new comment does not clear this. Deleting it would clear the stop too, but it takes the comment out of the count: if it was a BLOCKED marker or held the highest pass, that BLOCKED history or that pass number is lost with it, so edit it back instead (signing the markers would close this gap, and it is on the backlog)' \
+    "$where" "$who" "$MARKER_FOREIGN_EDIT" "$who"
 }
 
 # Reads ONE marker, through `MARKER_RE`, from a file or from stdin, and prints
@@ -1137,6 +1150,10 @@ cmd_extend() {
 cmd_debt() { cmd_status "${1:-}" >/dev/null 2>&1; return $?; }
 
 cmd_start() {
+  # Without a login on the list, `parse()` trusts every comment, so any edit or deletion by someone
+  # other than a comment's author would read as a foreign edit of a trusted marker and the refusal
+  # below would name the wrong cause. The real cause is the missing list, and it is refused first.
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
   parse "$json"
   # A pass started now could never be published (`publish` refuses on the same reading), so it is
@@ -1317,8 +1334,12 @@ cmd_stale() {
 # instead: the report is never rewritten, and the person or agent removes the secret and publishes
 # again. The match itself is never printed. High-entropy strings are not screened: a 40-character
 # commit SHA is the commonest thing in a report and would be refused every time.
+#
+# `report_secrets FILE patch` reads FILE as a unified diff instead and screens only its ADDED lines,
+# printing one `path:line kind` per hit (the value is never printed). That is the form `screen
+# --staged`, `--diff` and `--patch` use, so a hit can be found and removed without being shown.
 report_secrets() {
-  X_FILE="$1" python3 -I - <<'PY'
+  X_FILE="$1" X_MODE="${2:-text}" python3 -I - <<'PY'
 import os, re, sys
 text = open(os.environ["X_FILE"], encoding="utf-8", errors="replace").read()
 pats = {
@@ -1335,6 +1356,41 @@ pats = {
     "Google OAuth token": r"(?<![A-Za-z0-9])ya29\.[A-Za-z0-9_-]{20,}",
     "bearer credential": r"(?i)\bauthorization:\s*bearer\s+[^\s`'\"]{20,}",
 }
+if os.environ["X_MODE"] == "patch":
+    # Added lines only, numbered on the new side from each `@@ -a,b +c,d @@` header. A removed line
+    # is not something this change commits, and a context line is already in the tree.
+    # Inside a hunk every line is a hunk line, counted from the @@ header (as lint-report does): an
+    # added line whose text starts with "++ " shows as "+++ ...", and is not a file header there.
+    found, path, n = [], None, 0
+    rem_old = rem_new = 0
+    for raw in text.split("\n"):
+        if rem_old > 0 or rem_new > 0:
+            if raw.startswith("+"):
+                rem_new -= 1
+                for name, p in pats.items():
+                    if re.search(p, raw[1:]):
+                        found.append("%s:%d %s" % (path or "?", n, name))
+                n += 1
+            elif raw.startswith("-"):
+                rem_old -= 1
+            elif not raw.startswith("\\"):
+                rem_old -= 1
+                rem_new -= 1
+                n += 1
+            continue
+        if raw.startswith("+++ "):
+            p = raw[4:]
+            path = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
+            continue
+        h = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
+        if h:
+            rem_old = int(h.group(1)) if h.group(1) is not None else 1
+            n = int(h.group(2))
+            rem_new = int(h.group(3)) if h.group(3) is not None else 1
+    if found:
+        print("\n".join(found))
+        sys.exit(1)
+    sys.exit(0)
 hits = [name for name, p in pats.items() if re.search(p, text)]
 if hits:
     print(", ".join(hits))
@@ -1346,14 +1402,55 @@ PY
 # comment, the `pr-debt` body edit, an overflow comment beside a long report. Exit 0 = clean, 1 = it
 # holds something that looks like a secret (the kind is named, the value never printed), 2 = the
 # file could not be read. Posts nothing.
+#
+# The other forms screen only the ADDED lines of a diff and print each hit as `path:line kind`:
+# `--staged` reads `git diff --cached` (the fixer runs it before each commit), `--diff <base>
+# <head>` reads `git diff <base>...<head>` from the merge base (the loop runs it on the pull request
+# before the reviewer starts), and `--patch <file>` reads a unified diff it is handed (push-guard.sh
+# gives it the commits it is about to push). Exit 2 when git cannot produce the diff.
+SCREEN_USAGE="review-cycle: usage: review-cycle.sh screen --file <file> | --staged | --patch <file> | --diff <base> <head>"
 cmd_screen() {
-  local file=""
+  local file="" mode="" base="" head=""
   while [ $# -gt 0 ]; do
+    [ -z "$mode" ] || die "$SCREEN_USAGE"
     case "$1" in
-      --file) [ $# -ge 2 ] || die "review-cycle: --file needs a value"; file="$2"; shift 2 ;;
-      *) die "review-cycle: usage: review-cycle.sh screen --file <file>" ;;
+      --file|--patch) [ $# -ge 2 ] || die "review-cycle: $1 needs a value"; mode="${1#--}"; file="$2"; shift 2 ;;
+      --staged) mode=staged; shift ;;
+      --diff) [ $# -ge 3 ] || die "review-cycle: --diff needs <base> and <head>"; mode=diff; base="$2"; head="$3"; shift 3 ;;
+      *) die "$SCREEN_USAGE" ;;
     esac
   done
+  [ -n "$mode" ] || die "$SCREEN_USAGE"
+  if [ "$mode" != file ]; then
+    local pf="$file" what="$file" rc leaked
+    if [ "$mode" = staged ] || [ "$mode" = diff ]; then
+      git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+        || { echo "review-cycle: screen --$mode needs a git work tree, INCONCLUSIVE" >&2; return 2; }
+      pf="$(mktemp)" || return 2
+      # --text: a file git treats as binary (a NUL byte, a binary or -diff attribute from any
+      # .gitattributes or .git/info/attributes) would show only "Binary files differ" and no added
+      # line. --no-textconv: a textconv driver would show its output instead of the bytes committed.
+      if [ "$mode" = staged ]; then
+        what="the staged changes"
+        git -c core.quotePath=false diff --cached --text --no-textconv --no-color --no-ext-diff --no-renames -U0 >"$pf" 2>/dev/null
+      else
+        what="the changes from $base to $head"
+        # Three dots: from the merge base, so the base branch's own later changes are not read as added.
+        git rev-parse --verify --quiet "$base^{commit}" >/dev/null && git rev-parse --verify --quiet "$head^{commit}" >/dev/null \
+          && git -c core.quotePath=false diff --text --no-textconv --no-color --no-ext-diff --no-renames -U0 "$base...$head" -- >"$pf" 2>/dev/null
+      fi || { rm -f "$pf"; echo "review-cycle: git could not produce $what (fetch both commits first), INCONCLUSIVE" >&2; return 2; }
+    fi
+    if [ -f "$pf" ] && [ -r "$pf" ]; then leaked="$(report_secrets "$pf" patch)"; rc=$?; else rc=2; fi
+    [ "$mode" = patch ] || rm -f "$pf"
+    if [ "$rc" = 1 ]; then
+      printf '%s\n' "$leaked"
+      echo "review-cycle: REFUSED. $what add what looks like a secret at the lines above (the value is not shown). Remove it from the change, then screen again." >&2
+      return 1
+    fi
+    [ "$rc" = 0 ] || { echo "review-cycle: the screen could not read $what, INCONCLUSIVE" >&2; return 2; }
+    echo "review-cycle: screen ok. $what add no token or private key this screen knows."
+    return 0
+  fi
   [ -n "$file" ] && [ -f "$file" ] && [ -r "$file" ] \
     || { echo "review-cycle: screen needs --file <file> that exists and is readable" >&2; return 2; }
   local leaked
@@ -1610,6 +1707,16 @@ cmd_export_audit() {
   # A symlink at the output directory would send the record wherever the link points. A branch can
   # commit one under docs/compliance-records/, so the export refuses it instead of following it.
   [ ! -L "$out" ] || die "review-cycle: REFUSED. $out is a symbolic link; export into a real directory"
+  # That test sees only the last component. A link earlier in the path (`--out link/`, or a committed
+  # `docs` link above the default directory) would still send the record elsewhere, and `mkdir -p`
+  # follows it. So the whole path is resolved first, and it must land inside the repository the
+  # export runs in, where a person reviews and commits the record.
+  local top; top="$(git rev-parse --show-toplevel 2>/dev/null)" && [ -n "$top" ] \
+    || die "review-cycle: REFUSED. export-audit writes into the repository it runs in, and this is not inside a git work tree"
+  X_OUT="$out" X_TOP="$top" python3 -I -c 'import os,sys
+o,t=os.path.realpath(os.environ["X_OUT"]),os.path.realpath(os.environ["X_TOP"])
+sys.exit(0 if os.path.commonpath([o,t])==t else 1)' \
+    || die "review-cycle: REFUSED. $out resolves outside the repository top level $top (a symbolic link in the path, or a path outside the work tree); export into a directory inside it"
   mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
   # The pull request and the timeline go through files, never the environment: one environment
   # string over 128 KiB (Linux) or a total over ARG_MAX (macOS) fails with "argument list too long",
@@ -1617,7 +1724,7 @@ cmd_export_audit() {
   local xdir; xdir="$(mktemp -d)" || die "review-cycle: could not create a temporary directory"
   printf '%s' "$json" >"$xdir/pr.json" && printf '%s' "$events" >"$xdir/events.json" \
     || { rm -rf "$xdir"; die "review-cycle: could not write the export inputs to $xdir"; }
-  X_JSON_FILE="$xdir/pr.json" X_EVENTS_FILE="$xdir/events.json" X_AUTHORS="$(marker_authors)" X_OUT="$out" python3 -I - <<'PY'
+  X_JSON_FILE="$xdir/pr.json" X_EVENTS_FILE="$xdir/events.json" X_AUTHORS="$(marker_authors)" X_OUT="$out" X_TOP="$top" python3 -I - <<'PY'
 import json, os, re, sys
 
 MARK = re.compile(
@@ -1689,6 +1796,10 @@ path = os.path.join(out, "%s-%s.json" % (pr.get("number"), m.group(3)))
 # and os.replace renames over the final path without following it.
 if os.path.islink(out):
     die("%s is a symbolic link; export into a real directory." % out)
+# Checked again after `mkdir -p`: a link planted in the path in between is still refused.
+_top = os.path.realpath(os.environ["X_TOP"])
+if os.path.commonpath([os.path.realpath(out), _top]) != _top:
+    die("%s resolves outside the repository top level %s; export into a directory inside it." % (out, _top))
 if os.path.islink(path):
     die("%s is a symbolic link, and the export does not write through one. Remove it and export again." % path)
 import tempfile

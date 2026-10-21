@@ -257,6 +257,13 @@ rep = os.path.join(d, "report.md"); open(rep, "w").write("## findings\n- one\n")
 p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "7", "--sha", H, "--critical", "1", "--warning", "0", "--note", "0"], d)
 check("a foreign edit: the publish refusal names the comment url and does not suggest a new comment (N6)",
       p.returncode != 0 and URL2 in p.stderr and "restores it with a new comment" not in p.stderr and "a new comment does not clear" in p.stderr, p.stderr)
+# N2 of #26: the remedy is the edit back. Deleting is not offered as a remedy; the message warns that
+# a deletion loses the BLOCKED history and the highest pass, and names signing as the backlog item.
+d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", "mallory"),))
+w = d.get("why", "")
+check("a foreign edit: the remedy is the edit back, deletion is only warned against (N2 of #26)",
+      "jonyfs edits it back" in w and "jonyfs deletes it" not in w and "BLOCKED history" in w
+      and "highest pass" in w and "signing" in w and "backlog" in w, d)
 # N3 of #25: GitHub names no editor (a deleted account); the fake gh reads "-" as a null login.
 d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", "-"),))
 check("a trusted marker edited by an unnamed account -> budget none, edited by unknown",
@@ -270,6 +277,13 @@ check("a trusted comment deleted by another login -> budget none, names the dele
 d = budget(hist([1] * 6), deleted=((ME, "-"),))
 check("a trusted comment deleted by an unnamed account -> budget none, deleted by unknown (N5)",
       d.get("next") == "none" and "deleted by unknown" in d.get("why", ""), d)
+d = budget(hist([1] * 6), deleted=((ME, "mallory"),))
+check("a foreign deletion: budget why names the way out, a new pull request from the branch (N4 of #26)",
+      "new one from the same branch" in d.get("why", "") and "pass 1" in d.get("why", ""), d)
+d = setup(hist([1] * 6), labels=("review:pending",), deleted=((ME, "mallory"),))
+p = run(["start", "7"], d)
+check("a foreign deletion: the start refusal names the way out too (N4 of #26)",
+      p.returncode == 1 and "open a new one from the same branch" in p.stderr, p.stderr)
 d = budget(hist([1] * 6), deleted=((ME, ME),))
 check("a trusted comment deleted by its own author -> budget unchanged (ask) (N5)", d.get("next") == "ask", d)
 d = budget(hist([1] * 6), deleted=(("stranger", "mallory"),))
@@ -299,6 +313,21 @@ d = setup(hist([1] * 6), labels=("review:pending",), edited=("IC_2",), edited_by
 p = run(["start", "7"], d)
 check("start with a trusted comment edited by its own author -> review:running (N2)",
       p.returncode == 0 and labels_of(d) == ["review:running"], p.stdout + p.stderr)
+
+# N1 of #26: with REVIEW_MARKER_AUTHORS unset, start refuses on the missing list, not on a foreign
+# edit or deletion it cannot attribute (every comment would read as trusted).
+for name, kw in (("edited", {"edited": ("IC_2",), "edited_by": (("IC_2", "mallory"),)}),
+                 ("deleted", {"deleted": ((ME, "mallory"),)})):
+    for authors in ("", ","):
+        d = setup(hist([1] * 6), labels=("review:pending",), **kw)
+        p = run(["start", "7"], d, REVIEW_MARKER_AUTHORS=authors)
+        check("start with REVIEW_MARKER_AUTHORS=%r and a comment %s by another login -> refused on the list, label unchanged (N1 of #26)" % (authors, name),
+              p.returncode == 1 and "REVIEW_MARKER_AUTHORS is not set" in p.stderr and "by mallory" not in p.stderr
+              and labels_of(d) == ["review:pending"], p.stdout + p.stderr)
+d = setup(hist([1] * 6), labels=("review:pending",))
+p = run(["start", "7"], d, REVIEW_MARKER_AUTHORS="")
+check("start with REVIEW_MARKER_AUTHORS unset and nothing edited -> refused, label unchanged (N1 of #26)",
+      p.returncode == 1 and "REVIEW_MARKER_AUTHORS" in p.stderr and labels_of(d) == ["review:pending"], p.stdout + p.stderr)
 
 # A list of invisible characters names nobody: a stranger's grant must not raise the budget.
 d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")

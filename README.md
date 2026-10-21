@@ -125,6 +125,13 @@ sequenceDiagram
 - Verifies each finding against the code before reporting it, and merges duplicates.
 - Splits large diffs into units, reviews the seams between them, and reports what was and was not
   read in depth.
+- Takes the hits of `scripts/scan-hidden.py` (zero-width and bidi characters, Unicode tag
+  characters, HTML comments other than the protocol's markers, `<details>` blocks, invisible HTML)
+  in the added lines, the pull request text, its comments and the commit messages, and judges each
+  as a candidate CRITICAL prompt-injection finding. The scanner strips nothing.
+- Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each
+  token or private key it finds is a mandatory CRITICAL finding at that line, with the value
+  redacted.
 - Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
   file and a line the diff shows, and the counts must match the open entries.
 - Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
@@ -147,7 +154,22 @@ sequenceDiagram
   not a fast-forward and a commit that touches a file no finding names. A merge commit counts the
   files it changes beyond git's automatic merge of its parents (a conflict resolution, or an edit
   slipped into the merge), which needs git 2.38 or later; commits the base already holds are not
-  checked.
+  checked. It also screens the lines those commits add, reading a file git treats as binary as
+  text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
+  same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
+  `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**` or `.mcp.json`, even when
+  a finding names the file: such a finding goes to a person. Names are compared after a Unicode
+  case and normalization fold broader than APFS or NTFS, so `.CLAUDE/x` and `.agents/ſkills/x`
+  count too. Links are refused rather than followed: if the pull request head or the local HEAD
+  holds a symlink or a gitlink at one of those paths or at a parent (`.claude/skills -> ../skills`,
+  `.agents`, `.github`), or a symlink whose target points at, into or above one, holds a non-ASCII
+  byte or leaves the repository, the whole push is refused. A person can opt one class in with
+  `PUSH_GUARD_ALLOW_SENSITIVE` (for example `skills` in a repository of skills, as this one is).
+- Reads review comments through `scripts/fetch-feedback.py`, which lists every thread, review and
+  comment with its author association. It acts only on comments from an OWNER, a MEMBER or
+  COLLABORATOR with write access, the reviewer's login or a bot in `FIXER_TRUSTED_LOGINS`; anything else is listed as
+  `not acted: author not trusted`. It resolves only threads the reviewer or a trusted bot opened; a
+  person's thread gets a reply and stays open.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
 
 ```mermaid
@@ -415,7 +437,7 @@ Two steps are required:
 2. Set `REVIEW_MARKER_AUTHORS` to the login the agent publishes as, the account `gh` is signed in
    to. Export it in the shell that starts your harness:
    `export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"`. Without it, any commenter could
-   post a forged verdict marker, so `status`, `stale`, `publish`, `extend`, `halt`, `export-audit` and the
+   post a forged verdict marker, so `status`, `stale`, `start`, `publish`, `extend`, `halt`, `export-audit` and the
    gate refuse to run when it is unset or names no login, and `budget` prints `B_NEXT='none'` without
    reading the budget. An entry counts only as ASCII letters, digits, hyphens and underscores, starting with a letter or digit, so a pasted BOM or
    no-break space names nobody. `publish`, `extend` and `halt --reason` also refuse when `gh` is signed in
@@ -423,11 +445,14 @@ Two steps are required:
    created is ignored as a verdict, though its `pass=` still counts, so an edit that keeps the
    number cannot lower the cycle count. An edit that rewrites the number counts as the new one.
    A trusted comment edited by anyone other than its author (GitHub lets any collaborator with
-   write access edit a comment) stops `publish`, `start`, `budget` and `status` until its author edits it back or
-   deletes it, even when the edit broke the marker so that it no longer reads as one. The refusal
-   names the comment's url. A new comment does not clear it. A trusted comment deleted by anyone
+   write access edit a comment) stops `publish`, `start`, `budget` and `status` until its author edits it back, even
+   when the edit broke the marker so that it no longer reads as one. The refusal names the
+   comment's url. A new comment does not clear it. Deleting the comment clears it too, but it drops
+   any BLOCKED history or highest pass the comment carried, so the refusal says to edit it back. A trusted comment deleted by anyone
    other than its author (read from the pull request timeline) stops the same commands for good on
-   that pull request, since a deletion cannot be undone; a person decides how to go on.
+   that pull request, since a deletion cannot be undone. The way out is a person's: read the
+   timeline, close the pull request and open a new one from the same branch, where the review starts
+   again at pass 1.
 
 The rest hardens the setup and is recommended for a shared repository:
 
@@ -465,11 +490,16 @@ always match. `lint-report` applies the same screen, and `review-cycle.sh screen
 applies it to any other text an agent posts: the fixer screens its closure comment and the new PR
 body (with the `pr-debt` block) before posting them, and the reviewer screens an overflow comment.
 It exits 0 when the text is clean, 1 naming the kind of secret (never the value) and 2 when the
-file cannot be read. A text posted by hand with `gh` is not screened. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
+file cannot be read. `screen --staged`, `screen --patch <file>` and `screen --diff <base> <head>` apply it to the added
+lines of the staged diff, of a given diff and of the pull request (from the merge base), printing `path:line kind` for each hit: the fixer screens
+every commit, `push-guard.sh` screens the commits it is about to push, and the loop screens the pull
+request before the reviewer starts, each hit becoming a CRITICAL finding. A text posted by hand
+with `gh` is not screened. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
 publisher, timestamps, label events, model, tier and `block_at`) from the trusted marker and the pull
-request's own timeline, for a person to commit through a pull request. See
+request's own timeline, for a person to commit through a pull request. It refuses an output
+directory that resolves, symbolic links followed, outside the repository it runs in. See
 [`docs/compliance-records/README.md`](docs/compliance-records/README.md) for what a record does and
 does not prove.
 
@@ -578,7 +608,7 @@ VERSION, CHANGELOG.md   the release version and its history
 ```
 
 Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py`,
-`scripts/pr-json.py`, `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
+`scripts/pr-json.py`, `scripts/scan-hidden.py`, `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
 `references/harness-matrix.md` and `templates/review-gate.yml`. The copies are identical on
 purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 
@@ -592,7 +622,7 @@ The suite needs no network. It drives the scripts against a fake `gh` and covers
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
 eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also

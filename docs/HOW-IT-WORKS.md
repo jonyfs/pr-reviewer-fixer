@@ -133,7 +133,9 @@ flowchart TD
    base commit, not from the pull request, so a change cannot rewrite the rules it is judged by. If
    the pull request edits a rules file, that edit is reviewed as code. A documented project rule
    beats generic practice, a rule a linter owns is never a finding, and a comment someone already
-   made is never repeated.
+   made is never repeated. Before the review starts, `review-cycle.sh screen --diff <base> <head>`
+   screens the lines the pull request adds for tokens and private keys; each hit is a CRITICAL
+   finding at that line, with the value redacted, whatever any agent thinks of it.
 2. **Acceptance conditions, pass 1 only.** Before any agent looks for defects, the reviewer writes a
    numbered list of conditions that would make this pull request pass, taken from its own stated
    purpose. Later passes check those same conditions and nothing else, so the target does not move
@@ -261,7 +263,17 @@ flowchart TD
    computes on its own from the two parents (`git merge-tree --write-tree`, git 2.38 or later), so
    a conflict resolution needs `--allow` and an edit hidden inside a merge is refused. Commits the
    base branch already holds are not checked. A path with a control character in its name is
-   refused. If the head is not writable, the fixer delivers a patch and replies instead.
+   refused. The lines those commits add go through the same secret screen as a verdict, and a
+   token or private key refuses the push (the fixer already screens each commit with
+   `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows, actions,
+   CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, compared after a Unicode case and
+   normalization fold) is refused even when a finding names it, and the finding goes to a person,
+   unless the person opted that class in with `PUSH_GUARD_ALLOW_SENSITIVE`. Links are refused, not
+   followed: when the pull request head or the local HEAD holds a symlink or gitlink at one of those
+   paths or at a parent such as `.claude` or `.agents`, or a symlink whose target points at, into or
+   above one, holds a non-ASCII byte or leaves the repository, the whole push is refused under the
+   same rule. If the head is not writable, the fixer delivers a patch and
+   replies instead.
 7. **Close the loop.** The push moves the head, and `review-cycle.sh stale` moves the label back to
    `review:pending`. The fixer posts one closure comment carrying
    `<!-- pr-fixer-closure: cycle=… head=… closed=… refused=… debt=… -->`. For each finding it records
@@ -308,7 +320,9 @@ never read as "reviewed".
 | `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
+| `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi and tag characters, HTML comments other than the markers, `<details>`, invisible HTML) in the diff, the pull request text and the commit messages, as JSON. It strips nothing. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
+| `fetch-feedback.py` | Read-only, fixer only. Every review thread, review body and issue comment as one list, with author association, thread state and whether the fixer may act on it or resolve it. |
 | `push-guard.sh` | Read-only. The check the fixer passes before every push. |
 | `check-version.sh` | Prints a notice when a newer release exists. It never installs anything. |
 | `install.sh` | Copies the skills into the folder a harness reads. A dry run unless you pass `--yes`. |
@@ -322,10 +336,13 @@ never read as "reviewed".
 - A marker comment that was edited after it was created is ignored as a verdict. Its `pass=` still
   counts toward the highest pass, so an edit that keeps the number cannot lower the cycle count. An
   edit that rewrites the number counts as the new one. A trusted comment edited by anyone other
-  than its author stops `publish`, `start`, `budget` and `status` until its author edits it back or deletes it,
-  whether or not the edit left it readable as a marker. The refusal names the comment's url; a new
+  than its author stops `publish`, `start`, `budget` and `status` until its author edits it back,
+  whether or not the edit left it readable as a marker. Deleting it clears the stop too, but drops
+  any BLOCKED history or highest pass it carried, so the refusal asks for the edit back. The refusal names the comment's url; a new
   comment does not clear it. A trusted comment deleted by anyone other than its author (a
-  `CommentDeletedEvent` on the timeline) stops the same commands for good on that pull request.
+  `CommentDeletedEvent` on the timeline) stops the same commands for good on that pull request. A
+  person can close it and open a new pull request from the same branch, where the review starts
+  again at pass 1.
 - A verdict is bound to a commit. Any push turns it stale.
 - Everything read from the pull request (description, comments, commit messages, CI logs, file
   contents) is treated as data. It cannot give the skills orders.

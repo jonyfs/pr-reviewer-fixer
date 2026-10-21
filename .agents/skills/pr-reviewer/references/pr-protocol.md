@@ -20,7 +20,7 @@ check with `cmp`.
 | Inline review comments | `pr-reviewer`, only in a run a person invoked | `pr-fixer` comment lane | Body starts with the finding id in brackets: `[C1] <claim>` | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed by a thread reply, then resolved. The automatic run posts none |
 | Fixer closure comment | `pr-fixer`, once per cycle, as its finish message, after `review-cycle.sh screen` passes it | `pr-reviewer` pass c+1 (Understand the change) | `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `scripts/pr-json.py <n>` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
 | Debt block | `pr-fixer` (Declare debt), after `review-cycle.sh screen` passes the new body | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-- pr-debt:start -->` and `<!-- pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
-| Thread replies | `pr-fixer` comment lane | The comment's author, `pr-reviewer` pass 2+ | `Closed in <sha7> (C1)` and the thread resolved, or `Declined (C1): <reason>` and the thread left open | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed on reply. A decline stays open until its author agrees |
+| Thread replies | `pr-fixer` comment lane | The comment's author, `pr-reviewer` pass 2+ | `Closed in <sha7> (C1)`, and the thread resolved only when the reviewer's login or a trusted bot opened it; or `Declined (C1): <reason>` or `Escalated (C1): <what the person must decide>` and the thread left open | `scripts/fetch-feedback.py <n>` (pr-fixer) | A loop-owned thread is resolved on reply. A person's thread, and a decline, stay open for its author |
 | Status comment | The skill run that is in progress | People watching the PR | `<!-- pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
 | Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-- pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-- pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then one human-readable line | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling, and `extend` removes `review:needs-human`. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
 
@@ -47,14 +47,14 @@ When they disagree, `review-cycle.sh status` reports it and exits non-zero.
 ## Trust: who may supply a marker
 
 A marker is only a string, and anyone who can comment can type one, or edit one they typed. Two
-rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`, `extend`, `halt`,
-`export-audit` and the gate alike:
+rules decide whether a marker counts, in `status`, `stale`, `start`, `publish`, `budget`, `extend`,
+`halt`, `export-audit` and the gate alike:
 
 1. The author is on `REVIEW_MARKER_AUTHORS`, a comma-separated list of GitHub logins compared
    without case. An entry counts only if, with ASCII spaces, tabs, CR and LF trimmed, it is ASCII
    letters, digits, hyphens and underscores, starting with a letter or digit. Any other character (a BOM, a no-break space, a zero-width space)
    drops the entry whole. The list must name at least one login. **Unset, empty, whitespace, a lone
-   comma and only invisible characters all fail closed**: `publish`, `export-audit`, `extend` and
+   comma and only invisible characters all fail closed**: `start`, `publish`, `export-audit`, `extend` and
    `halt` refuse, `status`, `stale` and the gate answer inconclusive (exit 2), and `budget` prints
    `B_NEXT='none'` and exits 0, instead of reading every comment. `publish`, `extend` and
    `halt --reason` (the commands that post a marker) also refuse when the login `gh` is signed in to
@@ -88,8 +88,11 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    its author, or by an account GitHub no longer names, counts as BLOCKED history, `budget` answers
    `none` and names the editor and the comment's url, `publish` and `start` refuse and `status`
    answers inconclusive (exit 2), until the comment's
-   author edits it back or deletes it. A new comment does not clear it, and nor does a deletion by
-   anyone else. This holds whether or not the edited body still reads as a marker, so an edit that
+   author edits it back. A new comment does not clear it, and nor does a deletion by anyone else.
+   A deletion by the author clears it too, but it takes the comment out of the count: if it was the
+   only BLOCKED marker or held the highest pass, the BLOCKED history or that pass number is lost
+   with it. So the remedy is to edit it back. Signing the markers would close this gap; it is on
+   the backlog. This holds whether or not the edited body still reads as a marker, so an edit that
    breaks a marker cannot drop it from the count unseen. Deletions are read too: `pr-json.py` pages
    the timeline's `CommentDeletedEvent` items (`actor`, `deletedCommentAuthor`) into
    `deletedComments`, and fails closed like the comment query. A comment by a trusted login deleted
@@ -98,7 +101,10 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    `budget` answers `none`, `publish` and `start` refuse and `status` exits 2, naming the deleter
    and the time. `stale` does not check either case: it only retires a label the head outgrew.
    A deletion cannot be undone, so this stop is permanent for that pull request: the automatic loop
-   does not continue there, and a person decides how to go on.
+   does not continue there. The way out is a person's: read the timeline to see what was deleted
+   and by whom, then close the pull request and open a new one from the same branch. The new pull
+   request has no markers, so the review starts again at pass 1, with a fresh budget and nothing to
+   doubt. Moving the work this way is a decision about trust, so the loop never does it itself.
 
 Rule 2 keeps an edited marker from being read as a verdict, and keeps an edit by another login from
 moving the count, and a deletion by another login from moving it unseen. It does not stop the
@@ -302,9 +308,13 @@ scripts/review-cycle.sh screen --file body.md && gh pr edit <n> --body-file body
 Never write the whole body from memory, and never edit text outside the two markers. Any other
 comment a skill posts (an overflow of a long report or closure) goes through `screen` first too.
 
-**Thread replies.** For a closed finding, reply `Closed in <sha7> (C1)` and resolve the thread
-(`gh api graphql` with `resolveReviewThread`). For a decline, reply with the reason and leave the
-thread open. Where `gh api` is not allowed (the automatic run), the closure comment carries the
+**Thread replies.** For a closed finding, reply `Closed in <sha7> (C1)`. Resolve the thread
+(`gh api graphql` with `resolveReviewThread`) only when the loop owns it: `fetch-feedback.py` says
+`may_resolve: true` when the thread was opened by a login in `REVIEW_MARKER_AUTHORS` or by a bot in
+`FIXER_TRUSTED_LOGINS`. A thread a person opened gets the reply and stays open for that person. For a
+decline, reply `Declined (C1): <reason>`, and for an escalation `Escalated (C1): <what the person must
+decide>`, and leave the thread open. `fetch-feedback.py` knows the fixer's own replies only by these
+three prefixes, so any other wording comes back on the next cycle as a work order. Where `gh api` is not allowed (the automatic run), the closure comment carries the
 same lines and thread resolution waits for a run that has it.
 
 **Status comment.** At most one per skill run, created at start and edited in place at finish:
@@ -339,7 +349,9 @@ Under `REVIEW_BLOCK_AT=warning`, `publish` also writes `block_at=warning`. The e
 `review-cycle.sh export-audit <n> [--out <dir>]` writes `<dir>/<n>-<pass>.json` (default
 `docs/compliance-records/`) from the newest trusted marker and the PR's label events. It applies the
 trust rules above, lists markers by logins off the allowlist under `ignored`, refuses when no
-trusted marker remains, and refuses when the head moved after that marker. A person commits the file
+trusted marker remains, refuses when the head moved after that marker, and refuses an output
+directory that resolves outside the repository top level once every symbolic link in its path is
+followed (`--out link/`, or a committed `docs` link above the default). A person commits the file
 through a pull request. `publish` also appends one line to a per-machine
 `${XDG_STATE_HOME:-$HOME/.local/state}/pr-reviewer-fixer/audit.jsonl`; that copy is a convenience,
 never the evidence.

@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: 0.11.0
+  version: 0.12.0
 ---
 
 # PR Reviewer
@@ -117,7 +117,10 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    base commit, never the head, prior review
    comments, automated check results, and the PR's current cycle state:
    `scripts/review-cycle.sh status`. A documented project rule beats generic practice; a linter-owned
-   rule is never a finding; an existing comment is never restated as new.
+   rule is never a finding; an existing comment is never restated as new. Run (or take from the
+   loop agent) `scripts/review-cycle.sh screen --diff <base> <head>`: each `path:line kind` it
+   prints is a mandatory CRITICAL finding, `credential committed`
+   ([references/security-checklist.md](references/security-checklist.md)).
    [references/targets-and-context.md](references/targets-and-context.md)
 1. **Take the cycle.** `scripts/review-cycle.sh start` moves the label to `review:running` and
    withdraws `review:needs-human`. It refuses a halted pull request whose BLOCKED verdict is still at

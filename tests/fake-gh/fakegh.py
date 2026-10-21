@@ -41,6 +41,33 @@ if args[:2] == ["api", "graphql"]:
     #   graphql-truncate   the last page is cut off and says there is no next page
     #   edited-by          "<id> <login>" per line: who edited that comment (default: its author)
     if not os.path.exists(p) or os.path.exists(os.path.join(d, "graphql-fail")): sys.exit(1)
+    q = next((a[6:] for a in args if a.startswith("query=")), "")
+    ff = next((k for k in ("Threads", "Reviews", "Comments") if "query FetchFeedback" + k + "(" in q), None)
+    if ff:
+        # fetch-feedback.py. pr.json "reviewThreads" and "reviews" hold the nodes as GraphQL gives
+        # them; issue comments come from "comments" (authorAssociation defaults to NONE). Files:
+        #   ff-fail-<threads|reviews|comments>   that query exits 1
+        #   ff-nocursor-<...>                    the first page says there is more and gives no cursor
+        #   ff-badshape-<...>                    the answer lacks the connection
+        #   ff-page-size                         nodes per page (default 100)
+        key = ff.lower(); field = {"threads": "reviewThreads", "reviews": "reviews", "comments": "comments"}[key]
+        if os.path.exists(os.path.join(d, "ff-fail-" + key)): sys.exit(1)
+        if os.path.exists(os.path.join(d, "ff-badshape-" + key)):
+            print(json.dumps({"data": {"repository": {"pullRequest": {}}}})); sys.exit(0)
+        if key == "comments":
+            nodes = [dict({"authorAssociation": "NONE", "lastEditedAt": None, "editor": None}, **c)
+                     for c in with_ids(load())["comments"]]
+        else:
+            nodes = load().get(field, [])
+        size = int(open(os.path.join(d, "ff-page-size")).read()) if os.path.exists(os.path.join(d, "ff-page-size")) else 100
+        after = next((a.split("=", 1)[1] for a in args if a.startswith("after=")), None)
+        start = int(after) if after else 0
+        chunk, more = nodes[start:start + size], start + size < len(nodes)
+        cursor = str(start + size) if more else None
+        if os.path.exists(os.path.join(d, "ff-nocursor-" + key)): more, cursor = True, None
+        print(json.dumps({"data": {"repository": {"pullRequest": {field: {
+            "pageInfo": {"hasNextPage": more, "endCursor": cursor}, "nodes": chunk}}}}}))
+        sys.exit(0)
     if any(a.startswith("query=") and "timelineItems" in a for a in args):
         # The CommentDeletedEvent query. `deleted-events` holds "<author> <deleter>" lines ("-" is a
         # login GitHub does not name); `graphql-deleted-fail` makes this call alone exit 1, and
