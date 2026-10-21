@@ -4,6 +4,107 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.13.0
+
+Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items of the debt sweeps
+(T1-T3, #4 N1, #5 N1, #6 W1, #12 N1, #13 N3, #13 N4, D2, R7, R8, #19 N2, N4, N24, N26). The
+`release.yml` items of the sweeps are left for 0.14.0.
+
+### Added
+
+- `scan-hidden.py` kind `link-ref-comment`: a Markdown link reference definition whose destination
+  is `#` or `<>` (`[//]: # (text)`), which GitHub renders as nothing. A definition with a real
+  destination is not reported (#27 N1).
+- `scan-hidden.py --feedback-json <file|->` scans a `fetch-feedback.py` list, which holds the
+  review-thread comments and review bodies that `--pr` does not read. The loop runs it before
+  dispatching the fixer, and the fixer's comment lane runs it on its own work list (#27 N2).
+- The secret screen (`publish`, `lint-report`, `screen`, `push-guard.sh`) refuses a password
+  assignment: a `password` or `passwd` key given a quoted value of eight or more characters, or, at
+  the start of a line, an unquoted one. A value that reads as code (an identifier, a dotted name, a
+  call, an index), a path or a placeholder is not counted, so `password = self.password` passes
+  (#12 N1).
+- `fetch-feedback.py` items carry `minimized`, and two new actions: `skip: minimized` and
+  `skip: dismissed` (#27 N5).
+- `review-cycle.sh` can be sourced: run as a command it dispatches; sourced, it only defines its
+  functions. `tests/fake-gh/run.sh` uses this to test `parse()` directly on crafted payloads (#4 N1).
+
+### Changed
+
+- `review-cycle.sh screen` exits 2, not 1, on a usage error (an unknown option, a missing value, two
+  modes, no mode) and when the screen itself fails, so exit 1 always means a hit. `publish` and
+  `lint-report` say INCONCLUSIVE instead of "looks like a secret" when the screen fails. Existing
+  callers that treat any non-zero exit as "do not post" behave as before (#27 N10).
+- The bearer pattern no longer counts a placeholder as a credential: `${NAME}`, `$NAME`, `<...>`,
+  `[REDACTED]` and the like (R8).
+- `fetch-feedback.py`: a `FIXER_TRUSTED_LOGINS` entry written as `app/<name>` or `<name>[bot]` names
+  that bot only, never a person whose login is `<name>`; a bare entry still matches both.
+  `REVIEW_MARKER_AUTHORS` keeps the one login grammar the scripts and the gate share: the bare login
+  GraphQL prints, so a `<name>[bot]` entry there names nobody (#27 N4).
+- The permission lookup in `fetch-feedback.py` and in `review-cycle.sh fix` reads `role_name` as well
+  as the legacy `permission`; either one naming admin, maintain or write is write access. The live
+  response was checked for an admin (`{"permission":"admin","role_name":"admin"}`); the maintain and
+  triage mapping of the legacy field is GitHub's documented one and was not observed (#27 N13).
+- `push-guard.sh`: `PUSH_GUARD_ALLOW_SENSITIVE` may hold only lower-case letters, commas, spaces and
+  tabs, so a class after a newline is refused rather than never read (#27 N7). A symlink target that
+  steps back with `..` out of a component that is itself a link involves every class (#27 N19). A
+  link name or target holding a control character is printed quoted with `printf %q` (#27 N20).
+- `tests/run-all.sh` puts a caller's `TEST_TAG` in front of each suite's tag, the triage suite has a
+  `TEST_TAG` of its own, and every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
+  when it starts (T1, T2).
+
+### Fixed
+
+- `push-guard.sh` exits 2 (INCONCLUSIVE) when git cannot show a commit's patch or file modes, or
+  shows an empty patch for a commit that touches paths. Before, the failure was swallowed and that
+  commit dropped out of the secret screen and the link check (#27 N9).
+- The secret screen's patch mode and `scan-hidden.py --diff` report a path as the file is named:
+  git's trailing tab after a name with a space and its C quotes (`"b/caf\303\251"`, a quote, a
+  backslash) are undone (#27 N8).
+- `lint-report` reads the same quoted paths, so a finding on `café.txt` is no longer "not in the
+  diff", and refuses a backwards range such as `30-1` (R7).
+- `fetch-feedback.py` fails closed on a review thread whose `comments`, `pageInfo`, `hasNextPage` or
+  `nodes` is missing or malformed, instead of reading it as a thread with no comments (#27 N6).
+- The `remove_states_except` comment said gh takes one name per flag; the real reason is that a
+  space-joined value splits into two arguments. It now also states why the unquoted
+  `$(remove_states_except ...)` is safe: `STATES_RE` admits only the five literal `review:*` names
+  (#19 N24, #19 N4).
+
+### Documentation
+
+- README: the by-hand install for Claude Code copies the skills into `.claude/skills/` instead of
+  linking them, and says why: a committed link under `.claude/skills` makes `push-guard.sh` refuse
+  every fixer push (`sensitive-path`) unless a person sets `PUSH_GUARD_ALLOW_SENSITIVE=skills,claude`;
+  an untracked link does not (#27 N18). "Check the install" names the skills folder per harness
+  instead of hard-coding `.agents/skills` (D2). "Run it by hand" no longer claims the harness table
+  lists every invocation prefix (#6 W1). The list of screened token kinds names npm, GitLab, Google
+  OAuth and password assignments (#13 N3).
+- `docs/HOW-IT-WORKS.md`: the fixer's Comment step describes the author gate `fetch-feedback.py`
+  applies (#27 N11).
+- Both `SKILL.md` files list `scan-hidden.py` and `pr-json.py`; the reviewer's step 0 runs
+  `scan-hidden.py` (#27 N12).
+- `security-checklist.md`: a hit inside source text the diff shows verbatim is dismissed and counted;
+  an invisible character never is (#27 N3).
+- `comment-triage.md`: a not-substantive `act` in a resolved thread is answered once in the declined
+  form, so it stops coming back. This is a rule for the fixer, not a script change: GraphQL gives no
+  time of resolution to order a comment against (#27 N14).
+- `harness-loop.md`: `stale` moves nothing on a pull request with two review states; `start`, `fix`
+  and `publish` each leave one (#19 N2).
+- `AGENTS.md`: the gitignored test outputs include `work-*/` and `state-*/`; how `TEST_TAG` and the
+  unset variables behave (#5 N1, T1, T2).
+
+### Tests
+
+- New rows: `tests/feedback/t.py` 11, `tests/push-guard/run.sh` 7, `tests/scan-hidden/t.py` 9 and
+  `tests/fake-gh/run.sh` 22 (screen exit codes, placeholders, password assignments, quoted paths,
+  lint-report paths and ranges, `parse()` sourced on crafted payloads, upper-case `block_at=` for
+  `parse()`, `status` and the gate, two states with `review:needs-human` for `publish` and `fix`,
+  `stale` on two states). Run against v0.12.0, 11, 4, 5 and 16 of them fail; the rest pin behaviour
+  that was already right or values that must not be refused. The T3 rows were also checked against
+  a copy of the scripts with the case fold of `block_at` removed from `parse()` and the gate: they
+  fail there (T3, #19 N26).
+- `tests/fake-gh/run.sh`: the section header "secrets and mentions" is now "secrets in a published
+  report" (#13 N4).
+
 ## 0.12.0
 
 ### Added
