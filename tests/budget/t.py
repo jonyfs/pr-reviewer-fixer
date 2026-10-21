@@ -300,6 +300,21 @@ p = run(["start", "7"], d)
 check("start with a trusted comment edited by its own author -> review:running (N2)",
       p.returncode == 0 and labels_of(d) == ["review:running"], p.stdout + p.stderr)
 
+# N1 of #26: with REVIEW_MARKER_AUTHORS unset, start refuses on the missing list, not on a foreign
+# edit or deletion it cannot attribute (every comment would read as trusted).
+for name, kw in (("edited", {"edited": ("IC_2",), "edited_by": (("IC_2", "mallory"),)}),
+                 ("deleted", {"deleted": ((ME, "mallory"),)})):
+    for authors in ("", ","):
+        d = setup(hist([1] * 6), labels=("review:pending",), **kw)
+        p = run(["start", "7"], d, REVIEW_MARKER_AUTHORS=authors)
+        check("start with REVIEW_MARKER_AUTHORS=%r and a comment %s by another login -> refused on the list, label unchanged (N1 of #26)" % (authors, name),
+              p.returncode == 1 and "REVIEW_MARKER_AUTHORS is not set" in p.stderr and "by mallory" not in p.stderr
+              and labels_of(d) == ["review:pending"], p.stdout + p.stderr)
+d = setup(hist([1] * 6), labels=("review:pending",))
+p = run(["start", "7"], d, REVIEW_MARKER_AUTHORS="")
+check("start with REVIEW_MARKER_AUTHORS unset and nothing edited -> refused, label unchanged (N1 of #26)",
+      p.returncode == 1 and "REVIEW_MARKER_AUTHORS" in p.stderr and labels_of(d) == ["review:pending"], p.stdout + p.stderr)
+
 # A list of invisible characters names nobody: a stranger's grant must not raise the budget.
 d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")
 check("allowlist of a no-break space: budget answers none", d.get("next") == "none" and "REVIEW_MARKER_AUTHORS" in d.get("why", ""), str(d))

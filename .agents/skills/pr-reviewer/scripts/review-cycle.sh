@@ -56,9 +56,10 @@
 #
 #     status [pr]          what the cycle owes, and the next command (exit codes below)
 #     debt [pr]            the same answer as an exit code only, for hooks and CI
-#     start [pr]           review:running, and review:needs-human withdrawn. Refused on a halted
-#                          pull request whose BLOCKED verdict is still at the head, and while a
-#                          trusted comment stands edited or deleted by another login
+#     start [pr]           review:running, and review:needs-human withdrawn. Refused when
+#                          REVIEW_MARKER_AUTHORS names no login, on a halted pull request whose
+#                          BLOCKED verdict is still at the head, and while a trusted comment
+#                          stands edited or deleted by another login
 #     fix [pr]             review:fixing, and review:needs-human withdrawn. Refused first when the
 #                          pull request is from a fork or any author is not a collaborator with
 #                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup;
@@ -122,7 +123,7 @@
 #                             pull request can post an invisible PASSED marker, because the marker
 #                             is an HTML comment and every comment is scanned. The list must name
 #                             at least one login: unset, empty, whitespace, a lone comma and only
-#                             invisible characters all make `status`, `stale`, `publish`,
+#                             invisible characters all make `status`, `stale`, `start`, `publish`,
 #                             `budget`, `extend`, `halt`, `export-audit` refuse. `publish`, `extend` and
 #                             `halt --reason` also refuse when `gh api user` is not on the list
 #                             or cannot be resolved; `halt` without `--reason` posts nothing and
@@ -388,7 +389,7 @@ marker_authors() {
 marker_authors_active() { case "${REVIEW_MARKER_AUTHORS:-}" in *[!\ $'\t\r\n']*) return 0 ;; *) return 1 ;; esac; }
 # READY is stricter than active: at least one login must be kept. Unset, empty, whitespace, a lone
 # comma and a list of invisible characters are all not ready, and every command that decides from
-# markers (`status`, `stale`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuses to guess then.
+# markers (`status`, `stale`, `start`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuses to guess then.
 marker_authors_ready() { [ -n "$(marker_authors)" ]; }
 NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
 # One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
@@ -495,7 +496,7 @@ parse() {
   # `author.login` is not on the list is skipped before the regex runs, so it can supply neither
   # the current verdict nor the BLOCKED history below. Both answers come out of this one loop,
   # which is why the filter lives here and not in a second pass. Callers that decide
-  # (`status`, `stale`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
+  # (`status`, `stale`, `start`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
   # before they get here. Only a list that is not active (unset, empty or ASCII whitespace) skips
   # nothing; an active list that keeps no login (a lone comma, invisible characters) skips every
   # comment, since `allow` is then empty.
@@ -1137,6 +1138,10 @@ cmd_extend() {
 cmd_debt() { cmd_status "${1:-}" >/dev/null 2>&1; return $?; }
 
 cmd_start() {
+  # Without a login on the list, `parse()` trusts every comment, so any edit or deletion by someone
+  # other than a comment's author would read as a foreign edit of a trusted marker and the refusal
+  # below would name the wrong cause. The real cause is the missing list, and it is refused first.
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
   parse "$json"
   # A pass started now could never be published (`publish` refuses on the same reading), so it is

@@ -64,7 +64,7 @@ export REVIEW_BLOCK_AT=critical   # or warning: a WARNING then blocks too; match
 to. Set the same value as the repository variable of that name, for the `review-gate` check. With
 it unset, or listing no login, anyone who can comment could forge a verdict marker. An entry counts
 only as ASCII letters, digits, hyphens and underscores, starting with a letter or digit once spaces are trimmed, so a lone comma, a BOM or a
-no-break space names nobody. Then `status`, `stale`, `publish`, `extend`, `halt`, `export-audit` and the gate
+no-break space names nobody. Then `status`, `stale`, `start`, `publish`, `extend`, `halt`, `export-audit` and the gate
 all refuse until it is set, and `budget` prints `B_NEXT='none'` without reading the budget.
 `publish`, `extend` and `halt --reason` also refuse when the login `gh` is signed in to is not on the list,
 because every reader would ignore what they post.
