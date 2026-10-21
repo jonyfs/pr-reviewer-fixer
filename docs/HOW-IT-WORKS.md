@@ -138,7 +138,8 @@ flowchart TD
    screens the lines the pull request adds for tokens and private keys; each hit is a CRITICAL
    finding at that line, with the value redacted, whatever any agent thinks of it. Then
    `path-floor.sh <base> <head>` maps the changed paths to the units that must run: workflows,
-   actions and the scripts they run, CODEOWNERS, agent configuration, agent instruction files
+   actions and the scripts they run, CODEOWNERS, agent configuration (every harness's skill folder
+   and agent directories such as `.claude/` and `.cursor/` at any depth), agent instruction files
    (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` and the like), Dockerfiles,
    authentication and cryptography get security at `max`, migrations get security and data integrity, manifests and lockfiles get
    dependencies. Nothing in the diff can remove one.
@@ -279,7 +280,8 @@ flowchart TD
    refused. The lines those commits add go through the same secret screen as a verdict, and a
    token or private key refuses the push (the fixer already screens each commit with
    `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows and
-   `.github/scripts/**`, actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`,
+   `.github/scripts/**`, actions, CODEOWNERS, the skill folders `install.sh` writes
+   (`.agents/skills/**`, `.roo/skills/**` and the others) and `.claude/**` at any depth, `.mcp.json`,
    agent instruction files such as `AGENTS.md`, compared after a Unicode case and normalization
    fold) is refused even when a finding names it, and the finding goes to a person,
    unless the person opted that class in with `PUSH_GUARD_ALLOW_SENSITIVE`. Links are refused, not

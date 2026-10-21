@@ -29,7 +29,8 @@ Run this pass on every review. A confirmed, exploitable hit is a **CRITICAL** fi
 
 A change to `.github/workflows/**`, a script a workflow runs (`.github/scripts/**`),
 `.github/actions/**`, an `action.yml`, CODEOWNERS, a Dockerfile, the agent configuration
-(`.agents/skills/**`, `.claude/**`, `.mcp.json`) or an agent instruction file (`AGENTS.md`,
+(`.mcp.json`, the skill folder of any harness such as `.agents/skills/**` or `.roo/skills/**`, and
+`.claude/**`, `.cursor/**` and the other agent directories at any depth) or an agent instruction file (`AGENTS.md`,
 `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.github/instructions/**`, `.codex/**`,
 `.opencode/**`, `.cursor/**`) changes what runs with the repository's tokens, or what an agent obeys. `scripts/path-floor.sh` makes security mandatory at
 `max` for these paths. Check each one:

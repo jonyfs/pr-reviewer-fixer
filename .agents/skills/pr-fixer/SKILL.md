@@ -159,7 +159,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    a control character in its name is refused. It also screens the added lines of every commit it
    would push and refuses one that adds what looks like a token or private key (reason `secret`,
    path and line named, value never shown), and one that touches a sensitive path (workflows and
-   `.github/scripts/**`, actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`,
+   `.github/scripts/**`, actions, CODEOWNERS, the skill folders `install.sh` writes (`.agents/skills/**`,
+   `.roo/skills/**` and the others) and `.claude/**` at any depth, `.mcp.json`,
    agent instruction files such as `AGENTS.md` and `CLAUDE.md`, compared after a Unicode
    case and normalization fold; reason `sensitive-path`) even when a finding names it. It refuses
    the whole push when either tree holds a symlink or gitlink at one of them or at a parent such as

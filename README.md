@@ -134,7 +134,9 @@ sequenceDiagram
   redacted.
 - Maps the changed paths to units that must run with `scripts/path-floor.sh <base> <head>`:
   workflows, actions and the scripts they run (`.github/scripts/**`), CODEOWNERS, agent
-  configuration (`.agents/skills/**`, `.claude/**`, `.mcp.json`), agent instruction files
+  configuration (`.mcp.json`, every project skill folder `install.sh` writes such as
+  `.agents/skills/**` and `.roo/skills/**`, and `.claude/**`, `.cursor/**` and the other agent
+  directories at any depth, so `packages/web/.cursor/rules/x.mdc` counts), agent instruction files
   (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.codex/**`,
   `.opencode/**`, `.cursor/**` and the rest the script's header lists), Dockerfiles,
   authentication and cryptography (`auth/`, `AuthService.ts`) summon security at `max`;
@@ -142,7 +144,8 @@ sequenceDiagram
   text in the diff can drop one.
 - Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
   file and a line the diff shows, the counts must match the open entries, and the coverage note
-  must list every unit of the path floor as run.
+  must list every unit of the path floor as run. It reads the diff with `gh pr diff --color=never`,
+  and a diff it cannot read a path from makes the floor unknown, never empty.
 - Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
   the verdict is `PASSED` and the pull request is a draft, the script marks it ready for review.
 
@@ -166,8 +169,9 @@ sequenceDiagram
   checked. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
-  `.github/scripts/**`, `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**`,
-  `.mcp.json` or an agent instruction file (`AGENTS.md`, `CLAUDE.md` and the others of the
+  `.github/scripts/**`, `.github/actions/**`, CODEOWNERS, a skill folder (`.agents/skills/**`,
+  `.roo/skills/**`, `.kiro/skills/**` and the others `install.sh` writes, at any depth),
+  `.claude/**` at any depth, `.mcp.json` or an agent instruction file (`AGENTS.md`, `CLAUDE.md` and the others of the
   `instructions` class), even when a finding names the file: such a finding goes to a person. Names are compared after a Unicode
   case and normalization fold broader than APFS or NTFS, so `.CLAUDE/x` and `.agents/ſkills/x`
   count too. Links are refused rather than followed: if the pull request head or the local HEAD

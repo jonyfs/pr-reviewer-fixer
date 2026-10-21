@@ -14,27 +14,36 @@ N16, N17, N19, N23, N27, N29-N35).
 
 - `scripts/path-floor.sh <base> <head>` (or `--diff <file>`), in both skills, maps the paths a change
   touches to review units that must run: `.github/workflows/**`, `.github/scripts/**`,
-  `.github/actions/**`, `action.yml`, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`,
-  agent instruction files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md` in any directory,
-  `.github/copilot-instructions.md`, `.github/{instructions,agents,skills,prompts}/**`, `.codex/**`,
-  `.opencode/**`, `opencode.json`, `.cursor/**`, `.cursorrules`, `.gemini/**`, `.windsurf/**`,
+  `.github/actions/**`, `action.yml`, CODEOWNERS, `.mcp.json`, agent directories at any depth
+  (`.claude/**`, `.codex/**`, `.opencode/**`, `.cursor/**`, `.gemini/**`, `.windsurf/**`, and the
+  `skills/` folder of `.agents`, `.roo`, `.cline`, `.kiro`, `.devin` and `.junie`, so every project
+  skill folder `install.sh` writes counts; #29 W7), agent instruction files (`AGENTS.md`,
+  `CLAUDE.md`, `GEMINI.md` in any directory, `.github/copilot-instructions.md`,
+  `.github/{instructions,agents,skills,prompts}/**`, `opencode.json`, `.cursorrules`,
   `.windsurfrules`), Dockerfiles, and authentication and cryptography paths (also as a camelCase
   word, `AuthService.ts`) get security at `max`; migrations get security and data integrity;
   manifests and lockfiles get dependencies. A rename counts by both paths. `--diff` splits on `\n`
   only, so a form feed or U+2028 in a changed line cannot forge a hunk header, and reads a
   header-only section (binary, empty, mode change) by its quoted or unquoted `diff --git` names. It
-  exits 2 when it cannot read the paths (I50; #29 W1, W2, W3, W4).
+  exits 2 when it cannot read the paths, including a diff that is not empty but names no path (a
+  coloured `gh pr diff`) (I50; #29 W1, W2, W3, W4, W8).
 - `review-cycle.sh lint-report` runs `path-floor.sh` over the diff it checks and refuses a report
   whose coverage note has no `Mandatory units:` line listing each mandatory unit as run, with
   `(max)` where the floor says `max`. It reads exactly one such line, in the Coverage note section
-  outside any fence or blockquote, refuses a second line or a unit listed twice, and wants the status
-  to be exactly `run`. A diff with no mandatory unit needs no such line, so reports that passed
+  outside any fence or blockquote, refuses a second line, a second Coverage note section or a unit
+  listed twice, and wants the status to be exactly `run`. Fences are tracked line by line as
+  CommonMark closes them, so a ```` fence quoting a ``` block hides all of its text, and the
+  `findings` block is the first one outside every other fence (#29 W6). It reads a pull request's
+  diff with `gh pr diff --color=never`, so `CLICOLOR_FORCE=1` cannot empty the floor (#29 W8). A diff with no mandatory unit needs no such line, so reports that passed
   before still pass. It exits 2 when the floor cannot be computed (I50; #29 W5). Its anchor parser
   splits the diff on `\n` only, like the floor (#29 W1).
 - `push-guard.sh` counts `.github/scripts/**` in the `workflows` class (the scripts a workflow runs)
   and has a new `instructions` class for the agent instruction files above, which
   `PUSH_GUARD_ALLOW_SENSITIVE` may name; a link at, into or above one is refused like the others
-  (#29 W2).
+  (#29 W2). The `skills` class covers the `skills/` folder of `.agents`, `.roo`, `.cline`, `.kiro`,
+  `.devin` and `.junie`, and agent directories (`.claude`, `.cursor` and the rest) count at any
+  depth, as in the path floor; a test reads `install.sh`'s table so a new harness cannot be missed
+  (#29 W7).
 - `security-checklist.md` has a section for CI, workflow and agent configuration:
   `pull_request_target` and `workflow_run`, expression injection, unpinned actions, `permissions`,
   secrets, agent configuration (I50). The loop computes the floor in step 3 and hands it to the

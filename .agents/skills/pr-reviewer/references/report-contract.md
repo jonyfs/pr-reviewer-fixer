@@ -40,7 +40,9 @@ Tags: [#pr #review #contract #reference]
  `Mandatory units: security (max): run; dependencies: run`. Required whenever the floor is not
  empty. Write it once, in this section, outside any fence or blockquote: `lint-report` reads only
  that line, and refuses a report that leaves a unit out, lists a unit twice, has a second
- `Mandatory units:` line, or gives any status but exactly `run`.>
+ `Mandatory units:` line or a second `Coverage note` section, or gives any status but exactly
+ `run`. It tracks fences as CommonMark does, so text quoted in a ```` fence, even one holding a
+ ``` block, stays quoted and never counts.>
 
 ### Prior findings
 <Re-review only. Each earlier finding with one status: verified (closed, red and green re-run by
@@ -55,7 +57,9 @@ Tags: [#pr #review #contract #reference]
 ## Findings block
 
 The report ends with one fenced block tagged `findings`. `pr-fixer` reads this block and nothing
-else for the work list, so prose and block must agree.
+else for the work list, so prose and block must agree. It must sit outside every other fence:
+`lint-report` reads the first `findings` block that no other fence quotes, so a quoted example (like
+the one below, in a ```` fence) is not taken for it.
 
 ````markdown
 ```findings

@@ -42,8 +42,10 @@ Tags: [#pr #github #safety #reference]
    leaves it to the reviewer and a person.
 10. **Sensitive paths go to a person.** The fixer does not push a change to the files that run or
     judge the automation: `.github/workflows/**` and the scripts they run (`.github/scripts/**`),
-    `.github/actions/**`, CODEOWNERS (at the root, in `.github/` or in `docs/`), `.agents/skills/**`,
-    `.claude/**`, `.mcp.json`, and the files an agent reads as instructions (`AGENTS.md`,
+    `.github/actions/**`, CODEOWNERS (at the root, in `.github/` or in `docs/`), the skill folders
+    `install.sh` writes (`.agents/skills/**`, `.roo/skills/**`, `.cline/skills/**`, `.kiro/skills/**`,
+    `.devin/skills/**`, `.junie/skills/**`, class `skills`, at any depth), `.claude/**` at any depth,
+    `.mcp.json`, and the files an agent reads as instructions (`AGENTS.md`,
     `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.codex/**`, `.opencode/**`,
     `.cursor/**` and the rest of the `instructions` class in `push-guard.sh`). Links are not
     followed; they are refused. If the pull request head or the local HEAD holds a symlink or a
