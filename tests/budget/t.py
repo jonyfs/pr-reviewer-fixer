@@ -281,6 +281,25 @@ p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "7",
 check("publish with a trusted comment deleted by another login is refused, nothing posted (N5)",
       p.returncode != 0 and len(comments_posted(d)) == n and "deleted by mallory" in p.stderr, p.stderr + p.stdout)
 
+# N2 of #25: status and start read the foreign edit too. status answers 2 and names the comment;
+# start refuses before any label moves.
+def labels_of(d):
+    return sorted(l["name"] for l in json.load(open(os.path.join(d, "pr.json")))["labels"])
+for name, kw, word in (("edited", {"edited": ("IC_2",), "edited_by": (("IC_2", "mallory"),)}, "edited by mallory"),
+                       ("deleted", {"deleted": ((ME, "mallory"),)}, "deleted by mallory")):
+    d = setup(hist([1] * 6), labels=("review:blocked",), **kw)
+    p = run(["status", "7"], d)
+    check("status with a trusted comment %s by another login -> exit 2, names it (N2)" % name,
+          p.returncode == 2 and word in p.stdout and "INCONCLUSIVE" in p.stdout, p.stdout + p.stderr)
+    d = setup(hist([1] * 6), labels=("review:pending",), **kw)
+    p = run(["start", "7"], d)
+    check("start with a trusted comment %s by another login -> refused, label unchanged (N2)" % name,
+          p.returncode != 0 and word in p.stderr and labels_of(d) == ["review:pending"], p.stdout + p.stderr)
+d = setup(hist([1] * 6), labels=("review:pending",), edited=("IC_2",), edited_by=(("IC_2", ME),))
+p = run(["start", "7"], d)
+check("start with a trusted comment edited by its own author -> review:running (N2)",
+      p.returncode == 0 and labels_of(d) == ["review:running"], p.stdout + p.stderr)
+
 # A list of invisible characters names nobody: a stranger's grant must not raise the budget.
 d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")
 check("allowlist of a no-break space: budget answers none", d.get("next") == "none" and "REVIEW_MARKER_AUTHORS" in d.get("why", ""), str(d))

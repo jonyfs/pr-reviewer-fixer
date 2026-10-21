@@ -71,8 +71,8 @@ because every reader would ignore what they post.
 A marker comment that was edited after it was created is ignored by all of them as a verdict;
 its `pass=` still counts toward the highest pass, so an edit that keeps the number cannot lower
 the cycle count. An edit that rewrites the number counts as the new one, and a trusted comment
-edited by anyone other than its author, whether or not it still reads as a marker, stops `publish`
-and `budget` until its author edits it back or deletes it; a new comment does not clear it. A
+edited by anyone other than its author, whether or not it still reads as a marker, stops `publish`,
+`start`, `budget` and `status` (exit 2) until its author edits it back or deletes it; a new comment does not clear it. A
 trusted comment deleted by another login stops them for good, since a deletion cannot be undone
 (see rule 2 in [pr-protocol.md](pr-protocol.md)).
 

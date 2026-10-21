@@ -82,7 +82,8 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    anyone with write access edit another login's comment, so `pr-json.py` also records who made
    the last edit (`IssueComment.editor`). A comment by a trusted login edited by anyone other than
    its author, or by an account GitHub no longer names, counts as BLOCKED history, `budget` answers
-   `none` and names the editor and the comment's url, and `publish` refuses, until the comment's
+   `none` and names the editor and the comment's url, `publish` and `start` refuse and `status`
+   answers inconclusive (exit 2), until the comment's
    author edits it back or deletes it. A new comment does not clear it, and nor does a deletion by
    anyone else. This holds whether or not the edited body still reads as a marker, so an edit that
    breaks a marker cannot drop it from the count unseen. Deletions are read too: `pr-json.py` pages
@@ -90,7 +91,8 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    `deletedComments`, and fails closed like the comment query. A comment by a trusted login deleted
    by anyone other than its author, or by an account GitHub no longer names, may have been a
    BLOCKED marker or the highest pass, so it counts the same way: BLOCKED history in the gate, and
-   `budget` answers `none` and `publish` refuses, naming the deleter and the time.
+   `budget` answers `none`, `publish` and `start` refuse and `status` exits 2, naming the deleter
+   and the time. `stale` does not check either case: it only retires a label the head outgrew.
    A deletion cannot be undone, so this stop is permanent for that pull request: the automatic loop
    does not continue there, and a person decides how to go on.
 

@@ -423,7 +423,7 @@ Two steps are required:
    created is ignored as a verdict, though its `pass=` still counts, so an edit that keeps the
    number cannot lower the cycle count. An edit that rewrites the number counts as the new one.
    A trusted comment edited by anyone other than its author (GitHub lets any collaborator with
-   write access edit a comment) stops `publish` and `budget` until its author edits it back or
+   write access edit a comment) stops `publish`, `start`, `budget` and `status` until its author edits it back or
    deletes it, even when the edit broke the marker so that it no longer reads as one. The refusal
    names the comment's url. A new comment does not clear it. A trusted comment deleted by anyone
    other than its author (read from the pull request timeline) stops the same commands for good on

@@ -57,7 +57,8 @@
 #     status [pr]          what the cycle owes, and the next command (exit codes below)
 #     debt [pr]            the same answer as an exit code only, for hooks and CI
 #     start [pr]           review:running, and review:needs-human withdrawn. Refused on a halted
-#                          pull request whose BLOCKED verdict is still at the head
+#                          pull request whose BLOCKED verdict is still at the head, and while a
+#                          trusted comment stands edited or deleted by another login
 #     fix [pr]             review:fixing, and review:needs-human withdrawn. Refused first when the
 #                          pull request is from a fork or any author is not a collaborator with
 #                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup;
@@ -129,8 +130,10 @@
 #                             Only the bare `marker` subcommand still reads with the list unset.
 #                             A comment edited after it was created is never read as a verdict
 #                             (pr-json.py); its `pass=` still counts toward the highest pass. A
-#                             comment by a trusted login edited by another login (whether or not
-#                             it still reads as a marker) stops `publish` and `budget`.
+#                             comment by a trusted login edited or deleted by another login
+#                             (whether or not it still reads as a marker) stops `publish` and
+#                             `start` (refused), `budget` (none) and `status` (exit 2); `stale`
+#                             does not check it.
 #     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
 #                             Default 5. Read by `budget` and `extend`.
 #     MAX_REVIEW_CYCLES_HARD  Absolute ceiling no answer passes. Default 10, clamped to 1..10.
@@ -140,7 +143,7 @@
 # Exit codes: 0 = nothing owed · 1 = review owed · 2 = anything that is not either of those, and it
 # is never the same as approved.
 #
-# **The 2 of `cmd_status` carries seven meanings, and saying so is what keeps it harmless.** The
+# **The 2 of `cmd_status` carries eight meanings, and saying so is what keeps it harmless.** The
 # subject is the FUNCTION and not the file, and the difference is not pedantry: the count a test
 # checks against this sentence is `return 2` inside `cmd_status`, while the file also exits 2 in
 # several places outside it, counted by their own sentence further down, which is where they belong.
@@ -157,7 +160,9 @@
 #     decided while answering a code that is not a reading: the `*)` arm of the `case`.
 #     That is five sentences that all end in "only that nobody looked";
 #   · the gate having READ a MERGED pull request and recorded that it carries no valid
-#     `review:passed`: the sentence ending in "this is recorded, not owed".
+#     `review:passed`: the sentence ending in "this is recorded, not owed";
+#   · an OPEN pull request read in full, where a trusted comment was edited or deleted by another
+#     login (`MARKER_FOREIGN_EDIT`): read, not blind, and a person has to decide.
 #
 # **The `*)` arm was missing from this list at first, and it is the one that is different.**
 # The other four blind sentences never get a decision out of the gate, and they split in two: the
@@ -788,6 +793,15 @@ cmd_status() {
   fi
 
   local short="${HEAD:0:12}"
+  # A trusted comment edited or deleted by another login: the pass count and the verdicts may have
+  # been rewritten, so nothing here can say whether a review is owed. `publish` would refuse the
+  # review this would otherwise ask for, so `status` stops first and says why (exit 2, read and
+  # inconclusive: a person has to decide).
+  if [ "${MARKER_FOREIGN_EDIT:--}" != - ]; then
+    echo "#$NUMBER head $short — $(foreign_msg). INCONCLUSIVE."
+    echo "  next: a person decides; the loop does not review or fix this pull request while this stands"
+    return 2
+  fi
   if [ -z "$LABEL" ]; then
     echo "#$NUMBER head $short — NO review:* label. Absence reads as not reviewed."
     echo "  next: /pr-reviewer over this diff, then review-cycle.sh publish ..."
@@ -1122,6 +1136,9 @@ cmd_debt() { cmd_status "${1:-}" >/dev/null 2>&1; return $?; }
 cmd_start() {
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
   parse "$json"
+  # A pass started now could never be published (`publish` refuses on the same reading), so it is
+  # refused before any label moves.
+  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED on #$NUMBER: $(foreign_msg). No pass is started, since publish would refuse it."
   # A halted pull request whose BLOCKED verdict is still at the head has nothing new to review: a
   # pass now would only spend a cycle against the ceiling. A push moves the head (and `stale` drops
   # the halt), and `extend` withdraws it when a person grants cycles.
@@ -1280,6 +1297,9 @@ cmd_stale() {
   # here is the whole transition out: the corrector pushes, `fixing` goes back to `pending`, and
   # `review:needs-human` goes with it if it was standing.
   case "$LABEL" in review:pending|review:running|*" "*) return 0 ;; esac
+  # A foreign edit or deletion (MARKER_FOREIGN_EDIT) is not checked here, on purpose: `stale` only
+  # removes a claim the head outgrew, which is safe whoever touched a comment, and `status`, `start`,
+  # `publish` and `budget` are the commands that stop on it.
   [ -n "$MARKER_SHA" ] || return 0
   if [ "${HEAD:0:${#MARKER_SHA}}" != "$MARKER_SHA" ]; then
     gh pr edit "$NUMBER" --remove-label "$LABEL" ${HALTED:+--remove-label review:needs-human} \
