@@ -163,8 +163,10 @@ def git(*args):
 def scan_diff(base, head, verdict_re):
     for ref in (base, head):
         git("rev-parse", "--verify", "--quiet", ref + "^{commit}")
-    patch = git("-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--no-renames",
-                "-U0", base + "..." + head)
+    # --text --no-textconv: a file git treats as binary (a NUL byte, a binary or -diff attribute)
+    # would show no added line at all, and a textconv driver would show something other than it.
+    patch = git("-c", "core.quotePath=false", "diff", "--text", "--no-textconv", "--no-color", "--no-ext-diff",
+                "--no-renames", "-U0", base + "..." + head)
     hits, path, n = [], None, 0
     rem_old = rem_new = 0
     for raw in patch.split("\n"):

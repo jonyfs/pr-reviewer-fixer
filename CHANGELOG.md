@@ -55,6 +55,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `export-audit` resolves `--out` with every symbolic link followed and refuses a directory outside
   the repository top level, so `--out link/` and a committed `docs` link are refused (#26 N3).
 - The git < 2.38 merge refusal in `push-guard.sh` has a test row (#26 N5).
+- The diff parsers of `scan-hidden.py` and `screen --patch` count the lines of each hunk, as
+  `lint-report` does, so an added line whose text starts with `++ ` (shown as `+++ ...`) is
+  scanned instead of being taken for a file header (#27 W1).
+- `screen --staged`, `screen --diff`, `push-guard.sh` check 6 and `scan-hidden.py --diff` read the
+  diff with `--text --no-textconv`, so a file git treats as binary (a NUL byte, or a `binary` or
+  `-diff` attribute from any `.gitattributes` or `.git/info/attributes`) is screened too (#27 W2).
 
 ### Not done
 

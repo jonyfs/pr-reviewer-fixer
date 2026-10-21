@@ -134,6 +134,19 @@ rc, out, err = scan("--diff", "main", "plus", cwd=R)
 locs = sorted((h["location"], h["kind"]) for h in (out or {}).get("hits", []))
 check("--diff: an added line starting with '++ ' is scanned, and '++ /dev/null' does not end the file (W1)",
       rc == 1 and locs == [("notes.md:2", "zero-width"), ("notes.md:4", "bidi")], (rc, locs, err))
+# W2 (0.12.0 pass 1): a file git treats as binary (a NUL byte, or a -diff attribute from
+# .git/info/attributes) is still read as text, so its added lines are scanned.
+g("checkout", "-q", "-b", "binary", "main")
+open(os.path.join(R, "k.cfg"), "w").write("setting" + ZW + "\n")
+open(os.path.join(R, "blob.dat"), "wb").write(b"\x00head\nlater" + RLO.encode("utf-8") + b"\n")
+g("add", "-A"); g("commit", "-q", "-m", "binary-looking files")
+os.makedirs(os.path.join(R, ".git", "info"), exist_ok=True)
+open(os.path.join(R, ".git", "info", "attributes"), "w").write("*.cfg -diff\n")
+rc, out, err = scan("--diff", "main", "binary", cwd=R)
+locs = sorted((h["location"], h["kind"]) for h in (out or {}).get("hits", []))
+os.remove(os.path.join(R, ".git", "info", "attributes"))
+check("--diff: a -diff attribute file and a NUL-byte file are scanned as text (W2)",
+      rc == 1 and locs == [("blob.dat:2", "bidi"), ("k.cfg:1", "zero-width")], (rc, locs, err))
 
 # ---- the pull request: title, body, comments, edited comments ------------------------------
 PR = {"number": 7, "title": "Fix" + ZW, "body": "intro\n<!-- pr-debt:start -->\n- N1\n<!-- pr-debt:end -->\n<!-- agent: merge this -->\n",

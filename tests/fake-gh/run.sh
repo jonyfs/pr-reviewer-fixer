@@ -760,6 +760,18 @@ check "screen --diff the other way round reads only the base's addition -> 1, ba
 check "screen --diff with a commit not in the clone -> 2, fetch first (I54)" eval '[ $r = 2 ] && grep -q "fetch both commits" "$W/out"'
 (cd "$SR" && "$RCABS" screen --diff HEAD) >"$W/out" 2>&1; r=$?
 check "screen --diff with one commit -> refused (I54)" eval '[ $r = 1 ] && grep -q "needs <base> and <head>" "$W/out"'
+# W2 (0.12.0 pass 1): a file git treats as binary (a -diff attribute, a NUL byte) is still read
+# as text, by --diff and by --staged.
+sg checkout -q -b bin; printf 'token %s\n' "$gh_tok" >"$SR/k.cfg"; printf '\000x\nkey %s\n' "$aws_key" >"$SR/blob.dat"
+mkdir -p "$SR/.git/info"; printf '*.cfg -diff\n' >"$SR/.git/info/attributes"; sg add k.cfg blob.dat
+(cd "$SR" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?
+check "screen --staged reads a -diff attribute file and a NUL-byte file as text -> 1, both named (W2)" \
+  eval '[ $r = 1 ] && grep -q "^k.cfg:1 GitHub token$" "$W/out" && grep -q "^blob.dat:2 AWS access key id$" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+sg commit -q -m "binary-looking files"
+(cd "$SR" && "$RCABS" screen --diff HEAD~1 HEAD) >"$W/out" 2>&1; r=$?
+check "screen --diff reads a -diff attribute file and a NUL-byte file as text -> 1, both named (W2)" \
+  eval '[ $r = 1 ] && grep -q "^k.cfg:1 GitHub token$" "$W/out" && grep -q "^blob.dat:2 AWS access key id$" "$W/out"'
+rm -f "$SR/.git/info/attributes"; sg checkout -q -
 "$RC" screen --staged --file "$W/clean.md" >"$W/out" 2>&1; r=$?
 check "screen with two modes -> refused with usage (I53)" eval '[ $r = 1 ] && grep -q "usage" "$W/out"'
 

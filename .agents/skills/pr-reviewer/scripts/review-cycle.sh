@@ -1427,14 +1427,17 @@ cmd_screen() {
       git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
         || { echo "review-cycle: screen --$mode needs a git work tree, INCONCLUSIVE" >&2; return 2; }
       pf="$(mktemp)" || return 2
+      # --text: a file git treats as binary (a NUL byte, a binary or -diff attribute from any
+      # .gitattributes or .git/info/attributes) would show only "Binary files differ" and no added
+      # line. --no-textconv: a textconv driver would show its output instead of the bytes committed.
       if [ "$mode" = staged ]; then
         what="the staged changes"
-        git -c core.quotePath=false diff --cached --no-color --no-ext-diff --no-renames -U0 >"$pf" 2>/dev/null
+        git -c core.quotePath=false diff --cached --text --no-textconv --no-color --no-ext-diff --no-renames -U0 >"$pf" 2>/dev/null
       else
         what="the changes from $base to $head"
         # Three dots: from the merge base, so the base branch's own later changes are not read as added.
         git rev-parse --verify --quiet "$base^{commit}" >/dev/null && git rev-parse --verify --quiet "$head^{commit}" >/dev/null \
-          && git -c core.quotePath=false diff --no-color --no-ext-diff --no-renames -U0 "$base...$head" -- >"$pf" 2>/dev/null
+          && git -c core.quotePath=false diff --text --no-textconv --no-color --no-ext-diff --no-renames -U0 "$base...$head" -- >"$pf" 2>/dev/null
       fi || { rm -f "$pf"; echo "review-cycle: git could not produce $what (fetch both commits first), INCONCLUSIVE" >&2; return 2; }
     fi
     if [ -f "$pf" ] && [ -r "$pf" ]; then leaked="$(report_secrets "$pf" patch)"; rc=$?; else rc=2; fi

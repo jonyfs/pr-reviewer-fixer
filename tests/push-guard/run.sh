@@ -143,6 +143,28 @@ prjson OPEN feat/s "$HEAD_OID" false
 r=$( (cd "$W/repo" && "$W/alone/push-guard.sh" 7 --findings "$W/rep.md") >"$W/out" 2>&1; echo $?)
 check "review-cycle.sh missing beside push-guard.sh -> 2, the screen cannot run (I53)" eval '[ $r = 2 ] && grep -q "secret screen cannot run" "$W/out"'
 g checkout -q feat/x
+# W2 (0.12.0 pass 1): a file git treats as binary is still screened as text. Each form on its own:
+# a -diff attribute from .git/info/attributes, an untracked .gitattributes, a committed binary
+# attribute, and a NUL byte.
+bin() { # name file content-format [committed .gitattributes line]
+  g checkout -q -B feat/bin "$HEAD_OID"; mkdir -p "$W/repo/tests"
+  [ -n "${4:-}" ] && printf '%s\n' "$4" >"$W/repo/.gitattributes" && g add .gitattributes
+  printf "$3" "$TOK" >"$W/repo/tests/$2"; g add "tests/$2"; g commit -q -m "binary-looking $2"
+  prjson OPEN feat/bin "$HEAD_OID" false
+}
+bin "info/attributes" k.cfg 'token %s\n'; printf '*.cfg -diff\n' >"$W/repo/.git/info/attributes"
+r=$(run --findings "$W/rep.md"); rm -f "$W/repo/.git/info/attributes"
+check "a token in a file .git/info/attributes marks -diff -> refused, secret (W2)" eval '[ $r = 1 ] && grep -q "tests/k.cfg:1 GitHub token" "$W/out"'
+bin "untracked .gitattributes" k.cfg 'token %s\n'; printf '*.cfg -diff\n' >"$W/repo/.gitattributes"
+r=$(run --findings "$W/rep.md"); rm -f "$W/repo/.gitattributes"
+check "a token in a file an untracked .gitattributes marks -diff -> refused, secret (W2)" eval '[ $r = 1 ] && grep -q "tests/k.cfg:1 GitHub token" "$W/out"'
+bin "committed binary attribute" k.cfg 'token %s\n' '*.cfg binary'
+r=$(run --findings "$W/rep.md" --allow .gitattributes)
+check "a token in a file a committed .gitattributes marks binary -> refused, secret (W2)" eval '[ $r = 1 ] && grep -q "tests/k.cfg:1 GitHub token" "$W/out"'
+bin "NUL byte" blob.dat '\000x\ntoken %s\n'
+r=$(run --findings "$W/rep.md")
+check "a token in a file holding a NUL byte -> refused, secret (W2)" eval '[ $r = 1 ] && grep -q "tests/blob.dat:2 GitHub token" "$W/out"'
+g checkout -q -f feat/x
 
 # I51: sensitive paths are refused even with --allow, and even under a test directory or name.
 sens() { # name path class: one commit on top of the head that adds that path, --allow'ed

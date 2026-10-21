@@ -41,7 +41,8 @@
 #      still subject to check 4: the file must be in scope.
 #   6. no commit adds a line that looks like a token or a private key: the added lines of each
 #      commit's own changes (as in 4) go through `review-cycle.sh screen --patch`, the screen
-#      `publish` uses. A hit refuses with reason `secret`, naming the path, the line and the kind,
+#      `publish` uses. The patch is made with --text --no-textconv, so a file git treats as binary
+#      (a NUL byte, a binary or -diff attribute) is read as the bytes it commits. A hit refuses with reason `secret`, naming the path, the line and the kind,
 #      never the value. A value that was already on the base is not counted.
 #
 # EXIT CODES. 0 = safe to push. 1 = refused, with every reason printed. 2 = could not check: gh
@@ -184,7 +185,9 @@ merge_tree_ok() {
 # this way, with the reason on stdout.
 commit_paths() {
   local c="$1" parents n tree rc fmt=(--name-only -z)
-  [ "${2:-}" = patch ] && fmt=(-p -U0 --no-color --no-ext-diff)
+  # --text --no-textconv: a file git treats as binary (a NUL byte, a binary or -diff attribute from
+  # any .gitattributes or .git/info/attributes) would show no added line, and the screen would pass it.
+  [ "${2:-}" = patch ] && fmt=(-p -U0 --text --no-textconv --no-color --no-ext-diff)
   parents="$(git rev-list --parents -n 1 "$c" 2>/dev/null)" || { echo "commit ${c:0:12} could not be read"; return 1; }
   set -- $parents; shift; n=$#
   if [ "$n" -le 1 ]; then
