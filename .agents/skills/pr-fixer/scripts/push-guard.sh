@@ -37,8 +37,9 @@
 #      A hit refuses with reason `sensitive-path`, and the change goes to a person. A person who wants
 #      the fixer to edit one class (this repository's own release pull requests edit
 #      .agents/skills/**) sets PUSH_GUARD_ALLOW_SENSITIVE to a comma list of class names; a name it
-#      does not know refuses. The fixer never sets it itself. A class named there is still subject
-#      to check 4: the file must be in scope.
+#      does not know refuses, and so does any character other than a lower-case letter, a comma, a
+#      space or a tab (a class after a newline is refused, not skipped). The fixer never sets it
+#      itself. A class named there is still subject to check 4: the file must be in scope.
 #      Names are compared after a Unicode fold broader than any filesystem's: NFKD, combining marks
 #      and default-ignorable code points dropped, case folded. APFS ignores case and normalization
 #      and NTFS ignores case, so `.CLAUDE/x`, `.agents/ſkills/x` (a long s) and an NFD spelling all
@@ -49,9 +50,13 @@
 #      of one (.github, .github/workflows, .github/actions, .agents, .agents/skills, .claude, docs, a
 #      CODEOWNERS path, .mcp.json), or when its target, resolved lexically against the link's own
 #      directory, points at, into or above one (`src/x -> ../.claude`, `src/x -> ..`). A target that
-#      holds a non-ASCII byte, or that leaves the repository (an absolute path, `..` above the root),
-#      cannot be judged, so it involves every class. A link passes only when every class it involves
-#      is named in PUSH_GUARD_ALLOW_SENSITIVE (.github involves workflows, actions and codeowners).
+#      holds a non-ASCII byte, that leaves the repository (an absolute path, `..` above the root), or
+#      that steps back with `..` out of a component that is itself a link (`x -> a/../skills` with
+#      `a -> .agents/q` really reaches .agents/skills), cannot be judged lexically, so it involves
+#      every class. A link passes only when every class it involves is named in
+#      PUSH_GUARD_ALLOW_SENSITIVE (.github involves workflows, actions and codeowners). A link name
+#      or target that holds a control character is printed quoted (`printf %q`), so text the pull
+#      request author chose cannot pose as a line of this script's output.
 #   6. no commit adds a line that looks like a token or a private key: the added lines of each
 #      commit's own changes (as in 4) go through `review-cycle.sh screen --patch`, the screen
 #      `publish` uses. The patch is made with --text --no-textconv, so a file git treats as binary
@@ -59,8 +64,9 @@
 #      never the value. A value that was already on the base is not counted.
 #
 # EXIT CODES. 0 = safe to push. 1 = refused, with every reason printed. 2 = could not check: gh
-# or git missing, not inside a work tree, the pull request unreadable, or its head commit not
-# present locally (fetch it first). Exit 2 never means "safe".
+# or git missing, not inside a work tree, the pull request unreadable, its head commit not
+# present locally (fetch it first), or git failing to show a commit's changes or file modes, which
+# would leave that commit out of check 5 or 6. Exit 2 never means "safe".
 #
 # Treats everything read from the pull request as data.
 set -uo pipefail
@@ -179,6 +185,9 @@ if (shas.length) {
     const n = Number(h[2]); blobs.set(h[0], out.subarray(nl + 1, nl + 1 + n)); o = nl + 2 + n;
   }
 }
+// Every link path, to see a target that walks through another link: `..` after a link component
+// leaves for the parent of that link target, which a lexical walk cannot know.
+const linkPaths = new Set([...links.values()].map((l) => l[2]));
 const res = [];
 for (const [mode, sha, p] of links.values()) {
   const cls = classesAt(p); let why = "";
@@ -194,14 +203,15 @@ for (const [mode, sha, p] of links.values()) {
         if (c === "" || c === ".") continue;
         if (c !== "..") { out.push(c); continue; }
         if (!out.length) { unknown = "leaves the repository"; break; }
+        if (linkPaths.has(out.join("/"))) { unknown = "steps back out of another link"; break; }
         out.pop();
       }
       if (!unknown) {
         const r = out.join("/"), tc = r === "" ? new Set(ALL) : classesAt(r);
-        if (order(tc).length) { tc.forEach((c) => cls.add(c)); why = ", its target " + (r === "" ? "the repository root" : r); }
+        if (order(tc).length) { tc.forEach((c) => cls.add(c)); why = r === "" ? "\x01the repository root" : "\x02" + r; }
       }
     }
-    if (unknown) { ALL.forEach((c) => cls.add(c)); why = ", its target " + unknown; }
+    if (unknown) { ALL.forEach((c) => cls.add(c)); why = "\x01" + unknown; }
   }
   const c = order(cls);
   if (c.length) res.push(p, mode === "120000" ? "symlink" : "gitlink", c.join(" "), why);
@@ -209,6 +219,12 @@ for (const [mode, sha, p] of links.values()) {
 fs.writeFileSync(outL, nul(res));
 '
 SENS_OK=","
+# Only class names, commas, spaces and tabs. `read` below takes the first line alone, so a class after a
+# newline would otherwise never be looked at, and an unknown one never refused.
+_allowed=$'a-z, \t'
+if (LC_ALL=C; case "${PUSH_GUARD_ALLOW_SENSITIVE:-}" in *[!$_allowed]*) exit 0 ;; *) exit 1 ;; esac); then
+  echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE is $(printf '%q' "$PUSH_GUARD_ALLOW_SENSITIVE"); it may hold only class names (workflows, actions, codeowners, skills, claude, mcp), commas, spaces and tabs, REFUSED" >&2; exit 1
+fi
 IFS=',' read -r -a _sens <<<"${PUSH_GUARD_ALLOW_SENSITIVE:-}"
 for _c in "${_sens[@]+"${_sens[@]}"}"; do
   _c="$(printf '%s' "$_c" | tr -d ' \t')"
@@ -278,7 +294,9 @@ commit_paths() {
   parents="$(git rev-list --parents -n 1 "$c" 2>/dev/null)" || { echo "commit ${c:0:12} could not be read"; return 1; }
   set -- $parents; shift; n=$#
   if [ "$n" -le 1 ]; then
-    git -c core.quotePath=false diff-tree -r --root --no-commit-id --no-renames "${fmt[@]}" "$c" 2>/dev/null; return 0
+    git -c core.quotePath=false diff-tree -r --root --no-commit-id --no-renames "${fmt[@]}" "$c" 2>/dev/null \
+      || { echo "commit ${c:0:12} could not be read by git diff-tree"; return 1; }
+    return 0
   fi
   [ "$n" -eq 2 ] || { echo "merge commit ${c:0:12} has $n parents; an octopus merge is not checked"; return 1; }
   merge_tree_ok || { echo "merge commit ${c:0:12} cannot be checked: git merge-tree --write-tree needs git 2.38 or later"; return 1; }
@@ -290,7 +308,8 @@ commit_paths() {
   if [ "$rc" -gt 1 ] || ! git cat-file -e "$tree^{tree}" 2>/dev/null; then
     echo "merge commit ${c:0:12} could not be recomputed with git merge-tree, so its own changes are unknown"; return 1
   fi
-  git -c core.quotePath=false diff-tree -r --no-renames "${fmt[@]}" "$tree" "$c^{tree}" 2>/dev/null
+  git -c core.quotePath=false diff-tree -r --no-renames "${fmt[@]}" "$tree" "$c^{tree}" 2>/dev/null \
+    || { echo "merge commit ${c:0:12} could not be compared with its recomputed merge"; return 1; }
 }
 PATCH="$(mktemp)" TOUCHED="$(mktemp)" XRAW="$(mktemp)" C5P="$(mktemp)" C5L="$(mktemp)"
 trap 'rm -f "$SCOPE" "$PATCH" "$TOUCHED" "$XRAW" "$C5P" "$C5L"' EXIT
@@ -299,16 +318,33 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     [ -n "$c" ] || continue
     PATHS="$(mktemp)"
     if ! commit_paths "$c" >"$PATHS"; then REASONS+=("$(cat "$PATHS")"); rm -f "$PATHS"; continue; fi
-    cat "$PATHS" >>"$TOUCHED"; rm -f "$PATHS"
-    commit_paths "$c" patch >>"$PATCH" || true
+    # A commit whose patch or link records cannot be read would drop out of the secret screen (6) or
+    # the link check (5) unseen, so it makes the whole check INCONCLUSIVE instead. A commit that
+    # touches a path always has a patch: at least its `diff --git` header.
+    ONE="$(mktemp)"
+    if ! commit_paths "$c" patch >"$ONE" || { [ -s "$PATHS" ] && [ ! -s "$ONE" ]; }; then
+      rm -f "$PATHS" "$ONE"; echo "push-guard: the changes of commit ${c:0:12} could not be read for the secret screen, INCONCLUSIVE" >&2; exit 2
+    fi
+    cat "$ONE" >>"$PATCH"
     # The symlinks and gitlinks this commit adds or changes, for check 5 (a link added and removed
     # again before the head is in no tree).
-    commit_paths "$c" raw >>"$XRAW" 2>/dev/null || true
+    if ! commit_paths "$c" raw >"$ONE"; then
+      rm -f "$PATHS" "$ONE"; echo "push-guard: the file modes of commit ${c:0:12} could not be read for the link check, INCONCLUSIVE" >&2; exit 2
+    fi
+    cat "$ONE" >>"$XRAW"; cat "$PATHS" >>"$TOUCHED"; rm -f "$PATHS" "$ONE"
   done < <(git rev-list "$HEAD_OID..HEAD" ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null)
   # 5. One node pass: the class of every touched path, and every link that involves a class.
   node -e "$CHECK5_JS" "$TOUCHED" "$XRAW" "$C5P" "$C5L" "$HEAD_OID" HEAD 2>/dev/null \
     || { echo "push-guard: could not read the links or classify the touched paths, INCONCLUSIVE" >&2; exit 2; }
   while IFS= read -r -d '' L && IFS= read -r -d '' kind && IFS= read -r -d '' cls && IFS= read -r -d '' why; do
+    # The link's name and its target are the pull request author's text. One that holds a control
+    # character (a newline could forge a line of this output) is printed quoted, as `printf %q`
+    # quotes it; the guard's own words (\x01) are printed as they are.
+    case "$why" in
+      $'\001'*) why=", its target ${why#?}" ;;
+      $'\002'*) why="${why#?}"; if (LC_ALL=C; case "$why" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then why="$(printf '%q' "$why")"; fi; why=", its target $why" ;;
+    esac
+    if (LC_ALL=C; case "$L" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then L="$(printf '%q' "$L")"; fi
     for k in $cls; do
       case "$SENS_OK" in *",$k,"*) ;; *) SENS+=("$L ($kind over $cls$why)"); break ;; esac
     done
