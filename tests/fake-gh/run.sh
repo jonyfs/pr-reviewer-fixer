@@ -238,6 +238,15 @@ fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "bot[bot]"}}]}'
 check "fix: bot with no permission record refused (lookup fails closed)" eval '[ $r != 0 ] && hasnt review:fixing'
 FIXER_TRUSTED_LOGINS="bot[bot]" "$RC" fix 7 >"$W/out" 2>&1; r=$?
 check "fix: a bot listed in FIXER_TRUSTED_LOGINS passes" eval '[ $r = 0 ] && has review:fixing'
+# R5: gh names a bot author app/<name> and the commit author <name>[bot]; either form listed matches both.
+for listed in "dependabot[bot]" "app/dependabot"; do
+  fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "dependabot[bot]"}}], "author": {"login": "app/dependabot"}}'
+  FIXER_TRUSTED_LOGINS="$listed" "$RC" fix 7 >"$W/out" 2>&1; r=$?
+  check "fix: bot PR (author app/dependabot, commits dependabot[bot]) with FIXER_TRUSTED_LOGINS=$listed passes (R5)" eval '[ $r = 0 ] && has review:fixing'
+done
+fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "dependabot[bot]"}}], "author": {"login": "app/dependabot"}}'
+FIXER_TRUSTED_LOGINS="app/renovate" "$RC" fix 7 >"$W/out" 2>&1; r=$?
+check "fix: another bot listed does not admit app/dependabot (R5)" eval '[ $r != 0 ] && hasnt review:fixing'
 fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "helper"}}], "author": {"login": "helper"}}'
 "$RC" fix 7 >"$W/out" 2>&1; r=$?
 check "fix: a write collaborator author passes" eval '[ $r = 0 ] && has review:fixing'

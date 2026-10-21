@@ -158,7 +158,8 @@ there is nothing new to review until a person pushes a correction or grants cycl
 - `review-cycle.sh fix` refuses before any label moves when the pull request comes from a fork or
   when its author or any commit author is not a collaborator with write access or higher. Do not
   work around it: tell the person which login was refused. A bot the repository owns is allowed
-  with `FIXER_TRUSTED_LOGINS`.
+  with `FIXER_TRUSTED_LOGINS`; `app/<name>` (how `gh pr view` names a bot author) and
+  `<name>[bot]` (how a commit names it) are the same bot, and either form matches both.
 - The reviewer passes `--model` and `--tier` to `publish` when the harness reports them. They are
   self-attested.
 - A person, not the loop, exports evidence: `review-cycle.sh export-audit <n>` writes

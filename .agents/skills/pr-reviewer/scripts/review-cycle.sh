@@ -60,7 +60,8 @@
 #                          pull request whose BLOCKED verdict is still at the head
 #     fix [pr]             review:fixing, and review:needs-human withdrawn. Refused first when the
 #                          pull request is from a fork or any author is not a collaborator with
-#                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup)
+#                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup;
+#                          `app/<name>` and `<name>[bot]` are one bot, either form matches both)
 #     halt [pr] [--reason R]
 #                          review:needs-human added to a review:blocked pull request: the loop
 #                          paused or stopped and a person has to decide. With --reason, also posts
@@ -1106,14 +1107,23 @@ cmd_start() {
 # pull request) and refuses unless each one is a collaborator with `write`, `maintain` or `admin`
 # permission on the repository. Fail closed: a fork, a commit with no linked GitHub login, a
 # lookup that errors, a bot, or any lower permission refuses. `FIXER_TRUSTED_LOGINS` (comma
-# separated) names logins allowed without a lookup, for a bot the repository owns. Base-branch merge
+# separated) names logins allowed without a lookup, for a bot the repository owns; `app/<name>` and
+# `<name>[bot]` are the same bot and either form matches both. Base-branch merge
 # commits are covered because their authors are resolved like any other.
 fix_guard() {
   FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - <<'PY'
 import json, os, subprocess, sys
 
 pr = os.environ["FG_PR"]
-trusted = {x.strip().lower() for x in os.environ["FG_TRUSTED"].split(",") if x.strip()}
+
+def norm(login):
+    # GitHub names one bot two ways: `gh pr view --json author` says `app/<name>` and the REST commit
+    # author says `<name>[bot]`. Both become `<name>[bot]`, so listing either form matches both and
+    # the PR author and its commits are one principal.
+    login = login.strip().lower()
+    return login[4:] + "[bot]" if login.startswith("app/") and len(login) > 4 else login
+
+trusted = {norm(x) for x in os.environ["FG_TRUSTED"].split(",") if x.strip()}
 OK = {"admin", "maintain", "write"}
 
 def gh(*args):
@@ -1137,7 +1147,7 @@ if not isinstance(meta.get("isCrossRepository"), bool):
 if meta.get("isCrossRepository"):
     refuse("#%s comes from a fork. The fixer does not edit or run code from a fork." % pr)
 principals = {}
-author = ((meta.get("author") or {}).get("login") or "")
+author = norm((meta.get("author") or {}).get("login") or "")
 principals[author] = "the pull request author"
 raw = gh("api", "repos/{owner}/{repo}/pulls/%s/commits" % pr, "--paginate")
 if raw is None:
@@ -1156,12 +1166,12 @@ except ValueError:
 if len(commits) >= 250:
     refuse("#%s has 250 or more commits, the most this check can list, so some authors would go unchecked" % pr)
 for c in commits:
-    login = ((c.get("author") or {}).get("login") or "") if isinstance(c, dict) else ""
+    login = norm(((c.get("author") or {}).get("login") or "") if isinstance(c, dict) else "")
     principals.setdefault(login, "commit %s" % str((c or {}).get("sha", "?"))[:7])
 for login, why in principals.items():
     if not login:
         refuse("%s has no linked GitHub login, so the fixer cannot tell who wrote it." % why)
-    if login.lower() in trusted:
+    if login in trusted:
         continue
     perm = gh("api", "repos/{owner}/{repo}/collaborators/%s/permission" % login, "--jq", ".permission")
     if perm is None:

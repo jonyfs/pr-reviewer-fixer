@@ -446,7 +446,10 @@ commit with no extra token.
 The fixer runs your project's tests, which execute repository code, in your own checkout. Use it on
 branches you trust. `review-cycle.sh fix` enforces part of that: it refuses a pull request from a
 fork, and one whose author or any commit author is not a collaborator with write access, before it
-moves any label. A bot the repository owns can be allowed with `FIXER_TRUSTED_LOGINS`. A script
+moves any label. A bot the repository owns can be allowed with `FIXER_TRUSTED_LOGINS`
+(comma-separated). GitHub names the same bot `app/<name>` as a pull request author and
+`<name>[bot]` as a commit author; the check treats the two as one login, so either form matches
+both. A script
 cannot sandbox the agent's own tool calls: isolating the test run is the harness's job (its own
 sandbox and permission allowlist), and this project does not simulate it. `references/harness-matrix.md` lists the controls per harness.
 
