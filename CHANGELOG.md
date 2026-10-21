@@ -65,6 +65,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   parent of one (`.claude -> evil`, `.agents -> ag`, `.github/workflows -> ../ci`), which moved the
   real files to a path no class covers. It passes only when every class the path covers is named
   in `PUSH_GUARD_ALLOW_SENSITIVE` (#27 W3).
+- The comment lane prescribes `Escalated (C1): <what the person must decide>` for an escalation,
+  so `fetch-feedback.py` reads it back as the fixer's own reply instead of a work order (#27 W5).
+- In a resolved thread, a comment after the fixer's last reply keeps its own action (`act`, or
+  `not-acted: author not trusted`) instead of being dropped as `skip: resolved` (#27 W6).
 
 ### Not done
 
