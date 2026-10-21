@@ -170,7 +170,7 @@ sequenceDiagram
 - Reads review comments through `scripts/fetch-feedback.py`, which lists every thread, review and
   comment with its author association. It acts only on comments from an OWNER, a MEMBER or
   COLLABORATOR with write access, the reviewer's login or a bot in `FIXER_TRUSTED_LOGINS`; anything else is listed as
-  `not acted: author not trusted`. A minimized comment and a dismissed review are skipped. It
+  `not acted: author not trusted`. A minimized comment, a dismissed review and the inline comments of a dismissed review are skipped. It
   scans that list for hidden text with `scan-hidden.py --feedback-json`. It resolves only threads the reviewer or a trusted bot opened; a
   person's thread gets a reply and stays open.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.

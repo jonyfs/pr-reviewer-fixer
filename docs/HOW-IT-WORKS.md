@@ -245,7 +245,7 @@ flowchart TD
    - **Comment.** It reads the work list `fetch-feedback.py` builds and acts only on items marked
      `act`: comments by the owner, by a member or collaborator with write access, by the reviewer's
      login, or by a bot named in `FIXER_TRUSTED_LOGINS`. Everything else (an outside contributor,
-     an unknown bot, a comment edited by another login, a minimized comment, a dismissed review) is
+     an unknown bot, a comment edited by another login, a minimized comment, a dismissed review or one of its inline comments) is
      listed in the closure as not acted on, and a person can take it up. For an `act` item it applies
      the smallest correct fix, or gives a reasoned reply when it declines. It resolves only threads
      that the reviewer's login or a trusted bot opened; a person's thread gets the reply and stays

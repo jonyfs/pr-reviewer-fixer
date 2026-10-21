@@ -56,7 +56,8 @@ if args[:2] == ["api", "graphql"]:
     ff = next((k for k in ("Threads", "Reviews", "Comments") if "query FetchFeedback" + k + "(" in q), None)
     if ff:
         # fetch-feedback.py. pr.json "reviewThreads" and "reviews" hold the nodes as GraphQL gives
-        # them; issue comments come from "comments" (authorAssociation defaults to NONE). Files:
+        # them; issue comments come from "comments" (authorAssociation defaults to NONE and
+        # isMinimized to false, as GraphQL never leaves it out). Files:
         #   ff-fail-<threads|reviews|comments>   that query exits 1
         #   ff-nocursor-<...>                    the first page says there is more and gives no cursor
         #   ff-badshape-<...>                    the answer lacks the connection
@@ -66,7 +67,7 @@ if args[:2] == ["api", "graphql"]:
         if os.path.exists(os.path.join(d, "ff-badshape-" + key)):
             print(json.dumps({"data": {"repository": {"pullRequest": {}}}})); sys.exit(0)
         if key == "comments":
-            nodes = [dict({"authorAssociation": "NONE", "lastEditedAt": None, "editor": None}, **c)
+            nodes = [dict({"authorAssociation": "NONE", "lastEditedAt": None, "editor": None, "isMinimized": False}, **c)
                      for c in with_ids(load())["comments"]]
         else:
             nodes = load().get(field, [])

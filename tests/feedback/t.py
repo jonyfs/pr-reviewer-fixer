@@ -23,7 +23,9 @@ def check(name, cond, detail=""):
 def c(i, login, assoc, body, typ="User", edited_by=None):
     n = {"id": "PRRC_%s" % i, "author": {"login": login, "__typename": typ} if login else None,
          "authorAssociation": assoc, "body": body, "createdAt": "2026-10-20T00:%02d:00Z" % (hash(i) % 60),
-         "url": "https://github.com/o/r/pull/7#discussion_r%s" % i, "lastEditedAt": None, "editor": None}
+         "url": "https://github.com/o/r/pull/7#discussion_r%s" % i, "lastEditedAt": None, "editor": None,
+         # GraphQL gives every node a boolean isMinimized, and a thread comment its review (N3 of #28).
+         "isMinimized": False, "pullRequestReview": {"state": "COMMENTED"}}
     if edited_by:
         n["lastEditedAt"], n["editor"] = "2026-10-20T01:00:00Z", {"login": edited_by}
     return n
@@ -231,6 +233,33 @@ check("a minimized review and a minimized issue comment -> skip: minimized (N5 o
       I["PRR_82"]["action"] == I["IC_0"]["action"] == "skip: minimized", (I.get("PRR_82"), I.get("IC_0")))
 calls = open(os.path.join(D, "calls.log")).read()
 check("every query asks for isMinimized (N5 of #27)", calls.count("isMinimized") >= 3, calls[-300:])
+
+# ---- N1 of #28: the inline comments of a dismissed review were withdrawn with it ---------------------
+def in_review(n, state):
+    n = dict(n); n["pullRequestReview"] = None if state is None else {"state": state}; return n
+T9 = [thread("PRRT_91", [in_review(c(91, "alice", "MEMBER", "remove the guard"), "DISMISSED"),
+                         in_review(c(92, "alice", "MEMBER", "and rename x"), "COMMENTED"),
+                         in_review(c(93, "alice", "MEMBER", "no review behind it"), None)])]
+setup(T9)
+rc, out, err = run("7")
+I = by_id(out)
+check("an inline comment of a DISMISSED review -> skip: dismissed; one of a COMMENTED review -> act (N1 of #28)",
+      rc == 0 and I["PRRC_91"]["action"] == "skip: dismissed" and I["PRRC_92"]["action"] == "act", (I.get("PRRC_91"), err))
+check("a thread comment whose pullRequestReview is null -> act (N1 of #28)", I["PRRC_93"]["action"] == "act", I.get("PRRC_93"))
+calls = open(os.path.join(D, "calls.log")).read()
+check("the thread query asks each comment for pullRequestReview{state} (N1 of #28)", "pullRequestReview{state}" in calls, calls[-300:])
+
+# ---- N3 of #28: isMinimized is non-null on all three node types; a node without it fails closed ----
+def drop(n, k):
+    n = dict(n); n.pop(k, None); return n
+for why, args in (
+        ("a thread comment without isMinimized", ([thread("PRRT_A", [drop(c("B1", "alice", "MEMBER", "x"), "isMinimized")])], (), ())),
+        ("a thread comment without pullRequestReview", ([thread("PRRT_A", [drop(c("B2", "alice", "MEMBER", "x"), "pullRequestReview")])], (), ())),
+        ("a review without isMinimized", ((), [dict(drop(c("B3", "alice", "MEMBER", "x"), "isMinimized"), state="COMMENTED", id="PRR_B3")], ())),
+        ("an issue comment whose isMinimized is null", ((), (), [{"author": {"login": "alice"}, "body": "x", "isMinimized": None}]))):
+    setup(*args)
+    rc, out, err = run("7")
+    check("%s -> exit 1, nothing printed (N3 of #28)" % why, rc == 1 and out is None and "isMinimized" in err, (rc, err))
 
 # ---- N6 of #27: a thread whose comments are missing or malformed fails closed ------------------------
 for why, cs in (("comments null", None), ("pageInfo missing", {"nodes": []}),
