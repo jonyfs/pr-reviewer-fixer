@@ -176,6 +176,25 @@ check("each prescribed reply, as the reviewer's login posts it -> skip: fixer re
       rc == 0 and len(T5) == 3 and all(I["PRRC_5%d1" % i]["action"] == "skip: fixer reply" for i in range(len(T5))),
       [(I.get("PRRC_5%d1" % i) or {}).get("body") for i in range(len(T5))])
 
+# ---- W6 (0.12.0 pass 1): a reply after the fixer's last reply in a resolved thread is not dropped --
+T6 = [thread("PRRT_61", [c(61, ME, "OWNER", "[W1] off by one"), c(62, "alice", "MEMBER", "agreed"),
+                         c(63, ME, "OWNER", "Closed in abcdef1 (W1)"),
+                         c(64, "alice", "MEMBER", "still broken after your fix, reopen"),
+                         c(65, "drive-by", "CONTRIBUTOR", "me too")], resolved=True),
+      thread("PRRT_62", [c(66, "alice", "MEMBER", "nit"), c(67, "alice", "MEMBER", "never mind")], resolved=True)]
+setup(T6)
+rc, out, err = run("7")
+I = by_id(out)
+check("resolved thread: a trusted reply after the fixer's reply -> act, state resolved (W6)",
+      rc == 0 and I["PRRC_64"]["action"] == "act" and I["PRRC_64"]["state"] == "resolved", I.get("PRRC_64"))
+check("resolved thread: an untrusted reply after the fixer's reply -> listed as not trusted, not dropped (W6)",
+      I["PRRC_65"]["action"] == "not-acted: author not trusted", I.get("PRRC_65"))
+check("resolved thread: comments up to the fixer's reply stay skip: resolved (W6)",
+      I["PRRC_61"]["action"] == I["PRRC_62"]["action"] == "skip: resolved" and I["PRRC_63"]["action"] == "skip: fixer reply",
+      (I.get("PRRC_61"), I.get("PRRC_63")))
+check("resolved thread with no fixer reply -> every comment skip: resolved (W6)",
+      I["PRRC_66"]["action"] == I["PRRC_67"]["action"] == "skip: resolved", I.get("PRRC_67"))
+
 # ---- paging and fail-closed ----------------------------------------------------------------
 setup(T, R, C, flags=("ff-page-size=2",))
 rc, out, err = run("7")
