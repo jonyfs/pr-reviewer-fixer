@@ -14,6 +14,7 @@ start "review-cycle.sh and gate (reviewer copy)" env TEST_TAG=rev bash "$HERE/fa
 start "review-cycle.sh and gate (fixer copy)"    env TEST_TAG=fix bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "triage-pr.sh"                             bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "push-guard.sh"                             env TEST_TAG=run bash "$HERE/push-guard/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "fetch-feedback.py"                        env TEST_TAG=run python3 "$HERE/feedback/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "review eval scorer"                       env TEST_TAG=run bash "$HERE/eval/selftest.sh"
 start "install.sh"                                env TEST_TAG=run bash "$HERE/install/run.sh" "$ROOT/install.sh"
 start "cycle budget and extend (reviewer copy)"  env TEST_TAG=rev python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"

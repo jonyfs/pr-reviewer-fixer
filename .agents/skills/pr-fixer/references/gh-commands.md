@@ -65,10 +65,14 @@ same way. `screen` exits 1 and names the kind of secret, never the value; replac
 ## Comments (Comment Lane)
 
 ```bash
-gh pr view <n> --comments                                   # top-level PR comments
-gh api repos/{owner}/{repo}/pulls/<n>/comments              # inline review comments
-gh api repos/{owner}/{repo}/pulls/<n>/reviews               # submitted reviews + bodies
+scripts/fetch-feedback.py <n> > feedback.json      # every thread, review and issue comment, one list
+jq '[.[] | select(.action == "act")]' feedback.json # the items the lane may work
+jq -r '.[] | select(.action | startswith("not-acted")) | "\(.url) \(.action)"' feedback.json  # for the closure
 ```
+
+It exits 1 and prints nothing when gh fails or a page is truncated; then the lane does not run.
+Each item names its `thread_id` (for resolution), `author_association`, `path`, `line`, `state`
+and `may_resolve`. The trust rules are in [comment-triage.md](comment-triage.md).
 
 Reply to a specific inline comment. A reviewer's inline comment starts with its finding id, `[C1]`;
 the reply names the same id:
@@ -124,8 +128,10 @@ looked (gh missing or offline), never "nothing to do".
 gh api graphql -f query='mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}' -F t=<thread_id>
 ```
 
-Thread IDs come from the `reviewThreads` connection on the PR via the GraphQL API. Resolve only
-threads whose comment has a recorded `fixed` outcome (or a `declined` the reviewer accepted).
+`thread_id` comes from `fetch-feedback.py`. Resolve a thread only when its item says
+`may_resolve: true` (opened by the reviewer's login or by a bot in `FIXER_TRUSTED_LOGINS`) and the
+comment has a recorded `fixed` outcome. A thread a person opened gets the reply and stays open for
+that person to resolve.
 
 ## Approval Lane
 

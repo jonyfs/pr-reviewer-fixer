@@ -122,8 +122,12 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    - **Finding (CRITICAL, or WARNING under `REVIEW_BLOCK_AT=warning`)**: falsify, write the threat-shaped test, see it red, fix minimally, see
      it green, run the whole suite.
      [references/falsify-and-prove.md](references/falsify-and-prove.md)
-   - **Comment**: evaluate each human or bot suggestion, smallest correct fix, reasoned reply on
-     any decline. [references/comment-triage.md](references/comment-triage.md)
+   - **Comment**: read the work list from `scripts/fetch-feedback.py <n>` and work only items
+     whose `action` is `act` (author OWNER, MEMBER or COLLABORATOR, the reviewer's login, or a bot
+     in `FIXER_TRUSTED_LOGINS`); list the others in the closure as `not acted: author not trusted`.
+     Smallest correct fix, reasoned reply on any decline. Resolve a thread only when its item says
+     `may_resolve`; a person's thread gets the reply and stays open.
+     [references/comment-triage.md](references/comment-triage.md)
    - **Conflict**: classify each file, regenerate generated files and lockfiles, merge the base
      into the head (no force), resolve per hunk with evidence from both sides, run the narrowest
      build and test, escalate per the list. [references/conflicts.md](references/conflicts.md)
@@ -229,6 +233,9 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
   (identical copy of the reviewer's; need `gh`, `python3` 3.9+, `node`)
 - `scripts/triage-pr.sh <n>` read-only triage for runs with no named PR: one JSON object with lanes,
   failing checks and `skip_reason` (needs `gh`, `node`)
+- `scripts/fetch-feedback.py <n>` read-only: every review thread, review body and issue comment as
+  one JSON list of work items with author association, thread state and the action allowed (needs
+  `gh`, `python3`)
 - `scripts/push-guard.sh <n>` read-only check before a push: right branch, no fork, fast-forward,
   every touched file in scope (needs `gh`, `git`, `node`)
 - `scripts/check-version.sh` the update notice (never installs)

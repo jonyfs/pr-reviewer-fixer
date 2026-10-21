@@ -318,6 +318,7 @@ never read as "reviewed".
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
 | `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi and tag characters, HTML comments other than the markers, `<details>`, invisible HTML) in the diff, the pull request text and the commit messages, as JSON. It strips nothing. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
+| `fetch-feedback.py` | Read-only, fixer only. Every review thread, review body and issue comment as one list, with author association, thread state and whether the fixer may act on it or resolve it. |
 | `push-guard.sh` | Read-only. The check the fixer passes before every push. |
 | `check-version.sh` | Prints a notice when a newer release exists. It never installs anything. |
 | `install.sh` | Copies the skills into the folder a harness reads. A dry run unless you pass `--yes`. |

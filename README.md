@@ -160,6 +160,11 @@ sequenceDiagram
   `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**` or `.mcp.json`, even when a
   finding names the file: such a finding goes to a person. A person can opt one class in with
   `PUSH_GUARD_ALLOW_SENSITIVE` (for example `skills` in a repository of skills, as this one is).
+- Reads review comments through `scripts/fetch-feedback.py`, which lists every thread, review and
+  comment with its author association. It acts only on comments from an OWNER, MEMBER or
+  COLLABORATOR, the reviewer's login or a bot in `FIXER_TRUSTED_LOGINS`; anything else is listed as
+  `not acted: author not trusted`. It resolves only threads the reviewer or a trusted bot opened; a
+  person's thread gets a reply and stays open.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
 
 ```mermaid
@@ -612,7 +617,7 @@ The suite needs no network. It drives the scripts against a fake `gh` and covers
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `scan-hidden.py`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
 eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also
