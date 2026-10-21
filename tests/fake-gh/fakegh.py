@@ -32,7 +32,13 @@ if args[:1] == ["api"] and len(args) > 1 and "/collaborators/" in args[1] and ar
     login = args[1].split("/collaborators/")[1].split("/")[0]
     perms = load().get("permissions", {})
     if login not in perms: sys.exit(1)
-    print(perms[login]); sys.exit(0)
+    # The real endpoint answers {"permission": <legacy>, "role_name": <role>}: maintain reads as
+    # write and triage as read in the legacy field. A --jq that asks for role_name gets both, in
+    # that order; one that asks for .permission alone gets the legacy value.
+    role = perms[login]
+    legacy = {"maintain": "write", "triage": "read"}.get(role, role)
+    jq = next((args[i + 1] for i, a in enumerate(args[:-1]) if a == "--jq"), "")
+    print(("%s %s" % (legacy, role)) if "role_name" in jq else legacy); sys.exit(0)
 if args[:2] == ["api", "graphql"]:
     # Serves the comment pages pr-json.py asks for. Files in the state dir steer it:
     #   graphql-fail       the call exits 1
