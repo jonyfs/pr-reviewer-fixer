@@ -38,6 +38,7 @@ if args[:2] == ["api", "graphql"]:
     #   edited-ids         one comment id per line whose lastEditedAt is set
     #   page-size          comments per page (default 100); `after` is the index of the next one
     #   graphql-truncate   the last page is cut off and says there is no next page
+    #   edited-by          "<id> <login>" per line: who edited that comment (default: its author)
     if not os.path.exists(p) or os.path.exists(os.path.join(d, "graphql-fail")): sys.exit(1)
     after = next((a.split("=", 1)[1] for a in args if a.startswith("after=")), None)
     comments = with_ids(load())["comments"]
@@ -48,7 +49,11 @@ if args[:2] == ["api", "graphql"]:
     more = start + size < len(comments)
     if os.path.exists(os.path.join(d, "graphql-truncate")):
         chunk, more = chunk[:-1], False
-    nodes = [{"id": c["id"], "lastEditedAt": ("2026-10-15T00:00:00Z" if c["id"] in edited else None)} for c in chunk]
+    # edited-by: "<id> <login>" lines naming who edited a comment; by default its author did.
+    by = dict(l.split(None, 1) for l in open(os.path.join(d, "edited-by")).read().splitlines() if l.strip()) if os.path.exists(os.path.join(d, "edited-by")) else {}
+    # A login of "-" stands for GitHub naming no editor (a deleted account): the login is null.
+    nodes = [{"id": c["id"], "lastEditedAt": ("2026-10-15T00:00:00Z" if c["id"] in edited else None),
+              "editor": ({"login": (lambda l: None if l == "-" else l)(by.get(c["id"], ((c.get("author") or {}).get("login"))))} if c["id"] in edited else None)} for c in chunk]
     print(json.dumps({"data": {"repository": {"pullRequest": {"comments": {
         "pageInfo": {"hasNextPage": more, "endCursor": str(start + size) if more else None}, "nodes": nodes}}}}}))
     sys.exit(0)

@@ -155,6 +155,22 @@ check "an edited BLOCKED marker still counts as BLOCKED history: PASSED pass 1 r
 reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
 r=$(pub --verdict BLOCKED --pass 1 --sha $D --critical 1 --warning 0 --note 0)
 check "an edited pass-1 marker still spends pass 1: BLOCKED --pass 1 refused, the next pass is 2" eval '[ $r = 1 ] && grep -q "the next pass on #7 is 2" "$W/out" && [ $(ncomments) = 1 ]'
+# N4 of #24: a trusted PASSED marker edited by another login counts as BLOCKED history in the gate,
+# since that edit could have turned a BLOCKED into a PASSED. The same marker edited by its author does not.
+PS1="$(mc github-actions "<!-- adversarial-review: sha=$B verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
+PH1="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$PS1,$PH1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
+python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
+echo "IC_0 mallory" >"$FAKE_DIR/edited-by"
+python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
+check "gate: an older PASSED edited by its author passes; edited by another login it is BLOCKED history" eval '[ $g0 = 0 ] && [ $g1 != 0 ]'
+# W1 of #25: the same, with the edit breaking the marker shape. It is still BLOCKED history.
+PS1X="$(mc github-actions "<!-- adversarial_review: sha=$B verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$PS1X,$PH1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
+python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
+echo "IC_0 mallory" >"$FAKE_DIR/edited-by"
+python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
+check "gate: a marker broken by its author's edit passes; broken by another login it is BLOCKED history" eval '[ $g0 = 0 ] && [ $g1 != 0 ]'
 reset "$(mk 7 $D '[{"name":"review:blocked"}]' '[]' OPEN)"
 python3 -I - <<'PY'
 import json, os

@@ -419,6 +419,9 @@ Two steps are required:
    as a login that is not on the list. A marker comment edited after it was
    created is ignored as a verdict, though its `pass=` still counts, so an edit that keeps the
    number cannot lower the cycle count. An edit that rewrites the number counts as the new one.
+   A trusted comment edited by anyone other than its author (GitHub lets any collaborator with
+   write access edit a comment) stops `publish` and `budget` until you delete or restore it, even
+   when the edit broke the marker so that it no longer reads as one.
 
 The rest hardens the setup and is recommended for a shared repository:
 
