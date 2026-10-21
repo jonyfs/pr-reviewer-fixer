@@ -65,19 +65,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   parent of one (`.claude -> evil`, `.agents -> ag`, `.github/workflows -> ../ci`), which moved the
   real files to a path no class covers. It passes only when every class the path covers is named
   in `PUSH_GUARD_ALLOW_SENSITIVE` (#27 W3).
-- `push-guard.sh` check 5 also follows the symlinks the pull request head and the local HEAD
-  already hold at a sensitive path or a parent of one: with `.claude/skills -> ../skills` on the
-  base, an edit of `skills/x/SKILL.md` is refused as `claude`, through a chain of links too. Such a
-  link that leaves the repository or loops stops the guard INCONCLUSIVE (exit 2) unless its class
-  is allowed. A gitlink (mode 160000) added at a sensitive path or parent is refused like a
-  symlink (#27 W7).
-- `push-guard.sh` check 5 also follows a link that sits inside a sensitive link's target
-  (`skills/y -> ../other/y` under `.claude/skills -> ../skills`), repeated until no target is added,
-  and resolves the pull request head and the local HEAD each on its own, so a link the fixer
-  retargets is followed to both targets (#27 W8, N15).
-- `push-guard.sh` compares paths with only the ASCII letters folded, on both sides and in every
-  locale. A link target holding a non-ASCII letter (`../configuração`) now matches the touched path
-  (#27 W9).
+- `push-guard.sh` check 5 refuses the whole push when the pull request head or the local HEAD
+  holds a symlink or a gitlink at a sensitive path or a parent of one (`.claude/skills ->
+  ../skills`, a gitlink at `.claude`), or a symlink whose target, resolved lexically against the
+  link's own directory, points at, into or above one (`src/x -> ../.claude`, `src/x -> ..`). Links
+  are not followed, so an edit through a link, through a chain of links or through a link nested in
+  another link's target is refused by the link itself. A symlink target holding a non-ASCII byte or
+  leaving the repository (an absolute path, `..` above the root) is refused as if it reached every
+  class. A link passes only when every class it involves is named in `PUSH_GUARD_ALLOW_SENSITIVE`.
+  This replaces the link-following of earlier cycles of this pull request at the person's decision
+  of 2026-10-21 (#27 W7, W8, N15, W10).
+- `push-guard.sh` check 5 compares names after a Unicode fold broader than APFS or NTFS (NFKD,
+  combining marks and default-ignorable code points dropped, case folded), for touched paths and
+  links alike, so `.CLAUDE/x`, `.agents/ſkills/x` and an NFD spelling reach their class. All of
+  check 5 runs in one node pass with one `git cat-file --batch` for the link targets, instead of a
+  `tr` per link per class (#27 W9, W10, N16).
 - The comment lane prescribes `Escalated (C1): <what the person must decide>` for an escalation,
   so `fetch-feedback.py` reads it back as the fixer's own reply instead of a work order (#27 W5).
 - In a resolved thread, a comment after the fixer's last reply keeps its own action (`act`, or
@@ -87,9 +89,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - I26 `dup_of` dedupe against the reviewer's findings and automatic re-anchoring of outdated
   threads; I54 merging `gitleaks` or `trufflehog` output (needs I57's trusted path resolution).
-- `push-guard.sh` check 5 folds only ASCII case. On a filesystem that also folds non-ASCII case
-  (APFS, NTFS), `É/` and `é/` are one directory the guard sees as two, and so are an NFC and an NFD
-  spelling on one that ignores Unicode normalization (APFS).
 
 ## 0.11.0
 

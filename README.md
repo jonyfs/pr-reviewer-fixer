@@ -157,12 +157,13 @@ sequenceDiagram
   checked. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
-  `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**` or `.mcp.json`, or adds a
-  symlink or a gitlink at one of them or at a parent (`.claude`, `.agents`, `.github`), even when
-  a finding names the file: such a finding goes to a person. A symlink the branch already holds
-  there (`.claude/skills -> ../skills`) makes its target sensitive too, so an edit of
-  `skills/x/SKILL.md` through it is refused the same way, and so does a link inside that target
-  (`skills/y -> ../other/y`). A person can opt one class in with
+  `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**` or `.mcp.json`, even when
+  a finding names the file: such a finding goes to a person. Names are compared after a Unicode
+  case and normalization fold broader than APFS or NTFS, so `.CLAUDE/x` and `.agents/ſkills/x`
+  count too. Links are refused rather than followed: if the pull request head or the local HEAD
+  holds a symlink or a gitlink at one of those paths or at a parent (`.claude/skills -> ../skills`,
+  `.agents`, `.github`), or a symlink whose target points at, into or above one, holds a non-ASCII
+  byte or leaves the repository, the whole push is refused. A person can opt one class in with
   `PUSH_GUARD_ALLOW_SENSITIVE` (for example `skills` in a repository of skills, as this one is).
 - Reads review comments through `scripts/fetch-feedback.py`, which lists every thread, review and
   comment with its author association. It acts only on comments from an OWNER, a MEMBER or

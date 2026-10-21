@@ -266,11 +266,13 @@ flowchart TD
    refused. The lines those commits add go through the same secret screen as a verdict, and a
    token or private key refuses the push (the fixer already screens each commit with
    `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows, actions,
-   CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, a symlink or gitlink at one of them
-   or at a parent such as `.claude` or `.agents`, or the target of a symlink the branch already
-   holds there, such as `skills/` under `.claude/skills -> ../skills`, and of any link inside that
-   target) is refused even when a finding names it, and the finding goes to a person, unless the person opted that class in with
-   `PUSH_GUARD_ALLOW_SENSITIVE`. If the head is not writable, the fixer delivers a patch and
+   CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, compared after a Unicode case and
+   normalization fold) is refused even when a finding names it, and the finding goes to a person,
+   unless the person opted that class in with `PUSH_GUARD_ALLOW_SENSITIVE`. Links are refused, not
+   followed: when the pull request head or the local HEAD holds a symlink or gitlink at one of those
+   paths or at a parent such as `.claude` or `.agents`, or a symlink whose target points at, into or
+   above one, holds a non-ASCII byte or leaves the repository, the whole push is refused under the
+   same rule. If the head is not writable, the fixer delivers a patch and
    replies instead.
 7. **Close the loop.** The push moves the head, and `review-cycle.sh stale` moves the label back to
    `review:pending`. The fixer posts one closure comment carrying

@@ -42,15 +42,16 @@ Tags: [#pr #github #safety #reference]
    leaves it to the reviewer and a person.
 10. **Sensitive paths go to a person.** The fixer does not push a change to the files that run or
     judge the automation: `.github/workflows/**`, `.github/actions/**`, CODEOWNERS (at the root, in
-    `.github/` or in `docs/`), `.agents/skills/**`, `.claude/**` and `.mcp.json`, a symlink or a
-    gitlink placed at one of them or at a parent of one (`.claude -> evil`, `.agents -> ag`), and
-    the target of a symlink the branch already holds at one of them (`.claude/skills -> ../skills`
-    makes `skills/**` sensitive, following a chain of links), and the target of a link inside such
-    a target (`skills/y -> ../other/y` makes `other/y/**` sensitive too, however deep the nesting).
-    Paths are compared with only the ASCII letters folded, so `configuração/` matches itself. A
-    link there that leaves the repository or loops cannot be followed, and the guard stops
-    INCONCLUSIVE. `push-guard.sh`
-    refuses such a commit with reason `sensitive-path`, even when a finding names the file or
+    `.github/` or in `docs/`), `.agents/skills/**`, `.claude/**` and `.mcp.json`. Links are not
+    followed; they are refused. If the pull request head or the local HEAD holds a symlink or a
+    gitlink at one of those paths or at a parent of one (`.claude/skills -> ../skills`,
+    `.agents -> ag`), or a symlink whose target, read against the link's own directory, points at,
+    into or above one (`src/x -> ../.claude`, `src/x -> ..`), the whole push is refused and the
+    link is named. A symlink target with a non-ASCII byte, or one that leaves the repository, is
+    refused as if it reached every class. Names are compared after a Unicode fold (NFKD, marks
+    dropped, case folded) that is broader than APFS or NTFS, so `.CLAUDE/x` and `.agents/ſkills/x`
+    are sensitive too. `push-guard.sh`
+    refuses such a push with reason `sensitive-path`, even when a finding names the file or
     `--allow` passes it. The finding is escalated instead: the closure comment names it and the
     person makes the change. A person may opt a class in for one repository with
     `PUSH_GUARD_ALLOW_SENSITIVE` (below); the fixer never sets that variable itself, and a finding

@@ -232,7 +232,7 @@ check "a symlink at a path no class covers -> ok (W3)" eq "$r" 0
 g checkout -q -f feat/x
 # W7 (0.12.0 pass 2): a link the pull request head already holds. With .claude/skills -> ../skills on
 # the base, an edit of skills/x/SKILL.md is an edit of .claude/skills/x/SKILL.md, though no pushed
-# commit names a sensitive path.
+# commit names a sensitive path. Since W10 the link itself refuses the whole push, whatever is edited.
 blink() { # link target edited: the PR head adds skills/x/SKILL.md and link -> target, the fixer edits `edited`
   g checkout -q -f -B feat/blink "$HEAD_OID"; mkdir -p "$W/repo/skills/x" "$W/repo/$(dirname "$1")"
   echo s >"$W/repo/skills/x/SKILL.md"; ln -s "$2" "$W/repo/$1"; g add skills/x/SKILL.md "$1"; g commit -q -m "base link $1"
@@ -241,20 +241,21 @@ blink() { # link target edited: the PR head adds skills/x/SKILL.md and link -> t
 }
 blink .claude/skills ../skills skills/x/SKILL.md
 r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
-check "a link .claude/skills -> ../skills on the base, the fixer edits its target -> refused, sensitive-path (W7)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: skills/x/SKILL.md (claude via the symlink .claude/skills)" "$W/out"'
+check "a link .claude/skills -> ../skills on the base, the fixer edits its target -> refused, the link named (W7)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over claude)" "$W/out"'
 r=$(PUSH_GUARD_ALLOW_SENSITIVE=claude run --findings "$W/rep.md" --allow skills/x/SKILL.md)
 check "the same with PUSH_GUARD_ALLOW_SENSITIVE=claude -> ok, the person allowed that class (W7)" eq "$r" 0
 blink .claude/skills ../skills src/a.ts
 r=$(run --findings "$W/rep.md")
-check "a link .claude/skills -> ../skills on the base, the fixer edits a file outside its target -> ok (W7)" eq "$r" 0
+check "a link .claude/skills -> ../skills on the base, the fixer edits a file outside its target -> refused, the link refuses the whole push (W7, W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over claude)" "$W/out"'
 blink .Claude/Skills ../SKILLS skills/x/SKILL.md
 r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
-check "the same link in other case -> refused, sensitive-path (W7)" eval '[ $r = 1 ] && grep -q "sensitive-path: skills/x/SKILL.md (claude" "$W/out"'
+check "the same link in other case -> refused, sensitive-path (W7)" eval '[ $r = 1 ] && grep -q "sensitive-path: .Claude/Skills (symlink over claude)" "$W/out"'
 blink .agents ./skills/x skills/x/SKILL.md
 r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
 check "a link at the parent .agents -> skills/x on the base, the fixer edits under it -> refused (W7)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: skills/x/SKILL.md (skills via the symlink .agents)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .agents (symlink over skills)" "$W/out"'
 # A chain: .claude/skills -> ../a and a -> skills. The edit lands at the end of the chain.
 g checkout -q -f -B feat/chain "$HEAD_OID"; mkdir -p "$W/repo/skills/x" "$W/repo/.claude"
 echo s >"$W/repo/skills/x/SKILL.md"; ln -s ../a "$W/repo/.claude/skills"; ln -s skills "$W/repo/a"
@@ -263,10 +264,10 @@ prjson OPEN feat/chain "$(g rev-parse HEAD)" false
 echo evil >>"$W/repo/skills/x/SKILL.md"; g add skills/x/SKILL.md; g commit -q -m "fixer edits through a chain"
 r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
 check "a chain .claude/skills -> ../a -> skills on the base, the fixer edits the end -> refused (W7)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: skills/x/SKILL.md (claude via the symlink .claude/skills)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over claude)" "$W/out"'
 # W8 (0.12.0 pass 3): a link inside a sensitive link's target. With .claude/skills -> ../skills and
 # skills/y -> ../other/y, .claude/skills/y/SKILL.md is other/y/SKILL.md, a path no class and no
-# first-level link target covers. The fixture's own links and files are on the base; the fixer's
+# first-level link target covers. Since W10 the outer link refuses the push. The fixture's own links and files are on the base; the fixer's
 # commit edits `edited`, or, with a fourth argument, also retargets a link (LINK:TARGET).
 tlink() { # "link:target ..." "file ..." edited [link:newtarget]
   local lt f
@@ -280,48 +281,125 @@ tlink() { # "link:target ..." "file ..." edited [link:newtarget]
 tlink ".claude/skills:../skills skills/y:../other/y" "other/y/SKILL.md" other/y/SKILL.md
 r=$(run --findings "$W/rep.md" --allow other/y/SKILL.md)
 check "a link skills/y -> ../other/y inside the target of .claude/skills -> ../skills, the fixer edits other/y -> refused (W8)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: other/y/SKILL.md (claude via the symlink skills/y inside .claude/skills)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over claude)" "$W/out"'
 r=$(PUSH_GUARD_ALLOW_SENSITIVE=claude run --findings "$W/rep.md" --allow other/y/SKILL.md)
 check "the same with PUSH_GUARD_ALLOW_SENSITIVE=claude -> ok (W8)" eq "$r" 0
 tlink ".claude/skills:../skills skills/y:../other/y other/y/z:../../deep" "deep/SKILL.md" deep/SKILL.md
 r=$(run --findings "$W/rep.md" --allow deep/SKILL.md)
-check "a link two levels down (other/y/z -> ../../deep) -> refused, followed until no target is added (W8)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: deep/SKILL.md (claude via the symlink other/y/z inside skills/y inside .claude/skills)" "$W/out"'
+check "a link two levels down (other/y/z -> ../../deep) -> refused (W8)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over claude)" "$W/out"'
 tlink ".claude/skills:../skills skills/y:/abs/elsewhere" "src/c.ts" src/c.ts
 r=$(run --findings "$W/rep.md" --allow src/c.ts)
-check "a link inside a sensitive target leading outside the repository -> 2 (W8)" \
-  eval '[ $r = 2 ] && grep -q "symlink skills/y leads outside the repository" "$W/out"'
+check "a link inside a sensitive target leading outside the repository -> refused, every class (W8, W10)" \
+  eval '[ $r = 1 ] && grep -q "skills/y (symlink over workflows actions codeowners skills claude mcp, its target leaves the repository)" "$W/out"'
 tlink "src/link:../skills skills/y:../other/y" "other/y/SKILL.md" other/y/SKILL.md
 r=$(run --findings "$W/rep.md" --allow other/y/SKILL.md)
 check "the same nested link under an ordinary link -> ok (W8)" eq "$r" 0
 tlink ".claude/skills:../skills skills/y:../other/y" "other/y/SKILL.md evil/SKILL.md" evil/SKILL.md skills/y:../evil
 r=$(run --findings "$W/rep.md" --allow evil/SKILL.md --allow skills/y)
-check "the fixer retargets the nested link skills/y -> ../evil and edits evil -> refused, both named (W8, N15)" \
-  eval '[ $r = 1 ] && grep -q "skills/y (claude via the symlink .claude/skills)" "$W/out" && grep -q "evil/SKILL.md (claude via the symlink skills/y inside .claude/skills)" "$W/out"'
-# W9 (0.12.0 pass 3): a target with a non-ASCII letter. Both sides fold ASCII letters only, so the
-# bytes of ç match whatever the locale.
+check "the fixer retargets the nested link skills/y -> ../evil and edits evil -> refused (W8, N15)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over claude)" "$W/out"'
+# W9 (0.12.0 pass 3): a target with a non-ASCII letter, refused whatever the locale.
 tlink ".claude/skills:../configuração" "configuração/x/SKILL.md" configuração/x/SKILL.md
 r=$(run --findings "$W/rep.md" --allow configuração/x/SKILL.md)
 check "a link .claude/skills -> ../configuração, the fixer edits under it -> refused (W9)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: configuração/x/SKILL.md (claude via the symlink .claude/skills)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over workflows actions codeowners skills claude mcp, its target holds a non-ASCII byte)" "$W/out"'
 r=$(LC_ALL=C run --findings "$W/rep.md" --allow configuração/x/SKILL.md)
-check "the same under LC_ALL=C -> refused (W9)" eval '[ $r = 1 ] && grep -q "sensitive-path: configuração/x/SKILL.md (claude" "$W/out"'
+check "the same under LC_ALL=C -> refused (W9)" eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over" "$W/out"'
 tlink ".claude/skills:../Configuração" "Configuração/x/SKILL.md" Configuração/x/SKILL.md
 r=$(run --findings "$W/rep.md" --allow Configuração/x/SKILL.md)
 check "a target with an upper-case ASCII letter and a non-ASCII one -> refused (W9)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: Configuração/x/SKILL.md (claude" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over" "$W/out"'
 blink .claude /abs/elsewhere src/a.ts
 r=$(run --findings "$W/rep.md")
-check "a link .claude -> an absolute path on the base -> 2, it may lead back into the repository (W7)" \
-  eval '[ $r = 2 ] && grep -q "symlink .claude leads outside the repository" "$W/out"'
+check "a link .claude -> an absolute path on the base -> refused, it may lead back into the repository (W7, W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude (symlink over workflows actions codeowners skills claude mcp, its target leaves the repository)" "$W/out"'
 blink .claude ../../outside src/a.ts
 r=$(run --findings "$W/rep.md")
-check "a link .claude -> ../../outside on the base -> 2 (W7)" eq "$r" 2
+check "a link .claude -> ../../outside on the base -> refused (W7, W10)" eq "$r" 1
 r=$(PUSH_GUARD_ALLOW_SENSITIVE=claude run --findings "$W/rep.md")
-check "the same with PUSH_GUARD_ALLOW_SENSITIVE=claude -> ok, nothing to follow (W7)" eq "$r" 0
+check "the same with only claude allowed -> refused, a target outside involves every class (W7, W10)" eq "$r" 1
 blink src/link ../skills skills/x/SKILL.md
 r=$(run --findings "$W/rep.md" --allow skills/x/SKILL.md)
 check "an ordinary link src/link -> ../skills on the base, the fixer edits its target -> ok (W7)" eq "$r" 0
+# W10 (0.12.0 pass 4): APFS and NTFS compare names without Unicode case and normalization, so the
+# guard folds with Unicode (NFKD, marks dropped, case folded) on both sides, refuses every link that
+# sits at, points at, into or above a sensitive path, and refuses any link target with a non-ASCII
+# byte or one that leaves the repository. The entries go in through the index, never the disk, so
+# the rows hold on any filesystem and whatever core.precomposeunicode says.
+iadd() { # mode path content: one index entry, written without the work tree
+  local sha; sha="$(printf '%s' "$3" | g hash-object -w --stdin)"; g update-index --add --cacheinfo "$1,$sha,$2"; }
+ulink() { # "path=target ..." edited: the PR head holds those links and configuração/x/SKILL.md, the fixer edits `edited`
+  local lt
+  g checkout -q -f -B feat/ulink "$HEAD_OID"
+  iadd 100644 configuração/x/SKILL.md s
+  for lt in $1; do iadd 120000 "${lt%%=*}" "${lt#*=}"; done
+  g commit -q -m "base links"; g reset -q --hard; prjson OPEN feat/ulink "$(g rev-parse HEAD)" false
+  iadd 100644 "$2" evil; g commit -q -m "fixer edits $2"; g reset -q --hard
+}
+ulink ".claude/skills=../configuraÇÃo" configuração/x/SKILL.md
+r=$(run --findings "$W/rep.md" --allow configuração/x/SKILL.md)
+check "a link .claude/skills -> ../configuraÇÃo (other non-ASCII case), the fixer edits configuração/x -> refused (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .*\.claude/skills (symlink over" "$W/out"'
+ulink ".claude/skills=../configurac$(printf '\314\247')a$(printf '\314\203')o" configuração/x/SKILL.md
+r=$(run --findings "$W/rep.md" --allow configuração/x/SKILL.md)
+check "a link .claude/skills -> ../configuração spelled in NFD, the fixer edits the NFC path -> refused (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .*\.claude/skills (symlink over" "$W/out"'
+ulink "src/link=../configuraÇÃo" src/a.ts
+r=$(run --findings "$W/rep.md")
+check "an ordinary link whose target holds a non-ASCII byte -> refused, every class (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners skills claude mcp, its target holds a non-ASCII byte)" "$W/out"'
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions,codeowners,skills,claude,mcp run --findings "$W/rep.md")
+check "the same with every class allowed -> ok (W10)" eq "$r" 0
+ulink "src/link=/etc" src/a.ts
+r=$(run --findings "$W/rep.md")
+check "an ordinary link to an absolute path -> refused, it leaves the repository (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners skills claude mcp, its target leaves the repository)" "$W/out"'
+ulink "src/link=../.Claude" src/a.ts
+r=$(run --findings "$W/rep.md")
+check "an ordinary link pointing at .Claude -> refused, claude (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over claude, its target .Claude)" "$W/out"'
+ulink "src/link=../.agents/skills/x" src/a.ts
+r=$(run --findings "$W/rep.md")
+check "an ordinary link pointing into .agents/skills -> refused, skills (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over skills, its target .agents/skills/x)" "$W/out"'
+ulink "src/link=.." src/a.ts
+r=$(run --findings "$W/rep.md")
+check "an ordinary link pointing at the repository root, above every sensitive path -> refused (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners skills claude mcp, its target the repository root)" "$W/out"'
+ulink "src/link=../.github" src/a.ts
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions run --findings "$W/rep.md")
+check "an ordinary link pointing at .github with codeowners not allowed -> refused (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners, its target .github)" "$W/out"'
+ulink ".agents/ſkills=../x" src/a.ts
+r=$(run --findings "$W/rep.md")
+check "a link at .agents/ſkills (long s, which folds to s) -> refused, skills (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .agents/ſkills (symlink over skills)" "$W/out"'
+# The touched paths fold the same way.
+ufile() { # path: the fixer's commit adds that path, through the index
+  g checkout -q -f -B feat/ufile "$HEAD_OID"; prjson OPEN feat/ufile "$HEAD_OID" false
+  iadd 100644 "$1" x; g commit -q -m "touch $1"; g reset -q --hard
+}
+ufile ".agents/ſkills/x/SKILL.md"
+r=$(run --findings "$W/rep.md" --allow ".agents/ſkills/x/SKILL.md")
+check "a touched path .agents/ſkills/x/SKILL.md with --allow -> refused, skills (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .agents/ſkills/x/SKILL.md (skills)" "$W/out"'
+ufile ".agents/s$(printf '\342\204\252')ills/x/SKILL.md"
+r=$(run --findings "$W/rep.md" --allow ".agents/s$(printf '\342\204\252')ills/x/SKILL.md")
+check "a touched path with the Kelvin sign for k (.agents/sKills) -> refused, skills (W10)" \
+  eval '[ $r = 1 ] && grep -q "(skills)" "$W/out"'
+ufile ".CLAUDE/x"
+r=$(run --findings "$W/rep.md" --allow .CLAUDE/x)
+check "a touched path .CLAUDE/x (ASCII case, a control) -> refused, claude (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .CLAUDE/x (claude)" "$W/out"'
+# A gitlink the PR head already holds at a sensitive path.
+g checkout -q -f -B feat/glinkh "$HEAD_OID"; g update-index --add --cacheinfo "160000,$HEAD_OID,.claude"; g commit -q -m "base gitlink"
+prjson OPEN feat/glinkh "$(g rev-parse HEAD)" false
+echo q >>"$W/repo/src/a.ts"; g add src/a.ts; g commit -q -m "fixer edits src/a.ts"
+r=$(run --findings "$W/rep.md")
+check "a gitlink .claude the PR head already holds -> refused (W10)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude (gitlink over claude)" "$W/out"'
+g checkout -q -f feat/x
 # A gitlink (mode 160000) at a sensitive directory moves its files to another repository.
 glink() { # path: the fixer's commit adds a gitlink at path
   g checkout -q -f -B feat/glink "$HEAD_OID"; prjson OPEN feat/glink "$HEAD_OID" false

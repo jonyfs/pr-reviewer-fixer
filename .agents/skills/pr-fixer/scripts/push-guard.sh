@@ -34,24 +34,24 @@
 #        codeowners  CODEOWNERS, .github/CODEOWNERS, docs/CODEOWNERS
 #        skills      .agents/skills/**           claude   .claude/**
 #        mcp         .mcp.json
-#      Paths compare without case. A hit refuses with reason `sensitive-path`, and the change goes to
-#      a person. A person who wants the fixer to edit one class (this repository's own release pull
-#      requests edit .agents/skills/**) sets PUSH_GUARD_ALLOW_SENSITIVE to a comma list of class
-#      names; a name it does not know refuses. The fixer never sets it itself. A class named there is
-#      still subject to check 4: the file must be in scope. A symlink (mode 120000) added at a
-#      sensitive directory or file, or at a parent of one (.github, .github/workflows,
-#      .github/actions, .agents, .agents/skills, .claude, docs, a CODEOWNERS path, .mcp.json), is
-#      refused the same way, since it moves the real files to a path no class covers; it passes only
-#      when every class it covers is named (.github covers workflows, actions and codeowners). A
-#      gitlink (mode 160000, a submodule) added or moved at one of those paths is refused the same
-#      way. A symlink the pull request head or the local HEAD already holds at one of those paths
-#      (`.claude/skills -> ../skills`) makes its target sensitive too: a touched path equal to the
-#      target, or under it, is refused with the link's class, following a chain of links. A link
-#      that sits at or under such a target (`skills/y -> ../other/y`) makes its own target sensitive
-#      with the same class, repeated until no target is added. Paths are compared with the ASCII
-#      letters A-Z folded and every other byte as it is. A link at one of those paths, or under such
-#      a target, whose target leaves the repository (an absolute path, `..` above the root) or loops
-#      cannot be followed, so the guard stops INCONCLUSIVE unless its class is allowed.
+#      A hit refuses with reason `sensitive-path`, and the change goes to a person. A person who wants
+#      the fixer to edit one class (this repository's own release pull requests edit
+#      .agents/skills/**) sets PUSH_GUARD_ALLOW_SENSITIVE to a comma list of class names; a name it
+#      does not know refuses. The fixer never sets it itself. A class named there is still subject
+#      to check 4: the file must be in scope.
+#      Names are compared after a Unicode fold broader than any filesystem's: NFKD, combining marks
+#      and default-ignorable code points dropped, case folded. APFS ignores case and normalization
+#      and NTFS ignores case, so `.CLAUDE/x`, `.agents/ſkills/x` (a long s) and an NFD spelling all
+#      reach their class. Folding too much refuses more, never less.
+#      Links are refused, not followed. Every symlink (mode 120000) and gitlink (mode 160000) that the
+#      pull request head or the local HEAD holds, or that a pushed commit adds, refuses the whole push
+#      with reason `sensitive-path`, naming the link, when it sits at a sensitive path or at a parent
+#      of one (.github, .github/workflows, .github/actions, .agents, .agents/skills, .claude, docs, a
+#      CODEOWNERS path, .mcp.json), or when its target, resolved lexically against the link's own
+#      directory, points at, into or above one (`src/x -> ../.claude`, `src/x -> ..`). A target that
+#      holds a non-ASCII byte, or that leaves the repository (an absolute path, `..` above the root),
+#      cannot be judged, so it involves every class. A link passes only when every class it involves
+#      is named in PUSH_GUARD_ALLOW_SENSITIVE (.github involves workflows, actions and codeowners).
 #   6. no commit adds a line that looks like a token or a private key: the added lines of each
 #      commit's own changes (as in 4) go through `review-cycle.sh screen --patch`, the screen
 #      `publish` uses. The patch is made with --text --no-textconv, so a file git treats as binary
@@ -124,37 +124,90 @@ if [ -n "$FINDINGS" ]; then
     }
   ' "$FINDINGS" >>"$SCOPE" || { echo "push-guard: --findings has no fenced findings block, INCONCLUSIVE" >&2; exit 2; }
 fi
-# Sensitive paths (check 5). The class of a path, or nothing. Compared without case: on a
-# case-insensitive checkout `.GitHub/Workflows/x.yml` is the same file. Only the ASCII letters A-Z are
-# folded, byte for byte and whatever the locale, here and in tree_links, so a name with a non-ASCII
-# letter compares the same on both sides.
-fold_ascii() { LC_ALL=C tr 'A-Z' 'a-z'; }
-sensitive_class() {
-  local p; p="$(printf '%s' "$1" | fold_ascii)"
-  case "$p" in
-    .github/workflows/*) echo workflows ;;
-    .github/actions/*) echo actions ;;
-    codeowners|.github/codeowners|docs/codeowners) echo codeowners ;;
-    .agents/skills/*) echo skills ;;
-    .claude/*) echo claude ;;
-    .mcp.json) echo mcp ;;
-  esac
+# Sensitive paths and links (check 5), in one node pass. Arguments: a file of touched paths and a file
+# of `diff-tree --raw -z` records from the pushed commits, both NUL-delimited, two output files, then
+# the trees to scan. It writes every touched path once as `path\0class\0` (class empty when none), and
+# every symlink or gitlink in the trees or the records that involves a class as
+# `path\0symlink|gitlink\0classes\0why\0`. Names are folded with Unicode before they are compared,
+# broader than APFS or NTFS fold them (see the header), so over-folding refuses more and never less.
+CHECK5_JS='
+const fs = require("fs"), { execFileSync } = require("child_process");
+const [touchedF, rawF, outP, outL, ...trees] = process.argv.slice(1);
+const git = (a, input) => execFileSync("git", a, { maxBuffer: 1 << 30, input, stdio: ["pipe", "pipe", "ignore"] });
+const ALL = ["workflows", "actions", "codeowners", "skills", "claude", "mcp"];
+const drop = /[\p{M}\p{Default_Ignorable_Code_Point}]/gu;
+const nfkd = (s) => s.normalize("NFKD").replace(drop, "");
+// Raw bytes (a latin1 string) to a folded name: UTF-8, NFKD, marks and ignorables dropped, case folded.
+const fold = (b) => nfkd(nfkd(Buffer.from(b, "latin1").toString("utf8")).toLowerCase().toUpperCase().toLowerCase());
+const fileClass = (f) =>
+  f.startsWith(".github/workflows/") ? "workflows" : f.startsWith(".github/actions/") ? "actions"
+  : ["codeowners", ".github/codeowners", "docs/codeowners"].includes(f) ? "codeowners"
+  : f.startsWith(".agents/skills/") ? "skills" : f.startsWith(".claude/") ? "claude" : f === ".mcp.json" ? "mcp" : "";
+// A sensitive directory or file, or a parent of one: the classes a link there moves away.
+const PARENT = { ".github": "workflows actions codeowners", ".github/workflows": "workflows",
+  ".github/actions": "actions", ".agents": "skills", ".agents/skills": "skills", ".claude": "claude",
+  "docs": "codeowners", "codeowners": "codeowners", ".github/codeowners": "codeowners",
+  "docs/codeowners": "codeowners", ".mcp.json": "mcp" };
+const classesAt = (b) => { const f = fold(b); return new Set([fileClass(f), ...(PARENT[f] || "").split(" ")]); };
+const order = (s) => ALL.filter((c) => s.has(c));
+const nul = (a) => Buffer.from(a.map((x) => x + "\0").join(""), "latin1");
+
+const touched = [], seen = new Set();
+for (const f of fs.readFileSync(touchedF).toString("latin1").split("\0")) {
+  if (!f || seen.has(f)) continue;
+  seen.add(f); touched.push(f, fileClass(fold(f)));
 }
-# A symlink at a sensitive directory or file, or at a parent of one (`.claude -> evil`, `.agents ->
-# ag`), puts the real files under a path no class covers, so the symlink is itself the sensitive
-# change. The classes such a path covers, space-separated, or nothing.
-symlink_classes() {
-  local p; p="$(printf '%s' "$1" | fold_ascii)"
-  case "$p" in
-    .github) echo "workflows actions codeowners" ;;
-    .github/workflows) echo workflows ;;
-    .github/actions) echo actions ;;
-    .agents|.agents/skills) echo skills ;;
-    .claude) echo claude ;;
-    docs|codeowners|.github/codeowners|docs/codeowners) echo codeowners ;;
-    .mcp.json) echo mcp ;;
-  esac
+fs.writeFileSync(outP, nul(touched));
+
+const links = new Map();
+const add = (mode, sha, p) => { if (mode === "120000" || mode === "160000") links.set(mode + " " + sha + " " + p, [mode, sha, p]); };
+for (const t of trees)
+  for (const rec of git(["ls-tree", "-r", "-z", "--full-tree", t]).toString("latin1").split("\0")) {
+    const m = /^(120000|160000) (?:blob|commit) ([0-9a-f]+)\t([\s\S]+)$/.exec(rec);
+    if (m) add(m[1], m[2], m[3]);
+  }
+const raw = fs.readFileSync(rawF).toString("latin1").split("\0");
+for (let i = 0; i + 1 < raw.length; i += 2) { const m = raw[i].split(" "); add(m[1], m[3], raw[i + 1]); }
+// Every symlink target in one cat-file call.
+const shas = [...new Set([...links.values()].filter((l) => l[0] === "120000").map((l) => l[1]))];
+const blobs = new Map();
+if (shas.length) {
+  const out = git(["cat-file", "--batch"], shas.join("\n") + "\n");
+  for (let o = 0; o < out.length;) {
+    const nl = out.indexOf(10, o), h = out.subarray(o, nl).toString().split(" ");
+    if (h[1] !== "blob") throw new Error("symlink target " + h[0] + " is not a blob");
+    const n = Number(h[2]); blobs.set(h[0], out.subarray(nl + 1, nl + 1 + n)); o = nl + 2 + n;
+  }
 }
+const res = [];
+for (const [mode, sha, p] of links.values()) {
+  const cls = classesAt(p); let why = "";
+  if (mode === "120000") {
+    const tb = blobs.get(sha), t = tb.toString("latin1");
+    let unknown = "";
+    if (tb.some((b) => b >= 0x80)) unknown = "holds a non-ASCII byte";
+    else if (/^[\/\\]/.test(t) || /^[A-Za-z]:/.test(t) || t.includes("\0")) unknown = "leaves the repository";
+    else {
+      // Lexically, against the link s own directory; a backslash counts as a separator too.
+      const out = [];
+      for (const c of p.split("/").slice(0, -1).concat(t.split(/[\/\\]/))) {
+        if (c === "" || c === ".") continue;
+        if (c !== "..") { out.push(c); continue; }
+        if (!out.length) { unknown = "leaves the repository"; break; }
+        out.pop();
+      }
+      if (!unknown) {
+        const r = out.join("/"), tc = r === "" ? new Set(ALL) : classesAt(r);
+        if (order(tc).length) { tc.forEach((c) => cls.add(c)); why = ", its target " + (r === "" ? "the repository root" : r); }
+      }
+    }
+    if (unknown) { ALL.forEach((c) => cls.add(c)); why = ", its target " + unknown; }
+  }
+  const c = order(cls);
+  if (c.length) res.push(p, mode === "120000" ? "symlink" : "gitlink", c.join(" "), why);
+}
+fs.writeFileSync(outL, nul(res));
+'
 SENS_OK=","
 IFS=',' read -r -a _sens <<<"${PUSH_GUARD_ALLOW_SENSITIVE:-}"
 for _c in "${_sens[@]+"${_sens[@]}"}"; do
@@ -239,131 +292,36 @@ commit_paths() {
   fi
   git -c core.quotePath=false diff-tree -r --no-renames "${fmt[@]}" "$tree" "$c^{tree}" 2>/dev/null
 }
-# Links the trees already hold (check 5). Every symlink in the pull request head and in the local HEAD,
-# each tree resolved on its own, NUL-delimited as: link path, ok|outside|loop, and the path its target
-# resolves to inside the repository, ASCII letters folded, following a chain of links. A pushed
-# commit records the real path, so an edit made through `.claude/skills -> ../skills` shows as
-# skills/..., which no class names.
-tree_links() {
-  node -e '
-    const { execFileSync } = require("child_process");
-    const git = (a) => execFileSync("git", a, { maxBuffer: 1 << 30 });
-    const fold = (s) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
-    // Each tree on its own: a link the local HEAD retargets is resolved by both of its targets.
-    for (const t of process.argv.slice(1)) {
-      const links = new Map();
-      for (const rec of git(["ls-tree", "-r", "-z", "--full-tree", t]).toString("latin1").split("\0")) {
-        const m = /^120000 blob ([0-9a-f]+)\t([\s\S]+)$/.exec(rec);
-        if (m) links.set(m[2], git(["cat-file", "blob", m[1]]).toString("latin1"));
-      }
-      const low = new Map([...links].map(([p, t]) => [fold(p), t]));
-      const resolve = (p) => {
-        let parts = p.split("/"), out = [], hops = 0;
-        while (parts.length) {
-          const c = parts.shift();
-          if (c === "" || c === ".") continue;
-          if (c === "..") { if (!out.length) return ["outside", ""]; out.pop(); continue; }
-          out.push(fold(c));
-          const t = low.get(out.join("/"));
-          if (t === undefined) continue;
-          if (++hops > 40) return ["loop", ""];
-          if (t.startsWith("/") || t.includes("\0")) return ["outside", ""];
-          out.pop(); parts = t.split("/").concat(parts);
-        }
-        return ["ok", out.join("/")];
-      };
-      for (const [p, t] of links) {
-        const dir = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
-        const [st, r] = t.startsWith("/") || t.includes("\0") ? ["outside", ""] : resolve(dir + "/" + t);
-        process.stdout.write(Buffer.from(p + "\0" + st + "\0" + r + "\0", "latin1"));
-      }
-    }
-  ' "$@"
-}
-# A sensitive link's target, its classes not all allowed: LINK_PFX (ASCII letters folded, "" is the
-# whole repository), LINK_CLS and LINK_SRC, index for index. A link at a sensitive path is taken first.
-# Then a link that sits at or under a target already taken is taken with that target's classes (a
-# nested link: skills/y -> ../other/y inside .claude/skills -> ../skills), until no target is added.
-LINK_PFX=() LINK_CLS=() LINK_SRC=()
-# Whether a touched path is a sensitive link's target or under it; sets LINK_HIT for the reason and
-# LINK_IDX to the target's index.
-through_link() {
-  local p i n="${#LINK_PFX[@]}"
-  p="$(printf '%s' "$1" | fold_ascii)"
-  for ((i = 0; i < n; i++)); do
-    if [ -z "${LINK_PFX[$i]}" ] || [ "$p" = "${LINK_PFX[$i]}" ] || case "$p" in "${LINK_PFX[$i]}"/*) true ;; *) false ;; esac; then
-      LINK_HIT="${LINK_CLS[$i]} via the symlink ${LINK_SRC[$i]}"; LINK_IDX=$i; return 0
-    fi
-  done
-  return 1
-}
-if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
-  LINKS="$(mktemp)"
-  tree_links "$HEAD_OID" HEAD >"$LINKS" 2>/dev/null \
-    || { rm -f "$LINKS"; echo "push-guard: could not list the symlinks in the trees, INCONCLUSIVE" >&2; exit 2; }
-  TL_L=() TL_ST=() TL_R=() TL_DONE=()
-  while IFS= read -r -d '' L && IFS= read -r -d '' st && IFS= read -r -d '' R; do
-    TL_L+=("$L"); TL_ST+=("$st"); TL_R+=("$R"); TL_DONE+=("")
-  done <"$LINKS"
-  rm -f "$LINKS"
-  added=1 first=1
-  while [ -n "$added" ]; do
-    added=""
-    for ((j = 0; j < ${#TL_L[@]}; j++)); do
-      [ -z "${TL_DONE[$j]}" ] || continue
-      L="${TL_L[$j]}" src=""
-      if [ -n "$first" ]; then
-        cls="$(symlink_classes "$L")"; [ -n "$cls" ] || cls="$(sensitive_class "$L")"
-      elif through_link "$L"; then
-        cls="${LINK_CLS[$LINK_IDX]}" src=" inside ${LINK_SRC[$LINK_IDX]}"
-      else
-        cls=""
-      fi
-      [ -n "$cls" ] || continue
-      TL_DONE[$j]=1
-      need=""
-      for k in $cls; do case "$SENS_OK" in *",$k,"*) ;; *) need=1 ;; esac; done
-      [ -n "$need" ] || continue
-      if [ "${TL_ST[$j]}" != ok ]; then
-        echo "push-guard: the symlink $(printf '%q' "$L") leads outside the repository or loops (${TL_ST[$j]}), so what it makes sensitive is unknown, INCONCLUSIVE" >&2; exit 2
-      fi
-      LINK_PFX+=("${TL_R[$j]}"); LINK_CLS+=("$cls"); LINK_SRC+=("$L$src"); added=1
-    done
-    # The first round takes links at sensitive paths; every later one, links under a target taken.
-    [ -z "$first" ] || added=1
-    first=""
-  done
-fi
-PATCH="$(mktemp)"; trap 'rm -f "$SCOPE" "$PATCH"' EXIT
+PATCH="$(mktemp)" TOUCHED="$(mktemp)" XRAW="$(mktemp)" C5P="$(mktemp)" C5L="$(mktemp)"
+trap 'rm -f "$SCOPE" "$PATCH" "$TOUCHED" "$XRAW" "$C5P" "$C5L"' EXIT
 if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
   while IFS= read -r c; do
     [ -n "$c" ] || continue
     PATHS="$(mktemp)"
     if ! commit_paths "$c" >"$PATHS"; then REASONS+=("$(cat "$PATHS")"); rm -f "$PATHS"; continue; fi
+    cat "$PATHS" >>"$TOUCHED"; rm -f "$PATHS"
     commit_paths "$c" patch >>"$PATCH" || true
-    # Symlinks and gitlinks this commit adds or changes, checked against symlink_classes (check 5).
-    while IFS= read -r -d '' meta && IFS= read -r -d '' f; do
-      set -- $meta
-      case "${2:-}" in 120000) kind=symlink ;; 160000) kind=gitlink ;; *) continue ;; esac
-      cls="$(symlink_classes "$f")"; [ -n "$cls" ] || cls="$(sensitive_class "$f")"; [ -n "$cls" ] || continue
-      for k in $cls; do
-        case "$SENS_OK" in *",$k,"*) ;; *) SENS+=("$f ($kind over $cls)"); break ;; esac
-      done
-    done < <(commit_paths "$c" raw 2>/dev/null)
-    while IFS= read -r -d '' f; do
-      [ -n "$f" ] || continue
-      if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(printf '%q' "$f")"); continue; fi
-      cls="$(sensitive_class "$f")"
-      if [ -n "$cls" ]; then
-        case "$SENS_OK" in *",$cls,"*) ;; *) SENS+=("$f ($cls)"); continue ;; esac
-      fi
-      if through_link "$f"; then SENS+=("$f ($LINK_HIT)"); continue; fi
-      in_scope "$f" && continue
-      is_test "$f" && continue
-      OUT+=("$f")
-    done <"$PATHS"
-    rm -f "$PATHS"
+    # The symlinks and gitlinks this commit adds or changes, for check 5 (a link added and removed
+    # again before the head is in no tree).
+    commit_paths "$c" raw >>"$XRAW" 2>/dev/null || true
   done < <(git rev-list "$HEAD_OID..HEAD" ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null)
+  # 5. One node pass: the class of every touched path, and every link that involves a class.
+  node -e "$CHECK5_JS" "$TOUCHED" "$XRAW" "$C5P" "$C5L" "$HEAD_OID" HEAD 2>/dev/null \
+    || { echo "push-guard: could not read the links or classify the touched paths, INCONCLUSIVE" >&2; exit 2; }
+  while IFS= read -r -d '' L && IFS= read -r -d '' kind && IFS= read -r -d '' cls && IFS= read -r -d '' why; do
+    for k in $cls; do
+      case "$SENS_OK" in *",$k,"*) ;; *) SENS+=("$L ($kind over $cls$why)"); break ;; esac
+    done
+  done <"$C5L"
+  while IFS= read -r -d '' f && IFS= read -r -d '' cls; do
+    if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(printf '%q' "$f")"); continue; fi
+    if [ -n "$cls" ]; then
+      case "$SENS_OK" in *",$cls,"*) ;; *) SENS+=("$f ($cls)"); continue ;; esac
+    fi
+    in_scope "$f" && continue
+    is_test "$f" && continue
+    OUT+=("$f")
+  done <"$C5P"
 fi
 # 6. The secret screen over what these commits add, the same one `publish` and the fixer's closure
 # use. Only the commits' own changes are read, so a value already on the base does not refuse a
@@ -379,7 +337,7 @@ if [ -s "$PATCH" ]; then
   esac
 fi
 if [ "${#SENS[@]}" -gt 0 ]; then
-  REASONS+=("sensitive-path: $(printf '%s\n' "${SENS[@]}" | sort -u | paste -sd',' - | sed 's/,/, /g'). These files run or judge the automation, so the fixer does not push them even when a finding names them: escalate to a person (who may set PUSH_GUARD_ALLOW_SENSITIVE=<class>)")
+  REASONS+=("sensitive-path: $(printf '%s\n' "${SENS[@]}" | sort -u | awk 'NR > 1 { printf ", " } { printf "%s", $0 }'). These files run or judge the automation, so the fixer does not push them even when a finding names them: escalate to a person (who may set PUSH_GUARD_ALLOW_SENSITIVE=<class>)")
 fi
 if [ "${#BADNAME[@]}" -gt 0 ]; then
   REASONS+=("touched paths with a control character in the name, never pushed: ${BADNAME[*]}")
