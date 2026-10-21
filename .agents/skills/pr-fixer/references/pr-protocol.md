@@ -101,7 +101,10 @@ rules decide whether a marker counts, in `status`, `stale`, `start`, `publish`, 
    `budget` answers `none`, `publish` and `start` refuse and `status` exits 2, naming the deleter
    and the time. `stale` does not check either case: it only retires a label the head outgrew.
    A deletion cannot be undone, so this stop is permanent for that pull request: the automatic loop
-   does not continue there, and a person decides how to go on.
+   does not continue there. The way out is a person's: read the timeline to see what was deleted
+   and by whom, then close the pull request and open a new one from the same branch. The new pull
+   request has no markers, so the review starts again at pass 1, with a fresh budget and nothing to
+   doubt. Moving the work this way is a decision about trust, so the loop never does it itself.
 
 Rule 2 keeps an edited marker from being read as a verdict, and keeps an edit by another login from
 moving the count, and a deletion by another login from moving it unseen. It does not stop the

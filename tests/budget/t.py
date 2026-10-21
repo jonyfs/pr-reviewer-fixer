@@ -277,6 +277,13 @@ check("a trusted comment deleted by another login -> budget none, names the dele
 d = budget(hist([1] * 6), deleted=((ME, "-"),))
 check("a trusted comment deleted by an unnamed account -> budget none, deleted by unknown (N5)",
       d.get("next") == "none" and "deleted by unknown" in d.get("why", ""), d)
+d = budget(hist([1] * 6), deleted=((ME, "mallory"),))
+check("a foreign deletion: budget why names the way out, a new pull request from the branch (N4 of #26)",
+      "new one from the same branch" in d.get("why", "") and "pass 1" in d.get("why", ""), d)
+d = setup(hist([1] * 6), labels=("review:pending",), deleted=((ME, "mallory"),))
+p = run(["start", "7"], d)
+check("a foreign deletion: the start refusal names the way out too (N4 of #26)",
+      p.returncode == 1 and "open a new one from the same branch" in p.stderr, p.stderr)
 d = budget(hist([1] * 6), deleted=((ME, ME),))
 check("a trusted comment deleted by its own author -> budget unchanged (ask) (N5)", d.get("next") == "ask", d)
 d = budget(hist([1] * 6), deleted=(("stranger", "mallory"),))

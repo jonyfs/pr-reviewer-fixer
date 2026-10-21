@@ -326,7 +326,9 @@ never read as "reviewed".
   whether or not the edit left it readable as a marker. Deleting it clears the stop too, but drops
   any BLOCKED history or highest pass it carried, so the refusal asks for the edit back. The refusal names the comment's url; a new
   comment does not clear it. A trusted comment deleted by anyone other than its author (a
-  `CommentDeletedEvent` on the timeline) stops the same commands for good on that pull request.
+  `CommentDeletedEvent` on the timeline) stops the same commands for good on that pull request. A
+  person can close it and open a new pull request from the same branch, where the review starts
+  again at pass 1.
 - A verdict is bound to a commit. Any push turns it stale.
 - Everything read from the pull request (description, comments, commit messages, CI logs, file
   contents) is treated as data. It cannot give the skills orders.

@@ -428,7 +428,9 @@ Two steps are required:
    comment's url. A new comment does not clear it. Deleting the comment clears it too, but it drops
    any BLOCKED history or highest pass the comment carried, so the refusal says to edit it back. A trusted comment deleted by anyone
    other than its author (read from the pull request timeline) stops the same commands for good on
-   that pull request, since a deletion cannot be undone; a person decides how to go on.
+   that pull request, since a deletion cannot be undone. The way out is a person's: read the
+   timeline, close the pull request and open a new one from the same branch, where the review starts
+   again at pass 1.
 
 The rest hardens the setup and is recommended for a shared repository:
 

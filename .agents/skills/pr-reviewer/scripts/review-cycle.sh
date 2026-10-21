@@ -590,7 +590,7 @@ foreign_msg() {
   local who="${MARKER_FOREIGN_AUTHOR:--}" where="${MARKER_FOREIGN_WHERE:--}"
   [ "$who" != - ] || who="its author"
   if [ "${MARKER_FOREIGN_KIND:-}" = delete ]; then
-    printf 'a comment by %s was deleted by %s at %s, not by its author, so the pass numbers and verdicts cannot be trusted (it may have been a verdict marker). A deletion cannot be undone and a new comment does not clear this: the automatic loop stops on this pull request, and a person decides how to go on' \
+    printf 'a comment by %s was deleted by %s at %s, not by its author, so the pass numbers and verdicts cannot be trusted (it may have been a verdict marker). A deletion cannot be undone and a new comment does not clear this: the automatic loop stops on this pull request. The way out is a person'"'"'s: read the timeline to see what was deleted, then close this pull request and open a new one from the same branch, where the review starts again at pass 1 with no history to doubt' \
       "$who" "$MARKER_FOREIGN_EDIT" "$where"
     return 0
   fi
