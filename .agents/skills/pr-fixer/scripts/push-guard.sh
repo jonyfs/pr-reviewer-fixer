@@ -46,9 +46,12 @@
 #      gitlink (mode 160000, a submodule) added or moved at one of those paths is refused the same
 #      way. A symlink the pull request head or the local HEAD already holds at one of those paths
 #      (`.claude/skills -> ../skills`) makes its target sensitive too: a touched path equal to the
-#      target, or under it, is refused with the link's class, following a chain of links. A link at
-#      one of those paths whose target leaves the repository (an absolute path, `..` above the root)
-#      or loops cannot be followed, so the guard stops INCONCLUSIVE unless its class is allowed.
+#      target, or under it, is refused with the link's class, following a chain of links. A link
+#      that sits at or under such a target (`skills/y -> ../other/y`) makes its own target sensitive
+#      with the same class, repeated until no target is added. Paths are compared with the ASCII
+#      letters A-Z folded and every other byte as it is. A link at one of those paths, or under such
+#      a target, whose target leaves the repository (an absolute path, `..` above the root) or loops
+#      cannot be followed, so the guard stops INCONCLUSIVE unless its class is allowed.
 #   6. no commit adds a line that looks like a token or a private key: the added lines of each
 #      commit's own changes (as in 4) go through `review-cycle.sh screen --patch`, the screen
 #      `publish` uses. The patch is made with --text --no-textconv, so a file git treats as binary
@@ -122,9 +125,12 @@ if [ -n "$FINDINGS" ]; then
   ' "$FINDINGS" >>"$SCOPE" || { echo "push-guard: --findings has no fenced findings block, INCONCLUSIVE" >&2; exit 2; }
 fi
 # Sensitive paths (check 5). The class of a path, or nothing. Compared without case: on a
-# case-insensitive checkout `.GitHub/Workflows/x.yml` is the same file.
+# case-insensitive checkout `.GitHub/Workflows/x.yml` is the same file. Only the ASCII letters A-Z are
+# folded, byte for byte and whatever the locale, here and in tree_links, so a name with a non-ASCII
+# letter compares the same on both sides.
+fold_ascii() { LC_ALL=C tr 'A-Z' 'a-z'; }
 sensitive_class() {
-  local p; p="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  local p; p="$(printf '%s' "$1" | fold_ascii)"
   case "$p" in
     .github/workflows/*) echo workflows ;;
     .github/actions/*) echo actions ;;
@@ -138,7 +144,7 @@ sensitive_class() {
 # ag`), puts the real files under a path no class covers, so the symlink is itself the sensitive
 # change. The classes such a path covers, space-separated, or nothing.
 symlink_classes() {
-  local p; p="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  local p; p="$(printf '%s' "$1" | fold_ascii)"
   case "$p" in
     .github) echo "workflows actions codeowners" ;;
     .github/workflows) echo workflows ;;
@@ -234,75 +240,100 @@ commit_paths() {
   git -c core.quotePath=false diff-tree -r --no-renames "${fmt[@]}" "$tree" "$c^{tree}" 2>/dev/null
 }
 # Links the trees already hold (check 5). Every symlink in the pull request head and in the local HEAD,
-# NUL-delimited as: link path, ok|outside|loop, and the path its target resolves to inside the
-# repository, lower case, following a chain of links. A pushed commit records the real path, so an
-# edit made through `.claude/skills -> ../skills` shows as skills/..., which no class names.
+# each tree resolved on its own, NUL-delimited as: link path, ok|outside|loop, and the path its target
+# resolves to inside the repository, ASCII letters folded, following a chain of links. A pushed
+# commit records the real path, so an edit made through `.claude/skills -> ../skills` shows as
+# skills/..., which no class names.
 tree_links() {
   node -e '
     const { execFileSync } = require("child_process");
     const git = (a) => execFileSync("git", a, { maxBuffer: 1 << 30 });
-    const links = new Map();
+    const fold = (s) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+    // Each tree on its own: a link the local HEAD retargets is resolved by both of its targets.
     for (const t of process.argv.slice(1)) {
+      const links = new Map();
       for (const rec of git(["ls-tree", "-r", "-z", "--full-tree", t]).toString("latin1").split("\0")) {
         const m = /^120000 blob ([0-9a-f]+)\t([\s\S]+)$/.exec(rec);
-        if (!m || links.has(m[2])) continue;
-        links.set(m[2], git(["cat-file", "blob", m[1]]).toString("latin1"));
+        if (m) links.set(m[2], git(["cat-file", "blob", m[1]]).toString("latin1"));
       }
-    }
-    const low = new Map([...links].map(([p, t]) => [p.toLowerCase(), t]));
-    const resolve = (p) => {
-      let parts = p.split("/"), out = [], hops = 0;
-      while (parts.length) {
-        const c = parts.shift();
-        if (c === "" || c === ".") continue;
-        if (c === "..") { if (!out.length) return ["outside", ""]; out.pop(); continue; }
-        out.push(c.toLowerCase());
-        const t = low.get(out.join("/"));
-        if (t === undefined) continue;
-        if (++hops > 40) return ["loop", ""];
-        if (t.startsWith("/") || t.includes("\0")) return ["outside", ""];
-        out.pop(); parts = t.split("/").concat(parts);
+      const low = new Map([...links].map(([p, t]) => [fold(p), t]));
+      const resolve = (p) => {
+        let parts = p.split("/"), out = [], hops = 0;
+        while (parts.length) {
+          const c = parts.shift();
+          if (c === "" || c === ".") continue;
+          if (c === "..") { if (!out.length) return ["outside", ""]; out.pop(); continue; }
+          out.push(fold(c));
+          const t = low.get(out.join("/"));
+          if (t === undefined) continue;
+          if (++hops > 40) return ["loop", ""];
+          if (t.startsWith("/") || t.includes("\0")) return ["outside", ""];
+          out.pop(); parts = t.split("/").concat(parts);
+        }
+        return ["ok", out.join("/")];
+      };
+      for (const [p, t] of links) {
+        const dir = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
+        const [st, r] = t.startsWith("/") || t.includes("\0") ? ["outside", ""] : resolve(dir + "/" + t);
+        process.stdout.write(Buffer.from(p + "\0" + st + "\0" + r + "\0", "latin1"));
       }
-      return ["ok", out.join("/")];
-    };
-    for (const [p, t] of links) {
-      const dir = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
-      const [st, r] = t.startsWith("/") || t.includes("\0") ? ["outside", ""] : resolve(dir + "/" + t);
-      process.stdout.write(Buffer.from(p + "\0" + st + "\0" + r + "\0", "latin1"));
     }
   ' "$@"
 }
-# A sensitive link's target, its classes not all allowed: LINK_PFX (lower case, "" is the whole
-# repository), LINK_CLS and LINK_SRC, index for index.
+# A sensitive link's target, its classes not all allowed: LINK_PFX (ASCII letters folded, "" is the
+# whole repository), LINK_CLS and LINK_SRC, index for index. A link at a sensitive path is taken first.
+# Then a link that sits at or under a target already taken is taken with that target's classes (a
+# nested link: skills/y -> ../other/y inside .claude/skills -> ../skills), until no target is added.
 LINK_PFX=() LINK_CLS=() LINK_SRC=()
-if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
-  LINKS="$(mktemp)"
-  tree_links "$HEAD_OID" HEAD >"$LINKS" 2>/dev/null \
-    || { rm -f "$LINKS"; echo "push-guard: could not list the symlinks in the trees, INCONCLUSIVE" >&2; exit 2; }
-  while IFS= read -r -d '' L && IFS= read -r -d '' st && IFS= read -r -d '' R; do
-    cls="$(symlink_classes "$L")"; [ -n "$cls" ] || cls="$(sensitive_class "$L")"; [ -n "$cls" ] || continue
-    need=""
-    for k in $cls; do case "$SENS_OK" in *",$k,"*) ;; *) need=1 ;; esac; done
-    [ -n "$need" ] || continue
-    if [ "$st" != ok ]; then
-      rm -f "$LINKS"
-      echo "push-guard: the symlink $(printf '%q' "$L") leads outside the repository or loops ($st), so what it makes sensitive is unknown, INCONCLUSIVE" >&2; exit 2
-    fi
-    LINK_PFX+=("$R"); LINK_CLS+=("$cls"); LINK_SRC+=("$L")
-  done <"$LINKS"
-  rm -f "$LINKS"
-fi
-# Whether a touched path is a sensitive link's target or under it; sets LINK_HIT for the reason.
+# Whether a touched path is a sensitive link's target or under it; sets LINK_HIT for the reason and
+# LINK_IDX to the target's index.
 through_link() {
   local p i n="${#LINK_PFX[@]}"
-  p="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  p="$(printf '%s' "$1" | fold_ascii)"
   for ((i = 0; i < n; i++)); do
     if [ -z "${LINK_PFX[$i]}" ] || [ "$p" = "${LINK_PFX[$i]}" ] || case "$p" in "${LINK_PFX[$i]}"/*) true ;; *) false ;; esac; then
-      LINK_HIT="${LINK_CLS[$i]} via the symlink ${LINK_SRC[$i]}"; return 0
+      LINK_HIT="${LINK_CLS[$i]} via the symlink ${LINK_SRC[$i]}"; LINK_IDX=$i; return 0
     fi
   done
   return 1
 }
+if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
+  LINKS="$(mktemp)"
+  tree_links "$HEAD_OID" HEAD >"$LINKS" 2>/dev/null \
+    || { rm -f "$LINKS"; echo "push-guard: could not list the symlinks in the trees, INCONCLUSIVE" >&2; exit 2; }
+  TL_L=() TL_ST=() TL_R=() TL_DONE=()
+  while IFS= read -r -d '' L && IFS= read -r -d '' st && IFS= read -r -d '' R; do
+    TL_L+=("$L"); TL_ST+=("$st"); TL_R+=("$R"); TL_DONE+=("")
+  done <"$LINKS"
+  rm -f "$LINKS"
+  added=1 first=1
+  while [ -n "$added" ]; do
+    added=""
+    for ((j = 0; j < ${#TL_L[@]}; j++)); do
+      [ -z "${TL_DONE[$j]}" ] || continue
+      L="${TL_L[$j]}" src=""
+      if [ -n "$first" ]; then
+        cls="$(symlink_classes "$L")"; [ -n "$cls" ] || cls="$(sensitive_class "$L")"
+      elif through_link "$L"; then
+        cls="${LINK_CLS[$LINK_IDX]}" src=" inside ${LINK_SRC[$LINK_IDX]}"
+      else
+        cls=""
+      fi
+      [ -n "$cls" ] || continue
+      TL_DONE[$j]=1
+      need=""
+      for k in $cls; do case "$SENS_OK" in *",$k,"*) ;; *) need=1 ;; esac; done
+      [ -n "$need" ] || continue
+      if [ "${TL_ST[$j]}" != ok ]; then
+        echo "push-guard: the symlink $(printf '%q' "$L") leads outside the repository or loops (${TL_ST[$j]}), so what it makes sensitive is unknown, INCONCLUSIVE" >&2; exit 2
+      fi
+      LINK_PFX+=("${TL_R[$j]}"); LINK_CLS+=("$cls"); LINK_SRC+=("$L$src"); added=1
+    done
+    # The first round takes links at sensitive paths; every later one, links under a target taken.
+    [ -z "$first" ] || added=1
+    first=""
+  done
+fi
 PATCH="$(mktemp)"; trap 'rm -f "$SCOPE" "$PATCH"' EXIT
 if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
   while IFS= read -r c; do

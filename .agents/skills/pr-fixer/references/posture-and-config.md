@@ -45,8 +45,11 @@ Tags: [#pr #github #safety #reference]
     `.github/` or in `docs/`), `.agents/skills/**`, `.claude/**` and `.mcp.json`, a symlink or a
     gitlink placed at one of them or at a parent of one (`.claude -> evil`, `.agents -> ag`), and
     the target of a symlink the branch already holds at one of them (`.claude/skills -> ../skills`
-    makes `skills/**` sensitive, following a chain of links). A link there that leaves the
-    repository or loops cannot be followed, and the guard stops INCONCLUSIVE. `push-guard.sh`
+    makes `skills/**` sensitive, following a chain of links), and the target of a link inside such
+    a target (`skills/y -> ../other/y` makes `other/y/**` sensitive too, however deep the nesting).
+    Paths are compared with only the ASCII letters folded, so `configuração/` matches itself. A
+    link there that leaves the repository or loops cannot be followed, and the guard stops
+    INCONCLUSIVE. `push-guard.sh`
     refuses such a commit with reason `sensitive-path`, even when a finding names the file or
     `--allow` passes it. The finding is escalated instead: the closure comment names it and the
     person makes the change. A person may opt a class in for one repository with

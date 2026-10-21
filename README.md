@@ -161,7 +161,8 @@ sequenceDiagram
   symlink or a gitlink at one of them or at a parent (`.claude`, `.agents`, `.github`), even when
   a finding names the file: such a finding goes to a person. A symlink the branch already holds
   there (`.claude/skills -> ../skills`) makes its target sensitive too, so an edit of
-  `skills/x/SKILL.md` through it is refused the same way. A person can opt one class in with
+  `skills/x/SKILL.md` through it is refused the same way, and so does a link inside that target
+  (`skills/y -> ../other/y`). A person can opt one class in with
   `PUSH_GUARD_ALLOW_SENSITIVE` (for example `skills` in a repository of skills, as this one is).
 - Reads review comments through `scripts/fetch-feedback.py`, which lists every thread, review and
   comment with its author association. It acts only on comments from an OWNER, a MEMBER or

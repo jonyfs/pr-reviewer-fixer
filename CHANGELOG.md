@@ -71,6 +71,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   link that leaves the repository or loops stops the guard INCONCLUSIVE (exit 2) unless its class
   is allowed. A gitlink (mode 160000) added at a sensitive path or parent is refused like a
   symlink (#27 W7).
+- `push-guard.sh` check 5 also follows a link that sits inside a sensitive link's target
+  (`skills/y -> ../other/y` under `.claude/skills -> ../skills`), repeated until no target is added,
+  and resolves the pull request head and the local HEAD each on its own, so a link the fixer
+  retargets is followed to both targets (#27 W8, N15).
+- `push-guard.sh` compares paths with only the ASCII letters folded, on both sides and in every
+  locale. A link target holding a non-ASCII letter (`../configuração`) now matches the touched path
+  (#27 W9).
 - The comment lane prescribes `Escalated (C1): <what the person must decide>` for an escalation,
   so `fetch-feedback.py` reads it back as the fixer's own reply instead of a work order (#27 W5).
 - In a resolved thread, a comment after the fixer's last reply keeps its own action (`act`, or
@@ -80,6 +87,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - I26 `dup_of` dedupe against the reviewer's findings and automatic re-anchoring of outdated
   threads; I54 merging `gitleaks` or `trufflehog` output (needs I57's trusted path resolution).
+- `push-guard.sh` check 5 folds only ASCII case. On a filesystem that also folds non-ASCII case or
+  Unicode normalization (APFS, NTFS), `É/` and `é/`, or an NFC and an NFD spelling, are one directory
+  the guard sees as two.
 
 ## 0.11.0
 

@@ -160,7 +160,7 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    path and line named, value never shown), and one that touches a sensitive path (workflows,
    actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, a symlink or gitlink at one
    of them or at a parent such as `.claude` or `.agents`, or the target of a symlink the branch
-   already holds there; reason `sensitive-path`) even when a finding
+   already holds there or inside such a target; reason `sensitive-path`) even when a finding
    names it: escalate that finding to a person instead, unless the person set
    `PUSH_GUARD_ALLOW_SENSITIVE` for its class. Never set that variable yourself. If the head is not writable, deliver a patch and
    replies instead of pushing.
