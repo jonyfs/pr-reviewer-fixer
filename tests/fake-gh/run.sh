@@ -665,6 +665,15 @@ printf '## findings\nstray %s\n\n```findings\ncounts: { critical: 0, warning: 0,
 printf 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n' >"$W/lrs.patch"
 "$RC" lint-report --report "$W/lrs.md" --diff "$W/lrs.patch" >"$W/out" 2>&1; r=$?
 check "lint-report fails a report with a secret and does not print it" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+# S3: `screen --file` runs the same screen over any text an agent posts (closure, pr-debt, overflow).
+printf 'closure: closed 2, refused 0\n' >"$W/clean.md"
+: >"$FAKE_DIR/calls.log"; "$RC" screen --file "$W/clean.md" >"$W/out" 2>&1; r=$?
+check "screen --file on a clean text -> 0, posts nothing (S3)" eval '[ $r = 0 ] && [ $(calls "pr comment") = 0 ] && [ $(calls "pr edit") = 0 ]'
+printf 'closure quoting a log line: export TOKEN=%s\n' "$gh_tok" >"$W/leak.md"
+"$RC" screen --file "$W/leak.md" >"$W/out" 2>&1; r=$?
+check "screen --file on a text with a token -> 1, names the kind, never the value (S3)" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+"$RC" screen --file "$W/no-such-file.md" >"$W/out" 2>&1; r=$?
+check "screen --file on a missing file -> 2 (S3)" eq "$r" 2
 
 # ---- options with no value, and pull request arguments that are not a number -------------------
 # An option given last with no value once made `shift 2` fail and the loop spin forever. Each run

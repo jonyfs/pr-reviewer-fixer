@@ -305,7 +305,7 @@ never read as "reviewed".
 
 | Script | Job |
 |---|---|
-| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
+| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |

@@ -50,9 +50,17 @@ gh pr checks <n>                   # CI status per check
 ## Reviewer Report and Closure
 
 Find the verdict comment and its `findings` block, the closure comment of an earlier cycle, and the
-`pr-debt` block with filters F1, F3 and F4 in [pr-protocol.md](pr-protocol.md). Post the closure
-comment with `gh pr comment <n> --body-file closure.md` and write the debt block with the
-read-modify-write recipe there.
+`pr-debt` block with filters F1, F3 and F4 in [pr-protocol.md](pr-protocol.md). Screen the closure
+comment, then post it:
+
+```bash
+scripts/review-cycle.sh screen --file closure.md && gh pr comment <n> --body-file closure.md
+```
+
+Write the debt block with the read-modify-write recipe there, which screens the new body before
+`gh pr edit`. Any other comment (an overflow of a long closure report) goes through `screen` the
+same way. `screen` exits 1 and names the kind of secret, never the value; replace it with
+`[REDACTED]` and screen again.
 
 ## Comments (Comment Lane)
 

@@ -179,8 +179,8 @@ flowchart LR
 | Label `review:*` | `review-cycle.sh` only | State at a glance in the PR list |
 | Verdict comment with `<!-- adversarial-review: sha=... -->` | reviewer, through the script | The authority. The label is its projection |
 | `findings` block at the end of the verdict | reviewer | The fixer's work list |
-| Closure comment with `<!-- pr-fixer-closure: ... -->` | fixer | Reproduction, test, red, fix, green, suite counts per finding |
-| `pr-debt` block in the PR body | fixer | Owner for every warning and note |
+| Closure comment with `<!-- pr-fixer-closure: ... -->` | fixer, after `review-cycle.sh screen` passes it | Reproduction, test, red, fix, green, suite counts per finding |
+| `pr-debt` block in the PR body | fixer, after `review-cycle.sh screen` passes it | Owner for every warning and note |
 | Extension answer (`state=granted` or `state=halted`) | `review-cycle.sh extend` or `halt`, after a person answered in the session | Continue or stop after the cycle budget |
 
 The full list, with the exact `gh` command to find each one, is in
@@ -458,7 +458,11 @@ sandbox and permission allowlist), and this project does not simulate it. `refer
 `review-cycle.sh publish` refuses a report that contains a token or private key (GitHub, AWS, Slack,
 Stripe, Google, JWT, `sk-` keys, bearer headers) and tells you to replace it with `[REDACTED]`. It
 does not rewrite the report, and it does not screen high-entropy strings, because a commit SHA would
-always match. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
+always match. `lint-report` applies the same screen, and `review-cycle.sh screen --file <file>`
+applies it to any other text an agent posts: the fixer screens its closure comment and the new PR
+body (with the `pr-debt` block) before posting them, and the reviewer screens an overflow comment.
+It exits 0 when the text is clean, 1 naming the kind of secret (never the value) and 2 when the
+file cannot be read. A text posted by hand with `gh` is not screened. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
 publisher, timestamps, label events, model, tier and `block_at`) from the trusted marker and the pull
@@ -585,7 +589,7 @@ The suite needs no network. It drives the scripts against a fake `gh` and covers
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `push-guard.sh`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `install.sh`, the review
 eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also

@@ -98,6 +98,11 @@
 #                          declined, and fails a report that holds a token or private key. Run
 #                          before publish;
 #                          posts nothing. Exit 1 on a problem, 2 when it could not read an input.
+#     screen --file <file> runs the secret screen `publish` and `lint-report` use over any text an
+#                          agent is about to post (closure comment, `pr-debt` body, overflow
+#                          comment). Exit 0 clean, 1 when it holds a token or private key (the
+#                          kind is named, never the value), 2 when the file cannot be read.
+#                          Posts nothing.
 #     ensure-labels        creates or updates the six review:* labels in the current repository
 #                          (gh resolves the repository from the working directory or GH_REPO)
 #
@@ -1282,6 +1287,29 @@ if hits:
 PY
 }
 
+# The same screen, for every other text an agent posts to the pull request: the fixer's closure
+# comment, the `pr-debt` body edit, an overflow comment beside a long report. Exit 0 = clean, 1 = it
+# holds something that looks like a secret (the kind is named, the value never printed), 2 = the
+# file could not be read. Posts nothing.
+cmd_screen() {
+  local file=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --file) [ $# -ge 2 ] || die "review-cycle: --file needs a value"; file="$2"; shift 2 ;;
+      *) die "review-cycle: usage: review-cycle.sh screen --file <file>" ;;
+    esac
+  done
+  [ -n "$file" ] && [ -f "$file" ] && [ -r "$file" ] \
+    || { echo "review-cycle: screen needs --file <file> that exists and is readable" >&2; return 2; }
+  local leaked
+  if ! leaked="$(report_secrets "$file")"; then
+    echo "review-cycle: REFUSED. $file looks like it contains a secret ($leaked). Replace the value with [REDACTED], then screen it again before posting. Nothing was posted." >&2
+    return 1
+  fi
+  echo "review-cycle: screen ok. $file holds no token or private key this screen knows."
+  return 0
+}
+
 cmd_publish() {
   local verdict="" passno="" sha="" report="" number="" crit="" warn="" note="" model="" tier=""
   while [ $# -gt 0 ]; do
@@ -1819,6 +1847,7 @@ case "${1:-status}" in
   marker)  shift || true; cmd_marker  "$@" ;;
   publish) shift || true; cmd_publish "$@" ;;
   lint-report) shift || true; cmd_lint_report "$@" ;;
+  screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|screen|ensure-labels} [pr]" ;;
 esac

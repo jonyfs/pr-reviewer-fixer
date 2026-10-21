@@ -61,8 +61,9 @@ Each step that touches the PR follows [pr-protocol.md](pr-protocol.md).
 3. Writing lanes serially: conflict, findings, comments, checks.
 4. Verify, re-check the remote head, push.
 5. Replace the `pr-debt` block in the PR body with the owners (read-modify-write, filter F4). Never
-   overwrite the author's text.
-6. Post one closure comment with the `pr-fixer-closure` marker. It is the finish message.
+   overwrite the author's text. Screen the new body with `review-cycle.sh screen --file` first.
+6. Post one closure comment with the `pr-fixer-closure` marker, after `review-cycle.sh screen
+   --file` passes it. It is the finish message.
 7. Stop. Do not set `review:pending` by hand: a label set by the half that made the change is that
    half marking its own homework. Run `scripts/review-cycle.sh stale` after the push: it retires
    `review:fixing` to `review:pending` once the head has moved past the marker, and only the
