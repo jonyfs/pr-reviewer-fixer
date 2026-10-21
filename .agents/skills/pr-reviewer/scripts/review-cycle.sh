@@ -496,7 +496,9 @@ parse() {
   # the current verdict nor the BLOCKED history below. Both answers come out of this one loop,
   # which is why the filter lives here and not in a second pass. Callers that decide
   # (`status`, `stale`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
-  # before they get here; an empty list skips nothing.
+  # before they get here. Only a list that is not active (unset, empty or ASCII whitespace) skips
+  # nothing; an active list that keeps no login (a lone comma, invisible characters) skips every
+  # comment, since `allow` is then empty.
   local m
   m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
     const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
@@ -1096,7 +1098,8 @@ for k, v in out.items():
 }
 
 # Records that a person granted `--n` more cycles. It writes the one marker `budget` reads and
-# refuses anything the budget would not honour: no CRITICAL open at the head, cycles that are not
+# refuses anything the budget would not honour: no blocking finding open at the head (a CRITICAL, or
+# a WARNING under REVIEW_BLOCK_AT=warning), cycles that are not
 # spent yet, or more than the hard ceiling leaves. The question itself is asked in the session, by
 # the harness's own question tool; this only makes the answer outlive the session.
 cmd_extend() {
