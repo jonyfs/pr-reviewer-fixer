@@ -1061,6 +1061,59 @@ check "lint-report: no mandatory unit in the diff, no Mandatory units line -> 0,
 "$RC" lint-report --report "$W/lf.md" --diff "$W/pf2.patch" >"$W/out" 2>&1; r=$?
 check "lint-report: path-floor cannot read the diff's paths -> 2 (I50)" eval '[ $r = 2 ] && grep -q "mandatory units are unknown" "$W/out"'
 
+# W6 (PR #29): fences are tracked line by line, as CommonMark closes them: a fence of four
+# backticks or tildes is not closed by a shorter one inside it. Only the coverage note and the
+# findings block outside every fence count, and a second Coverage note section is refused.
+FB='```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n'
+printf '## Review\n\n````md\n```text\nquoted\n```\n### Coverage note\nMandatory units: security (max): run; dependencies: run\n````\n\n### Coverage note\nMandatory units: security (max): skipped; dependencies: run\nDeclined to judge: none\n\n'"$FB" >"$W/lf.md"
+"$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: a coverage note quoted in a four-backtick fence cannot stand in for the real one -> 1 (W6, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "security (max) (.github/workflows/ci.yml) is not listed as run" "$W/out"'
+printf '## Review\n\n~~~~md\n~~~text\nquoted\n~~~\n### Coverage note\nMandatory units: security (max): run; dependencies: run\n~~~~\n\n### Coverage note\nMandatory units: security (max): skipped; dependencies: run\nDeclined to judge: none\n\n'"$FB" >"$W/lf.md"
+"$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: the same quoted in a four-tilde fence -> 1 (W6, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "security (max) (.github/workflows/ci.yml) is not listed as run" "$W/out"'
+printf '## Review\n\n### Coverage note\nMandatory units: security (max): run; dependencies: run\nDeclined to judge: none\n\n### Coverage note\nMandatory units: security (max): skipped; dependencies: run\n\n'"$FB" >"$W/lf.md"
+"$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: a second Coverage note section -> 1, exactly one is allowed (W6, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "more than one .Coverage note. section" "$W/out"'
+printf '## Review\n\nThe contract example, quoted:\n\n````markdown\n### Coverage note\nMandatory units: none\n\n```findings\nversion: 1\nfindings:\n  - id: X9\n```\n````\n\n### Coverage note\nMandatory units: security (max): run; dependencies: run\nDeclined to judge: none\n\n'"$FB" >"$W/lf.md"
+"$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: an honest report that quotes the contract's example in a four-backtick fence -> 0 (W6, PR #29)" eq "$r" 0
+printf '## Review\n\n### Coverage note\nMandatory units: security (max): run; dependencies: run\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n' >"$W/lf.md"
+"$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: a findings fence that is never closed is no findings block -> 1 (W6, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "no fenced .findings. block" "$W/out"'
+# W7 (PR #29): every project skill folder install.sh writes, and README's .devin/skills, summons
+# security at max; agent directories count at any depth.
+: >"$W/pf-w7.patch"
+ROOTS="$(sed -n 's/^ *[a-z-]*) *echo "\([^|]*\)|.*/\1/p' "$T/../../install.sh" | sort -u) .devin/skills"
+for f in $(printf '%s/x/SKILL.md\n' $ROOTS) packages/web/.cursor/rules/evil.mdc pkg/.claude/settings.json \
+         apps/a/.agents/skills/x/SKILL.md apps/a/.roo/skills/x/SKILL.md lib/.codex/config.toml docs/roo/skills.md src/.agents/notes.md; do
+  printf 'diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-x\n+y\n' "$f" "$f" "$f" "$f" >>"$W/pf-w7.patch"
+done
+"$PF" --diff "$W/pf-w7.patch" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: every skill folder install.sh writes, and agent dirs at any depth -> security max (W7, PR #29)" \
+  eval '[ $r = 0 ] && [ "$(printf "%s\n" $ROOTS | wc -l)" -ge 12 ] && [ "$(grep -c "^security max " "$W/pf.out")" = "$(( $(printf "%s\n" $ROOTS | wc -l) + 5 ))" ] && pfhas "security max .roo/skills/x/SKILL.md" && pfhas "security max .devin/skills/x/SKILL.md" && pfhas "security max packages/web/.cursor/rules/evil.mdc"'
+check "path-floor: docs/roo/skills.md and src/.agents/notes.md summon nothing (W7, PR #29)" \
+  eval '! grep -q "docs/roo\|src/.agents" "$W/pf.out"'
+# W8 (PR #29): a coloured `gh pr diff` (CLICOLOR_FORCE=1) has no line that starts with `diff --git`.
+# lint-report asks for --color=never, and path-floor --diff refuses text it read no path from.
+printf '## Review\n\n### Coverage note\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/le.md"
+reset "$(mk 7 $A '[]' '[]' OPEN)"; cp "$W/fl.patch" "$FAKE_DIR/diff.patch"
+CLICOLOR_FORCE=1 "$RC" lint-report 7 --report "$W/le.md" >"$W/out" 2>&1; r=$?
+check "lint-report: CLICOLOR_FORCE=1 cannot empty the floor of a pull request's diff -> 1, it names the units (W8, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "dependencies, security (max) mandatory" "$W/out"'
+CLICOLOR_FORCE=1 gh pr diff 7 >"$W/fl-color.patch" 2>/dev/null
+"$PF" --diff "$W/fl-color.patch" >"$W/pf.out" 2>&1; r=$?
+"$RC" lint-report --report "$W/le.md" --diff "$W/fl-color.patch" >"$W/out" 2>&1; r2=$?
+check "path-floor --diff: a coloured diff, which names no path it can read -> 2; lint-report -> 2 (W8, PR #29)" \
+  eval '[ $r = 2 ] && grep -q "no path" "$W/pf.out" && [ $r2 = 2 ] && grep -q "mandatory units are unknown" "$W/out" && grep -q "$(printf "\033")" "$W/fl-color.patch"'
+printf 'not a diff\n' >"$W/pf-text.patch"; "$PF" --diff "$W/pf-text.patch" >/dev/null 2>&1; r=$?
+: >"$W/pf-empty.patch"; "$PF" --diff "$W/pf-empty.patch" >"$W/pf.out" 2>&1; r2=$?
+check "path-floor --diff: text that is not empty and names no path -> 2; an empty diff -> 0, no row (W8, PR #29)" \
+  eval '[ $r = 2 ] && [ $r2 = 0 ] && [ ! -s "$W/pf.out" ]'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

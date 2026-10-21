@@ -197,6 +197,23 @@ sens "Codex config" .codex/config.toml instructions
 sens "OpenCode agent" .opencode/agents/a.md instructions
 sens "Cursor rules" .cursor/rules/r.mdc instructions
 sens "agent instructions in other case" Agents.MD instructions
+# W7 of PR #29: every project skill folder install.sh writes (and README's .devin/skills) is
+# sensitive, whatever harness it is for, and an agent directory counts at any depth.
+ROOTS="$(sed -n 's/^ *[a-z-]*) *echo "\([^|]*\)|.*/\1/p' "$T/../../install.sh" | sort -u)"
+check "install.sh names at least 11 project skill folders for the rows below (W7 of PR #29)" eval '[ "$(printf "%s\n" "$ROOTS" | grep -c /skills$)" -ge 11 ]'
+for sp in $ROOTS .devin/skills; do
+  sens "the skill folder install.sh writes" "$sp/s/SKILL.md" "$(case "$sp" in .claude/*) echo claude ;; \
+    .github/*|.gemini/*|.cursor/*|.opencode/*|.windsurf/*) echo instructions ;; *) echo skills ;; esac)"
+done
+sens "a Roo skill" .roo/skills/pr-fixer/scripts/review-cycle.sh skills
+sens "a nested Cursor rule" packages/web/.cursor/rules/evil.mdc instructions
+sens "nested agent settings" pkg/.claude/settings.json claude
+sens "a nested skill folder" apps/a/.agents/skills/x/SKILL.md skills
+sens "a nested Kiro skill" apps/a/.kiro/skills/x/SKILL.md skills
+g checkout -q -B feat/sens "$HEAD_OID"; mkdir -p "$W/repo/docs/roo" "$W/repo/src/.agents"
+echo x >"$W/repo/docs/roo/skills.md"; echo x >"$W/repo/src/.agents/notes.md"; g add -A; g commit -q -m "near misses"
+r=$(run --findings "$W/rep.md" --allow docs/roo/skills.md --allow src/.agents/notes.md)
+check "docs/roo/skills.md and src/.agents/notes.md are not skill folders -> ok (W7 of PR #29)" eq "$r" 0
 # The opt-in a person sets: it excuses only the classes it names, and the file must still be in scope.
 g checkout -q -B feat/sens "$HEAD_OID"; mkdir -p "$W/repo/.agents/skills/s" "$W/repo/.github/workflows"
 echo x >"$W/repo/.agents/skills/s/SKILL.md"; g add -A; g commit -q -m "skill edit"
@@ -243,6 +260,12 @@ check "a symlink .github/workflows -> ../evil -> refused, sensitive-path (W3)" e
 sym "parent of the skills" .agents evil
 r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow .agents)
 check "a symlink at the parent .agents -> refused, sensitive-path (W3)" eval '[ $r = 1 ] && grep -q "sensitive-path: .agents (symlink over skills)" "$W/out"'
+sym "a harness skill root" .roo evil
+r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow .roo)
+check "a symlink .roo -> evil -> refused, skills (W7 of PR #29)" eval '[ $r = 1 ] && grep -q "sensitive-path: .roo (symlink over skills)" "$W/out"'
+sym "a nested agent dir" pkg/.claude ../evil
+r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow pkg/.claude)
+check "a symlink pkg/.claude -> ../evil -> refused, claude (W7 of PR #29)" eval '[ $r = 1 ] && grep -q "sensitive-path: pkg/.claude (symlink over claude)" "$W/out"'
 sym "parent of three classes, other case" .GitHub evil
 r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows run --findings "$W/rep.md" --allow evil/settings.json --allow .GitHub)
 check "a symlink .GitHub with only workflows allowed -> refused, every class it covers named (W3)" \

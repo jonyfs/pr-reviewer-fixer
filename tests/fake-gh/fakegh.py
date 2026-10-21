@@ -246,7 +246,12 @@ if args[:2] == ["pr", "edit"]:
 if args[:2] == ["pr", "diff"]:
     dp = os.path.join(d, "diff.patch")
     if not os.path.exists(dp): sys.exit(1)
-    sys.stdout.write(open(dp).read()); sys.exit(0)
+    text = open(dp).read()
+    # Like gh 2.102.0: CLICOLOR_FORCE=1 colours a redirected diff unless --color=never is given.
+    never = "--color=never" in args or any(a == "--color" and b == "never" for a, b in zip(args, args[1:]))
+    if os.environ.get("CLICOLOR_FORCE") == "1" and not never:
+        text = "".join("\033[1;37m%s\033[m\n" % ln for ln in text.split("\n")[:-1]) if text.endswith("\n") else text
+    sys.stdout.write(text); sys.exit(0)
 if args[:2] == ["pr", "comment"]:
     body = sys.stdin.read()
     if len(body) > 65536:

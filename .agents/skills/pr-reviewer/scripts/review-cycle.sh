@@ -102,8 +102,11 @@
 #                          declined, and fails a report that holds a token or private key. When
 #                          path-floor.sh (beside this script) finds mandatory units in the diff's
 #                          paths, the coverage note's `Mandatory units:` line must list each as run,
-#                          `(max)` where the floor says max. Run before publish;
-#                          posts nothing. Exit 1 on a problem, 2 when it could not read an input.
+#                          `(max)` where the floor says max; only the one Coverage note section and
+#                          the first `findings` block outside every fence count (fences tracked as
+#                          CommonMark does). It reads a PR's diff with `gh pr diff --color=never`.
+#                          Run before publish; posts nothing. Exit 1 on a problem, 2 when it could
+#                          not read an input or compute the floor.
 #     screen --file <file> runs the secret screen `publish` and `lint-report` use over any text an
 #                          agent is about to post (closure comment, `pr-debt` body, overflow
 #                          comment). Exit 0 clean, 1 when it holds a token, a private key or a
@@ -1933,7 +1936,9 @@ cmd_lint_report() {
   if [ -z "$diff" ]; then
     [ -n "$pr" ] || { echo "review-cycle: lint-report needs a pull request number or --diff <file>" >&2; return 2; }
     tmp="$(mktemp)"; diff="$tmp"
-    gh pr diff "$pr" >"$diff" 2>/dev/null || { rm -f "$tmp"; echo "review-cycle: could not read the diff of #$pr" >&2; return 2; }
+    # --color=never: with CLICOLOR_FORCE=1 gh colours even a redirected diff, and an escape code
+    # before each `diff --git` hides every path from the anchors and from path-floor.sh.
+    gh pr diff --color=never "$pr" >"$diff" 2>/dev/null || { rm -f "$tmp"; echo "review-cycle: could not read the diff of #$pr" >&2; return 2; }
   fi
   [ -s "$diff" ] || { rm -f "$tmp"; echo "review-cycle: the diff is empty or unreadable, so no finding can be checked against it" >&2; return 2; }
   local leaked lrc
@@ -2019,11 +2024,39 @@ for ln in diff:
             rem_old = int(h.group(1)) if h.group(1) is not None else 1
             rem_new = int(h.group(2)) if h.group(2) is not None else 1
 
-m = re.search(r"```findings\n(.*?)\n```", report, re.S)
-if not m:
+def fences(text):
+    """The report's lines with every fenced code block blanked out, and the closed blocks as
+    (info string, body). Fences are tracked line by line as CommonMark reads them: an opener is three
+    or more backticks or tildes indented at most three spaces (a backtick opener's info string holds
+    no backtick); its closer uses the same character, is at least as long, is indented at most three
+    spaces and has nothing after it but spaces or tabs. So a ```` fence that quotes a ``` block is not
+    closed by the inner one. A block never closed runs to the end and is not a block."""
+    out, blocks, cur = [], [], None   # cur: [char, length, info, body lines]
+    for ln in text.split("\n"):
+        if cur is None:
+            o = re.match(r" {0,3}(`{3,}|~{3,})(.*)$", ln)
+            if o and not (o.group(1)[0] == "`" and "`" in o.group(2)):
+                cur = [o.group(1)[0], len(o.group(1)), o.group(2).strip(), []]
+                out.append("")
+            else:
+                out.append(ln)
+            continue
+        c = re.match(r" {0,3}(`{3,}|~{3,})[ \t]*$", ln)
+        if c and c.group(1)[0] == cur[0] and len(c.group(1)) >= cur[1]:
+            blocks.append((cur[2], "\n".join(cur[3])))
+            cur = None
+        else:
+            cur[3].append(ln)
+        out.append("")
+    return "\n".join(out), blocks
+
+unfenced, blocks = fences(report)
+# The findings block is the first fenced block, outside every other fence, whose info string is
+# `findings`: one quoted inside a longer fence (the contract's own example) is not it.
+block = next((body for info, body in blocks if info == "findings"), None)
+if block is None:
     print("lint-report: FAIL. The report has no fenced `findings` block.")
     sys.exit(1)
-block = m.group(1)
 
 entries, e = [], None
 for ln in block.splitlines():
@@ -2069,9 +2102,10 @@ if not re.search(r"Declined to judge:", report):
 
 # The path floor: each mandatory unit must be listed as run on the one `Mandatory units:` line of the
 # coverage note, and a unit the floor wants at `max` must say `(max)`. With no mandatory unit the
-# line is not required. Only the coverage section counts, with every fenced block taken out, so a
-# line in a blockquote, a finding or another section cannot stand in for it; a second line, or a unit
-# listed twice, is refused rather than resolved; and the status must be exactly `run`.
+# line is not required. Only the coverage section counts, with every fenced block taken out (fences()
+# above), so a line in a blockquote, a finding, a quoted example or another section cannot stand in
+# for it; a second Coverage note section, a second line, or a unit listed twice is refused rather than
+# resolved; and the status must be exactly `run`.
 need, why = {}, {}
 for ln in os.environ.get("X_FLOOR", "").splitlines():
     parts = ln.split(" ", 2)
@@ -2082,11 +2116,13 @@ for ln in os.environ.get("X_FLOOR", "").splitlines():
         why.setdefault(u, path)
 if need:
     listed, twice = {}, set()
-    unfenced = re.sub(r"^[ \t]*(```|~~~).*?^[ \t]*\1[ \t]*$", "", report, flags=re.M | re.S)
-    cov, sect = re.search(r"^(#{1,6})[ \t]+Coverage note[ \t]*#*[ \t]*$", unfenced, re.M | re.I), ""
+    covs = list(re.finditer(r"^ {0,3}(#{1,6})[ \t]+Coverage note[ \t]*#*[ \t]*$", unfenced, re.M | re.I))
+    if len(covs) > 1:
+        problems.append("the report has more than one `Coverage note` section outside code fences; write exactly one")
+    cov, sect = (covs[0] if covs else None), ""
     if cov:
         # The section runs to the next heading of the same level or higher.
-        end = re.search(r"^#{1,%d}[ \t]" % len(cov.group(1)), unfenced[cov.end():], re.M)
+        end = re.search(r"^ {0,3}#{1,%d}[ \t]" % len(cov.group(1)), unfenced[cov.end():], re.M)
         sect = unfenced[cov.end():cov.end() + end.start()] if end else unfenced[cov.end():]
     lines = re.findall(r"^[ \t*_-]*Mandatory units:[*_]*[ \t]*(.*)$", sect, re.M)
     if len(lines) > 1:

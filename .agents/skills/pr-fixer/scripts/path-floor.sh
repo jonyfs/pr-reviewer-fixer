@@ -20,14 +20,16 @@
 #   unit             effort    paths
 #   security         max       .github/workflows/**, .github/actions/**, .github/scripts/** (what a
 #                              workflow runs), action.yml or action.yaml in any directory, CODEOWNERS
-#                              (root, .github/, docs/), .agents/skills/**, .claude/**, .mcp.json, a
-#                              Dockerfile or Containerfile (also Dockerfile.<x> and <x>.dockerfile):
-#                              the files that run CI or an agent
+#                              (root, .github/, docs/), .mcp.json, a Dockerfile or Containerfile (also
+#                              Dockerfile.<x> and <x>.dockerfile): the files that run CI or an agent
+#   security         max       agent directories at any depth: .claude/**, .codex/**, .opencode/**,
+#                              .cursor/**, .gemini/**, .windsurf/**, and the skills/ folder of .agents,
+#                              .roo, .cline, .kiro, .devin and .junie (every project skill folder
+#                              install.sh writes), so pkg/.claude/x and apps/a/.roo/skills/x count
 #   security         max       agent instructions: AGENTS.md, AGENTS.override.md, CLAUDE.md,
 #                              CLAUDE.local.md, GEMINI.md in any directory, .github/copilot-instructions.md,
-#                              .github/{instructions,agents,skills,prompts}/**, .codex/**, .opencode/**,
-#                              opencode.json(c), .cursor/**, .cursorrules, .gemini/**, .windsurf/**,
-#                              .windsurfrules
+#                              .github/{instructions,agents,skills,prompts}/** (root only, where GitHub
+#                              reads them), opencode.json(c), .cursorrules, .windsurfrules
 #   security         max       authentication, authorisation and cryptography: a path segment or
 #                              file stem such as auth, oauth, login, session, password, crypto,
 #                              cipher, jwt, saml, oidc, rbac, acl, permission(s), credential(s),
@@ -53,7 +55,8 @@
 # references/report-contract.md). A unit with effort `max` must be listed as `(max)`.
 #
 # EXIT. 0 when it read every path (with or without units), 2 when git or the diff could not be read,
-# or a diff section named no path it could read. It fails closed: no floor is never a guess.
+# a diff section named no path it could read, or a diff that is not empty named no path at all (a
+# coloured `gh pr diff`, for one). It fails closed: no floor is never a guess.
 set -u
 
 die2() { echo "path-floor: $*" >&2; exit 2; }
@@ -61,7 +64,7 @@ die2() { echo "path-floor: $*" >&2; exit 2; }
 mode="" base="" head="" file=""
 case "${1:-}" in
   --diff) [ $# -eq 2 ] || die2 "usage: path-floor.sh <base> <head> | --diff <file>"; mode="diff"; file="$2" ;;
-  -h|--help) sed -n '2,53p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,55p' "$0"; exit 0 ;;
   *) [ $# -eq 2 ] || die2 "usage: path-floor.sh <base> <head> | --diff <file>"; mode="git"; base="$1"; head="$2" ;;
 esac
 
@@ -178,12 +181,25 @@ else:
                 rem_old = int(h.group(1)) if h.group(1) is not None else 1
                 rem_new = int(h.group(2)) if h.group(2) is not None else 1
     close_section()
+    # Text that is not empty and named no path is not a diff this parser can read: a coloured
+    # `gh pr diff` (CLICOLOR_FORCE=1 puts an escape code before every `diff --git`) or another
+    # format. An empty floor from it would be a guess, so the floor is unknown.
+    if data.strip() and not paths:
+        print("path-floor: the diff is not empty but names no path it could read (coloured output?), "
+              "so the floor is unknown", file=sys.stderr)
+        sys.exit(2)
 
-CI_PREFIXES = (".github/workflows/", ".github/actions/", ".github/scripts/", ".agents/skills/", ".claude/")
+CI_PREFIXES = (".github/workflows/", ".github/actions/", ".github/scripts/")
+# Agent directories, matched at any depth: a harness also reads them in a subdirectory of a monorepo
+# (a nested .cursor/rules, .claude/skills or .agents/skills). AGENT_DIRS count whole; SKILL_PARENTS
+# count through their skills/ folder, which is where install.sh puts these skills for each harness
+# (its table and README's install table; a test checks every one of them).
+AGENT_DIRS = {".claude", ".codex", ".opencode", ".cursor", ".gemini", ".windsurf"}
+SKILL_PARENTS = {".agents", ".roo", ".cline", ".kiro", ".devin", ".junie"}
 # Files and directories an agent reads as instructions (references/harness-matrix.md lists who reads
 # which): a change there changes what an agent obeys, so it is agent configuration like .claude/.
-INSTRUCTION_PREFIXES = (".github/instructions/", ".github/agents/", ".github/skills/", ".github/prompts/",
-                        ".codex/", ".opencode/", ".cursor/", ".gemini/", ".windsurf/")
+# GitHub reads .github/ only at the root.
+INSTRUCTION_PREFIXES = (".github/instructions/", ".github/agents/", ".github/skills/", ".github/prompts/")
 INSTRUCTION_FILES = {".github/copilot-instructions.md", "opencode.json", "opencode.jsonc", ".cursorrules",
                      ".windsurfrules"}
 INSTRUCTION_NAMES = {"agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md"}
@@ -204,12 +220,17 @@ MANIFESTS = {
     "directory.packages.props", "mix.exs", "mix.lock", "package.swift", "package.resolved",
     "podfile", "podfile.lock", "pubspec.yaml", "pubspec.lock", "flake.lock", ".terraform.lock.hcl"}
 
+def agent_dir(dirs):
+    """True when a directory of the path is an agent directory, or a skill parent's skills/ folder."""
+    return any(d in AGENT_DIRS or (d in SKILL_PARENTS and dirs[i + 1:i + 2] == ["skills"])
+               for i, d in enumerate(dirs))
+
 def units(path):
     p = path.lower()
     base = p.rsplit("/", 1)[-1]
     parts = p.split("/")
     out = []
-    if (p.startswith(CI_PREFIXES) or p in CODEOWNERS or p == ".mcp.json"
+    if (p.startswith(CI_PREFIXES) or agent_dir(parts[:-1]) or p in CODEOWNERS or p == ".mcp.json"
             or p.startswith(INSTRUCTION_PREFIXES) or p in INSTRUCTION_FILES or base in INSTRUCTION_NAMES
             or base in ("action.yml", "action.yaml", "dockerfile", "containerfile")
             or base.startswith(("dockerfile.", "containerfile.")) or base.endswith(".dockerfile")):

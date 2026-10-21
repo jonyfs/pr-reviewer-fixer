@@ -33,13 +33,16 @@
 #        workflows   .github/workflows/**, .github/scripts/** (what a workflow runs)
 #        actions     .github/actions/**
 #        codeowners  CODEOWNERS, .github/CODEOWNERS, docs/CODEOWNERS
-#        skills      .agents/skills/**           claude   .claude/**
+#        skills      the skills/ folder of .agents, .roo, .cline, .kiro, .devin or .junie, at any
+#                    depth: every project skill folder install.sh writes outside .claude, .github,
+#                    .cursor, .gemini, .opencode and .windsurf (those keep their own class)
+#        claude      .claude/** at any depth
 #        mcp         .mcp.json
 #        instructions  what an agent reads as instructions: AGENTS.md, AGENTS.override.md,
 #                    CLAUDE.md, CLAUDE.local.md, GEMINI.md in any directory,
 #                    .github/copilot-instructions.md, .github/{instructions,agents,skills,prompts}/**,
-#                    .codex/**, .opencode/**, opencode.json(c), .cursor/**, .cursorrules,
-#                    .gemini/**, .windsurf/**, .windsurfrules (the list path-floor.sh uses)
+#                    opencode.json(c), .cursorrules, .windsurfrules, and .codex/**, .opencode/**,
+#                    .cursor/**, .gemini/**, .windsurf/** at any depth (the list path-floor.sh uses)
 #      A hit refuses with reason `sensitive-path`, and the change goes to a person. A person who wants
 #      the fixer to edit one class (this repository's own release pull requests edit
 #      .agents/skills/**) sets PUSH_GUARD_ALLOW_SENSITIVE to a comma list of class names; a name it
@@ -53,8 +56,9 @@
 #      Links are refused, not followed. Every symlink (mode 120000) and gitlink (mode 160000) that the
 #      pull request head or the local HEAD holds, or that a pushed commit adds, refuses the whole push
 #      with reason `sensitive-path`, naming the link, when it sits at a sensitive path or at a parent
-#      of one (.github, .github/workflows, .github/scripts, .github/actions, .agents, .agents/skills,
-#      .claude, docs, a CODEOWNERS path, .mcp.json, an instructions directory), or when its target,
+#      of one (.github, .github/workflows, .github/scripts, .github/actions, docs, a CODEOWNERS path,
+#      .mcp.json, an instructions directory, and at any depth an agent directory or anything inside
+#      one, a skill parent such as .agents or .roo, or its skills/ folder), or when its target,
 #      resolved lexically against the link's own directory, points at, into or above one
 #      (`src/x -> ../.claude`, `src/x -> ..`). A target that holds a non-ASCII byte, that leaves the
 #      repository (an absolute path, `..` above the root), or that steps back with `..` out of a
@@ -153,24 +157,39 @@ const nfkd = (s) => s.normalize("NFKD").replace(drop, "");
 // Raw bytes (a latin1 string) to a folded name: UTF-8, NFKD, marks and ignorables dropped, case folded.
 const fold = (b) => nfkd(nfkd(Buffer.from(b, "latin1").toString("utf8")).toLowerCase().toUpperCase().toLowerCase());
 // The files an agent reads as instructions (references/harness-matrix.md), as path-floor.sh lists them.
-const INSTR_DIRS = [".github/instructions/", ".github/agents/", ".github/skills/", ".github/prompts/",
-  ".codex/", ".opencode/", ".cursor/", ".gemini/", ".windsurf/"];
+// GitHub reads .github/ only at the root.
+const INSTR_DIRS = [".github/instructions/", ".github/agents/", ".github/skills/", ".github/prompts/"];
 const INSTR_FILES = [".github/copilot-instructions.md", "opencode.json", "opencode.jsonc", ".cursorrules", ".windsurfrules"];
 const INSTR_NAMES = ["agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md"];
+// Agent directories at any depth, as path-floor.sh lists them: AGENT_DIRS count whole, SKILL_PARENTS
+// through their skills/ folder (every project skill folder install.sh writes).
+const AGENT_DIRS = { ".claude": "claude", ".codex": "instructions", ".opencode": "instructions",
+  ".cursor": "instructions", ".gemini": "instructions", ".windsurf": "instructions" };
+const SKILL_PARENTS = [".agents", ".roo", ".cline", ".kiro", ".devin", ".junie"];
+// The class of the first agent directory among these directory names, or "".
+const agentClass = (dirs) => {
+  for (let i = 0; i < dirs.length; i++) {
+    if (Object.prototype.hasOwnProperty.call(AGENT_DIRS, dirs[i])) return AGENT_DIRS[dirs[i]];
+    if (SKILL_PARENTS.includes(dirs[i]) && dirs[i + 1] === "skills") return "skills";
+  }
+  return "";
+};
 const fileClass = (f) =>
   f.startsWith(".github/workflows/") || f.startsWith(".github/scripts/") ? "workflows"
   : f.startsWith(".github/actions/") ? "actions"
   : ["codeowners", ".github/codeowners", "docs/codeowners"].includes(f) ? "codeowners"
-  : f.startsWith(".agents/skills/") ? "skills" : f.startsWith(".claude/") ? "claude" : f === ".mcp.json" ? "mcp"
+  : agentClass(f.split("/").slice(0, -1)) || (f === ".mcp.json" ? "mcp"
   : INSTR_DIRS.some((d) => f.startsWith(d)) || INSTR_FILES.includes(f) || INSTR_NAMES.includes(f.split("/").pop()) ? "instructions"
-  : "";
+  : "");
 // A sensitive directory or file, or a parent of one: the classes a link there moves away.
 const PARENT = { ".github": "workflows actions codeowners instructions", ".github/workflows": "workflows",
   ".github/scripts": "workflows", ".github/actions": "actions", ".agents": "skills", ".agents/skills": "skills",
   ".claude": "claude", "docs": "codeowners", "codeowners": "codeowners", ".github/codeowners": "codeowners",
   "docs/codeowners": "codeowners", ".mcp.json": "mcp" };
 for (const d of INSTR_DIRS) PARENT[d.slice(0, -1)] = "instructions";
-const classesAt = (b) => { const f = fold(b); return new Set([fileClass(f), ...(PARENT[f] || "").split(" ")]); };
+// A directory at any depth that is, or is inside, an agent directory, or a skill parent (.roo, .agents).
+const dirClass = (f) => { const s = f.split("/"); return agentClass(s) || (SKILL_PARENTS.includes(s[s.length - 1]) ? "skills" : ""); };
+const classesAt = (b) => { const f = fold(b); return new Set([fileClass(f), dirClass(f), ...(PARENT[f] || "").split(" ")]); };
 const order = (s) => ALL.filter((c) => s.has(c));
 const nul = (a) => Buffer.from(a.map((x) => x + "\0").join(""), "latin1");
 
