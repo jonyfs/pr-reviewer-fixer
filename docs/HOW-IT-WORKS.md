@@ -133,7 +133,9 @@ flowchart TD
    base commit, not from the pull request, so a change cannot rewrite the rules it is judged by. If
    the pull request edits a rules file, that edit is reviewed as code. A documented project rule
    beats generic practice, a rule a linter owns is never a finding, and a comment someone already
-   made is never repeated.
+   made is never repeated. Before the review starts, `review-cycle.sh screen --diff <base> <head>`
+   screens the lines the pull request adds for tokens and private keys; each hit is a CRITICAL
+   finding at that line, with the value redacted, whatever any agent thinks of it.
 2. **Acceptance conditions, pass 1 only.** Before any agent looks for defects, the reviewer writes a
    numbered list of conditions that would make this pull request pass, taken from its own stated
    purpose. Later passes check those same conditions and nothing else, so the target does not move

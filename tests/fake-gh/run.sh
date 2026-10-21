@@ -739,6 +739,21 @@ check "screen --patch: a token on the second added line of a hunk at +4 -> x.env
   eval '[ $r = 1 ] && grep -q "^x.env:5 GitHub token$" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
 "$RC" screen --patch "$W/no-such.patch" >"$W/out" 2>&1; r=$?
 check "screen --patch on a missing file -> 2 (I53)" eq "$r" 2
+# I54: --diff <base> <head> screens what a pull request adds, from the merge base.
+sg checkout -q -b feat; printf 'a\nkey = "%s"\n' "$aws_key" >"$SR/a.py"; sg commit -q -am "feature adds a key"
+sg checkout -q -; printf 'later %s\n' "$gh_tok" >"$SR/base_later.txt"; sg add -A; sg commit -q -m "base moves on"
+(cd "$SR" && "$RCABS" screen --diff HEAD feat) >"$W/out" 2>&1; r=$?
+check "screen --diff base feat: the feature's AWS key id -> 1, a.py:2 named, value not shown (I54)" \
+  eval '[ $r = 1 ] && grep -q "^a.py:2 AWS access key id$" "$W/out" && ! grep -q "$aws_key" "$W/out"'
+check "screen --diff: the base's own later token and the removed old.txt line are not the pull request's (I54)" \
+  eval '! grep -q "base_later.txt" "$W/out" && ! grep -q "old.txt" "$W/out"'
+(cd "$SR" && "$RCABS" screen --diff feat HEAD) >"$W/out" 2>&1; r=$?
+check "screen --diff the other way round reads only the base's addition -> 1, base_later.txt:1 (I54)" \
+  eval '[ $r = 1 ] && grep -q "^base_later.txt:1 GitHub token$" "$W/out" && ! grep -q "a.py" "$W/out"'
+(cd "$SR" && "$RCABS" screen --diff HEAD no-such-ref) >"$W/out" 2>&1; r=$?
+check "screen --diff with a commit not in the clone -> 2, fetch first (I54)" eval '[ $r = 2 ] && grep -q "fetch both commits" "$W/out"'
+(cd "$SR" && "$RCABS" screen --diff HEAD) >"$W/out" 2>&1; r=$?
+check "screen --diff with one commit -> refused (I54)" eval '[ $r = 1 ] && grep -q "needs <base> and <head>" "$W/out"'
 "$RC" screen --staged --file "$W/clean.md" >"$W/out" 2>&1; r=$?
 check "screen with two modes -> refused with usage (I53)" eval '[ $r = 1 ] && grep -q "usage" "$W/out"'
 

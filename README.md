@@ -125,6 +125,9 @@ sequenceDiagram
 - Verifies each finding against the code before reporting it, and merges duplicates.
 - Splits large diffs into units, reviews the seams between them, and reports what was and was not
   read in depth.
+- Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each
+  token or private key it finds is a mandatory CRITICAL finding at that line, with the value
+  redacted.
 - Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
   file and a line the diff shows, and the counts must match the open entries.
 - Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
@@ -470,9 +473,10 @@ always match. `lint-report` applies the same screen, and `review-cycle.sh screen
 applies it to any other text an agent posts: the fixer screens its closure comment and the new PR
 body (with the `pr-debt` block) before posting them, and the reviewer screens an overflow comment.
 It exits 0 when the text is clean, 1 naming the kind of secret (never the value) and 2 when the
-file cannot be read. `screen --staged` and `screen --patch <file>` apply it to the added lines of
-the staged diff and of a given diff, printing `path:line kind` for each hit: the fixer screens
-every commit, and `push-guard.sh` screens the commits it is about to push. A text posted by hand
+file cannot be read. `screen --staged`, `screen --patch <file>` and `screen --diff <base> <head>` apply it to the added
+lines of the staged diff, of a given diff and of the pull request (from the merge base), printing `path:line kind` for each hit: the fixer screens
+every commit, `push-guard.sh` screens the commits it is about to push, and the loop screens the pull
+request before the reviewer starts, each hit becoming a CRITICAL finding. A text posted by hand
 with `gh` is not screened. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
