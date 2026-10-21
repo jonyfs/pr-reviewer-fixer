@@ -145,6 +145,31 @@ EVENTS='[{"event":"labeled","label":{"name":"review:blocked"},"actor":{"login":"
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents; touch "$FAKE_DIR/events-split"
 rm -rf "$EXPORT"; o="$("$RC" export-audit 7 --out "$EXPORT" 2>/dev/null)"; r=$?
 check "export-audit reads a timeline split across several pages (concatenated arrays)" eval '[ $r = 0 ] && python3 -I -c "import json,sys;d=json.load(open(sys.argv[1]));sys.exit(0 if len(d[\"label_events\"])==2 else 1)" "$o"'
+# S9: export-audit never writes through a symlink, at the temporary name, the record or the directory.
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
+rm -rf "$EXPORT"; mkdir -p "$EXPORT"; printf 'victim\n' >"$W/victim.txt"; ln -s "$W/victim.txt" "$EXPORT/7-2.json.tmp"
+o="$("$RC" export-audit 7 --out "$EXPORT" 2>/dev/null)"; r=$?
+check "export-audit: a symlink at <record>.tmp is not followed, its target is untouched (S9)" \
+  eval '[ $r = 0 ] && [ "$(cat "$W/victim.txt")" = victim ] && [ ! -L "$EXPORT/7-2.json" ] && python3 -I -c "import json,sys;json.load(open(sys.argv[1]))" "$EXPORT/7-2.json"'
+rm -rf "$EXPORT"; mkdir -p "$EXPORT"; ln -s "$W/victim.txt" "$EXPORT/7-2.json"
+"$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$W/err"; r=$?
+check "export-audit: the record path is a symlink -> refused, target untouched (S9)" \
+  eval '[ $r != 0 ] && grep -q "symbolic link" "$W/err" && [ "$(cat "$W/victim.txt")" = victim ]'
+rm -rf "$EXPORT" "$W/real-out"; mkdir -p "$W/real-out"; ln -s "$W/real-out" "$EXPORT"
+"$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$W/err"; r=$?
+check "export-audit: the output directory is a symlink -> refused, nothing written (S9)" \
+  eval '[ $r != 0 ] && grep -q "symbolic link" "$W/err" && [ -z "$(ls -A "$W/real-out")" ]'
+rm -f "$EXPORT"
+# R6: a pull request whose JSON is larger than one environment string may be (1.5 MB here) still exports.
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
+python3 -I - <<'PY'
+import json, os
+p = os.environ["FAKE_DIR"] + "/pr.json"
+d = json.load(open(p)); d["comments"].insert(0, {"body": "x" * 1500000, "author": {"login": "mallory"}}); json.dump(d, open(p, "w"))
+PY
+rm -rf "$EXPORT"; o="$("$RC" export-audit 7 --out "$EXPORT" 2>"$W/err")"; r=$?
+check "export-audit: a 1.5 MB pull request JSON is exported, not refused with argument list too long (R6)" \
+  eval '[ $r = 0 ] && [ "$o" = "$EXPORT/7-2.json" ] && ! grep -qi "argument list too long" "$W/err"'
 BLK1="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=1 warning=0 note=0 -->")"
 reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"
 r1=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
@@ -171,6 +196,20 @@ python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
 echo "IC_0 mallory" >"$FAKE_DIR/edited-by"
 python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
 check "gate: a marker broken by its author's edit passes; broken by another login it is BLOCKED history" eval '[ $g0 = 0 ] && [ $g1 != 0 ]'
+# N5 of #25: a trusted comment deleted by another login counts as BLOCKED history in the gate too.
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$PH1]" OPEN)"
+python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
+echo "github-actions github-actions" >"$FAKE_DIR/deleted-events"; python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+echo "github-actions mallory" >"$FAKE_DIR/deleted-events"; python3 -I "$GATE" 7 >/dev/null 2>&1; g2=$?
+check "gate: PASSED pass 1 passes; a trusted comment deleted by its author still passes; deleted by another login it is BLOCKED history (N5)" \
+  eval '[ $g0 = 0 ] && [ $g1 = 0 ] && [ $g2 != 0 ]'
+python3 -I "$SRC/pr-json.py" 7 >"$W/pj" 2>/dev/null; j0=$?
+check "pr-json.py lists deletions as deletedComments with author and deleter (N5)" \
+  eval '[ $j0 = 0 ] && python3 -I -c "import json,sys;d=json.load(open(sys.argv[1]))[\"deletedComments\"];sys.exit(0 if d[0][\"author\"][\"login\"]==\"github-actions\" and d[0][\"actor\"][\"login\"]==\"mallory\" else 1)" "$W/pj"'
+touch "$FAKE_DIR/graphql-deleted-fail"; python3 -I "$SRC/pr-json.py" 7 >"$W/pj" 2>/dev/null; j1=$?; rm -f "$FAKE_DIR/graphql-deleted-fail"
+touch "$FAKE_DIR/graphql-deleted-badshape"; python3 -I "$SRC/pr-json.py" 7 >"$W/pj2" 2>/dev/null; j2=$?; rm -f "$FAKE_DIR/graphql-deleted-badshape"
+check "pr-json.py fails closed (exit 1, no output) when the deletion query fails or answers another shape (N5)" \
+  eval '[ $j1 = 1 ] && [ ! -s "$W/pj" ] && [ $j2 = 1 ] && [ ! -s "$W/pj2" ]'
 reset "$(mk 7 $D '[{"name":"review:blocked"}]' '[]' OPEN)"
 python3 -I - <<'PY'
 import json, os
@@ -213,6 +252,15 @@ fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "bot[bot]"}}]}'
 check "fix: bot with no permission record refused (lookup fails closed)" eval '[ $r != 0 ] && hasnt review:fixing'
 FIXER_TRUSTED_LOGINS="bot[bot]" "$RC" fix 7 >"$W/out" 2>&1; r=$?
 check "fix: a bot listed in FIXER_TRUSTED_LOGINS passes" eval '[ $r = 0 ] && has review:fixing'
+# R5: gh names a bot author app/<name> and the commit author <name>[bot]; either form listed matches both.
+for listed in "dependabot[bot]" "app/dependabot"; do
+  fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "dependabot[bot]"}}], "author": {"login": "app/dependabot"}}'
+  FIXER_TRUSTED_LOGINS="$listed" "$RC" fix 7 >"$W/out" 2>&1; r=$?
+  check "fix: bot PR (author app/dependabot, commits dependabot[bot]) with FIXER_TRUSTED_LOGINS=$listed passes (R5)" eval '[ $r = 0 ] && has review:fixing'
+done
+fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "dependabot[bot]"}}], "author": {"login": "app/dependabot"}}'
+FIXER_TRUSTED_LOGINS="app/renovate" "$RC" fix 7 >"$W/out" 2>&1; r=$?
+check "fix: another bot listed does not admit app/dependabot (R5)" eval '[ $r != 0 ] && hasnt review:fixing'
 fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "helper"}}], "author": {"login": "helper"}}'
 "$RC" fix 7 >"$W/out" 2>&1; r=$?
 check "fix: a write collaborator author passes" eval '[ $r = 0 ] && has review:fixing'
@@ -631,6 +679,15 @@ printf '## findings\nstray %s\n\n```findings\ncounts: { critical: 0, warning: 0,
 printf 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n' >"$W/lrs.patch"
 "$RC" lint-report --report "$W/lrs.md" --diff "$W/lrs.patch" >"$W/out" 2>&1; r=$?
 check "lint-report fails a report with a secret and does not print it" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+# S3: `screen --file` runs the same screen over any text an agent posts (closure, pr-debt, overflow).
+printf 'closure: closed 2, refused 0\n' >"$W/clean.md"
+: >"$FAKE_DIR/calls.log"; "$RC" screen --file "$W/clean.md" >"$W/out" 2>&1; r=$?
+check "screen --file on a clean text -> 0, posts nothing (S3)" eval '[ $r = 0 ] && [ $(calls "pr comment") = 0 ] && [ $(calls "pr edit") = 0 ]'
+printf 'closure quoting a log line: export TOKEN=%s\n' "$gh_tok" >"$W/leak.md"
+"$RC" screen --file "$W/leak.md" >"$W/out" 2>&1; r=$?
+check "screen --file on a text with a token -> 1, names the kind, never the value (S3)" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+"$RC" screen --file "$W/no-such-file.md" >"$W/out" 2>&1; r=$?
+check "screen --file on a missing file -> 2 (S3)" eq "$r" 2
 
 # ---- options with no value, and pull request arguments that are not a number -------------------
 # An option given last with no value once made `shift 2` fail and the loop spin forever. Each run

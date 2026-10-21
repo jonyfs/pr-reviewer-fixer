@@ -62,18 +62,20 @@ remote_sha=$(git rev-parse "origin/$HEAD_REF")
 
 `scripts/push-guard.sh <pr> --findings FILE` runs this check and three more in one call: the
 checked-out branch is the pull request's head branch, the head is not on a fork, and every file a
-new commit touches is named by a finding, passed with `--allow`, or a test file. It posts nothing
-and exits 1 with every reason when any check fails.
+new commit touches is named by a finding, passed with `--allow`, or a test file. For a merge
+commit, the files it touches are the ones where it differs from git's automatic merge of its two
+parents, so pass the files you resolved by hand with `--allow`. It posts nothing and exits 1 with
+every reason when any check fails.
 
 Rules:
 
-- Head moved: re-fetch, merge the new head into your work (or rebase only your own commits), re-verify,
-  then push. Re-plan if the external change already addressed the concern.
-- **Never force-push.** Prefer bringing the base into the head with a merge commit, which needs no
-  force. Rebase only where the project requires linear history, and then use `--force-with-lease`
-  pinned to the exact head SHA you planned against, only for commits authored in this pass, only
-  after confirming the remote head still equals that SHA. Never rewrite a branch that carries a
-  commit you did not author, and never push to a bot's branch (Dependabot stops rebasing once
+- Head moved: re-fetch, merge the new head into your work (or rebase only your own commits that
+  were never pushed), re-verify, then push. Re-plan if the external change already addressed the concern.
+- **Never force-push**, with or without a lease. Bring the base into the head with a merge commit,
+  which pushes as a fast-forward. A rebase of a pushed branch is never pushed, so where the project
+  requires linear history the rebase is a person's to do. `push-guard.sh` refuses a push that is
+  not a fast-forward. Never rewrite a branch that carries a commit you did not author, and never
+  push to a bot's branch (Dependabot stops rebasing once
   someone else pushes).
 - The author force-pushed and invalidated your local checkout → discard local state and reload. Never
   resolve against stale code.

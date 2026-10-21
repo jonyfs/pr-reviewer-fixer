@@ -50,9 +50,17 @@ gh pr checks <n>                   # CI status per check
 ## Reviewer Report and Closure
 
 Find the verdict comment and its `findings` block, the closure comment of an earlier cycle, and the
-`pr-debt` block with filters F1, F3 and F4 in [pr-protocol.md](pr-protocol.md). Post the closure
-comment with `gh pr comment <n> --body-file closure.md` and write the debt block with the
-read-modify-write recipe there.
+`pr-debt` block with filters F1, F3 and F4 in [pr-protocol.md](pr-protocol.md). Screen the closure
+comment, then post it:
+
+```bash
+scripts/review-cycle.sh screen --file closure.md && gh pr comment <n> --body-file closure.md
+```
+
+Write the debt block with the read-modify-write recipe there, which screens the new body before
+`gh pr edit`. Any other comment (an overflow of a long closure report) goes through `screen` the
+same way. `screen` exits 1 and names the kind of secret, never the value; replace it with
+`[REDACTED]` and screen again.
 
 ## Comments (Comment Lane)
 
@@ -78,15 +86,16 @@ and the replies wait for a run that has `gh api`.
 ## Conflict / Check Lanes
 
 ```bash
-gh pr checkout <n>                 # local checkout to fix, rebase, or trace
+gh pr checkout <n>                 # local checkout to fix or trace
 # ... make minimal scoped commits on the PR branch, then verify, then:
 git fetch origin "$HEAD_REF"       # re-check the remote head BEFORE pushing (race safety)
 git rev-parse "origin/$HEAD_REF"   # must equal the SHA you planned against
 git push                           # to the PR head branch only, never the protected base
 ```
 
-Never `git push --force`. If a rebase needs one, `--force-with-lease` only, only over commits you
-authored this pass, only after the lease check passes.
+Never `git push --force`, `--force-with-lease` or `--force-if-includes`. A conflict is resolved by
+merging the base into the head, which pushes as a fast-forward. A rebase of a pushed branch is
+never pushed: if the project requires linear history, hand the rebase to a person.
 
 ## Head Writability & Check Re-Runs
 

@@ -4,6 +4,65 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.11.0
+
+### Changed
+
+- New subcommand `review-cycle.sh screen --file <file>`: the secret screen `publish` and
+  `lint-report` already ran, for any other text an agent posts. Exit 0 clean, 1 naming the kind of
+  secret (never the value), 2 when the file cannot be read. The fixer runs it before its closure
+  comment, before writing the `pr-debt` body and before any overflow comment, and the reviewer
+  before an overflow comment (S3).
+- `push-guard.sh` checks merge commits. Each one is recomputed with
+  `git merge-tree --write-tree <p1> <p2>` (git 2.38 or later), and every path where the commit
+  differs from that automatic merge must be in scope, so an edit hidden inside a merge is refused
+  and a conflict resolution needs `--allow`. An octopus merge, a merge git cannot recompute and any
+  merge under an older git are refused (S4).
+- `FIXER_TRUSTED_LOGINS` treats `app/<name>` (a bot author in `gh pr view`) and `<name>[bot]` (the
+  same bot as a commit author) as one login, so listing either form admits a bot pull request (R5).
+- `pr-json.py` reads the timeline's `CommentDeletedEvent` items through GraphQL into
+  `deletedComments`, paging and failing closed like the comment query. A trusted comment deleted by
+  anyone other than its author counts as a foreign change: BLOCKED history in the gate, `budget`
+  answers `none`, and `publish`, `start` and `status` stop. A deletion cannot be undone, so the stop
+  is permanent for that pull request. A deletion by the author stays the documented limit (#25 N5).
+- `status` reports a trusted comment edited or deleted by another login and exits 2, and `start`
+  refuses on it before any label moves. `stale` does not check it, and says why (#25 N2).
+
+### Fixed
+
+- `export-audit` no longer writes through a symlink: the temporary record is created with
+  `tempfile.mkstemp` in the output directory, and the export refuses when the output directory or
+  the final record path is a symbolic link (S9).
+- `export-audit` reads the pull request and the timeline from temporary files instead of
+  environment variables, which failed with "argument list too long" on a large pull request (R6).
+- `push-guard.sh` compares touched paths with the scope byte for byte, NUL-delimited, instead of
+  `grep -Fxq`, which split a path holding a newline into several patterns; a touched path or an
+  `--allow` value holding a control character is refused (S5).
+- The foreign-edit refusal in `publish`, `start`, `status` and `budget`'s `B_WHY` names the comment's
+  url and the remedies that clear it: its author edits it back or deletes it. The old advice to
+  restore it with a new comment did not clear it (#25 N6).
+- Comments in `review-cycle.sh`: "an empty list skips nothing" holds only for a list that is not
+  active, and `extend` refuses when no blocking finding is open, not only no CRITICAL.
+
+### Documentation
+
+- `pr-protocol.md` rule 2 and the `pr-json.py` docstring state that `IssueComment.editor` is
+  assumed to name the last editor, which could not be checked without a second login (#25 N4).
+- The fixer references no longer allow `--force-with-lease`: conflicts are resolved by merging the
+  base into the head, and a rebase of a pushed branch is never pushed (`gh-commands.md`,
+  `cycles-and-races.md`, `conflicts.md`, `lanes.md`, improvements-catalog item 51) (I35).
+- README, HOW-IT-WORKS, the fixer `SKILL.md`, `harness-loop.md`, `pr-protocol.md`,
+  `report-contract.md` and ISO row 6 describe the screen, the merge check, the bot login forms and
+  the deleted-comment stop.
+
+### Tests
+
+- Rows for each item above: export through a symlink and a 1.5 MB pull request, bot logins in both
+  forms, `screen`, deletion events in `budget`, `publish` and the gate, `pr-json.py` failing closed
+  on the deletion query, `status` and `start` on a foreign edit or deletion, the url in the
+  refusal, and evil, conflicted and octopus merges and a newline path in `push-guard.sh`. The fake
+  `gh` gives each comment a url and serves the deletion query from a `deleted-events` file.
+
 ## 0.10.0
 
 ### Changed

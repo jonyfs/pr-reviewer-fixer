@@ -57,10 +57,12 @@
 #     status [pr]          what the cycle owes, and the next command (exit codes below)
 #     debt [pr]            the same answer as an exit code only, for hooks and CI
 #     start [pr]           review:running, and review:needs-human withdrawn. Refused on a halted
-#                          pull request whose BLOCKED verdict is still at the head
+#                          pull request whose BLOCKED verdict is still at the head, and while a
+#                          trusted comment stands edited or deleted by another login
 #     fix [pr]             review:fixing, and review:needs-human withdrawn. Refused first when the
 #                          pull request is from a fork or any author is not a collaborator with
-#                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup)
+#                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup;
+#                          `app/<name>` and `<name>[bot]` are one bot, either form matches both)
 #     halt [pr] [--reason R]
 #                          review:needs-human added to a review:blocked pull request: the loop
 #                          paused or stopped and a person has to decide. With --reason, also posts
@@ -97,6 +99,11 @@
 #                          declined, and fails a report that holds a token or private key. Run
 #                          before publish;
 #                          posts nothing. Exit 1 on a problem, 2 when it could not read an input.
+#     screen --file <file> runs the secret screen `publish` and `lint-report` use over any text an
+#                          agent is about to post (closure comment, `pr-debt` body, overflow
+#                          comment). Exit 0 clean, 1 when it holds a token or private key (the
+#                          kind is named, never the value), 2 when the file cannot be read.
+#                          Posts nothing.
 #     ensure-labels        creates or updates the six review:* labels in the current repository
 #                          (gh resolves the repository from the working directory or GH_REPO)
 #
@@ -123,8 +130,10 @@
 #                             Only the bare `marker` subcommand still reads with the list unset.
 #                             A comment edited after it was created is never read as a verdict
 #                             (pr-json.py); its `pass=` still counts toward the highest pass. A
-#                             comment by a trusted login edited by another login (whether or not
-#                             it still reads as a marker) stops `publish` and `budget`.
+#                             comment by a trusted login edited or deleted by another login
+#                             (whether or not it still reads as a marker) stops `publish` and
+#                             `start` (refused), `budget` (none) and `status` (exit 2); `stale`
+#                             does not check it.
 #     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
 #                             Default 5. Read by `budget` and `extend`.
 #     MAX_REVIEW_CYCLES_HARD  Absolute ceiling no answer passes. Default 10, clamped to 1..10.
@@ -134,7 +143,7 @@
 # Exit codes: 0 = nothing owed · 1 = review owed · 2 = anything that is not either of those, and it
 # is never the same as approved.
 #
-# **The 2 of `cmd_status` carries seven meanings, and saying so is what keeps it harmless.** The
+# **The 2 of `cmd_status` carries eight meanings, and saying so is what keeps it harmless.** The
 # subject is the FUNCTION and not the file, and the difference is not pedantry: the count a test
 # checks against this sentence is `return 2` inside `cmd_status`, while the file also exits 2 in
 # several places outside it, counted by their own sentence further down, which is where they belong.
@@ -151,7 +160,9 @@
 #     decided while answering a code that is not a reading: the `*)` arm of the `case`.
 #     That is five sentences that all end in "only that nobody looked";
 #   · the gate having READ a MERGED pull request and recorded that it carries no valid
-#     `review:passed`: the sentence ending in "this is recorded, not owed".
+#     `review:passed`: the sentence ending in "this is recorded, not owed";
+#   · an OPEN pull request read in full, where a trusted comment was edited or deleted by another
+#     login (`MARKER_FOREIGN_EDIT`): read, not blind, and a person has to decide.
 #
 # **The `*)` arm was missing from this list at first, and it is the one that is different.**
 # The other four blind sentences never get a decision out of the gate, and they split in two: the
@@ -485,12 +496,16 @@ parse() {
   # the current verdict nor the BLOCKED history below. Both answers come out of this one loop,
   # which is why the filter lives here and not in a second pass. Callers that decide
   # (`status`, `stale`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
-  # before they get here; an empty list skips nothing.
+  # before they get here. Only a list that is not active (unset, empty or ASCII whitespace) skips
+  # nothing; an active list that keeps no login (a lone comma, invisible characters) skips every
+  # comment, since `allow` is then empty.
   local m
   m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
     const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
     const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
-    let last=null,blocked="no",maxp=0,foreign="-";
+    let last=null,blocked="no",maxp=0,foreign="-",fkind="-",fauthor="-",fwhere="-";
+    // A field of the space-joined answer cannot hold a space.
+    const tok=v=>String(v||"").replace(/[\s]/g,"")||"-";
     for(const c of (JSON.parse(s).comments||[])){
       if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
       const mm=re.exec(c.body||"");
@@ -505,15 +520,23 @@ parse() {
       // Whether the body still reads as a marker does not matter: an edit that breaks the marker
       // would otherwise drop it from the count unseen, so any foreign edit counts (fails closed).
       const ed=String((c&&c.editor&&c.editor.login)||"").toLowerCase();
-      if(ed!==who){foreign=ed||"unknown";blocked="yes";}
+      if(ed!==who){foreign=ed||"unknown";fkind="edit";fauthor=tok(who);fwhere=tok(c&&c.url);blocked="yes";}
       // An edited marker is never the verdict, but its pass still counts: an edit that keeps the
       // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
       // body after the edit is kept, so an edit that rewrites the number counts as the new one.
       if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    // A trusted comment deleted by someone other than its author may have been a verdict marker
+    // (BLOCKED, or the highest pass), and its body is gone, so it counts the way a foreign edit does:
+    // BLOCKED history, and a stop. A deletion by the author itself is the documented limit.
+    for(const c of (JSON.parse(s).deletedComments||[])){
+      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
+      if(!who||(active&&!allow.includes(who)))continue;
+      const by=String((c&&c.actor&&c.actor.login)||"").toLowerCase();
+      if(by!==who){foreign=by||"unknown";fkind="delete";fauthor=tok(who);fwhere=tok(c&&c.createdAt);blocked="yes";}}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
-      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign].join(" "):
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign,fkind,fauthor,fwhere].join(" "):
       // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
-      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign].join(" "):""))
+      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign,fkind,fauthor,fwhere].join(" "):""))
   }catch(e){}})')
   MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
   MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
@@ -544,11 +567,31 @@ parse() {
   # an older commit, or a low `--pass`, cannot restart the count.
   MARKER_MAX_PASS=$(printf '%s' "$m" | cut -d' ' -f11)
   case "$MARKER_MAX_PASS" in ''|*[!0-9]*) MARKER_MAX_PASS=0 ;; esac
-  # The login that edited a trusted comment it did not write (`unknown` when GitHub names none), `-`
-  # when there is none. Such an edit can rewrite `pass=` or break the marker so it no longer counts,
+  # The login that edited or deleted a trusted comment it did not write (`unknown` when GitHub names
+  # none), `-` when there is none. Such an edit can rewrite `pass=` or break the marker so it no longer counts,
   # so the count is not trusted while it stands.
   MARKER_FOREIGN_EDIT=$(printf '%s' "$m" | cut -d' ' -f12)
   [ -n "$MARKER_FOREIGN_EDIT" ] || MARKER_FOREIGN_EDIT=-
+  # Which comment it was, so a refusal can name it: the kind (`edit` or `delete`), the login that
+  # wrote it, and its url for an edit or the time of the deletion (`-` when GitHub gave none).
+  MARKER_FOREIGN_KIND=$(printf '%s' "$m" | cut -d' ' -f13)
+  MARKER_FOREIGN_AUTHOR=$(printf '%s' "$m" | cut -d' ' -f14)
+  MARKER_FOREIGN_WHERE=$(printf '%s' "$m" | cut -d' ' -f15)
+}
+
+# One sentence, no newline, naming the comment a foreign edit touched and the only ways to clear it.
+# `publish`, `start`, `status` and `budget` all print this, so they cannot give different remedies.
+foreign_msg() {
+  local who="${MARKER_FOREIGN_AUTHOR:--}" where="${MARKER_FOREIGN_WHERE:--}"
+  [ "$who" != - ] || who="its author"
+  if [ "${MARKER_FOREIGN_KIND:-}" = delete ]; then
+    printf 'a comment by %s was deleted by %s at %s, not by its author, so the pass numbers and verdicts cannot be trusted (it may have been a verdict marker). A deletion cannot be undone and a new comment does not clear this: the automatic loop stops on this pull request, and a person decides how to go on' \
+      "$who" "$MARKER_FOREIGN_EDIT" "$where"
+    return 0
+  fi
+  [ "$where" != - ] || where="(GitHub gave no url)"
+  printf 'the comment %s by %s was edited by %s, not by its author, so the pass numbers and verdicts cannot be trusted (the edit may have rewritten or broken a verdict marker). A person reads its edit history on GitHub, then %s edits it back or %s deletes it; a new comment does not clear this' \
+    "$where" "$who" "$MARKER_FOREIGN_EDIT" "$who" "$who"
 }
 
 # Reads ONE marker, through `MARKER_RE`, from a file or from stdin, and prints
@@ -752,6 +795,15 @@ cmd_status() {
   fi
 
   local short="${HEAD:0:12}"
+  # A trusted comment edited or deleted by another login: the pass count and the verdicts may have
+  # been rewritten, so nothing here can say whether a review is owed. `publish` would refuse the
+  # review this would otherwise ask for, so `status` stops first and says why (exit 2, read and
+  # inconclusive: a person has to decide).
+  if [ "${MARKER_FOREIGN_EDIT:--}" != - ]; then
+    echo "#$NUMBER head $short — $(foreign_msg). INCONCLUSIVE."
+    echo "  next: a person decides; the loop does not review or fix this pull request while this stands"
+    return 2
+  fi
   if [ -z "$LABEL" ]; then
     echo "#$NUMBER head $short — NO review:* label. Absence reads as not reviewed."
     echo "  next: /pr-reviewer over this diff, then review-cycle.sh publish ..."
@@ -935,8 +987,10 @@ cmd_budget() {
   # The highest pass and a foreign edit come from parse(), the one reader of edited markers, so
   # `publish` and `budget` cannot count them differently.
   parse "$json"
+  local fmsg=""; [ "${MARKER_FOREIGN_EDIT:--}" = - ] || fmsg="$(foreign_msg)"
   printf '%s' "$json" | BUDGET_AUTHORS="$(marker_authors)" BUDGET_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
-    BUDGET_HARD="${MAX_REVIEW_CYCLES_HARD:-10}" BUDGET_MAX_PASS="${MARKER_MAX_PASS:-0}" BUDGET_FOREIGN_EDIT="${MARKER_FOREIGN_EDIT:--}" python3 -I -c '
+    BUDGET_HARD="${MAX_REVIEW_CYCLES_HARD:-10}" BUDGET_MAX_PASS="${MARKER_MAX_PASS:-0}" BUDGET_FOREIGN_EDIT="${MARKER_FOREIGN_EDIT:--}" \
+    BUDGET_FOREIGN_MSG="$fmsg" python3 -I -c '
 import json, os, re, shlex, sys
 
 def num(v, d):
@@ -1011,7 +1065,7 @@ done = max(max_pass - 1, 0)
 remaining = max(hard - done, 0)
 mine = os.environ.get("BUDGET_BLOCK_AT")
 if foreign != "-":
-    nxt, why = "none", "a comment by a trusted login was edited by %s, not by its author, so the pass count cannot be trusted (the edit may have rewritten or broken a verdict marker); a person checks that comment (its edit history shows what changed) and deletes or restores it" % foreign
+    nxt, why = "none", os.environ.get("BUDGET_FOREIGN_MSG") or ("a comment by a trusted login was changed by %s, not by its author, so the pass count cannot be trusted" % foreign)
 elif at is None:
     nxt, why = "none", "no trusted verdict marker at the head"
 elif at["block_at"] and at["block_at"] != mine:
@@ -1044,7 +1098,8 @@ for k, v in out.items():
 }
 
 # Records that a person granted `--n` more cycles. It writes the one marker `budget` reads and
-# refuses anything the budget would not honour: no CRITICAL open at the head, cycles that are not
+# refuses anything the budget would not honour: no blocking finding open at the head (a CRITICAL, or
+# a WARNING under REVIEW_BLOCK_AT=warning), cycles that are not
 # spent yet, or more than the hard ceiling leaves. The question itself is asked in the session, by
 # the harness's own question tool; this only makes the answer outlive the session.
 cmd_extend() {
@@ -1084,6 +1139,9 @@ cmd_debt() { cmd_status "${1:-}" >/dev/null 2>&1; return $?; }
 cmd_start() {
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
   parse "$json"
+  # A pass started now could never be published (`publish` refuses on the same reading), so it is
+  # refused before any label moves.
+  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED on #$NUMBER: $(foreign_msg). No pass is started, since publish would refuse it."
   # A halted pull request whose BLOCKED verdict is still at the head has nothing new to review: a
   # pass now would only spend a cycle against the ceiling. A push moves the head (and `stale` drops
   # the halt), and `extend` withdraws it when a person grants cycles.
@@ -1106,14 +1164,23 @@ cmd_start() {
 # pull request) and refuses unless each one is a collaborator with `write`, `maintain` or `admin`
 # permission on the repository. Fail closed: a fork, a commit with no linked GitHub login, a
 # lookup that errors, a bot, or any lower permission refuses. `FIXER_TRUSTED_LOGINS` (comma
-# separated) names logins allowed without a lookup, for a bot the repository owns. Base-branch merge
+# separated) names logins allowed without a lookup, for a bot the repository owns; `app/<name>` and
+# `<name>[bot]` are the same bot and either form matches both. Base-branch merge
 # commits are covered because their authors are resolved like any other.
 fix_guard() {
   FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - <<'PY'
 import json, os, subprocess, sys
 
 pr = os.environ["FG_PR"]
-trusted = {x.strip().lower() for x in os.environ["FG_TRUSTED"].split(",") if x.strip()}
+
+def norm(login):
+    # GitHub names one bot two ways: `gh pr view --json author` says `app/<name>` and the REST commit
+    # author says `<name>[bot]`. Both become `<name>[bot]`, so listing either form matches both and
+    # the PR author and its commits are one principal.
+    login = login.strip().lower()
+    return login[4:] + "[bot]" if login.startswith("app/") and len(login) > 4 else login
+
+trusted = {norm(x) for x in os.environ["FG_TRUSTED"].split(",") if x.strip()}
 OK = {"admin", "maintain", "write"}
 
 def gh(*args):
@@ -1137,7 +1204,7 @@ if not isinstance(meta.get("isCrossRepository"), bool):
 if meta.get("isCrossRepository"):
     refuse("#%s comes from a fork. The fixer does not edit or run code from a fork." % pr)
 principals = {}
-author = ((meta.get("author") or {}).get("login") or "")
+author = norm((meta.get("author") or {}).get("login") or "")
 principals[author] = "the pull request author"
 raw = gh("api", "repos/{owner}/{repo}/pulls/%s/commits" % pr, "--paginate")
 if raw is None:
@@ -1156,12 +1223,12 @@ except ValueError:
 if len(commits) >= 250:
     refuse("#%s has 250 or more commits, the most this check can list, so some authors would go unchecked" % pr)
 for c in commits:
-    login = ((c.get("author") or {}).get("login") or "") if isinstance(c, dict) else ""
+    login = norm(((c.get("author") or {}).get("login") or "") if isinstance(c, dict) else "")
     principals.setdefault(login, "commit %s" % str((c or {}).get("sha", "?"))[:7])
 for login, why in principals.items():
     if not login:
         refuse("%s has no linked GitHub login, so the fixer cannot tell who wrote it." % why)
-    if login.lower() in trusted:
+    if login in trusted:
         continue
     perm = gh("api", "repos/{owner}/{repo}/collaborators/%s/permission" % login, "--jq", ".permission")
     if perm is None:
@@ -1233,6 +1300,9 @@ cmd_stale() {
   # here is the whole transition out: the corrector pushes, `fixing` goes back to `pending`, and
   # `review:needs-human` goes with it if it was standing.
   case "$LABEL" in review:pending|review:running|*" "*) return 0 ;; esac
+  # A foreign edit or deletion (MARKER_FOREIGN_EDIT) is not checked here, on purpose: `stale` only
+  # removes a claim the head outgrew, which is safe whoever touched a comment, and `status`, `start`,
+  # `publish` and `budget` are the commands that stop on it.
   [ -n "$MARKER_SHA" ] || return 0
   if [ "${HEAD:0:${#MARKER_SHA}}" != "$MARKER_SHA" ]; then
     gh pr edit "$NUMBER" --remove-label "$LABEL" ${HALTED:+--remove-label review:needs-human} \
@@ -1270,6 +1340,29 @@ if hits:
     print(", ".join(hits))
     sys.exit(1)
 PY
+}
+
+# The same screen, for every other text an agent posts to the pull request: the fixer's closure
+# comment, the `pr-debt` body edit, an overflow comment beside a long report. Exit 0 = clean, 1 = it
+# holds something that looks like a secret (the kind is named, the value never printed), 2 = the
+# file could not be read. Posts nothing.
+cmd_screen() {
+  local file=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --file) [ $# -ge 2 ] || die "review-cycle: --file needs a value"; file="$2"; shift 2 ;;
+      *) die "review-cycle: usage: review-cycle.sh screen --file <file>" ;;
+    esac
+  done
+  [ -n "$file" ] && [ -f "$file" ] && [ -r "$file" ] \
+    || { echo "review-cycle: screen needs --file <file> that exists and is readable" >&2; return 2; }
+  local leaked
+  if ! leaked="$(report_secrets "$file")"; then
+    echo "review-cycle: REFUSED. $file looks like it contains a secret ($leaked). Replace the value with [REDACTED], then screen it again before posting. Nothing was posted." >&2
+    return 1
+  fi
+  echo "review-cycle: screen ok. $file holds no token or private key this screen knows."
+  return 0
 }
 
 cmd_publish() {
@@ -1396,8 +1489,7 @@ cmd_publish() {
   # state at a time and `publish` is itself the thing about to overwrite it.
   # The pass number is the next one after the highest trusted marker, exactly. A lower one (or the
   # same one again) would let `budget` restart the cycle count, and a higher one would skip cycles.
-  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED. A comment by a trusted login on #$NUMBER was edited by ${MARKER_FOREIGN_EDIT}, not by its author. The edit may have rewritten or broken a verdict marker, so the pass numbers and verdicts cannot be trusted and the next pass is not known.
-   A person checks that comment on GitHub (its edit history shows what changed) and deletes it or restores it with a new comment, then publishes again."
+  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED on #$NUMBER: $(foreign_msg). The next pass is not known, so nothing is published."
   local want_pass=$(( ${MARKER_MAX_PASS:-0} + 1 ))
   [ "$passno" -eq "$want_pass" ] || die "review-cycle: REFUSED. --pass $passno, and the next pass on #$NUMBER is $want_pass (the highest trusted marker says pass ${MARKER_MAX_PASS:-0}).
    Publish with --pass $want_pass. \`review-cycle.sh budget $NUMBER\` prints it as B_NEXT_PASS."
@@ -1515,8 +1607,17 @@ cmd_export_audit() {
   local events
   events="$(gh api "repos/{owner}/{repo}/issues/$NUMBER/events?per_page=100" --paginate 2>/dev/null)" \
     || die "review-cycle: could not read the timeline of #$NUMBER, and an export without it would be incomplete"
+  # A symlink at the output directory would send the record wherever the link points. A branch can
+  # commit one under docs/compliance-records/, so the export refuses it instead of following it.
+  [ ! -L "$out" ] || die "review-cycle: REFUSED. $out is a symbolic link; export into a real directory"
   mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
-  X_JSON="$json" X_EVENTS="$events" X_AUTHORS="$(marker_authors)" X_OUT="$out" python3 -I - <<'PY' || exit 1
+  # The pull request and the timeline go through files, never the environment: one environment
+  # string over 128 KiB (Linux) or a total over ARG_MAX (macOS) fails with "argument list too long",
+  # and a pull request with a few long reports reaches that.
+  local xdir; xdir="$(mktemp -d)" || die "review-cycle: could not create a temporary directory"
+  printf '%s' "$json" >"$xdir/pr.json" && printf '%s' "$events" >"$xdir/events.json" \
+    || { rm -rf "$xdir"; die "review-cycle: could not write the export inputs to $xdir"; }
+  X_JSON_FILE="$xdir/pr.json" X_EVENTS_FILE="$xdir/events.json" X_AUTHORS="$(marker_authors)" X_OUT="$out" python3 -I - <<'PY'
 import json, os, re, sys
 
 MARK = re.compile(
@@ -1529,7 +1630,7 @@ def die(msg):
     print("review-cycle: REFUSED. " + msg, file=sys.stderr)
     sys.exit(1)
 
-pr = json.loads(os.environ["X_JSON"])
+pr = json.load(open(os.environ["X_JSON_FILE"], encoding="utf-8"))
 allow = set(os.environ["X_AUTHORS"].split(",")) - {""}
 head = (pr.get("headRefOid") or "").lower()
 trusted, ignored = [], []
@@ -1552,7 +1653,7 @@ if m.group(1).lower() != head:
         % (pr.get("number"), head[:12], m.group(1)[:12]))
 try:
     # `gh api --paginate` prints one JSON array per page, back to back, so decode them one by one.
-    dec, i, raw, events = json.JSONDecoder(), 0, os.environ["X_EVENTS"].strip(), []
+    dec, i, raw, events = json.JSONDecoder(), 0, open(os.environ["X_EVENTS_FILE"], encoding="utf-8").read().strip(), []
     while i < len(raw):
         part, j = dec.raw_decode(raw, i)
         events.extend(part if isinstance(part, list) else [part])
@@ -1580,14 +1681,37 @@ rec = {
     "ignored": ignored,
     "comments_dropped_for_edits": pr.get("commentsDroppedEdited", 0),
 }
-path = os.path.join(os.environ["X_OUT"], "%s-%s.json" % (pr.get("number"), m.group(3)))
-tmp = path + ".tmp"
-with open(tmp, "w") as fh:
-    json.dump(rec, fh, indent=2, sort_keys=True)
-    fh.write("\n")
-os.replace(tmp, path)
+out = os.environ["X_OUT"]
+path = os.path.join(out, "%s-%s.json" % (pr.get("number"), m.group(3)))
+# Neither the directory nor the record may be a symlink: a checkout can carry one that points at
+# any file of the person running the export. The temporary file is created by mkstemp (O_CREAT |
+# O_EXCL, a fresh random name), so a link planted at a predictable `<record>.tmp` is never opened,
+# and os.replace renames over the final path without following it.
+if os.path.islink(out):
+    die("%s is a symbolic link; export into a real directory." % out)
+if os.path.islink(path):
+    die("%s is a symbolic link, and the export does not write through one. Remove it and export again." % path)
+import tempfile
+fd, tmp = tempfile.mkstemp(dir=out, prefix=".%s-%s." % (pr.get("number"), m.group(3)), suffix=".tmp")
+try:
+    with os.fdopen(fd, "w") as fh:
+        json.dump(rec, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    mask = os.umask(0)
+    os.umask(mask)
+    os.chmod(tmp, 0o666 & ~mask)  # mkstemp makes 0600; a committed record reads like any other file
+    os.replace(tmp, path)
+except BaseException:
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    raise
 print(path)
 PY
+  local xrc=$?
+  rm -rf "$xdir"
+  [ "$xrc" = 0 ] || exit 1
 }
 
 # Checks the `findings` block of a report against the diff it claims to review, before `publish`.
@@ -1777,6 +1901,7 @@ case "${1:-status}" in
   marker)  shift || true; cmd_marker  "$@" ;;
   publish) shift || true; cmd_publish "$@" ;;
   lint-report) shift || true; cmd_lint_report "$@" ;;
+  screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|screen|ensure-labels} [pr]" ;;
 esac

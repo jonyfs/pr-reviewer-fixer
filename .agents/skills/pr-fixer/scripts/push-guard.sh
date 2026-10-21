@@ -17,11 +17,17 @@
 #   4. every file touched by a commit made on top of that head is in scope: named by a `file:` entry
 #      in an open entry of the report's `findings` block (--findings), given with --allow (plain
 #      relative paths, no globs), or a test file (under a test, tests, spec or __tests__ directory,
-#      or named x_test.*, x.test.*, x.spec.* or test_x.*). A merge
-#      commit is not scope-checked, and neither is a commit the base branch already holds, since a
-#      conflict merge brings in the base's files; pass the conflicted files with --allow and read the
-#      merge yourself. When the base commit is not in the clone, the base's own commits are checked
-#      like any other, so fetch the base first.
+#      or named x_test.*, x.test.*, x.spec.* or test_x.*). A path matches a scope entry only when the
+#      two are equal byte for byte, and a touched path holding a control character (a newline, a tab)
+#      is refused outright. A merge commit is checked by its own changes: git recomputes the merge
+#      of its two parents (`git merge-tree --write-tree`, git 2.38 or later), and every path where
+#      the commit differs from that automatic result must be in scope. That is a file changed by hand
+#      inside the merge (an "evil merge") and the resolution of every conflicted file, so pass the
+#      conflicted files with --allow. What the merge brought in unchanged from either side is not
+#      counted. A merge with more than two parents, a merge git cannot recompute, and any merge when
+#      git is older than 2.38 are refused. A commit the base branch already holds is not checked,
+#      since a merge of the base brings it in. When the base commit is not in the clone, the base's
+#      own commits are checked like any other, so fetch the base first.
 #
 # EXIT CODES. 0 = safe to push. 1 = refused, with every reason printed. 2 = could not check: gh
 # or git missing, not inside a work tree, the pull request unreadable, or its head commit not
@@ -84,16 +90,31 @@ if [ -n "$FINDINGS" ]; then
     flush();
     for (const f of out) {
       const p = f.replace(/^\.\//, "");
-      if (p.startsWith("/") || p.split("/").includes("..") || /[*?\[\]\n]/.test(p)) continue;
+      if (p.startsWith("/") || p.split("/").includes("..") || /[*?\[\]\x00-\x1f\x7f]/.test(p)) continue;
       console.log(p);
     }
   ' "$FINDINGS" >>"$SCOPE" || { echo "push-guard: --findings has no fenced findings block, INCONCLUSIVE" >&2; exit 2; }
 fi
+# A control character (newline, tab, ...) is refused in every name: in a scope entry, and below in a
+# touched path. The C locale makes the byte range below mean bytes 1-31 and 127 and nothing else.
+CTRL=$'\001'-$'\037'$'\177'
 for a in "${ALLOW[@]+"${ALLOW[@]}"}"; do
   a="${a#./}"
   case "$a" in ''|/*|..|../*|*/..|*/../*|*[\*\?\[]*) echo "push-guard: --allow '$a' must be a plain relative path, REFUSED" >&2; exit 1 ;; esac
+  if (LC_ALL=C; case "$a" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then
+    echo "push-guard: --allow $(printf '%q' "$a") holds a control character, REFUSED" >&2; exit 1
+  fi
   printf '%s\n' "$a" >>"$SCOPE"
 done
+# The scope as a list of exact names, one per line of $SCOPE (no entry can hold a newline). A touched
+# path is in scope only when it equals one entry byte for byte: no pattern, no prefix, no splitting.
+SCOPE_LIST=()
+while IFS= read -r s; do [ -n "$s" ] && SCOPE_LIST+=("$s"); done <"$SCOPE"
+in_scope() {
+  local s
+  for s in "${SCOPE_LIST[@]+"${SCOPE_LIST[@]}"}"; do [ "$s" = "$1" ] && return 0; done
+  return 1
+}
 # A test file lives under a test, tests, spec or __tests__ directory, or its own name says so
 # (x_test.ext, x.test.ext, x.spec.ext, test_x.ext). The name is the last path segment only.
 is_test() {
@@ -104,20 +125,60 @@ is_test() {
   return 1
 }
 
-OUT=()
+OUT=() BADNAME=()
 # Commits the base branch already holds came in through a merge of the base; they are not the fixer's.
 EXCL=()
 if [ -n "$BASE_OID" ] && git cat-file -e "$BASE_OID^{commit}" 2>/dev/null; then EXCL=(--not "$BASE_OID"); fi
+# git merge-tree --write-tree (git 2.38 and later) is what recomputes a merge without touching the
+# work tree. Without it a merge commit cannot be checked, so it is refused.
+merge_tree_ok() {
+  local v maj min
+  v="$(git version 2>/dev/null)"; v="${v#git version }"
+  maj="${v%%.*}"; min="${v#*.}"; min="${min%%.*}"
+  case "$maj$min" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$maj" -gt 2 ] || { [ "$maj" -eq 2 ] && [ "$min" -ge 38 ]; }
+}
+# The paths a commit itself changes, NUL-delimited. An ordinary commit: against its parent. A merge
+# commit: against the tree git produces when it merges the two parents on its own, so what the merge
+# brought in from either side is not counted, and what was written into the merge by hand is (an
+# "evil merge", and the resolution of every conflicted file). Exit 1 when the commit cannot be read
+# this way, with the reason on stdout.
+commit_paths() {
+  local c="$1" parents n tree rc
+  parents="$(git rev-list --parents -n 1 "$c" 2>/dev/null)" || { echo "commit ${c:0:12} could not be read"; return 1; }
+  set -- $parents; shift; n=$#
+  if [ "$n" -le 1 ]; then
+    git diff-tree -r --root --no-commit-id --no-renames --name-only -z "$c" 2>/dev/null; return 0
+  fi
+  [ "$n" -eq 2 ] || { echo "merge commit ${c:0:12} has $n parents; an octopus merge is not checked"; return 1; }
+  merge_tree_ok || { echo "merge commit ${c:0:12} cannot be checked: git merge-tree --write-tree needs git 2.38 or later"; return 1; }
+  # Exit 0 is a clean merge and 1 a merge with conflicts (the tree, with conflict markers, is still
+  # the first line); anything else is an error. Conflicted files therefore differ from the commit,
+  # and must be in scope: pass them with --allow.
+  tree="$(git merge-tree --write-tree --no-messages "$1" "$2" 2>/dev/null)"; rc=$?
+  tree="${tree%%$'\n'*}"
+  if [ "$rc" -gt 1 ] || ! git cat-file -e "$tree^{tree}" 2>/dev/null; then
+    echo "merge commit ${c:0:12} could not be recomputed with git merge-tree, so its own changes are unknown"; return 1
+  fi
+  git diff-tree -r --no-renames --name-only -z "$tree" "$c^{tree}" 2>/dev/null
+}
 if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
   while IFS= read -r c; do
     [ -n "$c" ] || continue
+    PATHS="$(mktemp)"
+    if ! commit_paths "$c" >"$PATHS"; then REASONS+=("$(cat "$PATHS")"); rm -f "$PATHS"; continue; fi
     while IFS= read -r -d '' f; do
       [ -n "$f" ] || continue
-      grep -Fxq -- "$f" "$SCOPE" && continue
+      if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(printf '%q' "$f")"); continue; fi
+      in_scope "$f" && continue
       is_test "$f" && continue
       OUT+=("$f")
-    done < <(git show --no-renames --name-only -z --format= "$c" 2>/dev/null)
-  done < <(git rev-list --no-merges "$HEAD_OID..HEAD" ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null)
+    done <"$PATHS"
+    rm -f "$PATHS"
+  done < <(git rev-list "$HEAD_OID..HEAD" ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null)
+fi
+if [ "${#BADNAME[@]}" -gt 0 ]; then
+  REASONS+=("touched paths with a control character in the name, never pushed: ${BADNAME[*]}")
 fi
 if [ "${#OUT[@]}" -gt 0 ]; then
   REASONS+=("files outside the findings' scope: $(printf '%s\n' "${OUT[@]}" | sort -u | paste -sd' ' -)")

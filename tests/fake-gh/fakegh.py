@@ -8,9 +8,10 @@ def known(name):
     return (not os.path.exists(k)) or name in open(k).read().split()
 def with_ids(pr):
     # Real `gh pr view` gives every comment an id and the pull request a url. Fixtures carry neither.
+    pr.setdefault("url", "https://github.com/o/r/pull/%s" % pr.get("number", 0))
     for i, c in enumerate(pr.get("comments", [])):
         c.setdefault("id", "IC_%d" % i)
-    pr.setdefault("url", "https://github.com/o/r/pull/%s" % pr.get("number", 0))
+        c.setdefault("url", "%s#issuecomment-%d" % (pr["url"], 1000 + i))
     return pr
 if args[:2] == ["pr", "view"]:
     if not os.path.exists(p): sys.exit(1)
@@ -40,6 +41,22 @@ if args[:2] == ["api", "graphql"]:
     #   graphql-truncate   the last page is cut off and says there is no next page
     #   edited-by          "<id> <login>" per line: who edited that comment (default: its author)
     if not os.path.exists(p) or os.path.exists(os.path.join(d, "graphql-fail")): sys.exit(1)
+    if any(a.startswith("query=") and "timelineItems" in a for a in args):
+        # The CommentDeletedEvent query. `deleted-events` holds "<author> <deleter>" lines ("-" is a
+        # login GitHub does not name); `graphql-deleted-fail` makes this call alone exit 1, and
+        # `graphql-deleted-badshape` answers without the timelineItems field.
+        if os.path.exists(os.path.join(d, "graphql-deleted-fail")): sys.exit(1)
+        if os.path.exists(os.path.join(d, "graphql-deleted-badshape")):
+            print(json.dumps({"data": {"repository": {"pullRequest": {}}}})); sys.exit(0)
+        f = os.path.join(d, "deleted-events")
+        lines = [l.split() for l in open(f).read().splitlines() if l.strip()] if os.path.exists(f) else []
+        nul = lambda l: None if l == "-" else l
+        nodes = [{"id": "CDE_%d" % i, "createdAt": "2026-10-16T00:%02d:00Z" % i,
+                  "deletedCommentAuthor": ({"login": nul(a)} if nul(a) else None), "actor": ({"login": nul(b)} if nul(b) else None)}
+                 for i, (a, b) in enumerate(lines)]
+        print(json.dumps({"data": {"repository": {"pullRequest": {"timelineItems": {
+            "pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}}}}}))
+        sys.exit(0)
     after = next((a.split("=", 1)[1] for a in args if a.startswith("after=")), None)
     comments = with_ids(load())["comments"]
     size = int(open(os.path.join(d, "page-size")).read()) if os.path.exists(os.path.join(d, "page-size")) else 100

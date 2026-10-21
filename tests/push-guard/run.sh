@@ -71,11 +71,41 @@ g merge -q --no-edit main >/dev/null 2>&1
 prjson OPEN feat/m "$HEAD_OID" false "$(g rev-parse main)"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "merge commit from the base -> ok" eq "$r" 0
 
+# S4: a merge commit is checked by what it changes beyond the automatic merge of its parents.
+g checkout -q -b feat/e "$HEAD_OID"; g checkout -q main; echo w >"$W/repo/src/w.ts"; g add -A; g commit -q -m "main moves again"
+g checkout -q feat/e; g merge -q --no-commit --no-ff main >/dev/null 2>&1; echo evil >>"$W/repo/src/b.ts"; g add -A; g commit -q --no-edit
+prjson OPEN feat/e "$HEAD_OID" false "$(g rev-parse main)"
+r=$(run --findings "$W/rep.md"); check "evil merge: a file changed inside the merge commit -> refused, naming it (S4)" \
+  eval '[ $r = 1 ] && grep -q "src/b.ts" "$W/out" && ! grep -q "src/w.ts" "$W/out"'
+r=$(run --findings "$W/rep.md" --allow src/b.ts); check "evil merge with that file in scope -> ok (S4)" eq "$r" 0
+# The pull request head already edits src/b.ts; the base edits it too; only the conflict merge is new.
+g checkout -q -b feat/c "$HEAD_OID"; echo mine >"$W/repo/src/b.ts"; g commit -q -am "branch edits b"; CHEAD="$(g rev-parse HEAD)"
+g checkout -q main; echo theirs >"$W/repo/src/b.ts"; g commit -q -am "main edits b"
+g checkout -q feat/c; g merge -q --no-edit main >/dev/null 2>&1; echo resolved >"$W/repo/src/b.ts"; g add -A; g commit -q --no-edit
+prjson OPEN feat/c "$CHEAD" false "$(g rev-parse main)"
+r=$(run --findings "$W/rep.md"); check "conflicted merge: the resolved file is not in scope -> refused (S4)" eval '[ $r = 1 ] && grep -q "src/b.ts" "$W/out"'
+r=$(run --findings "$W/rep.md" --allow src/b.ts); check "conflicted merge with the resolved file passed by --allow -> ok (S4)" eq "$r" 0
+g checkout -q -b oct1 "$HEAD_OID"; echo o1 >"$W/repo/src/o1.ts"; g add -A; g commit -q -m o1
+g checkout -q -b oct2 "$HEAD_OID"; echo o2 >"$W/repo/src/o2.ts"; g add -A; g commit -q -m o2
+g checkout -q -b feat/o "$HEAD_OID"; g merge -q --no-ff --no-edit oct1 oct2 >/dev/null 2>&1
+prjson OPEN feat/o "$HEAD_OID" false
+r=$(run --findings "$W/rep.md" --allow src/o1.ts --allow src/o2.ts); check "octopus merge (three parents) -> refused (S4)" eval '[ $r = 1 ] && grep -q "octopus" "$W/out"'
+g checkout -q feat/x
+
 # A rename hides the source path unless renames are turned off.
 g checkout -q -b feat/r "$HEAD_OID"; echo s >"$W/repo/src/secret.yml"; g add -A; g commit -q -m "add secret"
 RENAME_BASE="$(g rev-parse HEAD)"; mkdir -p "$W/repo/tests"; g mv src/secret.yml tests/secret.yml; g commit -q -m "rename"
 prjson OPEN feat/r "$RENAME_BASE" false
 r=$(run --findings "$W/rep.md"); check "rename of an out-of-scope file to a test name -> refused" eval '[ $r = 1 ] && grep -q "src/secret.yml" "$W/out"'
+
+# S5: a touched name holding a newline is not split into several scope patterns, and is refused.
+g checkout -q -b feat/nl "$HEAD_OID"
+NL=$'src/a.ts\n.github/workflows/evil.yml'; mkdir -p "$W/repo/${NL%/*}"; printf 'x\n' >"$W/repo/$NL"; g add -A; g commit -q -m "newline name"
+prjson OPEN feat/nl "$HEAD_OID" false
+r=$(run --findings "$W/rep.md"); check "touched path with a newline (src/a.ts + evil.yml) -> refused, not read as in scope (S5)" \
+  eval '[ $r = 1 ] && grep -q "control character" "$W/out"'
+r=$(run --findings "$W/rep.md" --allow $'src/a.ts\nx'); check "--allow with a newline -> refused (S5)" eval '[ $r = 1 ] && grep -q "control character" "$W/out"'
+g checkout -q feat/x
 
 for opt in --findings --allow; do
   (cd "$W/repo" && perl -e 'alarm shift; exec @ARGV' 5 "$PG" 7 "$opt") >"$W/out" 2>&1; r=$?

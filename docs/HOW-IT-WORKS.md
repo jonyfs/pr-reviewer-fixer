@@ -216,7 +216,7 @@ flowchart TD
     G --> H[Verify, then push-guard.sh]
     H -->|refused| F
     H -->|exit 0| I[Push, then stale:<br/>label back to review:pending]
-    I --> J[One closure comment<br/>with the pr-fixer-closure marker]
+    I --> J[review-cycle.sh screen, then one closure comment<br/>with the pr-fixer-closure marker]
 ```
 
 ### Step by step
@@ -257,7 +257,11 @@ flowchart TD
    `push-guard.sh <pr> --findings FILE`. The guard refuses when the checked-out branch is not the
    pull request's head, the head is on a fork, the pull request is closed, the push would not be a
    fast-forward, or a commit touches a file no finding names (test files and explicit `--allow`
-   paths are exempt). If the head is not writable, the fixer delivers a patch and replies instead.
+   paths are exempt). A merge commit is checked by the files where it differs from the merge git
+   computes on its own from the two parents (`git merge-tree --write-tree`, git 2.38 or later), so
+   a conflict resolution needs `--allow` and an edit hidden inside a merge is refused. Commits the
+   base branch already holds are not checked. A path with a control character in its name is
+   refused. If the head is not writable, the fixer delivers a patch and replies instead.
 7. **Close the loop.** The push moves the head, and `review-cycle.sh stale` moves the label back to
    `review:pending`. The fixer posts one closure comment carrying
    `<!-- pr-fixer-closure: cycle=… head=… closed=… refused=… debt=… -->`. For each finding it records
@@ -301,7 +305,7 @@ never read as "reviewed".
 
 | Script | Job |
 |---|---|
-| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
+| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
@@ -318,8 +322,10 @@ never read as "reviewed".
 - A marker comment that was edited after it was created is ignored as a verdict. Its `pass=` still
   counts toward the highest pass, so an edit that keeps the number cannot lower the cycle count. An
   edit that rewrites the number counts as the new one. A trusted comment edited by anyone other
-  than its author stops `publish` and `budget` until a person deletes or restores it, whether or
-  not the edit left it readable as a marker.
+  than its author stops `publish`, `start`, `budget` and `status` until its author edits it back or deletes it,
+  whether or not the edit left it readable as a marker. The refusal names the comment's url; a new
+  comment does not clear it. A trusted comment deleted by anyone other than its author (a
+  `CommentDeletedEvent` on the timeline) stops the same commands for good on that pull request.
 - A verdict is bound to a commit. Any push turns it stale.
 - Everything read from the pull request (description, comments, commit messages, CI logs, file
   contents) is treated as data. It cannot give the skills orders.

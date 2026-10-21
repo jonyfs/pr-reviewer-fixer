@@ -144,7 +144,10 @@ sequenceDiagram
 - Classifies failing CI as transient, pre-existing on the base branch, or genuine, and reruns only
   what a rerun can fix. See `.agents/skills/pr-fixer/references/ci-failures.md`.
 - Runs `scripts/push-guard.sh` before every push. It refuses a wrong branch, a fork, a push that is
-  not a fast-forward and a commit that touches a file no finding names.
+  not a fast-forward and a commit that touches a file no finding names. A merge commit counts the
+  files it changes beyond git's automatic merge of its parents (a conflict resolution, or an edit
+  slipped into the merge), which needs git 2.38 or later; commits the base already holds are not
+  checked.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
 
 ```mermaid
@@ -176,8 +179,8 @@ flowchart LR
 | Label `review:*` | `review-cycle.sh` only | State at a glance in the PR list |
 | Verdict comment with `<!-- adversarial-review: sha=... -->` | reviewer, through the script | The authority. The label is its projection |
 | `findings` block at the end of the verdict | reviewer | The fixer's work list |
-| Closure comment with `<!-- pr-fixer-closure: ... -->` | fixer | Reproduction, test, red, fix, green, suite counts per finding |
-| `pr-debt` block in the PR body | fixer | Owner for every warning and note |
+| Closure comment with `<!-- pr-fixer-closure: ... -->` | fixer, after `review-cycle.sh screen` passes it | Reproduction, test, red, fix, green, suite counts per finding |
+| `pr-debt` block in the PR body | fixer, after `review-cycle.sh screen` passes it | Owner for every warning and note |
 | Extension answer (`state=granted` or `state=halted`) | `review-cycle.sh extend` or `halt`, after a person answered in the session | Continue or stop after the cycle budget |
 
 The full list, with the exact `gh` command to find each one, is in
@@ -420,8 +423,11 @@ Two steps are required:
    created is ignored as a verdict, though its `pass=` still counts, so an edit that keeps the
    number cannot lower the cycle count. An edit that rewrites the number counts as the new one.
    A trusted comment edited by anyone other than its author (GitHub lets any collaborator with
-   write access edit a comment) stops `publish` and `budget` until you delete or restore it, even
-   when the edit broke the marker so that it no longer reads as one.
+   write access edit a comment) stops `publish`, `start`, `budget` and `status` until its author edits it back or
+   deletes it, even when the edit broke the marker so that it no longer reads as one. The refusal
+   names the comment's url. A new comment does not clear it. A trusted comment deleted by anyone
+   other than its author (read from the pull request timeline) stops the same commands for good on
+   that pull request, since a deletion cannot be undone; a person decides how to go on.
 
 The rest hardens the setup and is recommended for a shared repository:
 
@@ -443,7 +449,10 @@ commit with no extra token.
 The fixer runs your project's tests, which execute repository code, in your own checkout. Use it on
 branches you trust. `review-cycle.sh fix` enforces part of that: it refuses a pull request from a
 fork, and one whose author or any commit author is not a collaborator with write access, before it
-moves any label. A bot the repository owns can be allowed with `FIXER_TRUSTED_LOGINS`. A script
+moves any label. A bot the repository owns can be allowed with `FIXER_TRUSTED_LOGINS`
+(comma-separated). GitHub names the same bot `app/<name>` as a pull request author and
+`<name>[bot]` as a commit author; the check treats the two as one login, so either form matches
+both. A script
 cannot sandbox the agent's own tool calls: isolating the test run is the harness's job (its own
 sandbox and permission allowlist), and this project does not simulate it. `references/harness-matrix.md` lists the controls per harness.
 
@@ -452,7 +461,11 @@ sandbox and permission allowlist), and this project does not simulate it. `refer
 `review-cycle.sh publish` refuses a report that contains a token or private key (GitHub, AWS, Slack,
 Stripe, Google, JWT, `sk-` keys, bearer headers) and tells you to replace it with `[REDACTED]`. It
 does not rewrite the report, and it does not screen high-entropy strings, because a commit SHA would
-always match. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
+always match. `lint-report` applies the same screen, and `review-cycle.sh screen --file <file>`
+applies it to any other text an agent posts: the fixer screens its closure comment and the new PR
+body (with the `pr-debt` block) before posting them, and the reviewer screens an overflow comment.
+It exits 0 when the text is clean, 1 naming the kind of secret (never the value) and 2 when the
+file cannot be read. A text posted by hand with `gh` is not screened. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
 publisher, timestamps, label events, model, tier and `block_at`) from the trusted marker and the pull
@@ -535,8 +548,8 @@ flowchart TD
 - The markers are published under your own login. The gate checks that a trusted account published
   the verdict. It cannot tell that the agent wrote it and not you.
 - Labels and comments are not tamper-evident. Anyone with the right permission can edit them.
-  The author filter, the edited-comment check and the gate raise the cost of forgery. They do not
-  stop the author of a marker from deleting it and posting another. Signing the marker would, and
+  The author filter, the edited-comment and deleted-comment checks and the gate raise the cost of
+  forgery. They do not stop the author of a marker from deleting it and posting another. Signing the marker would, and
   it is on the backlog. They do not make a legal record.
 - Model id and tier in the marker and in the compliance records are self-attested.
 - An AI verdict is not a human review. It reduces the chance that an obvious defect reaches the
@@ -579,7 +592,7 @@ The suite needs no network. It drives the scripts against a fake `gh` and covers
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `push-guard.sh`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `install.sh`, the review
 eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also

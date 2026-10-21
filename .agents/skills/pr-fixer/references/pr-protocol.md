@@ -18,8 +18,8 @@ check with `cmp`.
 | Labels | `scripts/review-cycle.sh` only, never by hand (table below) | Both skills, the `review-gate` check, people in the PR list | `review:pending`, `review:running`, `review:passed`, `review:blocked`, `review:fixing`, `review:needs-human` | `gh pr view <n> --json labels --jq '.labels[].name'` | Moves with every script call. Absence of any `review:*` label reads as "not reviewed" |
 | Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-- adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> [model=<id> tier=fast\|standard\|deep] [block_at=warning] -->`, then the report, ending with the fenced `findings` block | `scripts/pr-json.py <n>` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
 | Inline review comments | `pr-reviewer`, only in a run a person invoked | `pr-fixer` comment lane | Body starts with the finding id in brackets: `[C1] <claim>` | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed by a thread reply, then resolved. The automatic run posts none |
-| Fixer closure comment | `pr-fixer`, once per cycle, as its finish message | `pr-reviewer` pass c+1 (Understand the change) | `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `scripts/pr-json.py <n>` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
-| Debt block | `pr-fixer` (Declare debt) | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-- pr-debt:start -->` and `<!-- pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
+| Fixer closure comment | `pr-fixer`, once per cycle, as its finish message, after `review-cycle.sh screen` passes it | `pr-reviewer` pass c+1 (Understand the change) | `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `scripts/pr-json.py <n>` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
+| Debt block | `pr-fixer` (Declare debt), after `review-cycle.sh screen` passes the new body | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-- pr-debt:start -->` and `<!-- pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
 | Thread replies | `pr-fixer` comment lane | The comment's author, `pr-reviewer` pass 2+ | `Closed in <sha7> (C1)` and the thread resolved, or `Declined (C1): <reason>` and the thread left open | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed on reply. A decline stays open until its author agrees |
 | Status comment | The skill run that is in progress | People watching the PR | `<!-- pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
 | Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-- pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-- pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then one human-readable line | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling, and `extend` removes `review:needs-human`. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
@@ -80,15 +80,29 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    an edit that rewrites the number counts as the new number: a lower one lowers the count, and a
    higher one raises it, up to sending `budget` to the ceiling, which fails closed. GitHub lets
    anyone with write access edit another login's comment, so `pr-json.py` also records who made
-   the last edit (`IssueComment.editor`). A comment by a trusted login edited by anyone other than
+   the last edit (`IssueComment.editor`). That field is assumed to name the login of the most recent
+   edit: GitHub's schema calls it "the actor who edited the comment" and does not say which edit,
+   and checking it takes a comment edited by two logins in turn, which has not been done. If it
+   names the first editor instead, an author's own later edit does not clear a foreign one (fails
+   closed), and a foreign edit made after the author's own edit is missed. This is a stated limit. A comment by a trusted login edited by anyone other than
    its author, or by an account GitHub no longer names, counts as BLOCKED history, `budget` answers
-   `none` and names the editor, and `publish` refuses, until a person deletes or restores that
-   comment. This holds whether or not the edited body still reads as a marker, so an edit that
-   breaks a marker cannot drop it from the count unseen.
+   `none` and names the editor and the comment's url, `publish` and `start` refuse and `status`
+   answers inconclusive (exit 2), until the comment's
+   author edits it back or deletes it. A new comment does not clear it, and nor does a deletion by
+   anyone else. This holds whether or not the edited body still reads as a marker, so an edit that
+   breaks a marker cannot drop it from the count unseen. Deletions are read too: `pr-json.py` pages
+   the timeline's `CommentDeletedEvent` items (`actor`, `deletedCommentAuthor`) into
+   `deletedComments`, and fails closed like the comment query. A comment by a trusted login deleted
+   by anyone other than its author, or by an account GitHub no longer names, may have been a
+   BLOCKED marker or the highest pass, so it counts the same way: BLOCKED history in the gate, and
+   `budget` answers `none`, `publish` and `start` refuse and `status` exits 2, naming the deleter
+   and the time. `stale` does not check either case: it only retires a label the head outgrew.
+   A deletion cannot be undone, so this stop is permanent for that pull request: the automatic loop
+   does not continue there, and a person decides how to go on.
 
 Rule 2 keeps an edited marker from being read as a verdict, and keeps an edit by another login from
-moving the count. It does not stop the author's own login from rewriting its number, or deleting
-the marker and posting another; signing the marker would, and it is on the backlog. The agents publish with `gh` under the account the
+moving the count, and a deletion by another login from moving it unseen. It does not stop the
+author's own login from rewriting its number, or deleting the marker and posting another; signing the marker would, and it is on the backlog. The agents publish with `gh` under the account the
 person is signed in to, so the value is that login: `gh api user --jq .login`. Add the login of
 anyone else who publishes reviews. The markers then carry the person's own login, which means the
 gate cannot tell a marker the agent wrote from one the person typed. It checks that a trusted
@@ -251,10 +265,12 @@ entries. It posts nothing, and `publish` does not call it.
 name it. Inline comments need `gh api` with `path`, `line`, `side` and `commit_id`, which the
 automatic run does not allow; there the findings live in the verdict comment only.
 
-**Closure comment.** One per cycle, posted by the fixer as its finish message:
+**Closure comment.** One per cycle, posted by the fixer as its finish message, after the same
+secret screen `publish` applies (exit 1 names the kind of secret, never the value; replace it with
+`[REDACTED]` and screen again):
 
 ```bash
-gh pr comment <n> --body-file closure.md
+scripts/review-cycle.sh screen --file closure.md && gh pr comment <n> --body-file closure.md
 ```
 
 `closure.md` starts with `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`,
@@ -280,10 +296,11 @@ else:
     body = body.rstrip("\n") + "\n\n" + block + "\n"
 open(sys.argv[1], "w").write(body)
 PY
-gh pr edit <n> --body-file body.md
+scripts/review-cycle.sh screen --file body.md && gh pr edit <n> --body-file body.md
 ```
 
-Never write the whole body from memory, and never edit text outside the two markers.
+Never write the whole body from memory, and never edit text outside the two markers. Any other
+comment a skill posts (an overflow of a long report or closure) goes through `screen` first too.
 
 **Thread replies.** For a closed finding, reply `Closed in <sha7> (C1)` and resolve the thread
 (`gh api graphql` with `resolveReviewThread`). For a decline, reply with the reason and leave the

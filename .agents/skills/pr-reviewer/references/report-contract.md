@@ -173,6 +173,8 @@ plus report over 60000 bytes. Check the size before publishing and trim to fit:
 3. Shorten WARNING and NOTE prose to one line each; the findings block already carries their fields.
 4. Move long prose, per-file depth maps and the coverage note to a second comment or to a file
    attached elsewhere, and link it from the verdict comment. That second comment carries no marker.
+   `publish` screens only the verdict comment, so screen the second one before posting it:
+   `scripts/review-cycle.sh screen --file overflow.md && gh pr comment <n> --body-file overflow.md`.
 
 ```bash
 wc -c < .pr-skill/review.md   # bytes; keep well under 60000, the marker is added on top

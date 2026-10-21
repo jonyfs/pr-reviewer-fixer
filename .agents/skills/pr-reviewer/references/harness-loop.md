@@ -71,13 +71,17 @@ because every reader would ignore what they post.
 A marker comment that was edited after it was created is ignored by all of them as a verdict;
 its `pass=` still counts toward the highest pass, so an edit that keeps the number cannot lower
 the cycle count. An edit that rewrites the number counts as the new one, and a trusted comment
-edited by anyone other than its author, whether or not it still reads as a marker, stops `publish`
-and `budget` until a person deletes or restores it (see rule 2 in [pr-protocol.md](pr-protocol.md)).
+edited by anyone other than its author, whether or not it still reads as a marker, stops `publish`,
+`start`, `budget` and `status` (exit 2) until its author edits it back or deletes it; a new comment does not clear it. A
+trusted comment deleted by another login stops them for good, since a deletion cannot be undone
+(see rule 2 in [pr-protocol.md](pr-protocol.md)).
 
 ## The loop
 
 1. **Read the state.** After a push, `review-cycle.sh stale <pr>` first (see Trigger). Then
-   `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop.
+   `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop. Exit 2 means it could not
+   decide: stop and tell the person what it printed. A trusted comment edited or deleted by
+   another login is one such case, and `start` refuses on it too.
 2. **Take the cycle.** `review-cycle.sh start <pr>`. When `status` reports `review:needs-human`
    and the BLOCKED verdict is still at the head, skip to step 5 instead: `start` refuses there, and
    `budget` decides whether to ask the person.
@@ -106,7 +110,7 @@ and `budget` until a person deletes or restores it (see rule 2 in [pr-protocol.m
 
    | `B_NEXT` | Do |
    |---|---|
-   | `none` | Stop and tell the person `B_WHY`. The head is PASSED or has no trusted verdict, or a setting is wrong: `REVIEW_MARKER_AUTHORS` lists no login, `REVIEW_BLOCK_AT` is neither `critical` nor `warning`, or the verdict at the head was published under another `REVIEW_BLOCK_AT`. Or a trusted comment was edited by another login, and `B_WHY` names that login: a person checks the comment and deletes or restores it. A wrong setting is the person's to fix; the loop does not change it. |
+   | `none` | Stop and tell the person `B_WHY`. The head is PASSED or has no trusted verdict, or a setting is wrong: `REVIEW_MARKER_AUTHORS` lists no login, `REVIEW_BLOCK_AT` is neither `critical` nor `warning`, or the verdict at the head was published under another `REVIEW_BLOCK_AT`. Or a trusted comment was edited by another login, and `B_WHY` names that login and the comment's url: a person reads its edit history, then its author edits it back or deletes it (a new comment does not clear it). Or a trusted comment was deleted by another login, and `B_WHY` names the deleter and the time: that stop is permanent on this pull request, and the person decides how to go on. A wrong setting is the person's to fix; the loop does not change it. |
    | `fix` | Dispatch the fixer sub-agent: "Follow `.agents/skills/pr-fixer/SKILL.md` on pull request #N, cycle C." (`C` is `B_CYCLE`.) Wait for its closure comment, then go to step 2. On the last automatic cycle (`B_DONE` is `B_ALLOWED` minus 1) send a stronger fixer, as described below. |
    | `ask` | Ask the person (below). |
    | `ceiling` | `review-cycle.sh halt <pr> --reason ceiling`. Tell the person. Stop. |
@@ -158,7 +162,8 @@ there is nothing new to review until a person pushes a correction or grants cycl
 - `review-cycle.sh fix` refuses before any label moves when the pull request comes from a fork or
   when its author or any commit author is not a collaborator with write access or higher. Do not
   work around it: tell the person which login was refused. A bot the repository owns is allowed
-  with `FIXER_TRUSTED_LOGINS`.
+  with `FIXER_TRUSTED_LOGINS`; `app/<name>` (how `gh pr view` names a bot author) and
+  `<name>[bot]` (how a commit names it) are the same bot, and either form matches both.
 - The reviewer passes `--model` and `--tier` to `publish` when the harness reports them. They are
   self-attested.
 - A person, not the loop, exports evidence: `review-cycle.sh export-audit <n>` writes
