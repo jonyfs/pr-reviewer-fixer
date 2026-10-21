@@ -17,7 +17,10 @@ Output: one JSON object with number, headRefOid, labels, comments, state, isDraf
 `commentsDroppedEdited` (how many comments were removed for having been edited) and
 `editedComments` (those comments, author, last editor, body, id and url only, never read as a verdict;
 kept so an edit cannot erase a BLOCKED marker from the history or lower the highest `pass=` while it
-keeps the number, and so an edit by someone other than the author is seen).
+keeps the number, and so an edit by someone other than the author is seen), and `deletedComments`
+(every CommentDeletedEvent on the timeline: the deleted comment's author, the login that deleted it,
+the time and the event id; the body is gone, so a deletion by someone other than the author is
+treated as a possible deleted marker).
 """
 import json
 import re
@@ -29,6 +32,15 @@ QUERY = (
     "query($owner:String!,$repo:String!,$number:Int!,$after:String){"
     "repository(owner:$owner,name:$repo){pullRequest(number:$number){"
     "comments(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt editor{login}}}}}}"
+)
+# A trusted comment can also be deleted, by its author or by anyone with write access, and a deleted
+# BLOCKED marker would drop out of the history and the pass count. The timeline keeps a
+# CommentDeletedEvent for each deletion, naming who deleted it and who wrote it.
+DELETED_QUERY = (
+    "query($owner:String!,$repo:String!,$number:Int!,$after:String){"
+    "repository(owner:$owner,name:$repo){pullRequest(number:$number){"
+    "timelineItems(first:100,after:$after,itemTypes:[COMMENT_DELETED_EVENT]){pageInfo{hasNextPage endCursor} "
+    "nodes{... on CommentDeletedEvent{id createdAt actor{login} deletedCommentAuthor{login}}}}}}}"
 )
 MAX_PAGES = 100
 
@@ -97,6 +109,38 @@ def main():
     else:
         return fail("more than %d pages of comments" % MAX_PAGES)
 
+    # The deletions, paged and checked the same way. Any failure here is a failure of the whole read.
+    deleted, after = [], None
+    for _ in range(MAX_PAGES):
+        args = ["api", "graphql", "-f", "query=" + DELETED_QUERY, "-f", "owner=" + owner,
+                "-f", "repo=" + repo, "-F", "number=" + number]
+        if after:
+            args += ["-f", "after=" + after]
+        raw = gh(*args)
+        if raw is None:
+            return fail("gh api graphql failed, so comment deletions cannot be checked")
+        try:
+            page = json.loads(raw)["data"]["repository"]["pullRequest"]["timelineItems"]
+            nodes, info = page["nodes"], page["pageInfo"]
+            more, cursor = bool(info["hasNextPage"]), info.get("endCursor")
+        except (ValueError, KeyError, TypeError):
+            return fail("gh api graphql answered an unexpected shape for comment deletions")
+        for n in nodes:
+            if not isinstance(n, dict) or not n.get("id"):
+                return fail("a GraphQL comment deletion node had no id")
+            # A login of None means GitHub names no one (a deleted account): readers take a None
+            # deleter as someone other than the author, and a None author as nobody trusted.
+            deleted.append({"author": {"login": (n.get("deletedCommentAuthor") or {}).get("login") or None},
+                            "actor": {"login": (n.get("actor") or {}).get("login") or None},
+                            "createdAt": n.get("createdAt"), "id": n["id"]})
+        if not more:
+            break
+        if not cursor:
+            return fail("GraphQL said there is another page of deletions and gave no cursor")
+        after = cursor
+    else:
+        return fail("more than %d pages of comment deletions" % MAX_PAGES)
+
     ids = {c.get("id") for c in comments if isinstance(c, dict)}
     if not ids.issubset(seen):
         return fail("GraphQL listed fewer comments than gh pr view, so the list is truncated")
@@ -113,6 +157,8 @@ def main():
     pr["editedComments"] = [{"author": c.get("author"), "editor": {"login": editors.get(c.get("id"))}, "body": c.get("body"),
                              "id": c.get("id"), "url": c.get("url")}
                           for c in comments if isinstance(c, dict) and c.get("id") in edited]
+    # Every deletion of a comment on the pull request, author, deleter, time and event id only.
+    pr["deletedComments"] = deleted
     sys.stdout.write(json.dumps(pr))
     return 0
 

@@ -518,6 +518,14 @@ parse() {
       // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
       // body after the edit is kept, so an edit that rewrites the number counts as the new one.
       if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    // A trusted comment deleted by someone other than its author may have been a verdict marker
+    // (BLOCKED, or the highest pass), and its body is gone, so it counts the way a foreign edit does:
+    // BLOCKED history, and a stop. A deletion by the author itself is the documented limit.
+    for(const c of (JSON.parse(s).deletedComments||[])){
+      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
+      if(!who||(active&&!allow.includes(who)))continue;
+      const by=String((c&&c.actor&&c.actor.login)||"").toLowerCase();
+      if(by!==who){foreign=by||"unknown";fkind="delete";fauthor=tok(who);fwhere=tok(c&&c.createdAt);blocked="yes";}}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
       last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign,fkind,fauthor,fwhere].join(" "):
       // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
@@ -552,13 +560,13 @@ parse() {
   # an older commit, or a low `--pass`, cannot restart the count.
   MARKER_MAX_PASS=$(printf '%s' "$m" | cut -d' ' -f11)
   case "$MARKER_MAX_PASS" in ''|*[!0-9]*) MARKER_MAX_PASS=0 ;; esac
-  # The login that edited a trusted comment it did not write (`unknown` when GitHub names none), `-`
-  # when there is none. Such an edit can rewrite `pass=` or break the marker so it no longer counts,
+  # The login that edited or deleted a trusted comment it did not write (`unknown` when GitHub names
+  # none), `-` when there is none. Such an edit can rewrite `pass=` or break the marker so it no longer counts,
   # so the count is not trusted while it stands.
   MARKER_FOREIGN_EDIT=$(printf '%s' "$m" | cut -d' ' -f12)
   [ -n "$MARKER_FOREIGN_EDIT" ] || MARKER_FOREIGN_EDIT=-
-  # Which comment it was, so a refusal can name it: the kind (`edit`), the login that wrote it and
-  # its url (`-` when GitHub gave none).
+  # Which comment it was, so a refusal can name it: the kind (`edit` or `delete`), the login that
+  # wrote it, and its url for an edit or the time of the deletion (`-` when GitHub gave none).
   MARKER_FOREIGN_KIND=$(printf '%s' "$m" | cut -d' ' -f13)
   MARKER_FOREIGN_AUTHOR=$(printf '%s' "$m" | cut -d' ' -f14)
   MARKER_FOREIGN_WHERE=$(printf '%s' "$m" | cut -d' ' -f15)
@@ -569,6 +577,11 @@ parse() {
 foreign_msg() {
   local who="${MARKER_FOREIGN_AUTHOR:--}" where="${MARKER_FOREIGN_WHERE:--}"
   [ "$who" != - ] || who="its author"
+  if [ "${MARKER_FOREIGN_KIND:-}" = delete ]; then
+    printf 'a comment by %s was deleted by %s at %s, not by its author, so the pass numbers and verdicts cannot be trusted (it may have been a verdict marker). A deletion cannot be undone and a new comment does not clear this: the automatic loop stops on this pull request, and a person decides how to go on' \
+      "$who" "$MARKER_FOREIGN_EDIT" "$where"
+    return 0
+  fi
   [ "$where" != - ] || where="(GitHub gave no url)"
   printf 'the comment %s by %s was edited by %s, not by its author, so the pass numbers and verdicts cannot be trusted (the edit may have rewritten or broken a verdict marker). A person reads its edit history on GitHub, then %s edits it back or %s deletes it; a new comment does not clear this' \
     "$where" "$who" "$MARKER_FOREIGN_EDIT" "$who" "$who"

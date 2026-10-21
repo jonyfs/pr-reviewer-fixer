@@ -196,6 +196,20 @@ python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
 echo "IC_0 mallory" >"$FAKE_DIR/edited-by"
 python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
 check "gate: a marker broken by its author's edit passes; broken by another login it is BLOCKED history" eval '[ $g0 = 0 ] && [ $g1 != 0 ]'
+# N5 of #25: a trusted comment deleted by another login counts as BLOCKED history in the gate too.
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$PH1]" OPEN)"
+python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
+echo "github-actions github-actions" >"$FAKE_DIR/deleted-events"; python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+echo "github-actions mallory" >"$FAKE_DIR/deleted-events"; python3 -I "$GATE" 7 >/dev/null 2>&1; g2=$?
+check "gate: PASSED pass 1 passes; a trusted comment deleted by its author still passes; deleted by another login it is BLOCKED history (N5)" \
+  eval '[ $g0 = 0 ] && [ $g1 = 0 ] && [ $g2 != 0 ]'
+python3 -I "$SRC/pr-json.py" 7 >"$W/pj" 2>/dev/null; j0=$?
+check "pr-json.py lists deletions as deletedComments with author and deleter (N5)" \
+  eval '[ $j0 = 0 ] && python3 -I -c "import json,sys;d=json.load(open(sys.argv[1]))[\"deletedComments\"];sys.exit(0 if d[0][\"author\"][\"login\"]==\"github-actions\" and d[0][\"actor\"][\"login\"]==\"mallory\" else 1)" "$W/pj"'
+touch "$FAKE_DIR/graphql-deleted-fail"; python3 -I "$SRC/pr-json.py" 7 >"$W/pj" 2>/dev/null; j1=$?; rm -f "$FAKE_DIR/graphql-deleted-fail"
+touch "$FAKE_DIR/graphql-deleted-badshape"; python3 -I "$SRC/pr-json.py" 7 >"$W/pj2" 2>/dev/null; j2=$?; rm -f "$FAKE_DIR/graphql-deleted-badshape"
+check "pr-json.py fails closed (exit 1, no output) when the deletion query fails or answers another shape (N5)" \
+  eval '[ $j1 = 1 ] && [ ! -s "$W/pj" ] && [ $j2 = 1 ] && [ ! -s "$W/pj2" ]'
 reset "$(mk 7 $D '[{"name":"review:blocked"}]' '[]' OPEN)"
 python3 -I - <<'PY'
 import json, os

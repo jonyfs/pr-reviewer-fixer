@@ -401,6 +401,14 @@ def main() -> int:
                 editor = str((c.get("editor") or {}).get("login") or "").lower()
                 if editor != author or (em and em.group(2).upper() == "BLOCKED"):
                     edited_blocked = True
+        # A trusted comment deleted by someone other than its author may have been a BLOCKED marker,
+        # and its body is gone, so it counts as BLOCKED history too (pr-json.py lists the deletions).
+        for c in pr.get("deletedComments", []) or []:
+            if isinstance(c, dict) and marker_author_allowed(c):
+                author = str((c.get("author") or {}).get("login") or "").lower()
+                actor = str((c.get("actor") or {}).get("login") or "").lower()
+                if actor != author:
+                    edited_blocked = True
         if not markers:
             errors.append(
                 f"pull request #{number} is labelled `review:passed` and carries no reviewer "

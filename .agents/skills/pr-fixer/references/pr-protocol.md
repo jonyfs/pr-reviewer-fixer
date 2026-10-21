@@ -85,11 +85,18 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    `none` and names the editor and the comment's url, and `publish` refuses, until the comment's
    author edits it back or deletes it. A new comment does not clear it, and nor does a deletion by
    anyone else. This holds whether or not the edited body still reads as a marker, so an edit that
-   breaks a marker cannot drop it from the count unseen.
+   breaks a marker cannot drop it from the count unseen. Deletions are read too: `pr-json.py` pages
+   the timeline's `CommentDeletedEvent` items (`actor`, `deletedCommentAuthor`) into
+   `deletedComments`, and fails closed like the comment query. A comment by a trusted login deleted
+   by anyone other than its author, or by an account GitHub no longer names, may have been a
+   BLOCKED marker or the highest pass, so it counts the same way: BLOCKED history in the gate, and
+   `budget` answers `none` and `publish` refuses, naming the deleter and the time.
+   A deletion cannot be undone, so this stop is permanent for that pull request: the automatic loop
+   does not continue there, and a person decides how to go on.
 
 Rule 2 keeps an edited marker from being read as a verdict, and keeps an edit by another login from
-moving the count. It does not stop the author's own login from rewriting its number, or deleting
-the marker and posting another; signing the marker would, and it is on the backlog. The agents publish with `gh` under the account the
+moving the count, and a deletion by another login from moving it unseen. It does not stop the
+author's own login from rewriting its number, or deleting the marker and posting another; signing the marker would, and it is on the backlog. The agents publish with `gh` under the account the
 person is signed in to, so the value is that login: `gh api user --jq .login`. Add the login of
 anyone else who publishes reviews. The markers then carry the person's own login, which means the
 gate cannot tell a marker the agent wrote from one the person typed. It checks that a trusted

@@ -425,7 +425,9 @@ Two steps are required:
    A trusted comment edited by anyone other than its author (GitHub lets any collaborator with
    write access edit a comment) stops `publish` and `budget` until its author edits it back or
    deletes it, even when the edit broke the marker so that it no longer reads as one. The refusal
-   names the comment's url. A new comment does not clear it.
+   names the comment's url. A new comment does not clear it. A trusted comment deleted by anyone
+   other than its author (read from the pull request timeline) stops the same commands for good on
+   that pull request, since a deletion cannot be undone; a person decides how to go on.
 
 The rest hardens the setup and is recommended for a shared repository:
 
@@ -546,8 +548,8 @@ flowchart TD
 - The markers are published under your own login. The gate checks that a trusted account published
   the verdict. It cannot tell that the agent wrote it and not you.
 - Labels and comments are not tamper-evident. Anyone with the right permission can edit them.
-  The author filter, the edited-comment check and the gate raise the cost of forgery. They do not
-  stop the author of a marker from deleting it and posting another. Signing the marker would, and
+  The author filter, the edited-comment and deleted-comment checks and the gate raise the cost of
+  forgery. They do not stop the author of a marker from deleting it and posting another. Signing the marker would, and
   it is on the backlog. They do not make a legal record.
 - Model id and tier in the marker and in the compliance records are self-attested.
 - An AI verdict is not a human review. It reduces the chance that an obvious defect reaches the

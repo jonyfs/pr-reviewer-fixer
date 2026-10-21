@@ -19,13 +19,15 @@ def e(t, body, login=ME):
 def hist(counts):  # passes 1..n, last at head, the others at an older sha
     return [v(i + 1, "BLOCKED" if c else "PASSED", c, sha=(H if i == len(counts) - 1 else O)) for i, c in enumerate(counts)]
 
-def setup(comments, labels=("review:blocked",), state="OPEN", edited=(), edited_by=()):
+def setup(comments, labels=("review:blocked",), state="OPEN", edited=(), edited_by=(), deleted=()):
     d = os.path.join(HERE, "state-" + os.environ.get("TEST_TAG", "main")); shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
     open(os.path.join(d, "calls.log"), "w").close()
     if edited:  # fake gh ids are IC_<index>; these comments read as edited after creation
         open(os.path.join(d, "edited-ids"), "w").write("\n".join(edited) + "\n")
     if edited_by:  # (id, login): that comment was last edited by login, not by its author
         open(os.path.join(d, "edited-by"), "w").write("".join("%s %s\n" % e for e in edited_by))
+    if deleted:  # (author, deleter): a comment by author was deleted by deleter ("-" = unnamed)
+        open(os.path.join(d, "deleted-events"), "w").write("".join("%s %s\n" % e for e in deleted))
     json.dump({"number": 7, "headRefOid": H, "labels": [{"name": l} for l in labels],
                "comments": comments, "state": state}, open(os.path.join(d, "pr.json"), "w"))
     return d
@@ -35,8 +37,8 @@ def run(args, d, **env_extra):
     env.update({k: v for k, v in env_extra.items()})
     return subprocess.run(["bash", RC] + args, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
-def budget(comments, mx="5", hard="10", authors=ME, edited=(), edited_by=()):
-    d = setup(comments, edited=edited, edited_by=edited_by)
+def budget(comments, mx="5", hard="10", authors=ME, edited=(), edited_by=(), deleted=()):
+    d = setup(comments, edited=edited, edited_by=edited_by, deleted=deleted)
     p = run(["budget", "7"], d, MAX_REVIEW_CYCLES=mx, MAX_REVIEW_CYCLES_HARD=hard, REVIEW_MARKER_AUTHORS=authors)
     if p.returncode:
         print(p.stdout, p.stderr); sys.exit(1)
@@ -259,6 +261,25 @@ check("a foreign edit: the publish refusal names the comment url and does not su
 d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", "-"),))
 check("a trusted marker edited by an unnamed account -> budget none, edited by unknown",
       d.get("next") == "none" and "edited by unknown" in d.get("why", ""), d)
+
+# N5 of #25: a trusted comment deleted by another login may have been a BLOCKED marker or the highest
+# pass, so the count is not trusted: budget none, publish refused. Deleted by its author: the limit.
+d = budget(hist([1] * 6), deleted=((ME, "mallory"),))
+check("a trusted comment deleted by another login -> budget none, names the deleter (N5)",
+      d.get("next") == "none" and "deleted by mallory" in d.get("why", ""), d)
+d = budget(hist([1] * 6), deleted=((ME, "-"),))
+check("a trusted comment deleted by an unnamed account -> budget none, deleted by unknown (N5)",
+      d.get("next") == "none" and "deleted by unknown" in d.get("why", ""), d)
+d = budget(hist([1] * 6), deleted=((ME, ME),))
+check("a trusted comment deleted by its own author -> budget unchanged (ask) (N5)", d.get("next") == "ask", d)
+d = budget(hist([1] * 6), deleted=(("stranger", "mallory"),))
+check("a stranger's comment deleted by another login -> budget unchanged (ask) (N5)", d.get("next") == "ask", d)
+d = setup(hist([1] * 6), labels=("review:running",), deleted=((ME, "mallory"),))
+rep = os.path.join(d, "report.md"); open(rep, "w").write("## findings\n- one\n")
+n = len(comments_posted(d))
+p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "7", "--sha", H, "--critical", "1", "--warning", "0", "--note", "0"], d)
+check("publish with a trusted comment deleted by another login is refused, nothing posted (N5)",
+      p.returncode != 0 and len(comments_posted(d)) == n and "deleted by mallory" in p.stderr, p.stderr + p.stdout)
 
 # A list of invisible characters names nobody: a stranger's grant must not raise the budget.
 d = budget(hist([1] * 6) + [G(5, 5)], authors=" ")

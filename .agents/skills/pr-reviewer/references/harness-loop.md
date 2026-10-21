@@ -72,8 +72,9 @@ A marker comment that was edited after it was created is ignored by all of them 
 its `pass=` still counts toward the highest pass, so an edit that keeps the number cannot lower
 the cycle count. An edit that rewrites the number counts as the new one, and a trusted comment
 edited by anyone other than its author, whether or not it still reads as a marker, stops `publish`
-and `budget` until its author edits it back or deletes it; a new comment does not clear it (see
-rule 2 in [pr-protocol.md](pr-protocol.md)).
+and `budget` until its author edits it back or deletes it; a new comment does not clear it. A
+trusted comment deleted by another login stops them for good, since a deletion cannot be undone
+(see rule 2 in [pr-protocol.md](pr-protocol.md)).
 
 ## The loop
 
@@ -107,7 +108,7 @@ rule 2 in [pr-protocol.md](pr-protocol.md)).
 
    | `B_NEXT` | Do |
    |---|---|
-   | `none` | Stop and tell the person `B_WHY`. The head is PASSED or has no trusted verdict, or a setting is wrong: `REVIEW_MARKER_AUTHORS` lists no login, `REVIEW_BLOCK_AT` is neither `critical` nor `warning`, or the verdict at the head was published under another `REVIEW_BLOCK_AT`. Or a trusted comment was edited by another login, and `B_WHY` names that login and the comment's url: a person reads its edit history, then its author edits it back or deletes it (a new comment does not clear it). A wrong setting is the person's to fix; the loop does not change it. |
+   | `none` | Stop and tell the person `B_WHY`. The head is PASSED or has no trusted verdict, or a setting is wrong: `REVIEW_MARKER_AUTHORS` lists no login, `REVIEW_BLOCK_AT` is neither `critical` nor `warning`, or the verdict at the head was published under another `REVIEW_BLOCK_AT`. Or a trusted comment was edited by another login, and `B_WHY` names that login and the comment's url: a person reads its edit history, then its author edits it back or deletes it (a new comment does not clear it). Or a trusted comment was deleted by another login, and `B_WHY` names the deleter and the time: that stop is permanent on this pull request, and the person decides how to go on. A wrong setting is the person's to fix; the loop does not change it. |
    | `fix` | Dispatch the fixer sub-agent: "Follow `.agents/skills/pr-fixer/SKILL.md` on pull request #N, cycle C." (`C` is `B_CYCLE`.) Wait for its closure comment, then go to step 2. On the last automatic cycle (`B_DONE` is `B_ALLOWED` minus 1) send a stronger fixer, as described below. |
    | `ask` | Ask the person (below). |
    | `ceiling` | `review-cycle.sh halt <pr> --reason ceiling`. Tell the person. Stop. |
