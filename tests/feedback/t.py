@@ -248,6 +248,16 @@ rc, out, err = run("7")
 calls = open(os.path.join(D, "calls.log")).read()
 check("the permission lookup asks for role_name too, and a maintain role (legacy write) -> act (N13 of #27)",
       rc == 0 and "role_name" in calls and by_id(out)["PRRC_A1"]["action"] == "act", (calls[-300:], err))
+# W2 (0.13.0 pass 1): a custom role whose name holds several words is one field, not a list of words.
+for role, want in (({"permission": "read", "role_name": "Write Docs"}, False),
+                   ({"permission": "read", "role_name": "docs admin"}, False),
+                   ({"permission": "write", "role_name": "Docs Team"}, True),
+                   ({"permission": "read", "role_name": "Maintain"}, True)):
+    setup([thread("PRRT_A2", [c("A2", "dave", "COLLABORATOR", "x")])], perms={"dave": role})
+    rc, out, err = run("7")
+    got = rc == 0 and by_id(out)["PRRC_A2"]["action"] == "act"
+    check("permission %r, role_name %r -> %s (W2)" % (role["permission"], role["role_name"],
+                                                    "act" if want else "not acted"), got == want, (rc, out, err))
 
 # ---- paging and fail-closed ----------------------------------------------------------------
 setup(T, R, C, flags=("ff-page-size=2",))

@@ -279,6 +279,13 @@ check "fix: a commit with no linked login refused" eval '[ $r != 0 ] && hasnt re
 fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "visitor"}}]}'
 "$RC" fix 7 >"$W/out" 2>&1; r=$?
 check "fix: read-only collaborator refused" eval '[ $r != 0 ] && hasnt review:fixing && grep -q "permission .read." "$W/out"'
+# W2 (0.13.0 pass 1): a custom role whose name holds several words is one field, not a list of words.
+fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "docs"}}], "permissions": {"jony": "admin", "docs": {"permission": "read", "role_name": "Write Docs"}}}'
+"$RC" fix 7 >"$W/out" 2>&1; r=$?
+check "fix: a read collaborator with the custom role 'Write Docs' refused (W2)" eval '[ $r != 0 ] && hasnt review:fixing && grep -q "Write Docs" "$W/out"'
+fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "docs"}}], "permissions": {"jony": "admin", "docs": {"permission": "write", "role_name": "Docs Team"}}}'
+"$RC" fix 7 >"$W/out" 2>&1; r=$?
+check "fix: a write collaborator with the custom role 'Docs Team' passes (W2)" eval '[ $r = 0 ] && has review:fixing'
 fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "bot[bot]"}}]}'
 "$RC" fix 7 >"$W/out" 2>&1; r=$?
 check "fix: bot with no permission record refused (lookup fails closed)" eval '[ $r != 0 ] && hasnt review:fixing'

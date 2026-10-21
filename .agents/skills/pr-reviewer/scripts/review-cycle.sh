@@ -1255,17 +1255,25 @@ for login, why in principals.items():
         refuse("%s has no linked GitHub login, so the fixer cannot tell who wrote it." % why)
     if login in trusted:
         continue
-    # Both fields the endpoint returns: `permission` holds the legacy values (a maintain role reads
-    # as write, triage as read) and `role_name` the role. Either one naming admin, maintain or write
-    # is write access.
+    # Both fields the endpoint returns, as a JSON array: `permission` holds the legacy values (a
+    # maintain role reads as write, triage as read) and `role_name` the role. Either one equal to
+    # admin, maintain or write is write access. Each field is compared whole, so a custom role named
+    # "Write Docs" is not write access.
     perm = gh("api", "repos/{owner}/{repo}/collaborators/%s/permission" % login,
-              "--jq", '[.permission, .role_name] | map(. // "") | join(" ")')
+              "--jq", '[.permission, .role_name]')
+    try:
+        fields = json.loads(perm) if perm is not None else None
+    except ValueError:
+        fields = None
+    if not isinstance(fields, list):
+        perm = None
     if perm is None:
         refuse("could not confirm that %s (%s) is a collaborator with write access. A bot or an "
                "outside contributor is refused; list a bot you own in FIXER_TRUSTED_LOGINS." % (login, why))
-    if not any(w in OK for w in perm.lower().split()):
+    fields = [f for f in fields if isinstance(f, str) and f]
+    if not any(f.lower() in OK for f in fields):
         refuse("%s (%s) has permission '%s' here, and the fixer only edits code written by "
-               "collaborators with write access or higher." % (login, why, " / ".join(perm.split()) or "none"))
+               "collaborators with write access or higher." % (login, why, " / ".join(fields) or "none"))
 PY
 }
 

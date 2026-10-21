@@ -51,7 +51,8 @@ login in REVIEW_MARKER_AUTHORS (the reviewer's identity), or a login in FIXER_TR
 the repository owns). A lookup that fails counts as no write access. The lookup reads both fields
 the endpoint returns: `permission` holds the legacy values (admin, write, read, none; a maintain
 role reads as write and triage as read) and `role_name` the role itself (admin, maintain, write,
-triage, read, or a custom role). Either one naming admin, maintain or write is write access. Checked
+triage, read, or a custom role). Either field equal to admin, maintain or write (ignoring case) is
+write access; each field is compared whole, so a custom role named "Write Docs" is not. Checked
 against live GitHub on 2026-10-21 for an admin (`{"permission":"admin","role_name":"admin"}`); the
 maintain and triage mapping is GitHub's documented one, not observed here.
 
@@ -211,11 +212,17 @@ def main():
             if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", login, re.ASCII):
                 perm_cache[key] = False
             else:
-                # Both fields: `permission` (legacy) and `role_name` (the role). Either one naming
-                # admin, maintain or write is write access; a failed lookup is no access.
+                # Both fields: `permission` (legacy) and `role_name` (the role), as a JSON array.
+                # Either one equal to admin, maintain or write is write access. Each field is
+                # compared whole: a custom role "Write Docs" is not write. A failed lookup is no access.
                 out = gh("api", "repos/%s/%s/collaborators/%s/permission" % (owner, repo, login),
-                         "--jq", '[.permission, .role_name] | map(. // "") | join(" ")')
-                perm_cache[key] = any(w in WRITE_PERMS for w in (out or "").lower().split())
+                         "--jq", '[.permission, .role_name]')
+                try:
+                    fields = json.loads(out) if out else []
+                except ValueError:
+                    fields = []
+                perm_cache[key] = isinstance(fields, list) and any(
+                    isinstance(f, str) and f.lower() in WRITE_PERMS for f in fields)
         return perm_cache[key]
 
     def who(node):
