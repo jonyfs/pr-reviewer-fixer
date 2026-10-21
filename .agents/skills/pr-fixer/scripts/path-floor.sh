@@ -94,13 +94,35 @@ def unquote(name):
 def strip(name, side):
     return name[2:] if name.startswith(side) else name
 
+QUOTED = r'"(?:[^"\\]|\\.)*"'
+
+def header_paths(rest):
+    """The two paths of a `diff --git` header, prefixes removed, or [] when they cannot be read."""
+    m = (re.fullmatch("(%s) (%s)" % (QUOTED, QUOTED), rest) or re.fullmatch("(%s) (b/.*)" % QUOTED, rest)
+         or re.fullmatch('(a/[^"]*) (%s)' % QUOTED, rest))
+    if m:
+        a, b = unquote(m.group(1)), unquote(m.group(2))
+    else:
+        half = (len(rest) - 5) // 2      # rest is "a/" + X + " b/" + X
+        if len(rest) < 7 or len(rest) % 2 == 0 or rest[:2] != "a/" or rest[2 + half:5 + half] != " b/" \
+                or rest[2:2 + half] != rest[5 + half:]:
+            return []
+        a, b = rest[:2 + half], rest[3 + half:]
+    if not (a.startswith("a/") and b.startswith("b/")):
+        return []
+    return [a[2:], b[2:]]
+
 paths = set()
 if os.environ["X_MODE"] == "git":
     for p in data.decode("utf-8", "replace").split("\0"):
         if p:
             paths.add(p)
 else:
-    lines = data.decode("utf-8", "replace").splitlines()
+    # Only \n ends a line, as in git. str.splitlines() also breaks on \f, \v, a lone \r, \x1c-\x1e,
+    # U+0085 and U+2028/2029, so one of them inside a changed line would start a new line that can
+    # read as a hunk header with a count the author chose, and hide every later path. A trailing \r
+    # (a diff saved with CRLF) is dropped from each line; git quotes a name that ends in \r.
+    lines = [ln[:-1] if ln.endswith("\r") else ln for ln in data.decode("utf-8", "replace").split("\n")]
     rem_old = rem_new = 0
     section_named = None   # None outside a `diff --git` section; else whether it named a path
     def close_section():
@@ -121,12 +143,12 @@ else:
         if ln.startswith("diff --git "):
             close_section()
             section_named = False
-            rest = ln[len("diff --git "):]
-            # Unquoted `a/X b/X` with the same X on both sides (a mode change or a binary file has
-            # no ---/+++ lines): split in the middle. Anything else waits for ---/+++ or rename lines.
-            m = re.fullmatch(r"a/(.+) b/(.+)", rest)
-            if m and m.group(1) == m.group(2):
-                paths.add(m.group(1)); section_named = True
+            # A mode change, an empty file or a binary file has no ---/+++ lines, so the header is
+            # the only place it is named. Each side is C-quoted when git quotes it; an unquoted pair
+            # `a/X b/X` is split in the middle, which holds when X itself contains " b/". A header
+            # that fits none of these waits for ---/+++ or rename lines, and exit 2 when none come.
+            for side in header_paths(ln[len("diff --git "):]):
+                paths.add(side); section_named = True
             continue
         hit = None
         if ln.startswith("--- "):

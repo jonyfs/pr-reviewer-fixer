@@ -559,6 +559,9 @@ lr 1 src/a.ts 11; sed -i.bak '/Declined to judge/d' "$W/lr.md"; "$RC" lint-repor
 check "lint-report no Declined to judge line -> 1" eval '[ $r = 1 ] && grep -q "Declined to judge" "$W/out"'
 lr 1 src/a.ts 11; rm -f "$FAKE_DIR/diff.patch"; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report diff unreadable -> 2" eq "$r" 2
+lf ''; "$RC" lint-report --report "$W/lf.md" --diff "$W/pf-sep.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: a forged hunk header cannot drop the workflow from the floor (W1, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "security (max) mandatory" "$W/out"'
 lr 1 src/a.ts 11; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11 @@\n x\n' >"$W/d.patch"
 "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >/dev/null 2>&1; r=$?
 check "lint-report --diff file, no pull request -> 0" eq "$r" 0
@@ -943,9 +946,45 @@ printf 'diff --git a/.github/workflows/x.yml b/.github/workflows/y.yml\nsimilari
 "$PF" --diff "$W/pf.patch" >"$W/pf.out" 2>&1; r=$?
 check "path-floor --diff: a rename's old path counts; a hunk line that reads like a header does not (I50)" \
   eval '[ $r = 0 ] && pfhas "security max .github/workflows/x.yml" && pfhas "dependencies standard package.json" && ! grep -q mcp "$W/pf.out"'
-printf 'diff --git "a/x y" "b/x z"\nold mode 100644\nnew mode 100755\n' >"$W/pf2.patch"
+printf 'diff --git a/x b/y z\nold mode 100644\nnew mode 100755\n' >"$W/pf2.patch"
 "$PF" --diff "$W/pf2.patch" >/dev/null 2>&1; r=$?
 check "path-floor --diff: a section that names no readable path -> 2, the floor is unknown (I50)" eq "$r" 2
+# W1 (PR #29): only \n ends a line. A form feed, a vertical tab, a lone \r, \x1c-\x1e, U+0085 or
+# U+2028/2029 inside a changed line must not split it into a forged hunk header that swallows the rest.
+for sep in '\f' '\v' '\r' '\x1c' '\xc2\x85' '\xe2\x80\xa8' '\xe2\x80\xa9'; do
+  printf "diff --git a/.aaa b/.aaa\nnew file mode 100644\n--- /dev/null\n+++ b/.aaa\n@@ -0,0 +1 @@\n+x${sep}@@ -1,100 +1,100 @@\ndiff --git a/.github/workflows/evil.yml b/.github/workflows/evil.yml\nnew file mode 100644\n--- /dev/null\n+++ b/.github/workflows/evil.yml\n@@ -0,0 +1 @@\n+on: push\n" >"$W/pf-sep.patch"
+  "$PF" --diff "$W/pf-sep.patch" >"$W/pf.out" 2>&1; r=$?
+  check "path-floor --diff: $(printf '%q' "$sep") inside a changed line forges no hunk header (W1, PR #29)" \
+    eval '[ $r = 0 ] && pfhas "security max .github/workflows/evil.yml"'
+done
+printf 'diff --git a/package.json b/package.json\r\n--- a/package.json\r\n+++ b/package.json\r\n@@ -1 +1,2 @@\r\n x\r\n+y\r\n' >"$W/pf-crlf.patch"
+"$PF" --diff "$W/pf-crlf.patch" >"$W/pf.out" 2>&1; r=$?
+check "path-floor --diff: a header line that ends in \\r names the path without it (W1, PR #29)" \
+  eval '[ $r = 0 ] && pfhas "dependencies standard package.json"'
+# W3 (PR #29): a section with no ---/+++ lines (binary, empty, mode only) names its path in the
+# header alone, quoted when git quotes it and unquoted with " b/" inside. git mode and --diff agree.
+pq="$W/pqrepo"; rm -rf "$pq"; mkdir -p "$pq"
+( cd "$pq" && git init -q && git config user.email t@t && git config user.name t \
+  && echo a >m.sh && git add -A && git commit -qm base \
+  && printf '\000\001' >"log$(printf '\303\263').png" && printf '\000\002' >"x b" && mkdir -p "x b" 2>/dev/null; \
+  printf '\000\003' >"a b" && : >"empty$(printf '\303\263').txt" && : >"e b/x" 2>/dev/null; \
+  chmod +x m.sh && git add -A && git commit -qm change ) >/dev/null 2>&1
+( cd "$pq" && git diff HEAD~1 HEAD ) >"$W/pq.patch"
+"$PF" --diff "$W/pq.patch" >"$W/pq-diff.out" 2>&1; r=$?
+( cd "$pq" && "$PF" HEAD~1 HEAD ) >"$W/pq-git.out" 2>&1; rg=$?
+check "path-floor --diff: a quoted binary or empty file and a name with \" b/\" exit 0, not 2 (W3, PR #29)" \
+  eval '[ $r = 0 ] && [ $rg = 0 ] && grep -q "^diff --git \"a/log" "$W/pq.patch" && grep -q "^diff --git a/a b b/a b$" "$W/pq.patch"'
+printf 'diff --git "a/.github/workflows/w\\303\\251.yml" "b/.github/workflows/w\\303\\251.yml"\nold mode 100644\nnew mode 100755\ndiff --git a/.claude/x b/y b/.claude/x b/y\nnew file mode 100644\nindex 0000000..e69de29\ndiff --git a/CODEOWNERS "b/CODEOWNERS"\nold mode 100644\nnew mode 100755\n' >"$W/pf3.patch"
+"$PF" --diff "$W/pf3.patch" >"$W/pf.out" 2>&1; r=$?
+check "path-floor --diff: header-only sections, quoted, mixed and with \" b/\" in the name, name their paths (W3, PR #29)" \
+  eval "[ \$r = 0 ] && pfhas 'security max .github/workflows/wé.yml' && pfhas 'security max .claude/x b/y' && pfhas 'security max CODEOWNERS'"
+( cd "$pq" && mkdir -p .github/workflows sub && printf '\000' >".github/workflows/b$(printf '\303\263').bin" && echo x >"sub/package.json" \
+  && git add -A && git commit -qm more && git mv sub/package.json "sub/pa ckage.json" && git commit -qm mv ) >/dev/null 2>&1
+( cd "$pq" && git diff HEAD~3 HEAD ) >"$W/pq2.patch"
+"$PF" --diff "$W/pq2.patch" >"$W/pq-diff.out" 2>&1; r=$?
+( cd "$pq" && "$PF" HEAD~3 HEAD ) >"$W/pq-git.out" 2>&1; rg=$?
+check "path-floor: git mode and --diff mode print the same floor for the same change (W3, N2, PR #29)" \
+  eval '[ $r = 0 ] && [ $rg = 0 ] && [ -s "$W/pq-git.out" ] && cmp -s "$W/pq-diff.out" "$W/pq-git.out"'
 "$PF" --diff "$W/missing.patch" >/dev/null 2>&1; r=$?
 check "path-floor --diff: an unreadable diff -> 2 (I50)" eq "$r" 2
 printf 'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n--- a/.github/workflows/ci.yml\n+++ b/.github/workflows/ci.yml\n@@ -1 +1,2 @@\n x\n+y\ndiff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1 +1,2 @@\n x\n+y\n' >"$W/fl.patch"
@@ -988,6 +1027,13 @@ check "lint-report: the line only inside the findings block -> 1, no line (W5, P
 printf '## Review\n\n```text\nMandatory units: security (max): run; dependencies: run\n```\n\n### Coverage note\nDeclined to judge: none\n\n### Summary\nMandatory units: security (max): run; dependencies: run\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/lf.md"
 "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
 check "lint-report: the line in another fence or outside the coverage section -> 1 (W5, PR #29)" eval '[ $r = 1 ] && grep -q "has no .Mandatory units:. line" "$W/out"'
+lf ''; "$RC" lint-report --report "$W/lf.md" --diff "$W/pf-sep.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: a forged hunk header cannot drop the workflow from the floor (W1, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "security (max) mandatory" "$W/out"'
+printf '## Review\n\n### Coverage note\nMandatory units: security (max): run\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 1}\nfindings:\n  - id: N1\n    severity: NOTE\n    file: .github/workflows/evil.yml\n    line: 1\n    claim: "x"\n```\n' >"$W/lf.md"
+printf 'diff --git a/.aaa b/.aaa\nnew file mode 100644\n--- /dev/null\n+++ b/.aaa\n@@ -0,0 +1 @@\n+x\f@@ -1,100 +1,100 @@\ndiff --git a/.github/workflows/evil.yml b/.github/workflows/evil.yml\nnew file mode 100644\n--- /dev/null\n+++ b/.github/workflows/evil.yml\n@@ -0,0 +1 @@\n+on: push\n' >"$W/pf-ff.patch"
+"$RC" lint-report --report "$W/lf.md" --diff "$W/pf-ff.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: a form feed in a changed line does not hide the next file from the anchors (W1, PR #29)" eq "$r" 0
 lr 1 src/a.ts 11; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11 @@\n x\n' >"$W/d.patch"
 "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
 check "lint-report: no mandatory unit in the diff, no Mandatory units line -> 0, as before (I50)" eq "$r" 0

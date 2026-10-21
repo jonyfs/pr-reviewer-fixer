@@ -1958,7 +1958,11 @@ cmd_lint_report() {
 import os, re, sys
 
 report = open(os.environ["X_REPORT"], encoding="utf-8", errors="replace").read()
-diff = open(os.environ["X_DIFF"], encoding="utf-8", errors="replace").read().splitlines()
+# Only \n ends a line, as in git (path-floor.sh splits the same way): splitlines() would also break
+# on \f, \v, a lone \r, \x1c-\x1e, U+0085 and U+2028/2029 inside a changed line, and the piece after
+# it could read as a hunk header that swallows the next files. A trailing \r (CRLF) is dropped.
+diff = [ln[:-1] if ln.endswith("\r") else ln
+        for ln in open(os.environ["X_DIFF"], encoding="utf-8", errors="replace", newline="").read().split("\n")]
 
 def git_path(name, side):
     """A path from a `--- ` or `+++ ` line as git prints it: one trailing tab (git adds it after a
