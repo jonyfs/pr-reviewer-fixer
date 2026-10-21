@@ -92,6 +92,20 @@ prjson OPEN feat/o "$HEAD_OID" false
 r=$(run --findings "$W/rep.md" --allow src/o1.ts --allow src/o2.ts); check "octopus merge (three parents) -> refused (S4)" eval '[ $r = 1 ] && grep -q "octopus" "$W/out"'
 g checkout -q feat/x
 
+# N5 of #26: with a git that reports 2.37.0, no merge commit can be recomputed, so even the evil merge
+# that is otherwise allowed above is refused, naming the version it needs. The wrapper answers only
+# `git version` and hands every other call to the real git.
+REAL_GIT="$(command -v git)"; mkdir -p "$W/oldgit"
+printf '#!/bin/sh\nif [ "$1" = version ] && [ $# -eq 1 ]; then echo "git version 2.37.0"; exit 0; fi\nexec "%s" "$@"\n' "$REAL_GIT" >"$W/oldgit/git"
+chmod +x "$W/oldgit/git"
+g checkout -q feat/e; prjson OPEN feat/e "$HEAD_OID" false "$(g rev-parse main)"
+r=$(PATH="$W/oldgit:$PATH" run --findings "$W/rep.md" --allow src/b.ts)
+check "git 2.37.0: a merge commit is refused, needs git 2.38 (N5 of #26)" \
+  eval '[ $r = 1 ] && grep -q "needs git 2.38 or later" "$W/out"'
+w=$(PATH="$W/oldgit:$PATH" git version)
+check "git 2.37.0 wrapper is the git push-guard sees (N5 of #26)" eq "$w" "git version 2.37.0"
+g checkout -q feat/x
+
 # A rename hides the source path unless renames are turned off.
 g checkout -q -b feat/r "$HEAD_OID"; echo s >"$W/repo/src/secret.yml"; g add -A; g commit -q -m "add secret"
 RENAME_BASE="$(g rev-parse HEAD)"; mkdir -p "$W/repo/tests"; g mv src/secret.yml tests/secret.yml; g commit -q -m "rename"
