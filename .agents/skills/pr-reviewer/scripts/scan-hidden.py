@@ -111,13 +111,16 @@ for cp in list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A)):
 CHAR_RE = re.compile("[" + "".join(re.escape(chr(c)) for c in sorted(CHARS)) + "\U000E0000-\U000E007F]")
 
 DETAILS_RE = re.compile(r"<details\b", re.I)
-# A link reference definition whose destination is `#` or `<>`, in the shapes CommonMark accepts: up to
-# three spaces of indent, inside any blockquote or list item prefix (`> `, `- `, `1. `, nested), a label
-# that may hold an escaped bracket and run over lines, and the destination on the label's line or on
-# the next one (after that line's own prefix).
-_LR_PREFIX = r"(?:[ ]{0,3}(?:>[ ]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+))*"
+# A link reference definition whose destination is `#` or `<>`, in the shapes CommonMark accepts: any
+# indent, inside any blockquote or list item prefix (`> `, `- `, `1. `, nested), a label that may hold an
+# escaped bracket and run over lines, and the destination on the label's line or on the next one (after
+# that line's own prefix). Any indent reports a little more than CommonMark renders (an indented code
+# block), which errs on the side of a hit. Each repetition of the prefix starts at a marker character and
+# no two space quantifiers sit next to each other, so a line of spaced markers that is not a definition
+# fails after one pass over the line instead of trying every split of its spaces.
+_LR_PREFIX = r"[ \t]*(?:(?:>|[-*+][ \t]|\d{1,9}[.)][ \t])[ \t]*)*"
 LINKREF_RE = re.compile(
-    r"^" + _LR_PREFIX + r" {0,3}\[(?:[^\[\]\\]|\\[\s\S]){0,999}\]:[ \t]*(?:\n" + _LR_PREFIX + r")?[ \t]*"
+    r"^" + _LR_PREFIX + r"\[(?:[^\[\]\\]|\\[\s\S]){0,999}\]:[ \t]*(?:\n" + _LR_PREFIX + r")?"
     r"(?:#|<>)(?=[ \t]|$)", re.M)
 INVISIBLE_RE = re.compile(
     r"<[a-z][a-z0-9]*\b[^>]*?(?:"

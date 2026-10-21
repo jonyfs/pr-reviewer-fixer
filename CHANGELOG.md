@@ -15,7 +15,9 @@ Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items
 - `scan-hidden.py` kind `link-ref-comment`: a Markdown link reference definition whose destination
   is `#` or `<>` (`[//]: # (text)`), which GitHub renders as nothing, also with the destination on
   the next line, an escaped `]` or a line break in the label, or inside a blockquote or list item. A
-  definition with a real destination is not reported (#27 N1, #28 W3).
+  definition with a real destination is not reported. The check reads a line of list or blockquote
+  markers in one pass, so a comment of spaced markers that is not a definition cannot stall the scan
+  (#27 N1, #28 W3, W5).
 - `scan-hidden.py --feedback-json <file|->` scans a `fetch-feedback.py` list, which holds the
   review-thread comments and review bodies that `--pr` does not read. The loop runs it before
   dispatching the fixer, and the fixer's comment lane runs it on its own work list (#27 N2).
