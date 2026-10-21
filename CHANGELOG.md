@@ -4,6 +4,62 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.12.0
+
+### Added
+
+- `scripts/scan-hidden.py`, shipped in both skills: reports zero-width characters and BOMs, bidi
+  overrides and isolates (U+202A-U+202E, U+2066-U+2069), Unicode tag characters
+  (U+E0000-U+E007F), HTML comments other than the five protocol marker forms, `<details>` blocks
+  and invisibly styled HTML in the diff's added lines, the PR title, body and comments (through
+  `pr-json.py`) and the commit messages. JSON output, exit 1 on hits, 2 when an input cannot be
+  read. It strips nothing. The verdict marker regex is imported from the gate. Homoglyphs are not
+  detected: without a confusables table the hits would be mostly noise. The loop runs it before the
+  reviewer and the fixer; the reviewer treats each hit as a candidate CRITICAL prompt-injection
+  finding, the fixer as "do not act" (I49).
+- `pr-fixer/scripts/fetch-feedback.py <pr>`: review threads (resolved, outdated, path, line),
+  review bodies and issue comments from GraphQL, with author association, as one JSON list of work
+  items. It fails closed on any truncation. The comment lane works only from it (I26).
+- `review-cycle.sh screen --staged`, `--patch <file>` and `--diff <base> <head>`: the secret screen
+  over the added lines of the staged diff, a given diff, and a pull request from its merge base,
+  printing `path:line kind` per hit and never the value. The fixer screens the staged diff before
+  each commit (I53). The loop screens the pull request before dispatching the reviewer, and each hit
+  is a mandatory CRITICAL "credential committed" finding (I54).
+- `push-guard.sh` screens the added lines of the commits it would push (each commit's own changes)
+  and refuses with reason `secret` (I53).
+- `push-guard.sh` refuses any commit that touches `.github/workflows/**`, `.github/actions/**`,
+  CODEOWNERS (root, `.github/`, `docs/`), `.agents/skills/**`, `.claude/**` or `.mcp.json`, with
+  reason `sensitive-path`, even with `--allow` or a finding naming the file. A person can opt
+  classes in with `PUSH_GUARD_ALLOW_SENSITIVE`; this repository's loop sets `skills` (I51).
+- New suites `tests/scan-hidden/t.py` and `tests/feedback/t.py`.
+
+### Changed
+
+- The comment lane acts only on comments from OWNER, MEMBER or COLLABORATOR authors, the
+  reviewer's login and bots in `FIXER_TRUSTED_LOGINS`; everything else is listed as
+  `not acted: author not trusted` and never fixed (I52).
+- The fixer resolves a review thread only when the reviewer's login or a trusted bot opened it; a
+  thread a person opened gets the reply and stays open (I67).
+- `pr-json.py` also returns the pull request's `title` and `body`, for `scan-hidden.py`.
+- The foreign-edit refusal asks the author to edit the comment back and warns that deleting it would
+  lose any BLOCKED history or highest pass it carried; marker signing stays on the backlog (#26 N2).
+- The permanent stop after a foreign deletion names the way out: a person reads the timeline,
+  closes the pull request and opens a new one from the same branch, where the review starts at
+  pass 1 (#26 N4).
+
+### Fixed
+
+- `start` refuses when `REVIEW_MARKER_AUTHORS` names no login, before the foreign-edit check, so it
+  no longer refuses with a permanent-stop message that names the wrong cause (#26 N1).
+- `export-audit` resolves `--out` with every symbolic link followed and refuses a directory outside
+  the repository top level, so `--out link/` and a committed `docs` link are refused (#26 N3).
+- The git < 2.38 merge refusal in `push-guard.sh` has a test row (#26 N5).
+
+### Not done
+
+- I26 `dup_of` dedupe against the reviewer's findings and automatic re-anchoring of outdated
+  threads; I54 merging `gitleaks` or `trufflehog` output (needs I57's trusted path resolution).
+
 ## 0.11.0
 
 ### Changed
