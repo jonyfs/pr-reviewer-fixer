@@ -96,10 +96,14 @@ later pass resumable and stops the same comment being re-processed.
 |---------|-------------|
 | **fixed** | Reply `Closed in <sha7> (C1)` naming the commit and the finding id; resolve the thread only when the item says `may_resolve: true` |
 | **declined** | Reply `Declined (C1): <reasoning>`; leave the thread open |
-| **escalated** | Reply stating what the human must decide; leave unresolved |
+| **escalated** | Reply `Escalated (C1): <what the person must decide>`; leave unresolved |
 | **not-substantive** | No reply needed; no action |
 
 Rules:
+
+- Start every reply with one of the three forms above, exactly: `Closed in <sha7> (`, `Declined (`
+  or `Escalated (`. `fetch-feedback.py` recognises the fixer's own replies by these prefixes alone
+  (`skip: fixer reply`), so a reply in any other words comes back on the next cycle as a work order.
 
 - Resolve only threads the loop owns: `may_resolve` is true when the thread was opened by the
   reviewer's login (`REVIEW_MARKER_AUTHORS`) or by a bot in `FIXER_TRUSTED_LOGINS`. A thread a

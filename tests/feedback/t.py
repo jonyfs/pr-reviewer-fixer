@@ -151,6 +151,31 @@ rc, out, err = run("7", REVIEW_MARKER_AUTHORS="eve")
 check("a read-only MEMBER named in REVIEW_MARKER_AUTHORS is the reviewer's login -> act (W4)",
       by_id(out)["PRRC_41"]["action"] == "act", by_id(out).get("PRRC_41"))
 
+# ---- W5 (0.12.0 pass 1): every reply form the comment lane prescribes is read back as the fixer's ---
+import re as _re
+TRIAGE = os.path.join(os.path.dirname(FF), "..", "references", "comment-triage.md")
+rows = {}
+for ln in open(TRIAGE, encoding="utf-8"):
+    m = _re.match(r"\| \*\*(fixed|declined|escalated)\*\* \| Reply `([^`]+)`", ln)
+    if m:
+        rows[m.group(1)] = m.group(2)
+check("comment-triage.md prescribes an exact reply for fixed, declined and escalated (W5)",
+      sorted(rows) == ["declined", "escalated", "fixed"], rows)
+fill = {"<sha7>": "abcdef1", "<reasoning>": "the guard already covers it",
+        "<what the person must decide>": "remove the auth check in a.py?"}
+T5 = []
+for i, (k, form) in enumerate(sorted(rows.items())):
+    body = form
+    for a, b in fill.items():
+        body = body.replace(a, b)
+    T5.append(thread("PRRT_5%d" % i, [c("5%d0" % i, "alice", "MEMBER", "please look"), c("5%d1" % i, ME, "OWNER", body)]))
+setup(T5)
+rc, out, err = run("7")
+I = by_id(out)
+check("each prescribed reply, as the reviewer's login posts it -> skip: fixer reply (W5)",
+      rc == 0 and len(T5) == 3 and all(I["PRRC_5%d1" % i]["action"] == "skip: fixer reply" for i in range(len(T5))),
+      [(I.get("PRRC_5%d1" % i) or {}).get("body") for i in range(len(T5))])
+
 # ---- paging and fail-closed ----------------------------------------------------------------
 setup(T, R, C, flags=("ff-page-size=2",))
 rc, out, err = run("7")

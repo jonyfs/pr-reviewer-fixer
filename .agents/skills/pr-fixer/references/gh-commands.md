@@ -82,7 +82,12 @@ gh api repos/{owner}/{repo}/pulls/<n>/comments/<comment_id>/replies \
   -f body="Closed in <sha7> (C1)"
 gh api repos/{owner}/{repo}/pulls/<n>/comments/<comment_id>/replies \
   -f body="Declined (C1): <reasoning>"
+gh api repos/{owner}/{repo}/pulls/<n>/comments/<comment_id>/replies \
+  -f body="Escalated (C1): <what the person must decide>"
 ```
+
+Use these three forms exactly. `fetch-feedback.py` knows the fixer's own replies only by their
+prefix, and any other wording comes back on the next cycle as a comment to act on.
 
 `gh api` is not in the automatic run's allowlist. There, the closure comment carries the same lines
 and the replies wait for a run that has `gh api`.
