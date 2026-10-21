@@ -257,7 +257,11 @@ flowchart TD
    `push-guard.sh <pr> --findings FILE`. The guard refuses when the checked-out branch is not the
    pull request's head, the head is on a fork, the pull request is closed, the push would not be a
    fast-forward, or a commit touches a file no finding names (test files and explicit `--allow`
-   paths are exempt). If the head is not writable, the fixer delivers a patch and replies instead.
+   paths are exempt). A merge commit is checked by the files where it differs from the merge git
+   computes on its own from the two parents (`git merge-tree --write-tree`, git 2.38 or later), so
+   a conflict resolution needs `--allow` and an edit hidden inside a merge is refused. Commits the
+   base branch already holds are not checked. A path with a control character in its name is
+   refused. If the head is not writable, the fixer delivers a patch and replies instead.
 7. **Close the loop.** The push moves the head, and `review-cycle.sh stale` moves the label back to
    `review:pending`. The fixer posts one closure comment carrying
    `<!-- pr-fixer-closure: cycle=… head=… closed=… refused=… debt=… -->`. For each finding it records

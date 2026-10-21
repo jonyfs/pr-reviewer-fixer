@@ -143,8 +143,11 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    `scripts/push-guard.sh <pr> --findings FILE [--allow PATH]...` and push only on exit 0. It refuses
    a checked-out branch that is not the pull request's head, a fork, a closed pull request, a push
    that is not a fast-forward, and a commit that touches a file no finding names (test files and
-   `--allow` paths excepted). If the head is not writable, deliver a patch and replies instead of
-   pushing.
+   `--allow` paths excepted). A merge commit is checked by what it changes beyond git's own merge
+   of its two parents, so pass every file you resolved in a conflict with `--allow`; a merge git
+   cannot recompute (more than two parents, or git older than 2.38) is refused. A touched path with
+   a control character in its name is refused. If the head is not writable, deliver a patch and
+   replies instead of pushing.
 8. **Close the loop.** Pushing moves the head, and `scripts/review-cycle.sh stale` (run it right
    after the push) retires the label to `review:pending`; the fixer never sets a
    label past `review:fixing`. Post **one closure comment** for the cycle with the marker

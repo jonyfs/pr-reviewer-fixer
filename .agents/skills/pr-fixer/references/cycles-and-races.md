@@ -62,8 +62,10 @@ remote_sha=$(git rev-parse "origin/$HEAD_REF")
 
 `scripts/push-guard.sh <pr> --findings FILE` runs this check and three more in one call: the
 checked-out branch is the pull request's head branch, the head is not on a fork, and every file a
-new commit touches is named by a finding, passed with `--allow`, or a test file. It posts nothing
-and exits 1 with every reason when any check fails.
+new commit touches is named by a finding, passed with `--allow`, or a test file. For a merge
+commit, the files it touches are the ones where it differs from git's automatic merge of its two
+parents, so pass the files you resolved by hand with `--allow`. It posts nothing and exits 1 with
+every reason when any check fails.
 
 Rules:
 
