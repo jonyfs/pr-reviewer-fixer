@@ -216,7 +216,7 @@ flowchart TD
     G --> H[Verify, then push-guard.sh]
     H -->|refused| F
     H -->|exit 0| I[Push, then stale:<br/>label back to review:pending]
-    I --> J[One closure comment<br/>with the pr-fixer-closure marker]
+    I --> J[review-cycle.sh screen, then one closure comment<br/>with the pr-fixer-closure marker]
 ```
 
 ### Step by step

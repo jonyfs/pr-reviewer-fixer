@@ -79,7 +79,9 @@ trusted comment deleted by another login stops them for good, since a deletion c
 ## The loop
 
 1. **Read the state.** After a push, `review-cycle.sh stale <pr>` first (see Trigger). Then
-   `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop.
+   `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop. Exit 2 means it could not
+   decide: stop and tell the person what it printed. A trusted comment edited or deleted by
+   another login is one such case, and `start` refuses on it too.
 2. **Take the cycle.** `review-cycle.sh start <pr>`. When `status` reports `review:needs-human`
    and the BLOCKED verdict is still at the head, skip to step 5 instead: `start` refuses there, and
    `budget` decides whether to ask the person.
