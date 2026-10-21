@@ -186,8 +186,9 @@ if (shas.length) {
   }
 }
 // Every link path, to see a target that walks through another link: `..` after a link component
-// leaves for the parent of that link target, which a lexical walk cannot know.
-const linkPaths = new Set([...links.values()].map((l) => l[2]));
+// leaves for the parent of that link target, which a lexical walk cannot know. Folded like every other
+// name here, since APFS and NTFS resolve `A/..` through a link named `a`.
+const linkPaths = new Set([...links.values()].map((l) => fold(l[2])));
 const res = [];
 for (const [mode, sha, p] of links.values()) {
   const cls = classesAt(p); let why = "";
@@ -203,7 +204,7 @@ for (const [mode, sha, p] of links.values()) {
         if (c === "" || c === ".") continue;
         if (c !== "..") { out.push(c); continue; }
         if (!out.length) { unknown = "leaves the repository"; break; }
-        if (linkPaths.has(out.join("/"))) { unknown = "steps back out of another link"; break; }
+        if (linkPaths.has(fold(out.join("/")))) { unknown = "steps back out of another link"; break; }
         out.pop();
       }
       if (!unknown) {

@@ -431,6 +431,15 @@ ulink "a=.agents/q x=a/../skills" src/a.ts
 r=$(run --findings "$W/rep.md")
 check "a link x -> a/../skills where a is a link to .agents/q -> refused, every class (N19 of #27)" \
   eval '[ $r = 1 ] && grep -q "sensitive-path: x (symlink over workflows actions codeowners skills claude mcp, its target steps back out of another link)" "$W/out"'
+# W1 (0.13.0 pass 1): APFS and NTFS ignore case, so `A/..` steps back out of the link `a` too.
+ulink "a=.agents/q x=A/../skills" src/a.ts
+r=$(run --findings "$W/rep.md")
+check "a link x -> A/../skills where a (other case) is a link to .agents/q -> refused, every class (W1)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: x (symlink over workflows actions codeowners skills claude mcp, its target steps back out of another link)" "$W/out"'
+ulink "A=.agents/q x=a/../skills" src/a.ts
+r=$(run --findings "$W/rep.md")
+check "a link x -> a/../skills where A (other case) is a link to .agents/q -> refused, every class (W1)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: x (symlink over workflows actions codeowners skills claude mcp, its target steps back out of another link)" "$W/out"'
 ulink "a=src x=a/../src/b.ts" src/a.ts
 r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions,codeowners,skills,claude,mcp run --findings "$W/rep.md")
 check "the same shape with every class allowed -> ok, the person decided (N19 of #27)" eq "$r" 0
