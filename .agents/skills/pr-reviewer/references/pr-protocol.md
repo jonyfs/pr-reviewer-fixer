@@ -88,8 +88,11 @@ rules decide whether a marker counts, in `status`, `stale`, `start`, `publish`, 
    its author, or by an account GitHub no longer names, counts as BLOCKED history, `budget` answers
    `none` and names the editor and the comment's url, `publish` and `start` refuse and `status`
    answers inconclusive (exit 2), until the comment's
-   author edits it back or deletes it. A new comment does not clear it, and nor does a deletion by
-   anyone else. This holds whether or not the edited body still reads as a marker, so an edit that
+   author edits it back. A new comment does not clear it, and nor does a deletion by anyone else.
+   A deletion by the author clears it too, but it takes the comment out of the count: if it was the
+   only BLOCKED marker or held the highest pass, the BLOCKED history or that pass number is lost
+   with it. So the remedy is to edit it back. Signing the markers would close this gap; it is on
+   the backlog. This holds whether or not the edited body still reads as a marker, so an edit that
    breaks a marker cannot drop it from the count unseen. Deletions are read too: `pr-json.py` pages
    the timeline's `CommentDeletedEvent` items (`actor`, `deletedCommentAuthor`) into
    `deletedComments`, and fails closed like the comment query. A comment by a trusted login deleted

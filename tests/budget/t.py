@@ -257,6 +257,13 @@ rep = os.path.join(d, "report.md"); open(rep, "w").write("## findings\n- one\n")
 p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "7", "--sha", H, "--critical", "1", "--warning", "0", "--note", "0"], d)
 check("a foreign edit: the publish refusal names the comment url and does not suggest a new comment (N6)",
       p.returncode != 0 and URL2 in p.stderr and "restores it with a new comment" not in p.stderr and "a new comment does not clear" in p.stderr, p.stderr)
+# N2 of #26: the remedy is the edit back. Deleting is not offered as a remedy; the message warns that
+# a deletion loses the BLOCKED history and the highest pass, and names signing as the backlog item.
+d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", "mallory"),))
+w = d.get("why", "")
+check("a foreign edit: the remedy is the edit back, deletion is only warned against (N2 of #26)",
+      "jonyfs edits it back" in w and "jonyfs deletes it" not in w and "BLOCKED history" in w
+      and "highest pass" in w and "signing" in w and "backlog" in w, d)
 # N3 of #25: GitHub names no editor (a deleted account); the fake gh reads "-" as a null login.
 d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", "-"),))
 check("a trusted marker edited by an unnamed account -> budget none, edited by unknown",

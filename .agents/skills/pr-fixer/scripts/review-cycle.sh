@@ -580,7 +580,9 @@ parse() {
   MARKER_FOREIGN_WHERE=$(printf '%s' "$m" | cut -d' ' -f15)
 }
 
-# One sentence, no newline, naming the comment a foreign edit touched and the only ways to clear it.
+# One line, no newline, naming the comment a foreign edit touched and the way to clear it. For an
+# edit, deleting the comment also clears it, and the message warns what that loses instead of
+# offering it.
 # `publish`, `start`, `status` and `budget` all print this, so they cannot give different remedies.
 foreign_msg() {
   local who="${MARKER_FOREIGN_AUTHOR:--}" where="${MARKER_FOREIGN_WHERE:--}"
@@ -591,8 +593,8 @@ foreign_msg() {
     return 0
   fi
   [ "$where" != - ] || where="(GitHub gave no url)"
-  printf 'the comment %s by %s was edited by %s, not by its author, so the pass numbers and verdicts cannot be trusted (the edit may have rewritten or broken a verdict marker). A person reads its edit history on GitHub, then %s edits it back or %s deletes it; a new comment does not clear this' \
-    "$where" "$who" "$MARKER_FOREIGN_EDIT" "$who" "$who"
+  printf 'the comment %s by %s was edited by %s, not by its author, so the pass numbers and verdicts cannot be trusted (the edit may have rewritten or broken a verdict marker). A person reads its edit history on GitHub, then %s edits it back to what it said; a new comment does not clear this. Deleting it would clear the stop too, but it takes the comment out of the count: if it was a BLOCKED marker or held the highest pass, that BLOCKED history or that pass number is lost with it, so edit it back instead (signing the markers would close this gap, and it is on the backlog)' \
+    "$where" "$who" "$MARKER_FOREIGN_EDIT" "$who"
 }
 
 # Reads ONE marker, through `MARKER_RE`, from a file or from stdin, and prints
