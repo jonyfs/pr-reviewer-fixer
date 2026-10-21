@@ -21,3 +21,4 @@ tests/fake-gh/triage/state-*/
 tests/push-guard/work-*/
 tests/eval/work-*/
 tests/eval/reports/
+tests/release/work-*/

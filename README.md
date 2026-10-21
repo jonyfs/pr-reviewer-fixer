@@ -409,7 +409,11 @@ Skills specification. It works because the references point to it by path.
 
 Both skills ship under one semantic version. It is in `VERSION`, in `metadata.version` of each
 `SKILL.md`, and in the newest `CHANGELOG.md` entry. Each release is a GitHub release tagged
-`vX.Y.Z`.
+`vX.Y.Z`. When `VERSION` changes on `main`, `.github/workflows/release.yml` runs
+`.github/scripts/release.sh`, one run at a time. It creates the release on that commit, or
+publishes a draft a failed run left for that commit, or attaches the files a published release
+of that commit is missing or holds with a wrong checksum. It marks a release Latest only when no
+published release has a higher version. Each refusal names what to delete before a rerun.
 
 At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
 exists it prints one notice with the release link, and the agent asks you whether to update. The
@@ -619,6 +623,7 @@ flowchart TD
   pr-reviewer/          the reviewer skill (SKILL.md, references/, scripts/, templates/)
   pr-fixer/             the fixer skill (SKILL.md, references/, scripts/, templates/)
 .github/workflows/      the review-gate check and the release workflow. No workflow calls a model
+.github/scripts/        release.sh, the release workflow's logic, tested by tests/release/run.sh
 docs/
   HOW-IT-WORKS.md       what the two skills do, step by step, with diagrams
   ISO-27001-AND-42001.md
@@ -648,12 +653,13 @@ the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report,
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
 checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
-eval scorer and the version check. The suites run at the same time,
+eval scorer, the version check and the release script (`tests/release/run.sh`, which drives
+`.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts your `TEST_TAG` in
 front of each suite's own tag. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
 when it starts, so a value exported in your shell does not change the results. It also
-fails if any workflow, template, script or test names a model action or a provider API key.
+fails if any workflow, workflow script, template, script or test names a model action or a provider API key.
 
 Some `install.sh` rows run only on Linux: the `SKILL.md` and `skill.md` row needs a case-sensitive
 file system, and the bind-mount row also needs root in a container that may mount. On macOS they

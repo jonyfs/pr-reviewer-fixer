@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## What this repository is
 
-Two Agent Skills, `pr-reviewer` and `pr-fixer`, plus the scripts that enforce their protocol. The skills live in `.agents/skills/` and nowhere else. Do not add copies or symlinks under `.claude/skills/`. Almost everything is prose (`SKILL.md` and `references/*.md`) read by a model at run time. The only executable code is a few shell and Python scripts, one gate workflow and one release workflow. `README.md` has the full explanation, install table and caveats.
+Two Agent Skills, `pr-reviewer` and `pr-fixer`, plus the scripts that enforce their protocol. The skills live in `.agents/skills/` and nowhere else. Do not add copies or symlinks under `.claude/skills/`. Almost everything is prose (`SKILL.md` and `references/*.md`) read by a model at run time. The only executable code is a few shell and Python scripts, one gate workflow and one release workflow (whose logic is `.github/scripts/release.sh`). `README.md` has the full explanation, install table and caveats.
 
 ## Commands
 
@@ -18,6 +18,7 @@ bash tests/install/run.sh                                          # install.sh,
 docker run --rm --privileged -v "$PWD":/src:ro -w /src debian:stable-slim bash tests/install/run.sh  # its Linux-only rows
 bash tests/eval/selftest.sh                                        # the review eval scorer, on canned reports
 bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-version.sh
+bash tests/release/run.sh                                          # .github/scripts/release.sh, the release workflow's logic
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt
 python3 tests/scan-hidden/t.py .agents/skills/pr-reviewer/scripts  # scan-hidden.py
 ```
@@ -44,11 +45,12 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
   strips nothing and excludes the protocol's own markers by exact regex, the verdict one imported
   from the gate.
 - `scripts/path-floor.sh` (both skills) maps the paths a change touches to the review units that must run (CI and agent configuration, auth and crypto: security at `max`; migrations: security and data integrity; manifests and lockfiles: dependencies). `review-cycle.sh lint-report` runs it over the diff and refuses a report whose `Mandatory units:` line does not list each unit as run, which is why it ships beside `review-cycle.sh` in both skills.
+- `.github/scripts/release.sh` is what `.github/workflows/release.yml` runs: it creates, completes or publishes the release for `VERSION`, sets Latest only for the highest version, and refuses with a remedy when a tag or a release belongs to another commit. `tests/release/run.sh` drives it against the fake `gh`.
 - `tests/eval/` holds seeded review cases and `score.py`, which prints recall and precision for reports a person produced in a harness session. `tests/run-all.sh` runs only the scorer's own tests, never a model.
 
 **Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `scan-hidden.py`, `path-floor.sh`, `check-version.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
 
-**Who runs the loop.** The review and the fix run as sub-agents of the session's own agent, never in GitHub Actions. `.agents/skills/*/references/harness-loop.md` is the procedure. The only workflows are `templates/review-gate.yml` (a status check that runs no model) and `.github/workflows/release.yml`.
+**Who runs the loop.** The review and the fix run as sub-agents of the session's own agent, never in GitHub Actions. `.agents/skills/*/references/harness-loop.md` is the procedure. The only workflows are `templates/review-gate.yml` (a status check that runs no model) and `.github/workflows/release.yml` (which runs `.github/scripts/release.sh`).
 
 **Cycle budget.** `MAX_REVIEW_CYCLES` (5) and `MAX_REVIEW_CYCLES_HARD` (10) are read by `review-cycle.sh budget`, which computes the next step from the trusted markers. The person answers the extension question in the session; `review-cycle.sh extend` and `halt` record the answer in a marker comment. A PR comment never grants cycles.
 
@@ -83,7 +85,7 @@ Every change to the skills, their scripts or their templates is a new semantic v
    Below 1.0.0, breaking changes bump the minor version.
 4. Run `bash tests/run-all.sh` and `actionlint .github/workflows/*.yml .agents/skills/*/templates/*.yml`.
 5. Open a pull request, then run the review loop on it before the turn ends (see "The review loop" above). The change is reviewed and corrected by the skills it changes. A person reads the verdict and merges.
-6. When `VERSION` lands on `main`, `release.yml` tags `v<version>` and publishes the release. `check-version.sh` in installed copies compares against that release.
+6. When `VERSION` lands on `main`, `release.yml` runs `.github/scripts/release.sh`, which tags `v<version>` and publishes the release. `check-version.sh` in installed copies compares against that release.
 
 Do not merge, tag or publish a release without a person's go-ahead.
 

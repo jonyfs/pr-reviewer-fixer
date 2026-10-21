@@ -28,6 +28,7 @@ start "cycle budget and extend (fixer copy)"     env TEST_TAG="${P}fix" python3 
 start "scan-hidden.py (reviewer copy)"          env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "scan-hidden.py (fixer copy)"             env TEST_TAG="${P}fix" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "check-version.sh (reviewer copy)"         env TEST_TAG="${P}rev" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "release.sh"                                env TEST_TAG="${P}run" bash "$HERE/release/run.sh"
 start "check-version.sh (fixer copy)"            env TEST_TAG="${P}fix" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 wait "${pids[@]}"
 for i in "${!names[@]}"; do
@@ -59,10 +60,10 @@ cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.gith
 # No workflow, template or script may call a model or name a provider key. Review and fix run as
 # agents in a person's own harness session, never in GitHub Actions.
 if grep -rniE 'claude-code-action|codex-action|anthropic_api_key|openai_api_key|fixer_push_token|anthropics/|openai/codex' \
-     "$ROOT/.github/workflows" "$ROOT"/.agents/skills/*/templates "$ROOT"/.agents/skills/*/scripts "$ROOT/tests" \
+     "$ROOT/.github/workflows" "$ROOT/.github/scripts" "$ROOT"/.agents/skills/*/templates "$ROOT"/.agents/skills/*/scripts "$ROOT/tests" \
      --exclude=run-all.sh >/dev/null; then
   echo "== a model action or provider key appears in a workflow, template, script or test"; fail=1
 else
-  echo "== no model action or provider key in workflows, templates, scripts or tests"
+  echo "== no model action or provider key in workflows, workflow scripts, templates, scripts or tests"
 fi
 exit $fail

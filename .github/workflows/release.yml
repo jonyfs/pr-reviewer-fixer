@@ -1,5 +1,6 @@
 # Tags and publishes the version in VERSION when it lands on main. Runs only when VERSION changed.
-# A release is what check-version.sh compares against, so the tag must match VERSION exactly.
+# The logic is in .github/scripts/release.sh (tested by tests/release/run.sh against a fake gh); its
+# header lists the four states a release can be in and what each run does.
 name: release
 
 on:
@@ -10,78 +11,19 @@ on:
 permissions:
   contents: write
 
+# The lookups and the writes in release.sh are not atomic, so two runs never overlap. A queued run
+# waits instead of cancelling the one in progress, which may be half way through a release.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Create the release if the tag does not exist
+      - name: Create, complete or publish the release for VERSION
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < VERSION)"
-          case "$version" in
-            [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "VERSION is not x.y.z: $version" >&2; exit 1 ;;
-          esac
-          for skill in pr-reviewer pr-fixer; do
-            found="$(grep -m1 -E '^  version:' ".agents/skills/$skill/SKILL.md" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')"
-            [ "$found" = "$version" ] || { echo "$skill metadata.version is $found, VERSION is $version" >&2; exit 1; }
-          done
-          # The archive is what a person downloads; SHA256SUMS lets them check it arrived intact.
-          # It proves the file matches what this workflow built, not who wrote the code.
-          archive="pr-reviewer-fixer-$version.tar.gz"
-          git archive --format=tar.gz --prefix="pr-reviewer-fixer-$version/" -o "$RUNNER_TEMP/$archive" "$GITHUB_SHA"
-          (cd "$RUNNER_TEMP" && sha256sum "$archive" > SHA256SUMS)
-          exists=no
-          if gh release view "v$version" >/dev/null 2>&1; then
-            exists=yes
-            # Plain assignments, so `set -e` stops the step when a lookup fails.
-            draft="$(gh release view "v$version" --json isDraft --jq .isDraft)"
-            target="$(gh release view "v$version" --json targetCommitish --jq .targetCommitish)"
-            assets="$(gh release view "v$version" --json assets --jq '.assets[].name')"
-            # A published release with SHA256SUMS is complete whatever commit its tag is on, so a
-            # later push that leaves VERSION unchanged stays green and needs no tag lookup.
-            if [ "$draft" != true ] && printf '%s\n' "$assets" | grep -qx SHA256SUMS; then
-              echo "v$version already released from $target"; exit 0
-            fi
-          fi
-          # The commit the tag points to, which is what a published release ships: GitHub ignores
-          # target_commitish once the tag exists. matching-refs answers an empty list when there is no
-          # tag and fails on any other error, which stops the step here. It matches by prefix, so only
-          # the exact ref counts, and an annotated tag is followed to its commit.
-          refs="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v$version" --jq '.[] | "\(.ref) \(.object.type) \(.object.sha)"')"
-          tag_sha=""
-          while read -r ref type sha; do
-            [ "$ref" = "refs/tags/v$version" ] || continue
-            if [ "$type" = tag ]; then
-              deref="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq '"\(.object.type) \(.object.sha)"')"
-              type="${deref%% *}"; sha="${deref#* }"
-            fi
-            [ "$type" = commit ] && [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "tag v$version resolves to '$type $sha', not a commit" >&2; exit 1; }
-            tag_sha="$sha"
-          done <<< "$refs"
-          if [ -n "$tag_sha" ] && [ "$tag_sha" != "$GITHUB_SHA" ]; then
-            echo "tag v$version is on $tag_sha, not $GITHUB_SHA; delete or move the tag (and its release), then rerun" >&2; exit 1
-          fi
-          if [ "$exists" = yes ]; then
-            if [ "$draft" = true ]; then
-              # `gh release create` uploads the files to a draft and publishes it last, so a failure in
-              # that last call leaves a draft. A rerun publishes it, but only the draft this commit made.
-              [ "$target" = "$GITHUB_SHA" ] || { echo "draft v$version targets $target, not $GITHUB_SHA; delete the draft, then rerun" >&2; exit 1; }
-              gh release upload "v$version" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/SHA256SUMS" --clobber
-              gh release edit "v$version" --draft=false
-              echo "v$version was a draft; files attached and published"
-            else
-              # A rerun after a failed upload attaches the files a release is missing, but only to the
-              # release of this commit.
-              [ "$target" = "$GITHUB_SHA" ] && [ -n "$tag_sha" ] || { echo "v$version targets $target (tag on ${tag_sha:-nothing}), not $GITHUB_SHA; delete the release, then rerun" >&2; exit 1; }
-              gh release upload "v$version" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/SHA256SUMS" --clobber
-            fi
-            exit 0
-          fi
-          awk -v v="$version" '$1 == "##" && ($2 == v || $2 == "[" v "]") {f=1; next} f && /^## /{exit} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          [ -s "$RUNNER_TEMP/notes.md" ] || { echo "CHANGELOG.md has no entry for $version" >&2; exit 1; }
-          gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --notes-file "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/SHA256SUMS"
+        run: bash .github/scripts/release.sh
