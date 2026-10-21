@@ -163,12 +163,15 @@ sequenceDiagram
   count too. Links are refused rather than followed: if the pull request head or the local HEAD
   holds a symlink or a gitlink at one of those paths or at a parent (`.claude/skills -> ../skills`,
   `.agents`, `.github`), or a symlink whose target points at, into or above one, holds a non-ASCII
-  byte or leaves the repository, the whole push is refused. A person can opt one class in with
+  byte, leaves the repository or steps back with `..` out of another link, the whole push is
+  refused. A link name or target holding a control character is printed quoted. A commit whose
+  changes git cannot show makes the check inconclusive (exit 2), never a pass. A person can opt one class in with
   `PUSH_GUARD_ALLOW_SENSITIVE` (for example `skills` in a repository of skills, as this one is).
 - Reads review comments through `scripts/fetch-feedback.py`, which lists every thread, review and
   comment with its author association. It acts only on comments from an OWNER, a MEMBER or
   COLLABORATOR with write access, the reviewer's login or a bot in `FIXER_TRUSTED_LOGINS`; anything else is listed as
-  `not acted: author not trusted`. It resolves only threads the reviewer or a trusted bot opened; a
+  `not acted: author not trusted`. A minimized comment and a dismissed review are skipped. It
+  scans that list for hidden text with `scan-hidden.py --feedback-json`. It resolves only threads the reviewer or a trusted bot opened; a
   person's thread gets a reply and stays open.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
 
@@ -330,16 +333,22 @@ The `review-gate` template and the references call the scripts at
 `.agents/skills/pr-reviewer/scripts/`. If you install elsewhere, replace that prefix in the files
 you copy.
 
-Claude Code reads `.claude/skills/`, not `.agents/skills/`. `install.sh --harness claude-code` puts
-them there. If you copied by hand, link the skills in your own repository:
+Claude Code reads `.claude/skills/`, not `.agents/skills/`. Install for it with
+`install.sh --harness claude-code`, which copies the skills there, or copy them by hand:
 
 ```bash
 mkdir -p .claude/skills
-ln -s ../../.agents/skills/pr-reviewer .claude/skills/pr-reviewer
-ln -s ../../.agents/skills/pr-fixer .claude/skills/pr-fixer
+cp -R ~/pr-reviewer-fixer/.agents/skills/pr-reviewer ~/pr-reviewer-fixer/.agents/skills/pr-fixer .claude/skills/
 ```
 
-Without the link, tell the agent to read `.agents/skills/<skill>/SKILL.md`.
+Do not commit a symbolic link such as `.claude/skills/pr-fixer -> ../../.agents/skills/pr-fixer`.
+`push-guard.sh` refuses every push from a branch whose tree holds a link at a sensitive path or one
+pointing into one (`.claude/**` is class `claude`, `.agents/skills/**` class `skills`), since a link
+can move the files the automation runs to a place no rule covers. With such a link committed, every
+fixer push is refused with `sensitive-path` until a person sets
+`PUSH_GUARD_ALLOW_SENSITIVE=skills,claude`. A link you keep untracked (listed in
+`.git/info/exclude`) is not in any tree and does not refuse anything. Without a copy under
+`.claude/skills/`, tell the agent to read `.agents/skills/<skill>/SKILL.md`.
 
 To install for every repository instead, copy the folders to the user path of your harness from the
 table below, for example `~/.claude/skills/` for Claude Code or `~/.agents/skills/` for Codex. The
@@ -348,12 +357,15 @@ described above.
 
 ### Check the install
 
-From the repository, with the labels created once per repository:
+From the repository, with the labels created once per repository. `SKILLS` is the folder you
+installed into: `.agents/skills` by default, `.claude/skills` after `install.sh --harness
+claude-code`, or the project path of your harness in the table below.
 
 ```bash
+SKILLS=.agents/skills        # .claude/skills for Claude Code
 export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"
-.agents/skills/pr-reviewer/scripts/review-cycle.sh ensure-labels
-.agents/skills/pr-reviewer/scripts/review-cycle.sh status <pull-request-number>
+"$SKILLS/pr-reviewer/scripts/review-cycle.sh" ensure-labels
+"$SKILLS/pr-reviewer/scripts/review-cycle.sh" status <pull-request-number>
 ```
 
 `ensure-labels` creates the six `review:*` labels. `status` reports what is owed on the pull
@@ -410,7 +422,8 @@ to turn the check off. It is also skipped when `CI` or `GITHUB_ACTIONS` is `true
 ## Run it by hand
 
 From the branch of an open pull request, name the skill in your harness. The prefix depends on the
-harness: `/pr-reviewer` in Claude Code, `$pr-reviewer` in Codex (the table above lists the others).
+harness: `/pr-reviewer` in Claude Code, `$pr-reviewer` in Codex. For the others, see the harness's
+own documentation; the Notes column of the table above says where invocation was not verified.
 
 ```text
 /pr-reviewer          review the open pull request and publish the verdict
@@ -484,13 +497,16 @@ sandbox and permission allowlist), and this project does not simulate it. `refer
 ### Audit evidence
 
 `review-cycle.sh publish` refuses a report that contains a token or private key (GitHub, AWS, Slack,
-Stripe, Google, JWT, `sk-` keys, bearer headers) and tells you to replace it with `[REDACTED]`. It
+Stripe, Google API keys and OAuth tokens, npm, GitLab, JWT, `sk-` keys, bearer headers whose value
+is not a placeholder such as `${TOKEN}`) or a password assignment (`password = "<a quoted value of
+eight or more characters>"`, or `DB_PASSWORD=<value>` at the start of a line; a value that reads as
+code, a path or a placeholder is not counted), and tells you to replace it with `[REDACTED]`. It
 does not rewrite the report, and it does not screen high-entropy strings, because a commit SHA would
 always match. `lint-report` applies the same screen, and `review-cycle.sh screen --file <file>`
 applies it to any other text an agent posts: the fixer screens its closure comment and the new PR
 body (with the `pr-debt` block) before posting them, and the reviewer screens an overflow comment.
 It exits 0 when the text is clean, 1 naming the kind of secret (never the value) and 2 when the
-file cannot be read. `screen --staged`, `screen --patch <file>` and `screen --diff <base> <head>` apply it to the added
+file cannot be read, the screen fails or the command is used wrongly, so 1 always means a hit. `screen --staged`, `screen --patch <file>` and `screen --diff <base> <head>` apply it to the added
 lines of the staged diff, of a given diff and of the pull request (from the merge base), printing `path:line kind` for each hit: the fixer screens
 every commit, `push-guard.sh` screens the commits it is about to push, and the loop screens the pull
 request before the reviewer starts, each hit becoming a CRITICAL finding. A text posted by hand
@@ -625,7 +641,9 @@ triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comme
 checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
 eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
-start two runs of one suite with different `TEST_TAG` values. It also
+start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts your `TEST_TAG` in
+front of each suite's own tag. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
+when it starts, so a value exported in your shell does not change the results. It also
 fails if any workflow, template, script or test names a model action or a provider API key.
 
 Some `install.sh` rows run only on Linux: the `SKILL.md` and `skill.md` row needs a case-sensitive

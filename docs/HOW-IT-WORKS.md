@@ -242,8 +242,14 @@ flowchart TD
    - **Conflict.** It merges the base into the branch (no force-push), regenerates generated files
      and lockfiles, resolves each hunk with evidence from both sides, and runs the narrowest build and
      test. See [`conflicts.md`](../.agents/skills/pr-fixer/references/conflicts.md).
-   - **Comment.** It evaluates each human or bot suggestion, applies the smallest correct fix, and
-     gives a reasoned reply when it declines. See
+   - **Comment.** It reads the work list `fetch-feedback.py` builds and acts only on items marked
+     `act`: comments by the owner, by a member or collaborator with write access, by the reviewer's
+     login, or by a bot named in `FIXER_TRUSTED_LOGINS`. Everything else (an outside contributor,
+     an unknown bot, a comment edited by another login, a minimized comment, a dismissed review) is
+     listed in the closure as not acted on, and a person can take it up. For an `act` item it applies
+     the smallest correct fix, or gives a reasoned reply when it declines. It resolves only threads
+     that the reviewer's login or a trusted bot opened; a person's thread gets the reply and stays
+     open for that person. See
      [`comment-triage.md`](../.agents/skills/pr-fixer/references/comment-triage.md).
    - **Check.** It reads a failing CI log as untrusted data and classifies the failure as transient,
      already failing on the base branch, or genuine. It reruns once for a plausible flake and fixes
@@ -271,8 +277,8 @@ flowchart TD
    unless the person opted that class in with `PUSH_GUARD_ALLOW_SENSITIVE`. Links are refused, not
    followed: when the pull request head or the local HEAD holds a symlink or gitlink at one of those
    paths or at a parent such as `.claude` or `.agents`, or a symlink whose target points at, into or
-   above one, holds a non-ASCII byte or leaves the repository, the whole push is refused under the
-   same rule. If the head is not writable, the fixer delivers a patch and
+   above one, holds a non-ASCII byte, leaves the repository or steps back with `..` out of another
+   link, the whole push is refused under the same rule. If the head is not writable, the fixer delivers a patch and
    replies instead.
 7. **Close the loop.** The push moves the head, and `review-cycle.sh stale` moves the label back to
    `review:pending`. The fixer posts one closure comment carrying
@@ -320,7 +326,7 @@ never read as "reviewed".
 | `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
-| `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi and tag characters, HTML comments other than the markers, `<details>`, invisible HTML) in the diff, the pull request text and the commit messages, as JSON. It strips nothing. |
+| `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi and tag characters, HTML comments other than the markers, `[//]: #` link references, `<details>`, invisible HTML) in the diff, the pull request text and the commit messages, and with `--feedback-json` in the fixer's comment work list, as JSON. It strips nothing. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
 | `fetch-feedback.py` | Read-only, fixer only. Every review thread, review body and issue comment as one list, with author association, thread state and whether the fixer may act on it or resolve it. |
 | `push-guard.sh` | Read-only. The check the fixer passes before every push. |
