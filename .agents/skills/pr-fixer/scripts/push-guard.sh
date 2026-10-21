@@ -17,7 +17,9 @@
 #   4. every file touched by a commit made on top of that head is in scope: named by a `file:` entry
 #      in an open entry of the report's `findings` block (--findings), given with --allow (plain
 #      relative paths, no globs), or a test file (under a test, tests, spec or __tests__ directory,
-#      or named x_test.*, x.test.*, x.spec.* or test_x.*). A merge
+#      or named x_test.*, x.test.*, x.spec.* or test_x.*). A path matches a scope entry only when the
+#      two are equal byte for byte, and a touched path holding a control character (a newline, a tab)
+#      is refused outright. A merge
 #      commit is not scope-checked, and neither is a commit the base branch already holds, since a
 #      conflict merge brings in the base's files; pass the conflicted files with --allow and read the
 #      merge yourself. When the base commit is not in the clone, the base's own commits are checked
@@ -84,16 +86,31 @@ if [ -n "$FINDINGS" ]; then
     flush();
     for (const f of out) {
       const p = f.replace(/^\.\//, "");
-      if (p.startsWith("/") || p.split("/").includes("..") || /[*?\[\]\n]/.test(p)) continue;
+      if (p.startsWith("/") || p.split("/").includes("..") || /[*?\[\]\x00-\x1f\x7f]/.test(p)) continue;
       console.log(p);
     }
   ' "$FINDINGS" >>"$SCOPE" || { echo "push-guard: --findings has no fenced findings block, INCONCLUSIVE" >&2; exit 2; }
 fi
+# A control character (newline, tab, ...) is refused in every name: in a scope entry, and below in a
+# touched path. The C locale makes the byte range below mean bytes 1-31 and 127 and nothing else.
+CTRL=$'\001'-$'\037'$'\177'
 for a in "${ALLOW[@]+"${ALLOW[@]}"}"; do
   a="${a#./}"
   case "$a" in ''|/*|..|../*|*/..|*/../*|*[\*\?\[]*) echo "push-guard: --allow '$a' must be a plain relative path, REFUSED" >&2; exit 1 ;; esac
+  if (LC_ALL=C; case "$a" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then
+    echo "push-guard: --allow $(printf '%q' "$a") holds a control character, REFUSED" >&2; exit 1
+  fi
   printf '%s\n' "$a" >>"$SCOPE"
 done
+# The scope as a list of exact names, one per line of $SCOPE (no entry can hold a newline). A touched
+# path is in scope only when it equals one entry byte for byte: no pattern, no prefix, no splitting.
+SCOPE_LIST=()
+while IFS= read -r s; do [ -n "$s" ] && SCOPE_LIST+=("$s"); done <"$SCOPE"
+in_scope() {
+  local s
+  for s in "${SCOPE_LIST[@]+"${SCOPE_LIST[@]}"}"; do [ "$s" = "$1" ] && return 0; done
+  return 1
+}
 # A test file lives under a test, tests, spec or __tests__ directory, or its own name says so
 # (x_test.ext, x.test.ext, x.spec.ext, test_x.ext). The name is the last path segment only.
 is_test() {
@@ -104,7 +121,7 @@ is_test() {
   return 1
 }
 
-OUT=()
+OUT=() BADNAME=()
 # Commits the base branch already holds came in through a merge of the base; they are not the fixer's.
 EXCL=()
 if [ -n "$BASE_OID" ] && git cat-file -e "$BASE_OID^{commit}" 2>/dev/null; then EXCL=(--not "$BASE_OID"); fi
@@ -113,11 +130,15 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     [ -n "$c" ] || continue
     while IFS= read -r -d '' f; do
       [ -n "$f" ] || continue
-      grep -Fxq -- "$f" "$SCOPE" && continue
+      if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(printf '%q' "$f")"); continue; fi
+      in_scope "$f" && continue
       is_test "$f" && continue
       OUT+=("$f")
     done < <(git show --no-renames --name-only -z --format= "$c" 2>/dev/null)
   done < <(git rev-list --no-merges "$HEAD_OID..HEAD" ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null)
+fi
+if [ "${#BADNAME[@]}" -gt 0 ]; then
+  REASONS+=("touched paths with a control character in the name, never pushed: ${BADNAME[*]}")
 fi
 if [ "${#OUT[@]}" -gt 0 ]; then
   REASONS+=("files outside the findings' scope: $(printf '%s\n' "${OUT[@]}" | sort -u | paste -sd' ' -)")
