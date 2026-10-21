@@ -104,9 +104,10 @@
 #                          posts nothing. Exit 1 on a problem, 2 when it could not read an input.
 #     screen --file <file> runs the secret screen `publish` and `lint-report` use over any text an
 #                          agent is about to post (closure comment, `pr-debt` body, overflow
-#                          comment). Exit 0 clean, 1 when it holds a token or private key (the
-#                          kind is named, never the value), 2 when the file cannot be read.
-#                          Posts nothing.
+#                          comment). Exit 0 clean, 1 when it holds a token, a private key or a
+#                          password assignment (the kind is named, never the value), 2 when the
+#                          file cannot be read, the screen itself fails, or the usage is wrong
+#                          (1 always means a hit). Posts nothing.
 #     screen --staged      the same screen over the added lines of `git diff --cached` (the fixer
 #                          runs it before each commit); prints `path:line kind` per hit
 #     screen --patch <file>
@@ -403,8 +404,15 @@ marker_authors_active() { case "${REVIEW_MARKER_AUTHORS:-}" in *[!\ $'\t\r\n']*)
 marker_authors_ready() { [ -n "$(marker_authors)" ]; }
 NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
 # One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
-# state `parse()` found, joined by spaces, and gh takes one name per flag, so a pull request that
-# carries two states at once leaves with exactly the one the caller asked for.
+# state `parse()` found, joined by spaces. Passed as one `--remove-label` value, that space-joined
+# string would be split by the shell into a label name and a stray positional argument, which `gh pr
+# edit` refuses; one flag per state leaves the pull request with exactly the one the caller asked for.
+#
+# The callers expand `$(remove_states_except ...)` unquoted on purpose: word splitting is what turns
+# the output into separate arguments. That is safe only because every word in `$LABEL` matched
+# `$STATES_RE` in parse(), which admits the five literal `review:<state>` names and nothing else: no
+# space, no glob character (`*`, `?`, `[`) and no quote can reach the expansion. Widen STATES_RE and
+# this stops being true.
 remove_states_except() {
   local l
   for l in $LABEL; do [ "$l" = "$1" ] || printf -- '--remove-label %s ' "$l"; done
@@ -1247,13 +1255,17 @@ for login, why in principals.items():
         refuse("%s has no linked GitHub login, so the fixer cannot tell who wrote it." % why)
     if login in trusted:
         continue
-    perm = gh("api", "repos/{owner}/{repo}/collaborators/%s/permission" % login, "--jq", ".permission")
+    # Both fields the endpoint returns: `permission` holds the legacy values (a maintain role reads
+    # as write, triage as read) and `role_name` the role. Either one naming admin, maintain or write
+    # is write access.
+    perm = gh("api", "repos/{owner}/{repo}/collaborators/%s/permission" % login,
+              "--jq", '[.permission, .role_name] | map(. // "") | join(" ")')
     if perm is None:
         refuse("could not confirm that %s (%s) is a collaborator with write access. A bot or an "
                "outside contributor is refused; list a bot you own in FIXER_TRUSTED_LOGINS." % (login, why))
-    if perm.strip() not in OK:
+    if not any(w in OK for w in perm.lower().split()):
         refuse("%s (%s) has permission '%s' here, and the fixer only edits code written by "
-               "collaborators with write access or higher." % (login, why, perm.strip()))
+               "collaborators with write access or higher." % (login, why, " / ".join(perm.split()) or "none"))
 PY
 }
 
@@ -1341,7 +1353,60 @@ cmd_stale() {
 report_secrets() {
   X_FILE="$1" X_MODE="${2:-text}" python3 -I - <<'PY'
 import os, re, sys
+# Exit 1 means "a hit". Anything that goes wrong in here (an unreadable file, a bug) exits 2, so a
+# caller never reads a crash as a secret found, or as a clean text.
+def crash(kind, value, tb):
+    sys.stderr.write("review-cycle: the secret screen failed (%s: %s)\n" % (kind.__name__, value))
+    os._exit(2)
+sys.excepthook = crash
 text = open(os.environ["X_FILE"], encoding="utf-8", errors="replace").read()
+# A placeholder, never a value: `$NAME`, `${NAME}`, `<anything>`, `[REDACTED]`, `{{ x }}`, `%(x)s`,
+# a run of `*` or `x`, or a word that says it is an example.
+PLACEHOLDER = re.compile(r"(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*|<[^<>\s]*>|\[REDACTED\]|\{\{.*\}\}|%\(\w+\)s|\*+|[xX]+)$")
+PLACEHOLDER_WORDS = ("example", "placeholder", "redacted", "changeme", "change-me", "change_me", "your-", "your_", "dummy")
+def placeholder(v):
+    return bool(PLACEHOLDER.match(v)) or any(w in v.lower() for w in PLACEHOLDER_WORDS)
+BEARER = re.compile(r"(?i)\bauthorization:\s*bearer\s+([^\s`'\"]{20,})")
+def bearer(s):
+    return any(not placeholder(m.group(1)) for m in BEARER.finditer(s))
+# A password or passwd key assigned a quoted value of eight or more characters
+# (`password = "..."`, `"db_password": "..."`), or, at the start of a line (an .env, ini or YAML
+# file), an unquoted one. An unquoted value that reads as code is not a password: an identifier or a
+# dotted name (`self.password`), a path (`/etc/passwd`), or anything with a call, an index or a
+# brace in it. Placeholders do not count either.
+PW_KEY = r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9_.-]*(?:password|passwd)"
+PW_QUOTED = re.compile(PW_KEY + r"[\"']?\s*[:=]\s*([\"'])([^\"'\s]{8,})\1")
+PW_BARE = re.compile(r"(?im)^\s*(?:export\s+)?" + PW_KEY[4:] + r"\s*[:=]\s*([^\s\"'`#;,]{8,})\s*$")
+CODE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$|[/~][A-Za-z0-9_./~-]*$")
+def password(s):
+    if any(not placeholder(m.group(2)) for m in PW_QUOTED.finditer(s)):
+        return True
+    for m in PW_BARE.finditer(s):
+        v = m.group(1)
+        if not (placeholder(v) or CODE.match(v) or re.search(r"[(){}\[\]]", v)):
+            return True
+    return False
+def git_path(name):
+    """A path from a `+++ ` line as git prints it: one trailing tab (git adds it after a name with a
+    space) dropped, a C-quoted name decoded, the `b/` prefix removed. None for /dev/null."""
+    if name.endswith("\t"):
+        name = name[:-1]
+    if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
+        out, i, body = bytearray(), 0, name[1:-1]
+        esc = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+        while i < len(body):
+            if body[i] == "\\" and i + 1 < len(body):
+                if body[i + 1] in esc:
+                    out.append(esc[body[i + 1]]); i += 2; continue
+                if re.fullmatch(r"[0-7]{3}", body[i + 1:i + 4]):
+                    out.append(int(body[i + 1:i + 4], 8) & 0xFF); i += 4; continue
+            out += body[i].encode("utf-8"); i += 1
+        name = out.decode("utf-8", "replace")
+    if name == "/dev/null":
+        return None
+    return name[2:] if name.startswith("b/") else name
+def hit(p, s):
+    return p(s) if callable(p) else re.search(p, s)
 pats = {
     "GitHub token": r"(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})",
     "AWS access key id": r"(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Za-z0-9])",
@@ -1354,7 +1419,8 @@ pats = {
     "npm token": r"(?<![A-Za-z0-9])npm_[A-Za-z0-9]{36}",
     "GitLab token": r"(?<![A-Za-z0-9])glpat-[A-Za-z0-9_-]{20,}",
     "Google OAuth token": r"(?<![A-Za-z0-9])ya29\.[A-Za-z0-9_-]{20,}",
-    "bearer credential": r"(?i)\bauthorization:\s*bearer\s+[^\s`'\"]{20,}",
+    "bearer credential": bearer,
+    "password assignment": password,
 }
 if os.environ["X_MODE"] == "patch":
     # Added lines only, numbered on the new side from each `@@ -a,b +c,d @@` header. A removed line
@@ -1368,7 +1434,7 @@ if os.environ["X_MODE"] == "patch":
             if raw.startswith("+"):
                 rem_new -= 1
                 for name, p in pats.items():
-                    if re.search(p, raw[1:]):
+                    if hit(p, raw[1:]):
                         found.append("%s:%d %s" % (path or "?", n, name))
                 n += 1
             elif raw.startswith("-"):
@@ -1379,8 +1445,7 @@ if os.environ["X_MODE"] == "patch":
                 n += 1
             continue
         if raw.startswith("+++ "):
-            p = raw[4:]
-            path = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
+            path = git_path(raw[4:])
             continue
         h = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
         if h:
@@ -1391,7 +1456,7 @@ if os.environ["X_MODE"] == "patch":
         print("\n".join(found))
         sys.exit(1)
     sys.exit(0)
-hits = [name for name, p in pats.items() if re.search(p, text)]
+hits = [name for name, p in pats.items() if hit(p, text)]
 if hits:
     print(", ".join(hits))
     sys.exit(1)
@@ -1401,26 +1466,30 @@ PY
 # The same screen, for every other text an agent posts to the pull request: the fixer's closure
 # comment, the `pr-debt` body edit, an overflow comment beside a long report. Exit 0 = clean, 1 = it
 # holds something that looks like a secret (the kind is named, the value never printed), 2 = the
-# file could not be read. Posts nothing.
+# file could not be read, the screen failed, or the usage is wrong. Posts nothing.
 #
 # The other forms screen only the ADDED lines of a diff and print each hit as `path:line kind`:
 # `--staged` reads `git diff --cached` (the fixer runs it before each commit), `--diff <base>
 # <head>` reads `git diff <base>...<head>` from the merge base (the loop runs it on the pull request
 # before the reviewer starts), and `--patch <file>` reads a unified diff it is handed (push-guard.sh
-# gives it the commits it is about to push). Exit 2 when git cannot produce the diff.
+# gives it the commits it is about to push). Exit 2 when git cannot produce the diff, as for a
+# usage error.
 SCREEN_USAGE="review-cycle: usage: review-cycle.sh screen --file <file> | --staged | --patch <file> | --diff <base> <head>"
 cmd_screen() {
   local file="" mode="" base="" head=""
+  # A usage error exits 2, never 1: 1 is reserved for "it holds a secret", so a caller that branches
+  # on the code cannot take a typo for a hit, or a hit for a typo.
+  usage2() { echo "$1" >&2; exit 2; }
   while [ $# -gt 0 ]; do
-    [ -z "$mode" ] || die "$SCREEN_USAGE"
+    [ -z "$mode" ] || usage2 "$SCREEN_USAGE"
     case "$1" in
-      --file|--patch) [ $# -ge 2 ] || die "review-cycle: $1 needs a value"; mode="${1#--}"; file="$2"; shift 2 ;;
+      --file|--patch) [ $# -ge 2 ] || usage2 "review-cycle: $1 needs a value"; mode="${1#--}"; file="$2"; shift 2 ;;
       --staged) mode=staged; shift ;;
-      --diff) [ $# -ge 3 ] || die "review-cycle: --diff needs <base> and <head>"; mode=diff; base="$2"; head="$3"; shift 3 ;;
-      *) die "$SCREEN_USAGE" ;;
+      --diff) [ $# -ge 3 ] || usage2 "review-cycle: --diff needs <base> and <head>"; mode=diff; base="$2"; head="$3"; shift 3 ;;
+      *) usage2 "$SCREEN_USAGE" ;;
     esac
   done
-  [ -n "$mode" ] || die "$SCREEN_USAGE"
+  [ -n "$mode" ] || usage2 "$SCREEN_USAGE"
   if [ "$mode" != file ]; then
     local pf="$file" what="$file" rc leaked
     if [ "$mode" = staged ] || [ "$mode" = diff ]; then
@@ -1453,11 +1522,13 @@ cmd_screen() {
   fi
   [ -n "$file" ] && [ -f "$file" ] && [ -r "$file" ] \
     || { echo "review-cycle: screen needs --file <file> that exists and is readable" >&2; return 2; }
-  local leaked
-  if ! leaked="$(report_secrets "$file")"; then
+  local leaked rc
+  leaked="$(report_secrets "$file")"; rc=$?
+  if [ "$rc" = 1 ]; then
     echo "review-cycle: REFUSED. $file looks like it contains a secret ($leaked). Replace the value with [REDACTED], then screen it again before posting. Nothing was posted." >&2
     return 1
   fi
+  [ "$rc" = 0 ] || { echo "review-cycle: the screen could not read $file, INCONCLUSIVE" >&2; return 2; }
   echo "review-cycle: screen ok. $file holds no token or private key this screen knows."
   return 0
 }
@@ -1493,8 +1564,10 @@ cmd_publish() {
   # validated the length of".
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "review-cycle: --sha must be a full 40-character hex commit SHA, got '$sha'"
   [ -s "$report" ] || die "review-cycle: --report must name a file that exists AND is not empty; the report is the evidence, and an empty file is none"
-  local leaked
-  leaked="$(report_secrets "$report")" || die "review-cycle: REFUSED. The report looks like it contains a secret ($leaked).
+  local leaked lrc
+  leaked="$(report_secrets "$report")"; lrc=$?
+  [ "$lrc" -le 1 ] || die "review-cycle: REFUSED. The secret screen could not read the report, so it was not published (INCONCLUSIVE). Nothing was posted."
+  [ "$lrc" = 0 ] || die "review-cycle: REFUSED. The report looks like it contains a secret ($leaked).
    A comment on a pull request is public to everyone who can read it. Replace the value with
    [REDACTED] in the report, then publish again. The report was not changed and nothing was posted."
 
@@ -1849,8 +1922,12 @@ cmd_lint_report() {
     gh pr diff "$pr" >"$diff" 2>/dev/null || { rm -f "$tmp"; echo "review-cycle: could not read the diff of #$pr" >&2; return 2; }
   fi
   [ -s "$diff" ] || { rm -f "$tmp"; echo "review-cycle: the diff is empty or unreadable, so no finding can be checked against it" >&2; return 2; }
-  local leaked
-  if ! leaked="$(report_secrets "$report")"; then
+  local leaked lrc
+  leaked="$(report_secrets "$report")"; lrc=$?
+  if [ "$lrc" -gt 1 ]; then
+    rm -f "$tmp"; echo "review-cycle: the secret screen could not read the report, INCONCLUSIVE" >&2; return 2
+  fi
+  if [ "$lrc" = 1 ]; then
     rm -f "$tmp"
     echo "lint-report: FAIL. 1 problem(s):"
     echo "  - the report looks like it contains a secret ($leaked); replace the value with [REDACTED]"
@@ -1861,6 +1938,26 @@ import os, re, sys
 
 report = open(os.environ["X_REPORT"], encoding="utf-8", errors="replace").read()
 diff = open(os.environ["X_DIFF"], encoding="utf-8", errors="replace").read().splitlines()
+
+def git_path(name, side):
+    """A path from a `--- ` or `+++ ` line as git prints it: one trailing tab (git adds it after a
+    name with a space) dropped, a C-quoted name (`"b/caf\\303\\251.txt"`, which git writes for a
+    non-ASCII byte, a quote, a backslash or a control character) decoded, then the `a/` or `b/`
+    prefix removed. The finding names the file as it is, so the diff's spelling must be undone."""
+    if name.endswith("\t"):
+        name = name[:-1]
+    if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
+        out, i, body = bytearray(), 0, name[1:-1]
+        esc = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+        while i < len(body):
+            if body[i] == "\\" and i + 1 < len(body):
+                if body[i + 1] in esc:
+                    out.append(esc[body[i + 1]]); i += 2; continue
+                if re.fullmatch(r"[0-7]{3}", body[i + 1:i + 4]):
+                    out.append(int(body[i + 1:i + 4], 8) & 0xFF); i += 4; continue
+            out += body[i].encode("utf-8"); i += 1
+        name = out.decode("utf-8", "replace")
+    return name[2:] if name.startswith(side) else name
 
 # New-side line ranges per file, and the files the diff deletes (no new side to check).
 ranges, deleted, cur, old = {}, set(), None, None
@@ -1877,15 +1974,14 @@ for ln in diff:
             rem_new -= 1
         continue
     if ln.startswith("--- "):
-        old = ln[4:].strip()
-        old = old[2:] if old.startswith("a/") else old
+        old = git_path(ln[4:], "a/")
     elif ln.startswith("+++ "):
-        new = ln[4:].strip()
+        new = git_path(ln[4:], "b/")
         if new == "/dev/null":
             deleted.add(old)
             cur = None
         else:
-            cur = new[2:] if new.startswith("b/") else new
+            cur = new
             ranges.setdefault(cur, [])
     elif ln.startswith("@@") and cur is not None:
         m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", ln, re.ASCII)
@@ -1937,6 +2033,9 @@ for f in entries:
         problems.append("%s: line '%s' is not a line number or a range, so it cannot be checked" % (fid, line or ""))
         continue
     lo, hi = int(lm.group(1)), int(lm.group(2) or lm.group(1))
+    if lo > hi:
+        problems.append("%s: line range '%s' runs backwards; write the lower line first" % (fid, line))
+        continue
     if not any(a <= lo and hi <= b for a, b in ranges[path]):
         problems.append("%s: %s:%s is not inside any hunk of the diff" % (fid, path, line))
 
@@ -1999,6 +2098,10 @@ cmd_ensure_labels() {
   return 0
 }
 
+# Run as a command, it dispatches. Sourced (`. review-cycle.sh`, as tests/fake-gh/run.sh does to call
+# parse() on a crafted payload), it only defines the functions, so a test can reach a function
+# without a subcommand of its own.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 case "${1:-status}" in
   status)  shift || true; cmd_status  "${1:-}" ;;
   debt)    shift || true; cmd_debt    "${1:-}" ;;
@@ -2016,3 +2119,4 @@ case "${1:-status}" in
   ensure-labels) shift || true; cmd_ensure_labels ;;
   *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|screen|ensure-labels} [pr]" ;;
 esac
+fi
