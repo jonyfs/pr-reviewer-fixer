@@ -7,6 +7,12 @@ one script, and a comment edited after it was created never reaches them. `gh pr
 comments` carries no edit time (only `includesCreatedEdit`); `lastEditedAt` exists on the GraphQL
 `IssueComment` object, so this asks GraphQL, a page at a time.
 
+ASSUMED, NOT VERIFIED: `IssueComment.editor` names the login of the LAST edit. GitHub's schema says
+only "the actor who edited the comment", and confirming it needs a comment edited by two logins in
+turn, which has not been done. If it names the first editor instead, an author's later edit back
+does not clear a foreign edit (fails closed), and a foreign edit made after the author's own edit
+is missed. pr-protocol.md rule 2 states the same limit.
+
 IT FAILS CLOSED. When gh is missing or fails, when GraphQL answers something that is not the shape
 expected, when a page is truncated, or when GraphQL lists fewer comments than `gh pr view` did, it
 prints nothing and exits 1. Callers read that as "could not read the pull request", which is never

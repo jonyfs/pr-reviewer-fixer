@@ -80,7 +80,11 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    an edit that rewrites the number counts as the new number: a lower one lowers the count, and a
    higher one raises it, up to sending `budget` to the ceiling, which fails closed. GitHub lets
    anyone with write access edit another login's comment, so `pr-json.py` also records who made
-   the last edit (`IssueComment.editor`). A comment by a trusted login edited by anyone other than
+   the last edit (`IssueComment.editor`). That field is assumed to name the login of the most recent
+   edit: GitHub's schema calls it "the actor who edited the comment" and does not say which edit,
+   and checking it takes a comment edited by two logins in turn, which has not been done. If it
+   names the first editor instead, an author's own later edit does not clear a foreign one (fails
+   closed), and a foreign edit made after the author's own edit is missed. This is a stated limit. A comment by a trusted login edited by anyone other than
    its author, or by an account GitHub no longer names, counts as BLOCKED history, `budget` answers
    `none` and names the editor and the comment's url, `publish` and `start` refuse and `status`
    answers inconclusive (exit 2), until the comment's
