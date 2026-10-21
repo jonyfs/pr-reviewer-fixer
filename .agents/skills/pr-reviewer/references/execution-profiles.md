@@ -48,8 +48,9 @@ answer. They do not always move together.
 
 Escalate one tier on the second failure of the same unit instead of raising effort blindly. Raise
 `security` to `max` only for changes that touch authentication, authorisation, cryptography,
-parsing of untrusted input, or the files that run CI or an agent (workflows, actions, CODEOWNERS,
-`.agents/skills/**`, `.claude/**`, `.mcp.json`, Dockerfiles). `scripts/path-floor.sh` names those
+parsing of untrusted input, or the files that run CI or instruct an agent (workflows and the
+scripts they run, actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, `AGENTS.md`
+and the other instruction files, Dockerfiles). `scripts/path-floor.sh` names those
 paths; see the path floor in [agents-and-dispatch.md](agents-and-dispatch.md).
 
 ## Per-harness setting

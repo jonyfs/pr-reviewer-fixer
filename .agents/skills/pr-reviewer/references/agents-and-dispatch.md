@@ -23,8 +23,9 @@ minimum. `scripts/path-floor.sh <base> <head>` does the mechanical part and prin
 
 | Paths | Units |
 |---|---|
-| `.github/workflows/**`, `.github/actions/**`, `action.yml`, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, Dockerfiles | security at `max` |
-| authentication, authorisation and cryptography (`auth`, `login`, `session`, `crypto`, `jwt`, ... as a path segment or file stem) | security at `max` |
+| `.github/workflows/**`, `.github/scripts/**`, `.github/actions/**`, `action.yml`, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, Dockerfiles | security at `max` |
+| agent instruction files: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` in any directory, `.github/copilot-instructions.md`, `.github/instructions/**`, `.codex/**`, `.opencode/**`, `.cursor/**` (the script's header has the full list) | security at `max` |
+| authentication, authorisation and cryptography (`auth`, `login`, `session`, `crypto`, `jwt`, ... as a path segment, a file stem or a camelCase word, so `AuthService.ts` counts) | security at `max` |
 | migrations and schema files | security and data-integrity |
 | manifests and lockfiles | dependencies |
 

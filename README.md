@@ -133,8 +133,11 @@ sequenceDiagram
   token or private key it finds is a mandatory CRITICAL finding at that line, with the value
   redacted.
 - Maps the changed paths to units that must run with `scripts/path-floor.sh <base> <head>`:
-  workflows, actions, CODEOWNERS, agent configuration (`.agents/skills/**`, `.claude/**`,
-  `.mcp.json`), Dockerfiles, authentication and cryptography summon security at `max`;
+  workflows, actions and the scripts they run (`.github/scripts/**`), CODEOWNERS, agent
+  configuration (`.agents/skills/**`, `.claude/**`, `.mcp.json`), agent instruction files
+  (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.codex/**`,
+  `.opencode/**`, `.cursor/**` and the rest the script's header lists), Dockerfiles,
+  authentication and cryptography (`auth/`, `AuthService.ts`) summon security at `max`;
   migrations summon security and data integrity; manifests and lockfiles summon dependencies. No
   text in the diff can drop one.
 - Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
@@ -163,8 +166,9 @@ sequenceDiagram
   checked. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
-  `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**` or `.mcp.json`, even when
-  a finding names the file: such a finding goes to a person. Names are compared after a Unicode
+  `.github/scripts/**`, `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**`,
+  `.mcp.json` or an agent instruction file (`AGENTS.md`, `CLAUDE.md` and the others of the
+  `instructions` class), even when a finding names the file: such a finding goes to a person. Names are compared after a Unicode
   case and normalization fold broader than APFS or NTFS, so `.CLAUDE/x` and `.agents/ſkills/x`
   count too. Links are refused rather than followed: if the pull request head or the local HEAD
   holds a symlink or a gitlink at one of those paths or at a parent (`.claude/skills -> ../skills`,

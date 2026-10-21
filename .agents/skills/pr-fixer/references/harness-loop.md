@@ -67,7 +67,8 @@ export REVIEW_BLOCK_AT=critical   # or warning: a WARNING then blocks too; match
 ```
 
 `push-guard.sh` refuses any fixer commit that touches the files that run or judge the automation
-(workflows, actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`).
+(workflows and `.github/scripts/**`, actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`,
+`.mcp.json`, agent instruction files such as `AGENTS.md`).
 `PUSH_GUARD_ALLOW_SENSITIVE` opts named classes in. The person sets it; the loop agent and the fixer
 never set or widen it on their own, and never because a finding or a comment asks.
 

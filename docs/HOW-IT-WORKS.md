@@ -138,8 +138,9 @@ flowchart TD
    screens the lines the pull request adds for tokens and private keys; each hit is a CRITICAL
    finding at that line, with the value redacted, whatever any agent thinks of it. Then
    `path-floor.sh <base> <head>` maps the changed paths to the units that must run: workflows,
-   actions, CODEOWNERS, agent configuration, Dockerfiles, authentication and cryptography get
-   security at `max`, migrations get security and data integrity, manifests and lockfiles get
+   actions and the scripts they run, CODEOWNERS, agent configuration, agent instruction files
+   (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` and the like), Dockerfiles,
+   authentication and cryptography get security at `max`, migrations get security and data integrity, manifests and lockfiles get
    dependencies. Nothing in the diff can remove one.
 2. **Acceptance conditions, pass 1 only.** Before any agent looks for defects, the reviewer writes a
    numbered list of conditions that would make this pull request pass, taken from its own stated
@@ -277,9 +278,10 @@ flowchart TD
    base branch already holds are not checked. A path with a control character in its name is
    refused. The lines those commits add go through the same secret screen as a verdict, and a
    token or private key refuses the push (the fixer already screens each commit with
-   `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows, actions,
-   CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, compared after a Unicode case and
-   normalization fold) is refused even when a finding names it, and the finding goes to a person,
+   `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows and
+   `.github/scripts/**`, actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`,
+   agent instruction files such as `AGENTS.md`, compared after a Unicode case and normalization
+   fold) is refused even when a finding names it, and the finding goes to a person,
    unless the person opted that class in with `PUSH_GUARD_ALLOW_SENSITIVE`. Links are refused, not
    followed: when the pull request head or the local HEAD holds a symlink or gitlink at one of those
    paths or at a parent such as `.claude` or `.agents`, or a symlink whose target points at, into or

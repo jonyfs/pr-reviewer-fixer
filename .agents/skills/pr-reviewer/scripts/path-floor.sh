@@ -18,10 +18,16 @@
 # file counts by its old path as well as its new one: removing a workflow is a CI change too.
 #
 #   unit             effort    paths
-#   security         max       .github/workflows/**, .github/actions/**, action.yml or action.yaml
-#                              in any directory, CODEOWNERS (root, .github/, docs/), .agents/skills/**,
-#                              .claude/**, .mcp.json, a Dockerfile or Containerfile (also
-#                              Dockerfile.<x> and <x>.dockerfile): the files that run CI or an agent
+#   security         max       .github/workflows/**, .github/actions/**, .github/scripts/** (what a
+#                              workflow runs), action.yml or action.yaml in any directory, CODEOWNERS
+#                              (root, .github/, docs/), .agents/skills/**, .claude/**, .mcp.json, a
+#                              Dockerfile or Containerfile (also Dockerfile.<x> and <x>.dockerfile):
+#                              the files that run CI or an agent
+#   security         max       agent instructions: AGENTS.md, AGENTS.override.md, CLAUDE.md,
+#                              CLAUDE.local.md, GEMINI.md in any directory, .github/copilot-instructions.md,
+#                              .github/{instructions,agents,skills,prompts}/**, .codex/**, .opencode/**,
+#                              opencode.json(c), .cursor/**, .cursorrules, .gemini/**, .windsurf/**,
+#                              .windsurfrules
 #   security         max       authentication, authorisation and cryptography: a path segment or
 #                              file stem such as auth, oauth, login, session, password, crypto,
 #                              cipher, jwt, saml, oidc, rbac, acl, permission(s), credential(s),
@@ -39,8 +45,8 @@
 #                              deno.json/.lock, bun.lock(b), flake.lock)
 #
 # Names are compared case-insensitively, so `Codeowners` on a case-insensitive file system counts.
-# The CI and agent classes are the ones push-guard.sh refuses for the fixer, plus action metadata
-# and Dockerfiles. A project may add units in its own guide; nothing may remove one from this list.
+# The CI, agent and instruction classes are the ones push-guard.sh refuses for the fixer, plus action
+# metadata and Dockerfiles. A project may add units in its own guide; nothing may remove one from this list.
 #
 # `review-cycle.sh lint-report` runs this over the diff it checks and refuses a report whose
 # coverage note does not list each mandatory unit as run (`Mandatory units:` line, see
@@ -55,7 +61,7 @@ die2() { echo "path-floor: $*" >&2; exit 2; }
 mode="" base="" head="" file=""
 case "${1:-}" in
   --diff) [ $# -eq 2 ] || die2 "usage: path-floor.sh <base> <head> | --diff <file>"; mode="diff"; file="$2" ;;
-  -h|--help) sed -n '2,47p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,53p' "$0"; exit 0 ;;
   *) [ $# -eq 2 ] || die2 "usage: path-floor.sh <base> <head> | --diff <file>"; mode="git"; base="$1"; head="$2" ;;
 esac
 
@@ -173,7 +179,14 @@ else:
                 rem_new = int(h.group(2)) if h.group(2) is not None else 1
     close_section()
 
-CI_PREFIXES = (".github/workflows/", ".github/actions/", ".agents/skills/", ".claude/")
+CI_PREFIXES = (".github/workflows/", ".github/actions/", ".github/scripts/", ".agents/skills/", ".claude/")
+# Files and directories an agent reads as instructions (references/harness-matrix.md lists who reads
+# which): a change there changes what an agent obeys, so it is agent configuration like .claude/.
+INSTRUCTION_PREFIXES = (".github/instructions/", ".github/agents/", ".github/skills/", ".github/prompts/",
+                        ".codex/", ".opencode/", ".cursor/", ".gemini/", ".windsurf/")
+INSTRUCTION_FILES = {".github/copilot-instructions.md", "opencode.json", "opencode.jsonc", ".cursorrules",
+                     ".windsurfrules"}
+INSTRUCTION_NAMES = {"agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md"}
 CODEOWNERS = {"codeowners", ".github/codeowners", "docs/codeowners"}
 AUTH = re.compile(
     r"(?:^|[/._-])(auth|authn|authz|authentication|authorization|authorisation|oauth|oauth2|login|logout|"
@@ -197,6 +210,7 @@ def units(path):
     parts = p.split("/")
     out = []
     if (p.startswith(CI_PREFIXES) or p in CODEOWNERS or p == ".mcp.json"
+            or p.startswith(INSTRUCTION_PREFIXES) or p in INSTRUCTION_FILES or base in INSTRUCTION_NAMES
             or base in ("action.yml", "action.yaml", "dockerfile", "containerfile")
             or base.startswith(("dockerfile.", "containerfile.")) or base.endswith(".dockerfile")):
         out.append(("security", "max"))

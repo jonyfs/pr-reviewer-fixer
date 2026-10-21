@@ -30,10 +30,16 @@
 #      own commits are checked like any other, so fetch the base first.
 #   5. no commit touches a sensitive path, even one a finding names or --allow passes: the files
 #      that run or judge the automation itself. Each belongs to a class:
-#        workflows   .github/workflows/**        actions  .github/actions/**
+#        workflows   .github/workflows/**, .github/scripts/** (what a workflow runs)
+#        actions     .github/actions/**
 #        codeowners  CODEOWNERS, .github/CODEOWNERS, docs/CODEOWNERS
 #        skills      .agents/skills/**           claude   .claude/**
 #        mcp         .mcp.json
+#        instructions  what an agent reads as instructions: AGENTS.md, AGENTS.override.md,
+#                    CLAUDE.md, CLAUDE.local.md, GEMINI.md in any directory,
+#                    .github/copilot-instructions.md, .github/{instructions,agents,skills,prompts}/**,
+#                    .codex/**, .opencode/**, opencode.json(c), .cursor/**, .cursorrules,
+#                    .gemini/**, .windsurf/**, .windsurfrules (the list path-floor.sh uses)
 #      A hit refuses with reason `sensitive-path`, and the change goes to a person. A person who wants
 #      the fixer to edit one class (this repository's own release pull requests edit
 #      .agents/skills/**) sets PUSH_GUARD_ALLOW_SENSITIVE to a comma list of class names; a name it
@@ -47,14 +53,15 @@
 #      Links are refused, not followed. Every symlink (mode 120000) and gitlink (mode 160000) that the
 #      pull request head or the local HEAD holds, or that a pushed commit adds, refuses the whole push
 #      with reason `sensitive-path`, naming the link, when it sits at a sensitive path or at a parent
-#      of one (.github, .github/workflows, .github/actions, .agents, .agents/skills, .claude, docs, a
-#      CODEOWNERS path, .mcp.json), or when its target, resolved lexically against the link's own
-#      directory, points at, into or above one (`src/x -> ../.claude`, `src/x -> ..`). A target that
-#      holds a non-ASCII byte, that leaves the repository (an absolute path, `..` above the root), or
-#      that steps back with `..` out of a component that is itself a link (`x -> a/../skills` with
-#      `a -> .agents/q` really reaches .agents/skills), cannot be judged lexically, so it involves
-#      every class. A link passes only when every class it involves is named in
-#      PUSH_GUARD_ALLOW_SENSITIVE (.github involves workflows, actions and codeowners). A link name
+#      of one (.github, .github/workflows, .github/scripts, .github/actions, .agents, .agents/skills,
+#      .claude, docs, a CODEOWNERS path, .mcp.json, an instructions directory), or when its target,
+#      resolved lexically against the link's own directory, points at, into or above one
+#      (`src/x -> ../.claude`, `src/x -> ..`). A target that holds a non-ASCII byte, that leaves the
+#      repository (an absolute path, `..` above the root), or that steps back with `..` out of a
+#      component that is itself a link (`x -> a/../skills` with `a -> .agents/q` really reaches
+#      .agents/skills), cannot be judged lexically, so it involves every class. A link passes only
+#      when every class it involves is named in PUSH_GUARD_ALLOW_SENSITIVE (.github involves
+#      workflows, actions, codeowners and instructions). A link name
 #      or target that holds a control character is printed quoted (`printf %q`), so text the pull
 #      request author chose cannot pose as a line of this script's output.
 #   6. no commit adds a line that looks like a token or a private key: the added lines of each
@@ -140,20 +147,29 @@ CHECK5_JS='
 const fs = require("fs"), { execFileSync } = require("child_process");
 const [touchedF, rawF, outP, outL, ...trees] = process.argv.slice(1);
 const git = (a, input) => execFileSync("git", a, { maxBuffer: 1 << 30, input, stdio: ["pipe", "pipe", "ignore"] });
-const ALL = ["workflows", "actions", "codeowners", "skills", "claude", "mcp"];
+const ALL = ["workflows", "actions", "codeowners", "skills", "claude", "mcp", "instructions"];
 const drop = /[\p{M}\p{Default_Ignorable_Code_Point}]/gu;
 const nfkd = (s) => s.normalize("NFKD").replace(drop, "");
 // Raw bytes (a latin1 string) to a folded name: UTF-8, NFKD, marks and ignorables dropped, case folded.
 const fold = (b) => nfkd(nfkd(Buffer.from(b, "latin1").toString("utf8")).toLowerCase().toUpperCase().toLowerCase());
+// The files an agent reads as instructions (references/harness-matrix.md), as path-floor.sh lists them.
+const INSTR_DIRS = [".github/instructions/", ".github/agents/", ".github/skills/", ".github/prompts/",
+  ".codex/", ".opencode/", ".cursor/", ".gemini/", ".windsurf/"];
+const INSTR_FILES = [".github/copilot-instructions.md", "opencode.json", "opencode.jsonc", ".cursorrules", ".windsurfrules"];
+const INSTR_NAMES = ["agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md"];
 const fileClass = (f) =>
-  f.startsWith(".github/workflows/") ? "workflows" : f.startsWith(".github/actions/") ? "actions"
+  f.startsWith(".github/workflows/") || f.startsWith(".github/scripts/") ? "workflows"
+  : f.startsWith(".github/actions/") ? "actions"
   : ["codeowners", ".github/codeowners", "docs/codeowners"].includes(f) ? "codeowners"
-  : f.startsWith(".agents/skills/") ? "skills" : f.startsWith(".claude/") ? "claude" : f === ".mcp.json" ? "mcp" : "";
+  : f.startsWith(".agents/skills/") ? "skills" : f.startsWith(".claude/") ? "claude" : f === ".mcp.json" ? "mcp"
+  : INSTR_DIRS.some((d) => f.startsWith(d)) || INSTR_FILES.includes(f) || INSTR_NAMES.includes(f.split("/").pop()) ? "instructions"
+  : "";
 // A sensitive directory or file, or a parent of one: the classes a link there moves away.
-const PARENT = { ".github": "workflows actions codeowners", ".github/workflows": "workflows",
-  ".github/actions": "actions", ".agents": "skills", ".agents/skills": "skills", ".claude": "claude",
-  "docs": "codeowners", "codeowners": "codeowners", ".github/codeowners": "codeowners",
+const PARENT = { ".github": "workflows actions codeowners instructions", ".github/workflows": "workflows",
+  ".github/scripts": "workflows", ".github/actions": "actions", ".agents": "skills", ".agents/skills": "skills",
+  ".claude": "claude", "docs": "codeowners", "codeowners": "codeowners", ".github/codeowners": "codeowners",
   "docs/codeowners": "codeowners", ".mcp.json": "mcp" };
+for (const d of INSTR_DIRS) PARENT[d.slice(0, -1)] = "instructions";
 const classesAt = (b) => { const f = fold(b); return new Set([fileClass(f), ...(PARENT[f] || "").split(" ")]); };
 const order = (s) => ALL.filter((c) => s.has(c));
 const nul = (a) => Buffer.from(a.map((x) => x + "\0").join(""), "latin1");
@@ -224,15 +240,15 @@ SENS_OK=","
 # newline would otherwise never be looked at, and an unknown one never refused.
 _allowed=$'a-z, \t'
 if (LC_ALL=C; case "${PUSH_GUARD_ALLOW_SENSITIVE:-}" in *[!$_allowed]*) exit 0 ;; *) exit 1 ;; esac); then
-  echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE is $(printf '%q' "$PUSH_GUARD_ALLOW_SENSITIVE"); it may hold only class names (workflows, actions, codeowners, skills, claude, mcp), commas, spaces and tabs, REFUSED" >&2; exit 1
+  echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE is $(printf '%q' "$PUSH_GUARD_ALLOW_SENSITIVE"); it may hold only class names (workflows, actions, codeowners, skills, claude, mcp, instructions), commas, spaces and tabs, REFUSED" >&2; exit 1
 fi
 IFS=',' read -r -a _sens <<<"${PUSH_GUARD_ALLOW_SENSITIVE:-}"
 for _c in "${_sens[@]+"${_sens[@]}"}"; do
   _c="$(printf '%s' "$_c" | tr -d ' \t')"
   [ -n "$_c" ] || continue
   case "$_c" in
-    workflows|actions|codeowners|skills|claude|mcp) SENS_OK="$SENS_OK$_c," ;;
-    *) echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE names '$_c', which is not a class (workflows, actions, codeowners, skills, claude, mcp), REFUSED" >&2; exit 1 ;;
+    workflows|actions|codeowners|skills|claude|mcp|instructions) SENS_OK="$SENS_OK$_c," ;;
+    *) echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE names '$_c', which is not a class (workflows, actions, codeowners, skills, claude, mcp, instructions), REFUSED" >&2; exit 1 ;;
   esac
 done
 # A control character (newline, tab, ...) is refused in every name: in a scope entry, and below in a

@@ -997,6 +997,18 @@ check "path-floor: camelCase and PascalCase auth names -> security max (W4, PR #
   eval '[ $r = 0 ] && pfhas "security max src/AuthService.ts" && pfhas "security max src/middleware/authMiddleware.ts" && pfhas "security max app/controllers/LoginController.java" && pfhas "security max pkg/jwtUtils.go" && pfhas "security max lib/OAuth2Client.ts" && pfhas "security max src/JWTVerifier.kt" && pfhas "security max src/UserPermissions.cs"'
 check "path-floor: AuthorService.ts, sessionless.ts and Authority.java summon nothing (W4, PR #29)" \
   eval '! grep -q "AuthorService\|sessionless\|Authority" "$W/pf.out"'
+# W2 (PR #29): the scripts a workflow runs, and the files that instruct an agent, are CI and agent
+# configuration too.
+: >"$W/pf-w2.patch"
+for f in .github/scripts/release.sh AGENTS.md sub/AGENTS.md CLAUDE.md pkg/CLAUDE.local.md GEMINI.md \
+         .github/copilot-instructions.md .github/instructions/go.instructions.md .github/agents/a.md .github/skills/s/SKILL.md \
+         .github/prompts/p.prompt.md .codex/config.toml .opencode/agents/a.md opencode.json .cursor/rules/r.mdc .cursorrules \
+         .gemini/settings.json .windsurf/rules/r.md .windsurfrules docs/agents-guide.md; do
+  printf 'diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-x\n+y\n' "$f" "$f" "$f" "$f" >>"$W/pf-w2.patch"
+done
+"$PF" --diff "$W/pf-w2.patch" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: .github/scripts and agent instruction files -> security max (W2, PR #29)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 19 ] && ! grep -q agents-guide "$W/pf.out" && pfhas "security max .github/scripts/release.sh" && pfhas "security max sub/AGENTS.md"'
 "$PF" --diff "$W/missing.patch" >/dev/null 2>&1; r=$?
 check "path-floor --diff: an unreadable diff -> 2 (I50)" eq "$r" 2
 printf 'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n--- a/.github/workflows/ci.yml\n+++ b/.github/workflows/ci.yml\n@@ -1 +1,2 @@\n x\n+y\ndiff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1 +1,2 @@\n x\n+y\n' >"$W/fl.patch"

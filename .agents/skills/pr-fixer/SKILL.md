@@ -158,8 +158,9 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    cannot recompute (more than two parents, or git older than 2.38) is refused. A touched path with
    a control character in its name is refused. It also screens the added lines of every commit it
    would push and refuses one that adds what looks like a token or private key (reason `secret`,
-   path and line named, value never shown), and one that touches a sensitive path (workflows,
-   actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, compared after a Unicode
+   path and line named, value never shown), and one that touches a sensitive path (workflows and
+   `.github/scripts/**`, actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`,
+   agent instruction files such as `AGENTS.md` and `CLAUDE.md`, compared after a Unicode
    case and normalization fold; reason `sensitive-path`) even when a finding names it. It refuses
    the whole push when either tree holds a symlink or gitlink at one of them or at a parent such as
    `.claude` or `.agents`, or a symlink whose target points at, into or above one, holds a
