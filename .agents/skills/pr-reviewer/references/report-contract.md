@@ -38,7 +38,9 @@ Tags: [#pr #review #contract #reference]
  Mandatory units: each unit `scripts/path-floor.sh` printed for this diff, as `<unit>: run`,
  separated by `;`, with `(max)` after a unit it printed at `max`. For example
  `Mandatory units: security (max): run; dependencies: run`. Required whenever the floor is not
- empty; `lint-report` refuses a report that leaves a unit out or lists it as anything but run.>
+ empty. Write it once, in this section, outside any fence or blockquote: `lint-report` reads only
+ that line, and refuses a report that leaves a unit out, lists a unit twice, has a second
+ `Mandatory units:` line, or gives any status but exactly `run`.>
 
 ### Prior findings
 <Re-review only. Each earlier finding with one status: verified (closed, red and green re-run by

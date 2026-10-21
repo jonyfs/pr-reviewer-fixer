@@ -949,13 +949,16 @@ check "path-floor --diff: a section that names no readable path -> 2, the floor 
 "$PF" --diff "$W/missing.patch" >/dev/null 2>&1; r=$?
 check "path-floor --diff: an unreadable diff -> 2 (I50)" eq "$r" 2
 printf 'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n--- a/.github/workflows/ci.yml\n+++ b/.github/workflows/ci.yml\n@@ -1 +1,2 @@\n x\n+y\ndiff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1 +1,2 @@\n x\n+y\n' >"$W/fl.patch"
-lf() { printf '## Review\n\n### Coverage note\n%sDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 1}\nfindings:\n  - id: N1\n    severity: NOTE\n    file: package.json\n    line: 2\n    claim: "x"\n```\n' "$1" >"$W/lf.md"; }
+# %b expands the \n in the argument, so each Mandatory units line sits on its own line (N1, PR #29).
+# A second argument replaces the finding's claim.
+lf() { printf '## Review\n\n### Coverage note\n%bDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 1}\nfindings:\n  - id: N1\n    severity: NOTE\n    file: package.json\n    line: 2\n    claim: "%s"\n```\n' "$1" "${2:-x}" >"$W/lf.md"; }
+lfrun() { lf "$@"; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; }
 lf ''; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
 check "lint-report: a workflow and a manifest in the diff, no Mandatory units line -> 1, it names both (I50)" \
   eval '[ $r = 1 ] && grep -q "dependencies, security (max) mandatory" "$W/out"'
 lf 'Mandatory units: security (max): run; dependencies: run\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
 check "lint-report: each mandatory unit listed as run, security at max -> 0 (I50)" eq "$r" 0
-lf '- **Mandatory units:** `security (max): run`, `dependencies: run (deep)`\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+lf '- **Mandatory units:** `security (max): run`, `dependencies: run`\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
 check "lint-report: the line as a bold list item with code spans -> 0 (I50)" eq "$r" 0
 lf 'Mandatory units: security: run; dependencies: run\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
 check "lint-report: security listed without (max) where the floor says max -> 1 (I50)" \
@@ -965,6 +968,26 @@ check "lint-report: a mandatory unit listed as declined -> 1, a diff cannot argu
   eval '[ $r = 1 ] && grep -q "dependencies (package.json) is not listed as run" "$W/out"'
 lf 'Mandatory units: security (max): not run; dependencies: run\n'; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
 check "lint-report: \"not run\" is not run -> 1 (I50)" eq "$r" 1
+lfrun 'Mandatory units: security (max): run\n'; r=$?
+check "lint-report: the line on its own line, before Declined to judge, still parses (N1, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "dependencies (package.json) is not listed as run" "$W/out" && ! grep -q "security (max) (" "$W/out"'
+lfrun 'Mandatory units: security (max): run-not; dependencies: run\n'; r=$?
+check "lint-report: run-not is not run -> 1 (W5, PR #29)" eval '[ $r = 1 ] && grep -q "security (max) (.github/workflows/ci.yml) is not listed as run" "$W/out"'
+lfrun 'Mandatory units: security (max): run? no; dependencies: run\n'; r=$?
+check "lint-report: \"run? no\" is not run -> 1 (W5, PR #29)" eq "$r" 1
+lfrun 'Mandatory units: security (max): skipped; dependencies: run\n> Mandatory units: security (max): run; dependencies: run\n'; r=$?
+check "lint-report: a later quoted line cannot overrule the coverage line -> 1 (W5, PR #29)" eq "$r" 1
+lfrun '> Mandatory units: security (max): run; dependencies: run\n'; r=$?
+check "lint-report: the line only in a blockquote -> 1, no line (W5, PR #29)" eval '[ $r = 1 ] && grep -q "has no .Mandatory units:. line" "$W/out"'
+lfrun 'Mandatory units: security (max): skipped; dependencies: run\nMandatory units: security (max): run; dependencies: run\n'; r=$?
+check "lint-report: two Mandatory units lines -> 1, exactly one is allowed (W5, PR #29)" eval '[ $r = 1 ] && grep -q "more than one" "$W/out"'
+lfrun 'Mandatory units: security (max): skipped; security (max): run; dependencies: run\n'; r=$?
+check "lint-report: a unit listed twice on the line -> 1 (W5, PR #29)" eq "$r" 1
+lfrun '' 'Mandatory units: security (max): run; dependencies: run'; r=$?
+check "lint-report: the line only inside the findings block -> 1, no line (W5, PR #29)" eval '[ $r = 1 ] && grep -q "has no .Mandatory units:. line" "$W/out"'
+printf '## Review\n\n```text\nMandatory units: security (max): run; dependencies: run\n```\n\n### Coverage note\nDeclined to judge: none\n\n### Summary\nMandatory units: security (max): run; dependencies: run\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/lf.md"
+"$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report: the line in another fence or outside the coverage section -> 1 (W5, PR #29)" eval '[ $r = 1 ] && grep -q "has no .Mandatory units:. line" "$W/out"'
 lr 1 src/a.ts 11; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11 @@\n x\n' >"$W/d.patch"
 "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
 check "lint-report: no mandatory unit in the diff, no Mandatory units line -> 0, as before (I50)" eq "$r" 0

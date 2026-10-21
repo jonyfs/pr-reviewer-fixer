@@ -2063,8 +2063,11 @@ for f in entries:
 if not re.search(r"Declined to judge:", report):
     problems.append("the coverage note has no `Declined to judge:` line (write `none` when nothing was skipped)")
 
-# The path floor: each mandatory unit must be listed as run on a `Mandatory units:` line, and a unit
-# the floor wants at `max` must say `(max)`. With no mandatory unit the line is not required.
+# The path floor: each mandatory unit must be listed as run on the one `Mandatory units:` line of the
+# coverage note, and a unit the floor wants at `max` must say `(max)`. With no mandatory unit the
+# line is not required. Only the coverage section counts, with every fenced block taken out, so a
+# line in a blockquote, a finding or another section cannot stand in for it; a second line, or a unit
+# listed twice, is refused rather than resolved; and the status must be exactly `run`.
 need, why = {}, {}
 for ln in os.environ.get("X_FLOOR", "").splitlines():
     parts = ln.split(" ", 2)
@@ -2074,12 +2077,25 @@ for ln in os.environ.get("X_FLOOR", "").splitlines():
             need[u] = eff
         why.setdefault(u, path)
 if need:
-    listed = {}
-    for mm in re.finditer(r"^[\s>*_-]*Mandatory units:[*_]*\s*(.*)$", report, re.M):
-        for itm in re.split(r"[;,]", mm.group(1)):
-            im = re.fullmatch(r"\s*`?([A-Za-z][A-Za-z-]*)\s*(?:\((max|standard)\))?\s*:\s*`?\s*(.*?)\s*", itm)
-            if im:
-                listed[im.group(1).lower()] = ((im.group(2) or "").lower(), im.group(3).lower())
+    listed, twice = {}, set()
+    unfenced = re.sub(r"^[ \t]*(```|~~~).*?^[ \t]*\1[ \t]*$", "", report, flags=re.M | re.S)
+    cov, sect = re.search(r"^(#{1,6})[ \t]+Coverage note[ \t]*#*[ \t]*$", unfenced, re.M | re.I), ""
+    if cov:
+        # The section runs to the next heading of the same level or higher.
+        end = re.search(r"^#{1,%d}[ \t]" % len(cov.group(1)), unfenced[cov.end():], re.M)
+        sect = unfenced[cov.end():cov.end() + end.start()] if end else unfenced[cov.end():]
+    lines = re.findall(r"^[ \t*_-]*Mandatory units:[*_]*[ \t]*(.*)$", sect, re.M)
+    if len(lines) > 1:
+        problems.append("the coverage note has more than one `Mandatory units:` line; write exactly one")
+    for itm in re.split(r"[;,]", lines[0] if len(lines) == 1 else ""):
+        im = re.fullmatch(r"([A-Za-z][A-Za-z-]*)[ \t]*(?:\((max|standard)\))?[ \t]*:[ \t]*(.*)", itm.strip(" \t`*_"))
+        if im:
+            u = im.group(1).lower()
+            if u in listed:
+                twice.add(u)
+            listed[u] = ((im.group(2) or "").lower(), im.group(3).strip(" \t`*_.").lower())
+    for u in sorted(twice):
+        problems.append("unit %s is listed more than once on the `Mandatory units:` line; list it once" % u)
     want = ", ".join("%s (max)" % u if e == "max" else u for u, e in sorted(need.items()))
     if not listed:
         problems.append("the path floor makes %s mandatory, and the coverage note has no `Mandatory units:` line "
@@ -2089,7 +2105,7 @@ if need:
         for u, eff in sorted(need.items()):
             got = listed.get(u)
             label = "%s (max)" % u if eff == "max" else u
-            if got is None or not re.match(r"run\b", got[1]):
+            if got is None or got[1] != "run" or u in twice:
                 problems.append("mandatory unit %s (%s) is not listed as run on the `Mandatory units:` line"
                                 % (label, why[u]))
             elif eff == "max" and got[0] != "max":
