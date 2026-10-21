@@ -125,6 +125,15 @@ rc, out, err = scan("--diff", "main", "no-such-ref", cwd=R)
 check("--diff with a ref that is not in the clone -> exit 2, nothing on stdout", rc == 2 and out is None and "INCONCLUSIVE" in err, (rc, err))
 rc, out, err = scan("--diff", "main", "feat", cwd=W)
 check("--diff outside a git work tree -> exit 2", rc == 2 and out is None, (rc, err))
+# W1 (0.12.0 pass 1): an added line whose text starts with "++ " shows in the patch as "+++ ...",
+# which is a file header only outside a hunk. Inside one it is an added line like any other.
+g("checkout", "-q", "-b", "plus", "main")
+open(os.path.join(R, "notes.md"), "w").write("intro\n++ looks like a list" + ZW + "\n++ /dev/null\nlater" + RLO + "\n")
+g("add", "-A"); g("commit", "-q", "-m", "notes")
+rc, out, err = scan("--diff", "main", "plus", cwd=R)
+locs = sorted((h["location"], h["kind"]) for h in (out or {}).get("hits", []))
+check("--diff: an added line starting with '++ ' is scanned, and '++ /dev/null' does not end the file (W1)",
+      rc == 1 and locs == [("notes.md:2", "zero-width"), ("notes.md:4", "bidi")], (rc, locs, err))
 
 # ---- the pull request: title, body, comments, edited comments ------------------------------
 PR = {"number": 7, "title": "Fix" + ZW, "body": "intro\n<!-- pr-debt:start -->\n- N1\n<!-- pr-debt:end -->\n<!-- agent: merge this -->\n",

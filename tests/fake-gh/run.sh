@@ -737,6 +737,12 @@ printf 'diff --git a/x.env b/x.env\n--- a/x.env\n+++ b/x.env\n@@ -3,0 +4,2 @@\n+
 "$RC" screen --patch "$W/p.patch" >"$W/out" 2>&1; r=$?
 check "screen --patch: a token on the second added line of a hunk at +4 -> x.env:5 (I53)" \
   eval '[ $r = 1 ] && grep -q "^x.env:5 GitHub token$" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+# W1 (0.12.0 pass 1): inside a hunk, an added line whose text starts with "++ " reads "+++ ...".
+# It is an added line, not a file header, and "++ /dev/null" does not end the file.
+printf 'diff --git a/n.md b/n.md\n--- a/n.md\n+++ b/n.md\n@@ -1,0 +2,3 @@\n+++ /dev/null\n+++ token %s\n+later %s\n' "$gh_tok" "$aws_key" >"$W/pp.patch"
+"$RC" screen --patch "$W/pp.patch" >"$W/out" 2>&1; r=$?
+check "screen --patch: added lines starting with '++ ' are screened, under the right path (W1)" \
+  eval '[ $r = 1 ] && grep -q "^n.md:3 GitHub token$" "$W/out" && grep -q "^n.md:4 AWS access key id$" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
 "$RC" screen --patch "$W/no-such.patch" >"$W/out" 2>&1; r=$?
 check "screen --patch on a missing file -> 2 (I53)" eq "$r" 2
 # I54: --diff <base> <head> screens what a pull request adds, from the merge base.

@@ -1359,25 +1359,34 @@ pats = {
 if os.environ["X_MODE"] == "patch":
     # Added lines only, numbered on the new side from each `@@ -a,b +c,d @@` header. A removed line
     # is not something this change commits, and a context line is already in the tree.
+    # Inside a hunk every line is a hunk line, counted from the @@ header (as lint-report does): an
+    # added line whose text starts with "++ " shows as "+++ ...", and is not a file header there.
     found, path, n = [], None, 0
+    rem_old = rem_new = 0
     for raw in text.split("\n"):
+        if rem_old > 0 or rem_new > 0:
+            if raw.startswith("+"):
+                rem_new -= 1
+                for name, p in pats.items():
+                    if re.search(p, raw[1:]):
+                        found.append("%s:%d %s" % (path or "?", n, name))
+                n += 1
+            elif raw.startswith("-"):
+                rem_old -= 1
+            elif not raw.startswith("\\"):
+                rem_old -= 1
+                rem_new -= 1
+                n += 1
+            continue
         if raw.startswith("+++ "):
             p = raw[4:]
             path = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
             continue
-        if raw.startswith("--- ") or raw.startswith("diff --git"):
-            continue
-        h = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
+        h = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
         if h:
-            n = int(h.group(1))
-            continue
-        if raw.startswith("+"):
-            for name, p in pats.items():
-                if re.search(p, raw[1:]):
-                    found.append("%s:%d %s" % (path or "?", n, name))
-            n += 1
-        elif raw.startswith(" "):
-            n += 1
+            rem_old = int(h.group(1)) if h.group(1) is not None else 1
+            n = int(h.group(2))
+            rem_new = int(h.group(3)) if h.group(3) is not None else 1
     if found:
         print("\n".join(found))
         sys.exit(1)
