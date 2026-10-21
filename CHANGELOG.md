@@ -13,15 +13,28 @@ N16, N17, N19, N23, N27, N29-N35).
 ### Added
 
 - `scripts/path-floor.sh <base> <head>` (or `--diff <file>`), in both skills, maps the paths a change
-  touches to review units that must run: `.github/workflows/**`, `.github/actions/**`, `action.yml`,
-  CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, Dockerfiles, and authentication and
-  cryptography paths get security at `max`; migrations get security and data integrity; manifests
-  and lockfiles get dependencies. A rename counts by both paths. It exits 2 when it cannot read the
-  paths (I50).
+  touches to review units that must run: `.github/workflows/**`, `.github/scripts/**`,
+  `.github/actions/**`, `action.yml`, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`,
+  agent instruction files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md` in any directory,
+  `.github/copilot-instructions.md`, `.github/{instructions,agents,skills,prompts}/**`, `.codex/**`,
+  `.opencode/**`, `opencode.json`, `.cursor/**`, `.cursorrules`, `.gemini/**`, `.windsurf/**`,
+  `.windsurfrules`), Dockerfiles, and authentication and cryptography paths (also as a camelCase
+  word, `AuthService.ts`) get security at `max`; migrations get security and data integrity;
+  manifests and lockfiles get dependencies. A rename counts by both paths. `--diff` splits on `\n`
+  only, so a form feed or U+2028 in a changed line cannot forge a hunk header, and reads a
+  header-only section (binary, empty, mode change) by its quoted or unquoted `diff --git` names. It
+  exits 2 when it cannot read the paths (I50; #29 W1, W2, W3, W4).
 - `review-cycle.sh lint-report` runs `path-floor.sh` over the diff it checks and refuses a report
   whose coverage note has no `Mandatory units:` line listing each mandatory unit as run, with
-  `(max)` where the floor says `max`. A diff with no mandatory unit needs no such line, so reports
-  that passed before still pass. It exits 2 when the floor cannot be computed (I50).
+  `(max)` where the floor says `max`. It reads exactly one such line, in the Coverage note section
+  outside any fence or blockquote, refuses a second line or a unit listed twice, and wants the status
+  to be exactly `run`. A diff with no mandatory unit needs no such line, so reports that passed
+  before still pass. It exits 2 when the floor cannot be computed (I50; #29 W5). Its anchor parser
+  splits the diff on `\n` only, like the floor (#29 W1).
+- `push-guard.sh` counts `.github/scripts/**` in the `workflows` class (the scripts a workflow runs)
+  and has a new `instructions` class for the agent instruction files above, which
+  `PUSH_GUARD_ALLOW_SENSITIVE` may name; a link at, into or above one is refused like the others
+  (#29 W2).
 - `security-checklist.md` has a section for CI, workflow and agent configuration:
   `pull_request_target` and `workflow_run`, expression injection, unpinned actions, `permissions`,
   secrets, agent configuration (I50). The loop computes the floor in step 3 and hands it to the
@@ -33,6 +46,11 @@ N16, N17, N19, N23, N27, N29-N35).
 
 ### Changed
 
+- The gate template, for a run still queued after 10 minutes, says to tell the person and skip the
+  re-runs, as `harness-loop.md` does, instead of "stop" (#29 N4).
+- `tests/fake-gh/run.sh`: the `lint-report` helper expands `\n`, so each `Mandatory units:` row puts
+  the line on its own line, and a row checks that git mode and `--diff` mode of `path-floor.sh`
+  print the same floor (#29 N1, N2 in part).
 - `fetch-feedback.py` asks each review-thread comment for `pullRequestReview{state}`, and an inline
   comment of a DISMISSED review is `skip: dismissed`, like the review's own body (#28 N1).
 - `fetch-feedback.py` fails closed on a review, issue comment or thread comment whose `isMinimized`

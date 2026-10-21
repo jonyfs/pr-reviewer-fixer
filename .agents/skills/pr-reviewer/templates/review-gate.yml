@@ -24,7 +24,7 @@
 # longer counts, and the loop starts again for the new head. After a BLOCKED verdict, skip all of
 # this: the check fails on purpose. Otherwise first wait, at most 10 minutes, until this list is
 # empty (no run for the head queued or in progress); if a run is still queued or in progress after
-# that, stop and tell the person:
+# that, tell the person and skip the re-runs below (the loop goes on to its next step):
 #   gh run list --workflow review-gate.yml --commit <head sha> --limit 100 --json databaseId,status \
 #     --jq '.[] | select(.status != "completed") | .databaseId'
 # Then list the failed ids once and re-run every one of them, waiting for each:
