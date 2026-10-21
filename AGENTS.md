@@ -22,7 +22,7 @@ python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, ext
 python3 tests/scan-hidden/t.py .agents/skills/pr-reviewer/scripts  # scan-hidden.py
 ```
 
-`tests/run-all.sh` runs the suites at the same time. Each run uses its own scratch directory, named by `TEST_TAG` (`work-*/` and `state-*/`, both gitignored), so set a different `TEST_TAG` when you start two runs of the same suite together.
+`tests/run-all.sh` runs the suites at the same time. Each run uses its own scratch directory, named by `TEST_TAG` (`work-*/` and `state-*/`, both gitignored), so set a different `TEST_TAG` when you start two runs of the same suite together. `run-all.sh` puts a `TEST_TAG` you give it in front of each suite's own tag, so two runs of `run-all.sh` with different tags do not collide either. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE` when it starts, so a value exported in your shell does not change the results.
 
 The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` (`tests/*/bin/gh`, backed by `fakegh.py`), so nothing touches GitHub. There is no build or lint step. Workflows and templates are checked with `actionlint`, which is run by hand.
 
@@ -118,4 +118,4 @@ Rules for doing it:
 - Third-party actions in workflows and templates are pinned to full commit SHAs. Keep them pinned.
 - Diagrams in `README.md` are sourced from `docs/diagrams/*.mmd`. Update both together.
 - Dated facts (harness paths, model names) carry a date, currently 2026-10-14. Update the date when you re-verify them.
-- Test output directories (`tests/**/state/` and a few generated files) are gitignored.
+- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored.

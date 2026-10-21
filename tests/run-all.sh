@@ -2,6 +2,12 @@
 # Runs every test against fake `gh` binaries. No network and no GitHub access needed.
 # Needs: bash, python3, node, jq.
 set -u
+# A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what the scripts refuse, so
+# every suite starts without them; a row that needs one sets it itself.
+unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
+# A caller's TEST_TAG becomes a prefix of each suite's own tag, so two runs of this file with
+# different tags never share a scratch directory.
+P="${TEST_TAG:+$TEST_TAG-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 fail=0
@@ -10,19 +16,19 @@ fail=0
 OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
 names=(); pids=()
 start() { local n="$1"; shift; names+=("$n"); ( "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc" ) & pids+=($!); }
-start "review-cycle.sh and gate (reviewer copy)" env TEST_TAG=rev bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
-start "review-cycle.sh and gate (fixer copy)"    env TEST_TAG=fix bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
-start "triage-pr.sh"                             bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
-start "push-guard.sh"                             env TEST_TAG=run bash "$HERE/push-guard/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
-start "fetch-feedback.py"                        env TEST_TAG=run python3 "$HERE/feedback/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
-start "review eval scorer"                       env TEST_TAG=run bash "$HERE/eval/selftest.sh"
-start "install.sh"                                env TEST_TAG=run bash "$HERE/install/run.sh" "$ROOT/install.sh"
-start "cycle budget and extend (reviewer copy)"  env TEST_TAG=rev python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
-start "cycle budget and extend (fixer copy)"     env TEST_TAG=fix python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
-start "scan-hidden.py (reviewer copy)"          env TEST_TAG=rev python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
-start "scan-hidden.py (fixer copy)"             env TEST_TAG=fix python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
-start "check-version.sh (reviewer copy)"         env TEST_TAG=rev bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
-start "check-version.sh (fixer copy)"            env TEST_TAG=fix bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "review-cycle.sh and gate (reviewer copy)" env TEST_TAG="${P}rev" bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "review-cycle.sh and gate (fixer copy)"    env TEST_TAG="${P}fix" bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "triage-pr.sh"                             env TEST_TAG="${P}run" bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "push-guard.sh"                             env TEST_TAG="${P}run" bash "$HERE/push-guard/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "fetch-feedback.py"                        env TEST_TAG="${P}run" python3 "$HERE/feedback/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "review eval scorer"                       env TEST_TAG="${P}run" bash "$HERE/eval/selftest.sh"
+start "install.sh"                                env TEST_TAG="${P}run" bash "$HERE/install/run.sh" "$ROOT/install.sh"
+start "cycle budget and extend (reviewer copy)"  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "cycle budget and extend (fixer copy)"     env TEST_TAG="${P}fix" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "scan-hidden.py (reviewer copy)"          env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "scan-hidden.py (fixer copy)"             env TEST_TAG="${P}fix" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "check-version.sh (reviewer copy)"         env TEST_TAG="${P}rev" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "check-version.sh (fixer copy)"            env TEST_TAG="${P}fix" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 wait "${pids[@]}"
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]}"; tail -n 3 "$OUT/$n.log"

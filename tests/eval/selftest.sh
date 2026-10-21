@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Tests score.py with canned reports. No model is run. Prints a pass/fail table.
 set -u
+# A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what is refused; a row that
+# needs one sets it itself.
+unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
 T="$(cd "$(dirname "$0")" && pwd)"
 W="$T/work-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W"
 SC="$T/score.py"
