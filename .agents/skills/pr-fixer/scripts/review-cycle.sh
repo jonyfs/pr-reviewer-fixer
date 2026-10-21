@@ -107,6 +107,14 @@
 #                          comment). Exit 0 clean, 1 when it holds a token or private key (the
 #                          kind is named, never the value), 2 when the file cannot be read.
 #                          Posts nothing.
+#     screen --staged      the same screen over the added lines of `git diff --cached` (the fixer
+#                          runs it before each commit); prints `path:line kind` per hit
+#     screen --patch <file>
+#                          the same over the added lines of a unified diff (push-guard.sh hands it
+#                          the commits it is about to push)
+#     screen --diff <base> <head>
+#                          the same over the added lines of `git diff <base>...<head>` (the loop
+#                          runs it on the pull request before dispatching the reviewer)
 #     ensure-labels        creates or updates the six review:* labels in the current repository
 #                          (gh resolves the repository from the working directory or GH_REPO)
 #
@@ -1326,8 +1334,12 @@ cmd_stale() {
 # instead: the report is never rewritten, and the person or agent removes the secret and publishes
 # again. The match itself is never printed. High-entropy strings are not screened: a 40-character
 # commit SHA is the commonest thing in a report and would be refused every time.
+#
+# `report_secrets FILE patch` reads FILE as a unified diff instead and screens only its ADDED lines,
+# printing one `path:line kind` per hit (the value is never printed). That is the form `screen
+# --staged`, `--diff` and `--patch` use, so a hit can be found and removed without being shown.
 report_secrets() {
-  X_FILE="$1" python3 -I - <<'PY'
+  X_FILE="$1" X_MODE="${2:-text}" python3 -I - <<'PY'
 import os, re, sys
 text = open(os.environ["X_FILE"], encoding="utf-8", errors="replace").read()
 pats = {
@@ -1344,6 +1356,32 @@ pats = {
     "Google OAuth token": r"(?<![A-Za-z0-9])ya29\.[A-Za-z0-9_-]{20,}",
     "bearer credential": r"(?i)\bauthorization:\s*bearer\s+[^\s`'\"]{20,}",
 }
+if os.environ["X_MODE"] == "patch":
+    # Added lines only, numbered on the new side from each `@@ -a,b +c,d @@` header. A removed line
+    # is not something this change commits, and a context line is already in the tree.
+    found, path, n = [], None, 0
+    for raw in text.split("\n"):
+        if raw.startswith("+++ "):
+            p = raw[4:]
+            path = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
+            continue
+        if raw.startswith("--- ") or raw.startswith("diff --git"):
+            continue
+        h = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
+        if h:
+            n = int(h.group(1))
+            continue
+        if raw.startswith("+"):
+            for name, p in pats.items():
+                if re.search(p, raw[1:]):
+                    found.append("%s:%d %s" % (path or "?", n, name))
+            n += 1
+        elif raw.startswith(" "):
+            n += 1
+    if found:
+        print("\n".join(found))
+        sys.exit(1)
+    sys.exit(0)
 hits = [name for name, p in pats.items() if re.search(p, text)]
 if hits:
     print(", ".join(hits))
@@ -1355,14 +1393,52 @@ PY
 # comment, the `pr-debt` body edit, an overflow comment beside a long report. Exit 0 = clean, 1 = it
 # holds something that looks like a secret (the kind is named, the value never printed), 2 = the
 # file could not be read. Posts nothing.
+#
+# The other forms screen only the ADDED lines of a diff and print each hit as `path:line kind`:
+# `--staged` reads `git diff --cached` (the fixer runs it before each commit), `--diff <base>
+# <head>` reads `git diff <base>...<head>` from the merge base (the loop runs it on the pull request
+# before the reviewer starts), and `--patch <file>` reads a unified diff it is handed (push-guard.sh
+# gives it the commits it is about to push). Exit 2 when git cannot produce the diff.
+SCREEN_USAGE="review-cycle: usage: review-cycle.sh screen --file <file> | --staged | --patch <file> | --diff <base> <head>"
 cmd_screen() {
-  local file=""
+  local file="" mode="" base="" head=""
   while [ $# -gt 0 ]; do
+    [ -z "$mode" ] || die "$SCREEN_USAGE"
     case "$1" in
-      --file) [ $# -ge 2 ] || die "review-cycle: --file needs a value"; file="$2"; shift 2 ;;
-      *) die "review-cycle: usage: review-cycle.sh screen --file <file>" ;;
+      --file|--patch) [ $# -ge 2 ] || die "review-cycle: $1 needs a value"; mode="${1#--}"; file="$2"; shift 2 ;;
+      --staged) mode=staged; shift ;;
+      --diff) [ $# -ge 3 ] || die "review-cycle: --diff needs <base> and <head>"; mode=diff; base="$2"; head="$3"; shift 3 ;;
+      *) die "$SCREEN_USAGE" ;;
     esac
   done
+  [ -n "$mode" ] || die "$SCREEN_USAGE"
+  if [ "$mode" != file ]; then
+    local pf="$file" what="$file" rc leaked
+    if [ "$mode" = staged ] || [ "$mode" = diff ]; then
+      git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+        || { echo "review-cycle: screen --$mode needs a git work tree, INCONCLUSIVE" >&2; return 2; }
+      pf="$(mktemp)" || return 2
+      if [ "$mode" = staged ]; then
+        what="the staged changes"
+        git -c core.quotePath=false diff --cached --no-color --no-ext-diff --no-renames -U0 >"$pf" 2>/dev/null
+      else
+        what="the changes from $base to $head"
+        # Three dots: from the merge base, so the base branch's own later changes are not read as added.
+        git rev-parse --verify --quiet "$base^{commit}" >/dev/null && git rev-parse --verify --quiet "$head^{commit}" >/dev/null \
+          && git -c core.quotePath=false diff --no-color --no-ext-diff --no-renames -U0 "$base...$head" -- >"$pf" 2>/dev/null
+      fi || { rm -f "$pf"; echo "review-cycle: git could not produce $what (fetch both commits first), INCONCLUSIVE" >&2; return 2; }
+    fi
+    if [ -f "$pf" ] && [ -r "$pf" ]; then leaked="$(report_secrets "$pf" patch)"; rc=$?; else rc=2; fi
+    [ "$mode" = patch ] || rm -f "$pf"
+    if [ "$rc" = 1 ]; then
+      printf '%s\n' "$leaked"
+      echo "review-cycle: REFUSED. $what add what looks like a secret at the lines above (the value is not shown). Remove it from the change, then screen again." >&2
+      return 1
+    fi
+    [ "$rc" = 0 ] || { echo "review-cycle: the screen could not read $what, INCONCLUSIVE" >&2; return 2; }
+    echo "review-cycle: screen ok. $what add no token or private key this screen knows."
+    return 0
+  fi
   [ -n "$file" ] && [ -f "$file" ] && [ -r "$file" ] \
     || { echo "review-cycle: screen needs --file <file> that exists and is readable" >&2; return 2; }
   local leaked

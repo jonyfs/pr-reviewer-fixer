@@ -87,7 +87,10 @@ and the replies wait for a run that has `gh api`.
 
 ```bash
 gh pr checkout <n>                 # local checkout to fix or trace
-# ... make minimal scoped commits on the PR branch, then verify, then:
+# ... make minimal scoped commits on the PR branch; before each commit:
+git add <path>...                  # explicit paths, never -A
+scripts/review-cycle.sh screen --staged && git commit -m "..."   # exit 1 names path:line kind, never the value
+# then verify, then:
 git fetch origin "$HEAD_REF"       # re-check the remote head BEFORE pushing (race safety)
 git rev-parse "origin/$HEAD_REF"   # must equal the SHA you planned against
 git push                           # to the PR head branch only, never the protected base

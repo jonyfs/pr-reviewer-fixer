@@ -121,6 +121,29 @@ r=$(run --findings "$W/rep.md"); check "touched path with a newline (src/a.ts + 
 r=$(run --findings "$W/rep.md" --allow $'src/a.ts\nx'); check "--allow with a newline -> refused (S5)" eval '[ $r = 1 ] && grep -q "control character" "$W/out"'
 g checkout -q feat/x
 
+# I53: the commits about to be pushed are screened for secrets, by their own added lines.
+# The token is built at run time so this file holds none.
+TOK="ghp_$(printf 'a%.0s' $(seq 1 36))"
+g checkout -q -b feat/s "$HEAD_OID"; mkdir -p "$W/repo/tests"; printf 'const t = "%s";\n' "$TOK" >"$W/repo/tests/s.test.ts"; g add -A; g commit -q -m "test with a token"
+prjson OPEN feat/s "$HEAD_OID" false
+r=$(run --findings "$W/rep.md"); check "a pushed commit adds a GitHub token in an in-scope test file -> refused, path:line and kind named, value not shown (I53)" \
+  eval '[ $r = 1 ] && grep -q "secret:" "$W/out" && grep -q "tests/s.test.ts:1 GitHub token" "$W/out" && ! grep -q "$TOK" "$W/out"'
+g rm -q tests/s.test.ts; g commit -q -m "drop the token"
+r=$(run --findings "$W/rep.md"); check "a later commit removes it: the commit that added it is still pushed -> refused (I53)" eval '[ $r = 1 ] && grep -q "secret:" "$W/out"'
+g checkout -q -b feat/k "$HEAD_OID"; printf -- '-----BEGIN %s PRIVATE KEY-----\n' EC >>"$W/repo/src/a.ts"; g commit -q -am "key"
+prjson OPEN feat/k "$HEAD_OID" false
+r=$(run --findings "$W/rep.md"); check "a pushed commit adds a private key block to a finding's file -> refused (I53)" eval '[ $r = 1 ] && grep -q "src/a.ts:[0-9]* private key block" "$W/out"'
+# A value the base already holds comes in with a merge of the base and is not the fixer's.
+g checkout -q -b base-tok main; printf 'k = "%s"\n' "$TOK" >"$W/repo/src/base_tok.py"; g add -A; g commit -q -m "base holds a token"
+BTOK="$(g rev-parse HEAD)"; g checkout -q -b feat/bm "$HEAD_OID"; g merge -q --no-edit base-tok >/dev/null 2>&1
+prjson OPEN feat/bm "$HEAD_OID" false "$BTOK"
+r=$(run --findings "$W/rep.md"); check "a merge of a base that already holds a token -> ok, not the fixer's (I53)" eq "$r" 0
+mkdir -p "$W/alone"; cp "$PG" "$W/alone/push-guard.sh"; g checkout -q feat/s
+prjson OPEN feat/s "$HEAD_OID" false
+r=$( (cd "$W/repo" && "$W/alone/push-guard.sh" 7 --findings "$W/rep.md") >"$W/out" 2>&1; echo $?)
+check "review-cycle.sh missing beside push-guard.sh -> 2, the screen cannot run (I53)" eval '[ $r = 2 ] && grep -q "secret screen cannot run" "$W/out"'
+g checkout -q feat/x
+
 for opt in --findings --allow; do
   (cd "$W/repo" && perl -e 'alarm shift; exec @ARGV' 5 "$PG" 7 "$opt") >"$W/out" 2>&1; r=$?
   check "$opt with no value -> refused at once (rc 2), naming it" eval '[ $r = 2 ] && grep -q -- "$opt needs a value" "$W/out"'

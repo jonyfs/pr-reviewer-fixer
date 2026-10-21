@@ -28,6 +28,10 @@
 #      git is older than 2.38 are refused. A commit the base branch already holds is not checked,
 #      since a merge of the base brings it in. When the base commit is not in the clone, the base's
 #      own commits are checked like any other, so fetch the base first.
+#   5. no commit adds a line that looks like a token or a private key: the added lines of each
+#      commit's own changes (as in 4) go through `review-cycle.sh screen --patch`, the screen
+#      `publish` uses. A hit refuses with reason `secret`, naming the path, the line and the kind,
+#      never the value. A value that was already on the base is not counted.
 #
 # EXIT CODES. 0 = safe to push. 1 = refused, with every reason printed. 2 = could not check: gh
 # or git missing, not inside a work tree, the pull request unreadable, or its head commit not
@@ -138,17 +142,19 @@ merge_tree_ok() {
   case "$maj$min" in ''|*[!0-9]*) return 1 ;; esac
   [ "$maj" -gt 2 ] || { [ "$maj" -eq 2 ] && [ "$min" -ge 38 ]; }
 }
-# The paths a commit itself changes, NUL-delimited. An ordinary commit: against its parent. A merge
+# The paths a commit itself changes, NUL-delimited (or, with `patch` as $2, its own changes as a
+# unified diff with no context, which the secret screen reads). An ordinary commit: against its parent. A merge
 # commit: against the tree git produces when it merges the two parents on its own, so what the merge
 # brought in from either side is not counted, and what was written into the merge by hand is (an
 # "evil merge", and the resolution of every conflicted file). Exit 1 when the commit cannot be read
 # this way, with the reason on stdout.
 commit_paths() {
-  local c="$1" parents n tree rc
+  local c="$1" parents n tree rc fmt=(--name-only -z)
+  [ "${2:-}" = patch ] && fmt=(-p -U0 --no-color --no-ext-diff)
   parents="$(git rev-list --parents -n 1 "$c" 2>/dev/null)" || { echo "commit ${c:0:12} could not be read"; return 1; }
   set -- $parents; shift; n=$#
   if [ "$n" -le 1 ]; then
-    git diff-tree -r --root --no-commit-id --no-renames --name-only -z "$c" 2>/dev/null; return 0
+    git -c core.quotePath=false diff-tree -r --root --no-commit-id --no-renames "${fmt[@]}" "$c" 2>/dev/null; return 0
   fi
   [ "$n" -eq 2 ] || { echo "merge commit ${c:0:12} has $n parents; an octopus merge is not checked"; return 1; }
   merge_tree_ok || { echo "merge commit ${c:0:12} cannot be checked: git merge-tree --write-tree needs git 2.38 or later"; return 1; }
@@ -160,13 +166,15 @@ commit_paths() {
   if [ "$rc" -gt 1 ] || ! git cat-file -e "$tree^{tree}" 2>/dev/null; then
     echo "merge commit ${c:0:12} could not be recomputed with git merge-tree, so its own changes are unknown"; return 1
   fi
-  git diff-tree -r --no-renames --name-only -z "$tree" "$c^{tree}" 2>/dev/null
+  git -c core.quotePath=false diff-tree -r --no-renames "${fmt[@]}" "$tree" "$c^{tree}" 2>/dev/null
 }
+PATCH="$(mktemp)"; trap 'rm -f "$SCOPE" "$PATCH"' EXIT
 if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
   while IFS= read -r c; do
     [ -n "$c" ] || continue
     PATHS="$(mktemp)"
     if ! commit_paths "$c" >"$PATHS"; then REASONS+=("$(cat "$PATHS")"); rm -f "$PATHS"; continue; fi
+    commit_paths "$c" patch >>"$PATCH" || true
     while IFS= read -r -d '' f; do
       [ -n "$f" ] || continue
       if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(printf '%q' "$f")"); continue; fi
@@ -176,6 +184,19 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     done <"$PATHS"
     rm -f "$PATHS"
   done < <(git rev-list "$HEAD_OID..HEAD" ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null)
+fi
+# 5. The secret screen over what these commits add, the same one `publish` and the fixer's closure
+# use. Only the commits' own changes are read, so a value already on the base does not refuse a
+# merge of the base. The value is never printed: only the path, the line and the kind.
+if [ -s "$PATCH" ]; then
+  RCY="$(dirname "$0")/review-cycle.sh"
+  [ -f "$RCY" ] || { echo "push-guard: review-cycle.sh is not beside push-guard.sh, so the secret screen cannot run, INCONCLUSIVE" >&2; exit 2; }
+  HITS="$(bash "$RCY" screen --patch "$PATCH" 2>/dev/null)"; src=$?
+  case "$src" in
+    0) ;;
+    1) REASONS+=("secret: the commits add what looks like a credential (value not shown): $(printf '%s' "$HITS" | paste -sd';' - | sed 's/;/; /g')") ;;
+    *) echo "push-guard: the secret screen could not read the commits, INCONCLUSIVE" >&2; exit 2 ;;
+  esac
 fi
 if [ "${#BADNAME[@]}" -gt 0 ]; then
   REASONS+=("touched paths with a control character in the name, never pushed: ${BADNAME[*]}")

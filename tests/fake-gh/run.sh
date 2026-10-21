@@ -4,6 +4,7 @@ set -u
 T="$(cd "$(dirname "$0")" && pwd)"
 SRC="${1:-$T/../../.agents/skills/pr-reviewer/scripts}"
 RC="$SRC/review-cycle.sh"; GATE="$SRC/gate-pr-review-state.py"
+RCABS="$(cd "$SRC" && pwd)/review-cycle.sh"
 # Scratch files live in a directory per run so two runs can go at the same time (TEST_TAG names it).
 W="$T/work-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W"
 export PATH="$T/bin:$PATH"
@@ -162,7 +163,7 @@ check "export-audit: the output directory is a symlink -> refused, nothing writt
 rm -f "$EXPORT"
 # N3 of #26: the whole --out path is resolved, symbolic links followed, and must stay inside the
 # repository top level. The last-component check above misses a link earlier in the path.
-OUTSIDE="$(mktemp -d)"; RCABS="$(cd "$(dirname "$RC")" && pwd)/review-cycle.sh"
+OUTSIDE="$(mktemp -d)"
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
 rm -rf "$W/link"; ln -s "$OUTSIDE" "$W/link"
 "$RC" export-audit 7 --out "$W/link/" >/dev/null 2>"$W/err"; r=$?
@@ -716,6 +717,30 @@ printf 'closure quoting a log line: export TOKEN=%s\n' "$gh_tok" >"$W/leak.md"
 check "screen --file on a text with a token -> 1, names the kind, never the value (S3)" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
 "$RC" screen --file "$W/no-such-file.md" >"$W/out" 2>&1; r=$?
 check "screen --file on a missing file -> 2 (S3)" eq "$r" 2
+# I53: --staged screens the added lines of the index, --patch those of a given diff. Each hit is
+# `path:line kind`, the value never printed.
+SR="$W/screen-repo"; rm -rf "$SR"; mkdir -p "$SR"; sg() { git -C "$SR" -c user.name=t -c user.email=t@example.com "$@"; }
+sg init -q; printf 'old %s\n' "$gh_tok" >"$SR/old.txt"; printf 'a\n' >"$SR/a.py"; sg add -A; sg commit -q -m base
+(cd "$SR" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?
+check "screen --staged with nothing staged -> 0 (I53)" eq "$r" 0
+printf 'a\nkey = "%s"\n' "$aws_key" >"$SR/a.py"; sg add a.py
+(cd "$SR" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?
+check "screen --staged on an added AWS key id -> 1, names a.py:2 and the kind, not the value (I53)" \
+  eval '[ $r = 1 ] && grep -q "^a.py:2 AWS access key id$" "$W/out" && ! grep -q "$aws_key" "$W/out"'
+sg reset -q; printf 'a\n' >"$SR/a.py"; sg rm -q old.txt
+(cd "$SR" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?
+check "screen --staged on a removed line holding a token -> 0, a removal adds nothing (I53)" eq "$r" 0
+sg reset -q --hard
+NOGIT="$(mktemp -d)"; (cd "$NOGIT" && "$RCABS" screen --staged) >"$W/out" 2>&1; r=$?; rm -rf "$NOGIT"
+check "screen --staged outside a git work tree -> 2 (I53)" eq "$r" 2
+printf 'diff --git a/x.env b/x.env\n--- a/x.env\n+++ b/x.env\n@@ -3,0 +4,2 @@\n+fine\n+TOKEN=%s\n' "$gh_tok" >"$W/p.patch"
+"$RC" screen --patch "$W/p.patch" >"$W/out" 2>&1; r=$?
+check "screen --patch: a token on the second added line of a hunk at +4 -> x.env:5 (I53)" \
+  eval '[ $r = 1 ] && grep -q "^x.env:5 GitHub token$" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
+"$RC" screen --patch "$W/no-such.patch" >"$W/out" 2>&1; r=$?
+check "screen --patch on a missing file -> 2 (I53)" eq "$r" 2
+"$RC" screen --staged --file "$W/clean.md" >"$W/out" 2>&1; r=$?
+check "screen with two modes -> refused with usage (I53)" eval '[ $r = 1 ] && grep -q "usage" "$W/out"'
 
 # ---- options with no value, and pull request arguments that are not a number -------------------
 # An option given last with no value once made `shift 2` fail and the loop spin forever. Each run

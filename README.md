@@ -147,7 +147,9 @@ sequenceDiagram
   not a fast-forward and a commit that touches a file no finding names. A merge commit counts the
   files it changes beyond git's automatic merge of its parents (a conflict resolution, or an edit
   slipped into the merge), which needs git 2.38 or later; commits the base already holds are not
-  checked.
+  checked. It also screens the lines those commits add and refuses one that adds what looks like a
+  token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
+  same screen over the staged diff.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
 
 ```mermaid
@@ -468,7 +470,10 @@ always match. `lint-report` applies the same screen, and `review-cycle.sh screen
 applies it to any other text an agent posts: the fixer screens its closure comment and the new PR
 body (with the `pr-debt` block) before posting them, and the reviewer screens an overflow comment.
 It exits 0 when the text is clean, 1 naming the kind of secret (never the value) and 2 when the
-file cannot be read. A text posted by hand with `gh` is not screened. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
+file cannot be read. `screen --staged` and `screen --patch <file>` apply it to the added lines of
+the staged diff and of a given diff, printing `path:line kind` for each hit: the fixer screens
+every commit, and `push-guard.sh` screens the commits it is about to push. A text posted by hand
+with `gh` is not screened. Write a login you mention in backticks (`@login`): the script does not rewrite the report, so a bare one notifies that person. `review-cycle.sh publish --model <id> --tier fast|standard|deep` writes the model id and tier into
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
 publisher, timestamps, label events, model, tier and `block_at`) from the trusted marker and the pull

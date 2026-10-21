@@ -261,7 +261,10 @@ flowchart TD
    computes on its own from the two parents (`git merge-tree --write-tree`, git 2.38 or later), so
    a conflict resolution needs `--allow` and an edit hidden inside a merge is refused. Commits the
    base branch already holds are not checked. A path with a control character in its name is
-   refused. If the head is not writable, the fixer delivers a patch and replies instead.
+   refused. The lines those commits add go through the same secret screen as a verdict, and a
+   token or private key refuses the push (the fixer already screens each commit with
+   `review-cycle.sh screen --staged`). If the head is not writable, the fixer delivers a patch and
+   replies instead.
 7. **Close the loop.** The push moves the head, and `review-cycle.sh stale` moves the label back to
    `review:pending`. The fixer posts one closure comment carrying
    `<!-- pr-fixer-closure: cycle=… head=… closed=… refused=… debt=… -->`. For each finding it records
