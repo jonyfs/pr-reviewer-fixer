@@ -160,6 +160,34 @@ rm -rf "$EXPORT" "$W/real-out"; mkdir -p "$W/real-out"; ln -s "$W/real-out" "$EX
 check "export-audit: the output directory is a symlink -> refused, nothing written (S9)" \
   eval '[ $r != 0 ] && grep -q "symbolic link" "$W/err" && [ -z "$(ls -A "$W/real-out")" ]'
 rm -f "$EXPORT"
+# N3 of #26: the whole --out path is resolved, symbolic links followed, and must stay inside the
+# repository top level. The last-component check above misses a link earlier in the path.
+OUTSIDE="$(mktemp -d)"; RCABS="$(cd "$(dirname "$RC")" && pwd)/review-cycle.sh"
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
+rm -rf "$W/link"; ln -s "$OUTSIDE" "$W/link"
+"$RC" export-audit 7 --out "$W/link/" >/dev/null 2>"$W/err"; r=$?
+check "export-audit --out link/ (a symlink to outside the repository) -> refused, nothing written there (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "outside the repository top level" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+rm -rf "$OUTSIDE"; mkdir -p "$OUTSIDE"; "$RC" export-audit 7 --out "$W/link/records" >/dev/null 2>"$W/err"; r=$?
+check "export-audit --out link/records -> refused, no directory created through the link (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "outside the repository top level" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+rm -rf "$OUTSIDE"; mkdir -p "$OUTSIDE"; "$RC" export-audit 7 --out "$OUTSIDE/records" >/dev/null 2>"$W/err"; r=$?
+check "export-audit --out a plain directory outside the repository -> refused (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "outside the repository top level" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+# A checkout whose committed `docs` is a link: the default docs/compliance-records goes through it.
+rm -rf "$W/docslink"; mkdir -p "$W/docslink"; git -C "$W/docslink" init -q
+ln -s "$OUTSIDE" "$W/docslink/docs"; git -C "$W/docslink" add docs
+git -C "$W/docslink" -c user.name=t -c user.email=t@example.com commit -q -m "docs is a link"
+rm -rf "$OUTSIDE"; mkdir -p "$OUTSIDE"; (cd "$W/docslink" && "$RCABS" export-audit 7) >/dev/null 2>"$W/err"; r=$?
+check "export-audit with a committed docs symlink and the default --out -> refused, nothing written (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "outside the repository top level" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+rm -rf "$OUTSIDE"; mkdir -p "$OUTSIDE"; (cd "$OUTSIDE" && "$RCABS" export-audit 7 --out records) >/dev/null 2>"$W/err"; r=$?
+check "export-audit outside any git work tree -> refused, nothing written (N3 of #26)" \
+  eval '[ $r != 0 ] && grep -q "not inside a git work tree" "$W/err" && [ -z "$(ls -A "$OUTSIDE")" ]'
+rm -rf "$EXPORT"; o="$("$RC" export-audit 7 --out "$EXPORT" 2>"$W/err")"; r=$?
+check "export-audit into a real directory inside the repository still writes the record (N3 of #26)" \
+  eval '[ $r = 0 ] && [ "$o" = "$EXPORT/7-2.json" ] && [ -f "$EXPORT/7-2.json" ]'
+rm -rf "$OUTSIDE" "$W/link" "$W/docslink" "$EXPORT"
 # R6: a pull request whose JSON is larger than one environment string may be (1.5 MB here) still exports.
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
 python3 -I - <<'PY'

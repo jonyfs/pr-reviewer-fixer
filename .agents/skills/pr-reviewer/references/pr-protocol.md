@@ -342,7 +342,9 @@ Under `REVIEW_BLOCK_AT=warning`, `publish` also writes `block_at=warning`. The e
 `review-cycle.sh export-audit <n> [--out <dir>]` writes `<dir>/<n>-<pass>.json` (default
 `docs/compliance-records/`) from the newest trusted marker and the PR's label events. It applies the
 trust rules above, lists markers by logins off the allowlist under `ignored`, refuses when no
-trusted marker remains, and refuses when the head moved after that marker. A person commits the file
+trusted marker remains, refuses when the head moved after that marker, and refuses an output
+directory that resolves outside the repository top level once every symbolic link in its path is
+followed (`--out link/`, or a committed `docs` link above the default). A person commits the file
 through a pull request. `publish` also appends one line to a per-machine
 `${XDG_STATE_HOME:-$HOME/.local/state}/pr-reviewer-fixer/audit.jsonl`; that copy is a convenience,
 never the evidence.

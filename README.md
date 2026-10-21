@@ -470,7 +470,8 @@ file cannot be read. A text posted by hand with `gh` is not screened. Write a lo
 the verdict marker. They are self-attested by the publishing session and nothing verifies them.
 `review-cycle.sh export-audit <pr>` writes `docs/compliance-records/<pr>-<pass>.json` (sha, counts,
 publisher, timestamps, label events, model, tier and `block_at`) from the trusted marker and the pull
-request's own timeline, for a person to commit through a pull request. See
+request's own timeline, for a person to commit through a pull request. It refuses an output
+directory that resolves, symbolic links followed, outside the repository it runs in. See
 [`docs/compliance-records/README.md`](docs/compliance-records/README.md) for what a record does and
 does not prove.
 

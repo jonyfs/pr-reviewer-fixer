@@ -75,7 +75,9 @@
 #                          and withdraws review:needs-human
 #     export-audit [pr] [--out <dir>]
 #                          writes <dir>/<pr>-<pass>.json (default docs/compliance-records) from
-#                          the trusted marker and the PR timeline; refuses when the head moved
+#                          the trusted marker and the PR timeline; refuses when the head moved,
+#                          and when <dir> resolves (symbolic links followed) outside the
+#                          repository top level
 #     stale [pr]           a marker-backed state whose head moved goes back to review:pending.
 #                          Refuses (exit 2) when REVIEW_MARKER_AUTHORS names no login.
 #     marker [file] [--author <login>]
@@ -1617,6 +1619,16 @@ cmd_export_audit() {
   # A symlink at the output directory would send the record wherever the link points. A branch can
   # commit one under docs/compliance-records/, so the export refuses it instead of following it.
   [ ! -L "$out" ] || die "review-cycle: REFUSED. $out is a symbolic link; export into a real directory"
+  # That test sees only the last component. A link earlier in the path (`--out link/`, or a committed
+  # `docs` link above the default directory) would still send the record elsewhere, and `mkdir -p`
+  # follows it. So the whole path is resolved first, and it must land inside the repository the
+  # export runs in, where a person reviews and commits the record.
+  local top; top="$(git rev-parse --show-toplevel 2>/dev/null)" && [ -n "$top" ] \
+    || die "review-cycle: REFUSED. export-audit writes into the repository it runs in, and this is not inside a git work tree"
+  X_OUT="$out" X_TOP="$top" python3 -I -c 'import os,sys
+o,t=os.path.realpath(os.environ["X_OUT"]),os.path.realpath(os.environ["X_TOP"])
+sys.exit(0 if os.path.commonpath([o,t])==t else 1)' \
+    || die "review-cycle: REFUSED. $out resolves outside the repository top level $top (a symbolic link in the path, or a path outside the work tree); export into a directory inside it"
   mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
   # The pull request and the timeline go through files, never the environment: one environment
   # string over 128 KiB (Linux) or a total over ARG_MAX (macOS) fails with "argument list too long",
@@ -1624,7 +1636,7 @@ cmd_export_audit() {
   local xdir; xdir="$(mktemp -d)" || die "review-cycle: could not create a temporary directory"
   printf '%s' "$json" >"$xdir/pr.json" && printf '%s' "$events" >"$xdir/events.json" \
     || { rm -rf "$xdir"; die "review-cycle: could not write the export inputs to $xdir"; }
-  X_JSON_FILE="$xdir/pr.json" X_EVENTS_FILE="$xdir/events.json" X_AUTHORS="$(marker_authors)" X_OUT="$out" python3 -I - <<'PY'
+  X_JSON_FILE="$xdir/pr.json" X_EVENTS_FILE="$xdir/events.json" X_AUTHORS="$(marker_authors)" X_OUT="$out" X_TOP="$top" python3 -I - <<'PY'
 import json, os, re, sys
 
 MARK = re.compile(
@@ -1696,6 +1708,10 @@ path = os.path.join(out, "%s-%s.json" % (pr.get("number"), m.group(3)))
 # and os.replace renames over the final path without following it.
 if os.path.islink(out):
     die("%s is a symbolic link; export into a real directory." % out)
+# Checked again after `mkdir -p`: a link planted in the path in between is still refused.
+_top = os.path.realpath(os.environ["X_TOP"])
+if os.path.commonpath([os.path.realpath(out), _top]) != _top:
+    die("%s resolves outside the repository top level %s; export into a directory inside it." % (out, _top))
 if os.path.islink(path):
     die("%s is a symbolic link, and the export does not write through one. Remove it and export again." % path)
 import tempfile
