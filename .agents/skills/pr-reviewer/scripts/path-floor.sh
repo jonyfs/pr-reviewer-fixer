@@ -24,7 +24,8 @@
 #                              Dockerfile.<x> and <x>.dockerfile): the files that run CI or an agent
 #   security         max       authentication, authorisation and cryptography: a path segment or
 #                              file stem such as auth, oauth, login, session, password, crypto,
-#                              cipher, jwt, saml, oidc, rbac, acl, permission(s), credential(s)
+#                              cipher, jwt, saml, oidc, rbac, acl, permission(s), credential(s),
+#                              also as a camelCase or PascalCase word (AuthService.ts, jwtUtils.go)
 #   security         standard  migrations (below)
 #   data-integrity   standard  migrations: a directory named migrations, migration, migrate or
 #                              alembic, or a schema file (schema.sql, structure.sql, schema.rb,
@@ -54,7 +55,7 @@ die2() { echo "path-floor: $*" >&2; exit 2; }
 mode="" base="" head="" file=""
 case "${1:-}" in
   --diff) [ $# -eq 2 ] || die2 "usage: path-floor.sh <base> <head> | --diff <file>"; mode="diff"; file="$2" ;;
-  -h|--help) sed -n '2,46p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,47p' "$0"; exit 0 ;;
   *) [ $# -eq 2 ] || die2 "usage: path-floor.sh <base> <head> | --diff <file>"; mode="git"; base="$1"; head="$2" ;;
 esac
 
@@ -199,7 +200,10 @@ def units(path):
             or base in ("action.yml", "action.yaml", "dockerfile", "containerfile")
             or base.startswith(("dockerfile.", "containerfile.")) or base.endswith(".dockerfile")):
         out.append(("security", "max"))
-    if AUTH.search(p):
+    # camelCase and PascalCase name the same words without a delimiter (AuthService.ts,
+    # jwtUtils.go, OAuth2Client.ts), so the original-case path is also read with its humps split.
+    humps = re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=[A-Za-z])(?=[0-9])", "-", path).lower()
+    if AUTH.search(p) or AUTH.search(humps):
         out.append(("security", "max"))
     if any(d in MIGRATION_DIRS for d in parts[:-1]) or base in SCHEMAS:
         out += [("security", "standard"), ("data-integrity", "standard")]

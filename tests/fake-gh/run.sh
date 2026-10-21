@@ -985,6 +985,18 @@ check "path-floor --diff: header-only sections, quoted, mixed and with \" b/\" i
 ( cd "$pq" && "$PF" HEAD~3 HEAD ) >"$W/pq-git.out" 2>&1; rg=$?
 check "path-floor: git mode and --diff mode print the same floor for the same change (W3, N2, PR #29)" \
   eval '[ $r = 0 ] && [ $rg = 0 ] && [ -s "$W/pq-git.out" ] && cmp -s "$W/pq-diff.out" "$W/pq-git.out"'
+# W4 (PR #29): camelCase and PascalCase names are split into words before the auth keywords are
+# matched, so AuthService.ts counts; AuthorService.ts and Sessionless still do not.
+: >"$W/pf-camel.patch"
+for f in src/AuthService.ts src/middleware/authMiddleware.ts app/controllers/LoginController.java pkg/jwtUtils.go \
+         lib/OAuth2Client.ts src/JWTVerifier.kt src/UserPermissions.cs src/AuthorService.ts src/sessionless.ts src/Authority.java; do
+  printf 'diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-x\n+y\n' "$f" "$f" "$f" "$f" >>"$W/pf-camel.patch"
+done
+"$PF" --diff "$W/pf-camel.patch" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: camelCase and PascalCase auth names -> security max (W4, PR #29)" \
+  eval '[ $r = 0 ] && pfhas "security max src/AuthService.ts" && pfhas "security max src/middleware/authMiddleware.ts" && pfhas "security max app/controllers/LoginController.java" && pfhas "security max pkg/jwtUtils.go" && pfhas "security max lib/OAuth2Client.ts" && pfhas "security max src/JWTVerifier.kt" && pfhas "security max src/UserPermissions.cs"'
+check "path-floor: AuthorService.ts, sessionless.ts and Authority.java summon nothing (W4, PR #29)" \
+  eval '! grep -q "AuthorService\|sessionless\|Authority" "$W/pf.out"'
 "$PF" --diff "$W/missing.patch" >/dev/null 2>&1; r=$?
 check "path-floor --diff: an unreadable diff -> 2 (I50)" eq "$r" 2
 printf 'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n--- a/.github/workflows/ci.yml\n+++ b/.github/workflows/ci.yml\n@@ -1 +1,2 @@\n x\n+y\ndiff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1 +1,2 @@\n x\n+y\n' >"$W/fl.patch"
