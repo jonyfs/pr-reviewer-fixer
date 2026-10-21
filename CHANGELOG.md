@@ -87,9 +87,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - I26 `dup_of` dedupe against the reviewer's findings and automatic re-anchoring of outdated
   threads; I54 merging `gitleaks` or `trufflehog` output (needs I57's trusted path resolution).
-- `push-guard.sh` check 5 folds only ASCII case. On a filesystem that also folds non-ASCII case or
-  Unicode normalization (APFS, NTFS), `É/` and `é/`, or an NFC and an NFD spelling, are one directory
-  the guard sees as two.
+- `push-guard.sh` check 5 folds only ASCII case. On a filesystem that also folds non-ASCII case
+  (APFS, NTFS), `É/` and `é/` are one directory the guard sees as two, and so are an NFC and an NFD
+  spelling on one that ignores Unicode normalization (APFS).
 
 ## 0.11.0
 
