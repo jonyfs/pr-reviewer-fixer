@@ -13,18 +13,21 @@ Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items
 ### Added
 
 - `scan-hidden.py` kind `link-ref-comment`: a Markdown link reference definition whose destination
-  is `#` or `<>` (`[//]: # (text)`), which GitHub renders as nothing. A definition with a real
-  destination is not reported (#27 N1).
+  is `#` or `<>` (`[//]: # (text)`), which GitHub renders as nothing, also with the destination on
+  the next line, an escaped `]` or a line break in the label, or inside a blockquote or list item. A
+  definition with a real destination is not reported (#27 N1, #28 W3).
 - `scan-hidden.py --feedback-json <file|->` scans a `fetch-feedback.py` list, which holds the
   review-thread comments and review bodies that `--pr` does not read. The loop runs it before
   dispatching the fixer, and the fixer's comment lane runs it on its own work list (#27 N2).
 - The secret screen (`publish`, `lint-report`, `screen`, `push-guard.sh`) refuses a password
   assignment: a `password` or `passwd` key given a quoted value of eight or more characters, or, at
-  the start of a line, an unquoted one. A value that reads as code (an identifier, a dotted name, a
+  the start of a line, an unquoted one on that same line. A value that reads as code (an identifier, a dotted name, a
   call, an index), a path or a placeholder is not counted, so `password = self.password` passes.
   The limit that follows: an unquoted value shaped like a variable name (a letter or underscore,
   then letters, digits, underscores and dots, such as `PASSWORD=` followed by one plain word) is not
-  screened, since refusing it would refuse every assignment of a variable (#12 N1).
+  screened, since refusing it would refuse every assignment of a variable. A YAML key whose value is
+  a nested mapping on the lines below (`password:`, then `valueFrom:`) is not an assignment
+  (#12 N1, #28 W4).
 - `fetch-feedback.py` items carry `minimized`, and two new actions: `skip: minimized` and
   `skip: dismissed` (#27 N5).
 - `review-cycle.sh` can be sourced: run as a command it dispatches; sourced, it only defines its
@@ -43,12 +46,14 @@ Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items
   `REVIEW_MARKER_AUTHORS` keeps the one login grammar the scripts and the gate share: the bare login
   GraphQL prints, so a `<name>[bot]` entry there names nobody (#27 N4).
 - The permission lookup in `fetch-feedback.py` and in `review-cycle.sh fix` reads `role_name` as well
-  as the legacy `permission`; either one naming admin, maintain or write is write access. The live
+  as the legacy `permission`; either field equal to admin, maintain or write, ignoring case, is write
+  access. Each field is compared whole, so a custom role named "Write Docs" is not (#28 W2). The live
   response was checked for an admin (`{"permission":"admin","role_name":"admin"}`); the maintain and
   triage mapping of the legacy field is GitHub's documented one and was not observed (#27 N13).
 - `push-guard.sh`: `PUSH_GUARD_ALLOW_SENSITIVE` may hold only lower-case letters, commas, spaces and
   tabs, so a class after a newline is refused rather than never read (#27 N7). A symlink target that
-  steps back with `..` out of a component that is itself a link involves every class (#27 N19). A
+  steps back with `..` out of a component that is itself a link involves every class, the link
+  names compared after the case fold, so `A/..` steps out of a link `a` (#27 N19, #28 W1). A
   link name or target holding a control character is printed quoted with `printf %q` (#27 N20).
 - `tests/run-all.sh` puts a caller's `TEST_TAG` in front of each suite's tag, the triage suite has a
   `TEST_TAG` of its own, and every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
@@ -106,6 +111,10 @@ Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items
   that must not be refused. The T3 rows were also checked against
   a copy of the scripts with the case fold of `block_at` removed from `parse()` and the gate: they
   fail there (T3, #19 N26).
+- Rows from the first review of #28: `tests/push-guard/run.sh` 2 (W1), `tests/feedback/t.py` 4 and
+  `tests/fake-gh/run.sh` 2 (W2), `tests/scan-hidden/t.py` 10 (W3), `tests/fake-gh/run.sh` 1 (W4).
+  Each failing row failed before its fix. The fake `gh` now runs a permission lookup's `--jq` through
+  real jq and takes a custom role as a `{"permission", "role_name"}` object.
 - `tests/fake-gh/run.sh`: the section header "secrets and mentions" is now "secrets in a published
   report" (#13 N4).
 

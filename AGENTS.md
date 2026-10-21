@@ -40,7 +40,7 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 - `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.
 - `scripts/scan-hidden.py` (both skills) reports invisible text in what the agents read: the diff's
   added lines, the PR title, body and comments (through `pr-json.py`), the commit messages and,
-  with `--feedback-json`, the fixer's `fetch-feedback.py` list (review threads and review bodies). It
+  with `--feedback-json`, the fixer's `fetch-feedback.py` list (review-thread comments, review bodies and issue comments). It
   strips nothing and excludes the protocol's own markers by exact regex, the verdict one imported
   from the gate.
 - `tests/eval/` holds seeded review cases and `score.py`, which prints recall and precision for reports a person produced in a harness session. `tests/run-all.sh` runs only the scorer's own tests, never a model.

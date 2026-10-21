@@ -33,7 +33,9 @@ WHAT IT REPORTS (`kind`):
                   `visibility:hidden`, `font-size:0`, `opacity:0`, `color:transparent`, `hidden`)
   link-ref-comment
                   a Markdown link reference definition whose destination is `#` or `<>`, such as
-                  `[//]: # (text)` or `[comment]: <> (text)`. GitHub renders a definition as
+                  `[//]: # (text)` or `[comment]: <> (text)`, in every shape CommonMark reads as
+                  one: the destination on the next line, an escaped `]` or a line break in the
+                  label, and inside a blockquote or list item. GitHub renders a definition as
                   nothing, so this is the Markdown form of an HTML comment. A definition with a
                   real destination is not reported: the text it hides is a URL, and the hits on
                   every ordinary reference-style link would bury the real ones.
