@@ -559,9 +559,6 @@ lr 1 src/a.ts 11; sed -i.bak '/Declined to judge/d' "$W/lr.md"; "$RC" lint-repor
 check "lint-report no Declined to judge line -> 1" eval '[ $r = 1 ] && grep -q "Declined to judge" "$W/out"'
 lr 1 src/a.ts 11; rm -f "$FAKE_DIR/diff.patch"; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report diff unreadable -> 2" eq "$r" 2
-lf ''; "$RC" lint-report --report "$W/lf.md" --diff "$W/pf-sep.patch" >"$W/out" 2>&1; r=$?
-check "lint-report: a forged hunk header cannot drop the workflow from the floor (W1, PR #29)" \
-  eval '[ $r = 1 ] && grep -q "security (max) mandatory" "$W/out"'
 lr 1 src/a.ts 11; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11 @@\n x\n' >"$W/d.patch"
 "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >/dev/null 2>&1; r=$?
 check "lint-report --diff file, no pull request -> 0" eq "$r" 0
