@@ -1519,7 +1519,13 @@ cmd_export_audit() {
   # commit one under docs/compliance-records/, so the export refuses it instead of following it.
   [ ! -L "$out" ] || die "review-cycle: REFUSED. $out is a symbolic link; export into a real directory"
   mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
-  X_JSON="$json" X_EVENTS="$events" X_AUTHORS="$(marker_authors)" X_OUT="$out" python3 -I - <<'PY' || exit 1
+  # The pull request and the timeline go through files, never the environment: one environment
+  # string over 128 KiB (Linux) or a total over ARG_MAX (macOS) fails with "argument list too long",
+  # and a pull request with a few long reports reaches that.
+  local xdir; xdir="$(mktemp -d)" || die "review-cycle: could not create a temporary directory"
+  printf '%s' "$json" >"$xdir/pr.json" && printf '%s' "$events" >"$xdir/events.json" \
+    || { rm -rf "$xdir"; die "review-cycle: could not write the export inputs to $xdir"; }
+  X_JSON_FILE="$xdir/pr.json" X_EVENTS_FILE="$xdir/events.json" X_AUTHORS="$(marker_authors)" X_OUT="$out" python3 -I - <<'PY'
 import json, os, re, sys
 
 MARK = re.compile(
@@ -1532,7 +1538,7 @@ def die(msg):
     print("review-cycle: REFUSED. " + msg, file=sys.stderr)
     sys.exit(1)
 
-pr = json.loads(os.environ["X_JSON"])
+pr = json.load(open(os.environ["X_JSON_FILE"], encoding="utf-8"))
 allow = set(os.environ["X_AUTHORS"].split(",")) - {""}
 head = (pr.get("headRefOid") or "").lower()
 trusted, ignored = [], []
@@ -1555,7 +1561,7 @@ if m.group(1).lower() != head:
         % (pr.get("number"), head[:12], m.group(1)[:12]))
 try:
     # `gh api --paginate` prints one JSON array per page, back to back, so decode them one by one.
-    dec, i, raw, events = json.JSONDecoder(), 0, os.environ["X_EVENTS"].strip(), []
+    dec, i, raw, events = json.JSONDecoder(), 0, open(os.environ["X_EVENTS_FILE"], encoding="utf-8").read().strip(), []
     while i < len(raw):
         part, j = dec.raw_decode(raw, i)
         events.extend(part if isinstance(part, list) else [part])
@@ -1611,6 +1617,9 @@ except BaseException:
     raise
 print(path)
 PY
+  local xrc=$?
+  rm -rf "$xdir"
+  [ "$xrc" = 0 ] || exit 1
 }
 
 # Checks the `findings` block of a report against the diff it claims to review, before `publish`.

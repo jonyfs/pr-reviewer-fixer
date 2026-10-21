@@ -160,6 +160,16 @@ rm -rf "$EXPORT" "$W/real-out"; mkdir -p "$W/real-out"; ln -s "$W/real-out" "$EX
 check "export-audit: the output directory is a symlink -> refused, nothing written (S9)" \
   eval '[ $r != 0 ] && grep -q "symbolic link" "$W/err" && [ -z "$(ls -A "$W/real-out")" ]'
 rm -f "$EXPORT"
+# R6: a pull request whose JSON is larger than one environment string may be (1.5 MB here) still exports.
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
+python3 -I - <<'PY'
+import json, os
+p = os.environ["FAKE_DIR"] + "/pr.json"
+d = json.load(open(p)); d["comments"].insert(0, {"body": "x" * 1500000, "author": {"login": "mallory"}}); json.dump(d, open(p, "w"))
+PY
+rm -rf "$EXPORT"; o="$("$RC" export-audit 7 --out "$EXPORT" 2>"$W/err")"; r=$?
+check "export-audit: a 1.5 MB pull request JSON is exported, not refused with argument list too long (R6)" \
+  eval '[ $r = 0 ] && [ "$o" = "$EXPORT/7-2.json" ] && ! grep -qi "argument list too long" "$W/err"'
 BLK1="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=1 warning=0 note=0 -->")"
 reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"
 r1=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
