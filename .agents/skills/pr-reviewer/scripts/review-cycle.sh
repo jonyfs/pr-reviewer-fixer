@@ -1384,7 +1384,10 @@ def bearer(s):
 # brace in it. Placeholders do not count either.
 PW_KEY = r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9_.-]*(?:password|passwd)"
 PW_QUOTED = re.compile(PW_KEY + r"[\"']?\s*[:=]\s*([\"'])([^\"'\s]{8,})\1")
-PW_BARE = re.compile(r"(?im)^\s*(?:export\s+)?" + PW_KEY[4:] + r"\s*[:=]\s*([^\s\"'`#;,]{8,})\s*$")
+# PW_BARE stays on one line: in --file mode it runs over the whole text, and a YAML key whose value is
+# a nested mapping (`password:`, then `valueFrom:` indented below) is not an assignment. PW_QUOTED may
+# cross a line break, since a quoted value on the next line is still the key's value in YAML.
+PW_BARE = re.compile(r"(?im)^[ \t]*(?:export[ \t]+)?" + PW_KEY[4:] + r"[ \t]*[:=][ \t]*([^\s\"'`#;,]{8,})[ \t]*$")
 CODE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$|[/~][A-Za-z0-9_./~-]*$")
 def password(s):
     if any(not placeholder(m.group(2)) for m in PW_QUOTED.finditer(s)):

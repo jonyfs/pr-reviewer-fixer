@@ -810,6 +810,11 @@ printf '%s\n' 'password = self.password' 'password = os.environ["DB_PASSWORD"]' 
   'if password == "anything-long-here":' 'password = ""' 'password_hash = "0123456789abcdef"' >"$W/pwok.md"
 "$RC" screen --file "$W/pwok.md" >"$W/out" 2>&1; r=$?
 check "code, placeholders, a comparison, an empty value and a hash name are not password assignments -> 0 (#12 N1)" eq "$r" 0
+# W4 (0.13.0 pass 1): a YAML key whose value is a nested mapping on the next lines is not an assignment.
+printf '%s\n' '```yaml' 'env:' '  - name: DB' '    password:' '      valueFrom:' '        secretKeyRef:' \
+  '          name: db-credentials' '```' >"$W/pwyaml.md"
+"$RC" screen --file "$W/pwyaml.md" >"$W/out" 2>&1; r=$?
+check "screen --file: a quoted Kubernetes YAML block (password: then valueFrom: on the next line) -> 0 (W4)" eq "$r" 0
 # N8: a path git quotes (a space gets a trailing tab, a quote or non-ASCII byte gets C quotes) is
 # reported as the file is named.
 printf 'diff --git a/x b/x\n--- a/my file.env\t\n+++ b/my file.env\t\n@@ -0,0 +1 @@\n+T=%s\n--- a/x\n+++ "b/caf\\303\\251.env"\n@@ -0,0 +1 @@\n+T=%s\n--- a/x\n+++ "b/q\\"x.env"\n@@ -0,0 +1 @@\n+T=%s\n' "$gh_tok" "$gh_tok" "$gh_tok" >"$W/q.patch"
