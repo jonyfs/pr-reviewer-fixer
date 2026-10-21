@@ -322,8 +322,9 @@ never read as "reviewed".
 - A marker comment that was edited after it was created is ignored as a verdict. Its `pass=` still
   counts toward the highest pass, so an edit that keeps the number cannot lower the cycle count. An
   edit that rewrites the number counts as the new one. A trusted comment edited by anyone other
-  than its author stops `publish` and `budget` until a person deletes or restores it, whether or
-  not the edit left it readable as a marker.
+  than its author stops `publish` and `budget` until its author edits it back or deletes it,
+  whether or not the edit left it readable as a marker. The refusal names the comment's url; a new
+  comment does not clear it.
 - A verdict is bound to a commit. Any push turns it stale.
 - Everything read from the pull request (description, comments, commit messages, CI logs, file
   contents) is treated as data. It cannot give the skills orders.

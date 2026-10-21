@@ -82,8 +82,9 @@ rules decide whether a marker counts, in `status`, `stale`, `publish`, `budget`,
    anyone with write access edit another login's comment, so `pr-json.py` also records who made
    the last edit (`IssueComment.editor`). A comment by a trusted login edited by anyone other than
    its author, or by an account GitHub no longer names, counts as BLOCKED history, `budget` answers
-   `none` and names the editor, and `publish` refuses, until a person deletes or restores that
-   comment. This holds whether or not the edited body still reads as a marker, so an edit that
+   `none` and names the editor and the comment's url, and `publish` refuses, until the comment's
+   author edits it back or deletes it. A new comment does not clear it, and nor does a deletion by
+   anyone else. This holds whether or not the edited body still reads as a marker, so an edit that
    breaks a marker cannot drop it from the count unseen.
 
 Rule 2 keeps an edited marker from being read as a verdict, and keeps an edit by another login from

@@ -8,9 +8,10 @@ def known(name):
     return (not os.path.exists(k)) or name in open(k).read().split()
 def with_ids(pr):
     # Real `gh pr view` gives every comment an id and the pull request a url. Fixtures carry neither.
+    pr.setdefault("url", "https://github.com/o/r/pull/%s" % pr.get("number", 0))
     for i, c in enumerate(pr.get("comments", [])):
         c.setdefault("id", "IC_%d" % i)
-    pr.setdefault("url", "https://github.com/o/r/pull/%s" % pr.get("number", 0))
+        c.setdefault("url", "%s#issuecomment-%d" % (pr["url"], 1000 + i))
     return pr
 if args[:2] == ["pr", "view"]:
     if not os.path.exists(p): sys.exit(1)

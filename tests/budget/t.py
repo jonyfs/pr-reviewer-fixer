@@ -245,6 +245,16 @@ n = len(comments_posted(d))
 p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "2", "--sha", H, "--critical", "1", "--warning", "0", "--note", "0"], d)
 check("publish --pass 2 after another login broke the markers is refused, nothing posted",
       p.returncode != 0 and len(comments_posted(d)) == n and "edited by mallory" in p.stderr, p.stderr + p.stdout)
+# N6 of #25: the refusal names the comment by its url and gives the remedies that clear it.
+URL2 = "https://github.com/o/r/pull/7#issuecomment-1002"
+d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", "mallory"),))
+check("a foreign edit: budget why names the comment url and the remedy (N6)",
+      URL2 in d.get("why", "") and "edits it back" in d.get("why", "") and "a new comment does not clear" in d.get("why", ""), d)
+d = setup(hist([1] * 6), labels=("review:running",), edited=("IC_2",), edited_by=(("IC_2", "mallory"),))
+rep = os.path.join(d, "report.md"); open(rep, "w").write("## findings\n- one\n")
+p = run(["publish", "7", "--report", rep, "--verdict", "BLOCKED", "--pass", "7", "--sha", H, "--critical", "1", "--warning", "0", "--note", "0"], d)
+check("a foreign edit: the publish refusal names the comment url and does not suggest a new comment (N6)",
+      p.returncode != 0 and URL2 in p.stderr and "restores it with a new comment" not in p.stderr and "a new comment does not clear" in p.stderr, p.stderr)
 # N3 of #25: GitHub names no editor (a deleted account); the fake gh reads "-" as a null login.
 d = budget(hist([1] * 6), edited=("IC_2",), edited_by=(("IC_2", "-"),))
 check("a trusted marker edited by an unnamed account -> budget none, edited by unknown",

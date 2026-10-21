@@ -496,7 +496,9 @@ parse() {
   m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
     const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
     const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
-    let last=null,blocked="no",maxp=0,foreign="-";
+    let last=null,blocked="no",maxp=0,foreign="-",fkind="-",fauthor="-",fwhere="-";
+    // A field of the space-joined answer cannot hold a space.
+    const tok=v=>String(v||"").replace(/[\s]/g,"")||"-";
     for(const c of (JSON.parse(s).comments||[])){
       if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
       const mm=re.exec(c.body||"");
@@ -511,15 +513,15 @@ parse() {
       // Whether the body still reads as a marker does not matter: an edit that breaks the marker
       // would otherwise drop it from the count unseen, so any foreign edit counts (fails closed).
       const ed=String((c&&c.editor&&c.editor.login)||"").toLowerCase();
-      if(ed!==who){foreign=ed||"unknown";blocked="yes";}
+      if(ed!==who){foreign=ed||"unknown";fkind="edit";fauthor=tok(who);fwhere=tok(c&&c.url);blocked="yes";}
       // An edited marker is never the verdict, but its pass still counts: an edit that keeps the
       // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
       // body after the edit is kept, so an edit that rewrites the number counts as the new one.
       if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
     process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
-      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign].join(" "):
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign,fkind,fauthor,fwhere].join(" "):
       // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
-      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign].join(" "):""))
+      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign,fkind,fauthor,fwhere].join(" "):""))
   }catch(e){}})')
   MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
   MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
@@ -555,6 +557,21 @@ parse() {
   # so the count is not trusted while it stands.
   MARKER_FOREIGN_EDIT=$(printf '%s' "$m" | cut -d' ' -f12)
   [ -n "$MARKER_FOREIGN_EDIT" ] || MARKER_FOREIGN_EDIT=-
+  # Which comment it was, so a refusal can name it: the kind (`edit`), the login that wrote it and
+  # its url (`-` when GitHub gave none).
+  MARKER_FOREIGN_KIND=$(printf '%s' "$m" | cut -d' ' -f13)
+  MARKER_FOREIGN_AUTHOR=$(printf '%s' "$m" | cut -d' ' -f14)
+  MARKER_FOREIGN_WHERE=$(printf '%s' "$m" | cut -d' ' -f15)
+}
+
+# One sentence, no newline, naming the comment a foreign edit touched and the only ways to clear it.
+# `publish`, `start`, `status` and `budget` all print this, so they cannot give different remedies.
+foreign_msg() {
+  local who="${MARKER_FOREIGN_AUTHOR:--}" where="${MARKER_FOREIGN_WHERE:--}"
+  [ "$who" != - ] || who="its author"
+  [ "$where" != - ] || where="(GitHub gave no url)"
+  printf 'the comment %s by %s was edited by %s, not by its author, so the pass numbers and verdicts cannot be trusted (the edit may have rewritten or broken a verdict marker). A person reads its edit history on GitHub, then %s edits it back or %s deletes it; a new comment does not clear this' \
+    "$where" "$who" "$MARKER_FOREIGN_EDIT" "$who" "$who"
 }
 
 # Reads ONE marker, through `MARKER_RE`, from a file or from stdin, and prints
@@ -941,8 +958,10 @@ cmd_budget() {
   # The highest pass and a foreign edit come from parse(), the one reader of edited markers, so
   # `publish` and `budget` cannot count them differently.
   parse "$json"
+  local fmsg=""; [ "${MARKER_FOREIGN_EDIT:--}" = - ] || fmsg="$(foreign_msg)"
   printf '%s' "$json" | BUDGET_AUTHORS="$(marker_authors)" BUDGET_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
-    BUDGET_HARD="${MAX_REVIEW_CYCLES_HARD:-10}" BUDGET_MAX_PASS="${MARKER_MAX_PASS:-0}" BUDGET_FOREIGN_EDIT="${MARKER_FOREIGN_EDIT:--}" python3 -I -c '
+    BUDGET_HARD="${MAX_REVIEW_CYCLES_HARD:-10}" BUDGET_MAX_PASS="${MARKER_MAX_PASS:-0}" BUDGET_FOREIGN_EDIT="${MARKER_FOREIGN_EDIT:--}" \
+    BUDGET_FOREIGN_MSG="$fmsg" python3 -I -c '
 import json, os, re, shlex, sys
 
 def num(v, d):
@@ -1017,7 +1036,7 @@ done = max(max_pass - 1, 0)
 remaining = max(hard - done, 0)
 mine = os.environ.get("BUDGET_BLOCK_AT")
 if foreign != "-":
-    nxt, why = "none", "a comment by a trusted login was edited by %s, not by its author, so the pass count cannot be trusted (the edit may have rewritten or broken a verdict marker); a person checks that comment (its edit history shows what changed) and deletes or restores it" % foreign
+    nxt, why = "none", os.environ.get("BUDGET_FOREIGN_MSG") or ("a comment by a trusted login was changed by %s, not by its author, so the pass count cannot be trusted" % foreign)
 elif at is None:
     nxt, why = "none", "no trusted verdict marker at the head"
 elif at["block_at"] and at["block_at"] != mine:
@@ -1434,8 +1453,7 @@ cmd_publish() {
   # state at a time and `publish` is itself the thing about to overwrite it.
   # The pass number is the next one after the highest trusted marker, exactly. A lower one (or the
   # same one again) would let `budget` restart the cycle count, and a higher one would skip cycles.
-  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED. A comment by a trusted login on #$NUMBER was edited by ${MARKER_FOREIGN_EDIT}, not by its author. The edit may have rewritten or broken a verdict marker, so the pass numbers and verdicts cannot be trusted and the next pass is not known.
-   A person checks that comment on GitHub (its edit history shows what changed) and deletes it or restores it with a new comment, then publishes again."
+  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED on #$NUMBER: $(foreign_msg). The next pass is not known, so nothing is published."
   local want_pass=$(( ${MARKER_MAX_PASS:-0} + 1 ))
   [ "$passno" -eq "$want_pass" ] || die "review-cycle: REFUSED. --pass $passno, and the next pass on #$NUMBER is $want_pass (the highest trusted marker says pass ${MARKER_MAX_PASS:-0}).
    Publish with --pass $want_pass. \`review-cycle.sh budget $NUMBER\` prints it as B_NEXT_PASS."
