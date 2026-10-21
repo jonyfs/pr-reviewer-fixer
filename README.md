@@ -125,6 +125,10 @@ sequenceDiagram
 - Verifies each finding against the code before reporting it, and merges duplicates.
 - Splits large diffs into units, reviews the seams between them, and reports what was and was not
   read in depth.
+- Takes the hits of `scripts/scan-hidden.py` (zero-width and bidi characters, Unicode tag
+  characters, HTML comments other than the protocol's markers, `<details>` blocks, invisible HTML)
+  in the added lines, the pull request text, its comments and the commit messages, and judges each
+  as a candidate CRITICAL prompt-injection finding. The scanner strips nothing.
 - Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each
   token or private key it finds is a mandatory CRITICAL finding at that line, with the value
   redacted.
@@ -591,7 +595,7 @@ VERSION, CHANGELOG.md   the release version and its history
 ```
 
 Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py`,
-`scripts/pr-json.py`, `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
+`scripts/pr-json.py`, `scripts/scan-hidden.py`, `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
 `references/harness-matrix.md` and `templates/review-gate.yml`. The copies are identical on
 purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 
@@ -605,7 +609,7 @@ The suite needs no network. It drives the scripts against a fake `gh` and covers
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `scan-hidden.py`, `install.sh`, the review
 eval scorer and the version check. The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. It also

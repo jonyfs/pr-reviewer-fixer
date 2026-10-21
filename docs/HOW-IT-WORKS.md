@@ -313,6 +313,7 @@ never read as "reviewed".
 | `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
+| `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi and tag characters, HTML comments other than the markers, `<details>`, invisible HTML) in the diff, the pull request text and the commit messages, as JSON. It strips nothing. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
 | `push-guard.sh` | Read-only. The check the fixer passes before every push. |
 | `check-version.sh` | Prints a notice when a newer release exists. It never installs anything. |

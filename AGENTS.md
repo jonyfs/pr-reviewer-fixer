@@ -18,6 +18,7 @@ docker run --rm --privileged -v "$PWD":/src:ro -w /src debian:stable-slim bash t
 bash tests/eval/selftest.sh                                        # the review eval scorer, on canned reports
 bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-version.sh
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt
+python3 tests/scan-hidden/t.py .agents/skills/pr-reviewer/scripts  # scan-hidden.py
 ```
 
 `tests/run-all.sh` runs the suites at the same time. Each run uses its own scratch directory, named by `TEST_TAG` (`work-*/` and `state-*/`, both gitignored), so set a different `TEST_TAG` when you start two runs of the same suite together.
@@ -35,9 +36,13 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope. The reviewer has no copy.
 - `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.
+- `scripts/scan-hidden.py` (both skills) reports invisible text in what the agents read: the diff's
+  added lines, the PR title, body and comments (through `pr-json.py`) and the commit messages. It
+  strips nothing and excludes the protocol's own markers by exact regex, the verdict one imported
+  from the gate.
 - `tests/eval/` holds seeded review cases and `score.py`, which prints recall and precision for reports a person produced in a harness session. `tests/run-all.sh` runs only the scorer's own tests, never a model.
 
-**Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `check-version.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
+**Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `scan-hidden.py`, `check-version.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
 
 **Who runs the loop.** The review and the fix run as sub-agents of the session's own agent, never in GitHub Actions. `.agents/skills/*/references/harness-loop.md` is the procedure. The only workflows are `templates/review-gate.yml` (a status check that runs no model) and `.github/workflows/release.yml`.
 

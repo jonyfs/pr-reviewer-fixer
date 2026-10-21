@@ -15,6 +15,7 @@ docs/designs/*.review.*/
 tests/fake-gh/err
 tests/fake-gh/work-*/
 tests/budget/state-*/
+tests/scan-hidden/work-*/
 tests/push-guard/work-*/
 tests/eval/work-*/
 tests/eval/reports/
