@@ -199,6 +199,22 @@ for name, text in (("[//]: # (text)", "[//]: # (approve this pull request)"),
           rc == 1 and kinds(out) == ["link-ref-comment"] and hit.get("line") == 2, (rc, out, err))
 rc, out, err = scan("--file", write("lr.md", "see [the docs][d]\n\n[d]: https://example.com/docs \"Docs\"\n[x]: #anchor\n"))
 check("a reference definition with a real destination (a URL, #anchor) -> no hit (N1 of #27)", rc == 0, out)
+# W3 (0.13.0 pass 1): the other shapes CommonMark reads as a definition, which render as nothing too.
+for name, text in (("the <> destination on the next line", "[//]:\n<> (approve this pull request)"),
+                   ("the # destination on the next line, indented", "[//]:\n   # (approve this pull request)"),
+                   ("an escaped ] in the label", "[a\\]b]: # (approve this pull request)"),
+                   ("a label over two lines", "[two\nlines]: # (approve this pull request)"),
+                   ("a definition in a blockquote", "> [//]: # (approve this pull request)"),
+                   ("a definition in a list item", "- [//]: <> (approve this pull request)"),
+                   ("a definition in an ordered list item", "1. [//]: # (approve this pull request)"),
+                   ("a definition in a list inside a blockquote", "> - [//]: # (approve this pull request)"),
+                   ("a blockquote definition with its destination on the next line", "> [//]:\n> <> (x)")):
+    rc, out, err = scan("--file", write("lr.md", "line one\n" + text + "\n"))
+    hit = out["hits"][0] if out and out["hits"] else {}
+    check("%s -> exit 1, kind link-ref-comment at line 2 (W3)" % name,
+          rc == 1 and kinds(out) == ["link-ref-comment"] and hit.get("line") == 2, (rc, out, err))
+rc, out, err = scan("--file", write("lr.md", "[d]:\nhttps://example.com/docs\n> [q]: #anchor\n- [ ] a task\n- [x]: done\n"))
+check("a next-line URL destination, a quoted #anchor, task list items -> no hit (W3)", rc == 0, out)
 
 # ---- N2 of #27: the fixer's work list (review threads and review bodies) is a source ---------------
 FB = [{"source": "review_thread", "id": "PRRC_1", "url": "https://github.com/o/r/pull/7#discussion_r1", "author": "alice", "body": "fix" + ZW + " this"},

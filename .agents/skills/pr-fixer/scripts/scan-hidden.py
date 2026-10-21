@@ -109,8 +109,14 @@ for cp in list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A)):
 CHAR_RE = re.compile("[" + "".join(re.escape(chr(c)) for c in sorted(CHARS)) + "\U000E0000-\U000E007F]")
 
 DETAILS_RE = re.compile(r"<details\b", re.I)
-# A link reference definition (up to three spaces of indent) whose destination is `#` or `<>`.
-LINKREF_RE = re.compile(r"^ {0,3}\[[^\]\n]*\]:[ \t]*(?:#|<>)(?=[ \t]|$)", re.M)
+# A link reference definition whose destination is `#` or `<>`, in the shapes CommonMark accepts: up to
+# three spaces of indent, inside any blockquote or list item prefix (`> `, `- `, `1. `, nested), a label
+# that may hold an escaped bracket and run over lines, and the destination on the label's line or on
+# the next one (after that line's own prefix).
+_LR_PREFIX = r"(?:[ ]{0,3}(?:>[ ]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+))*"
+LINKREF_RE = re.compile(
+    r"^" + _LR_PREFIX + r" {0,3}\[(?:[^\[\]\\]|\\[\s\S]){0,999}\]:[ \t]*(?:\n" + _LR_PREFIX + r")?[ \t]*"
+    r"(?:#|<>)(?=[ \t]|$)", re.M)
 INVISIBLE_RE = re.compile(
     r"<[a-z][a-z0-9]*\b[^>]*?(?:"
     r"\bstyle\s*=\s*[\"'][^\"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?![.\d]*[1-9])"
