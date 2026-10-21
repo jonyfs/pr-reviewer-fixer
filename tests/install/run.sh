@@ -4,6 +4,9 @@
 # sit beside the .agents/skills folder and the VERSION file it installs, as in a clone: the suite
 # copies all three into its scratch tree and fails before the first row when they are not there.
 set -u
+# A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what is refused; a row that
+# needs one sets it itself.
+unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
 T="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$T/../.." && pwd)"
 ORIG_IN="${1:-$ROOT/install.sh}"

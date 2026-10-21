@@ -17,6 +17,7 @@ tests/fake-gh/work-*/
 tests/budget/state-*/
 tests/scan-hidden/work-*/
 tests/feedback/state-*/
+tests/fake-gh/triage/state-*/
 tests/push-guard/work-*/
 tests/eval/work-*/
 tests/eval/reports/

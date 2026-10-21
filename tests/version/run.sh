@@ -2,6 +2,9 @@
 # Drives check-version.sh against release answers served from local files. No network needed.
 # Usage: run.sh <skill scripts dir>
 set -u
+# A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what is refused; a row that
+# needs one sets it itself.
+unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
 T="$(cd "$(dirname "$0")" && pwd)"
 SRC="${1:?scripts dir}"
 S="$SRC/check-version.sh"

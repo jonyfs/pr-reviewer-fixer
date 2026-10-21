@@ -1,6 +1,10 @@
 # Drives `review-cycle.sh budget` and `extend` against the fake gh. No network, no model.
 # Usage: t.py <scripts dir>
 import json, os, shutil, subprocess, sys
+# A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what is refused; a row that
+# needs one sets it itself.
+for _v in ("REVIEW_BLOCK_AT", "PUSH_GUARD_ALLOW_SENSITIVE"):
+    os.environ.pop(_v, None)
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.abspath(sys.argv[1])
 RC = os.path.join(SCRIPTS, "review-cycle.sh")

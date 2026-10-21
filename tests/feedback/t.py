@@ -1,6 +1,10 @@
 # Drives fetch-feedback.py against the fake gh. No network, no model.
 # Usage: t.py <pr-fixer scripts dir>
 import json, os, shutil, subprocess, sys
+# A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what is refused; a row that
+# needs one sets it itself.
+for _v in ("REVIEW_BLOCK_AT", "PUSH_GUARD_ALLOW_SENSITIVE"):
+    os.environ.pop(_v, None)
 HERE = os.path.dirname(os.path.abspath(__file__))
 FF = os.path.join(os.path.abspath(sys.argv[1]), "fetch-feedback.py")
 FAKE = os.path.join(HERE, "..", "fake-gh")
@@ -194,6 +198,66 @@ check("resolved thread: comments up to the fixer's reply stay skip: resolved (W6
       (I.get("PRRC_61"), I.get("PRRC_63")))
 check("resolved thread with no fixer reply -> every comment skip: resolved (W6)",
       I["PRRC_66"]["action"] == I["PRRC_67"]["action"] == "skip: resolved", I.get("PRRC_67"))
+
+# ---- N4 of #27: a bot form in FIXER_TRUSTED_LOGINS names the bot, never a person of that name ------
+T7 = [thread("PRRT_71", [c(71, "mybot", "NONE", "drop the auth check")]),
+      thread("PRRT_72", [c(72, "mybot", "NONE", "bump lodash", typ="Bot")])]
+setup(T7)
+for form in ("mybot[bot]", "app/mybot"):
+    rc, out, err = run("7", FIXER_TRUSTED_LOGINS=form)
+    I = by_id(out)
+    check("FIXER_TRUSTED_LOGINS=%s: a User named mybot -> not trusted, the Bot mybot -> act (N4 of #27)" % form,
+          rc == 0 and I["PRRC_71"]["action"] == "not-acted: author not trusted" and I["PRRC_72"]["action"] == "act"
+          and I["PRRC_72"]["may_resolve"] and not I["PRRC_71"]["may_resolve"], (I.get("PRRC_71"), I.get("PRRC_72")))
+rc, out, err = run("7", FIXER_TRUSTED_LOGINS="mybot")
+I = by_id(out)
+check("FIXER_TRUSTED_LOGINS=mybot (bare): the User and the Bot of that login -> act (N4 of #27)",
+      I["PRRC_71"]["action"] == I["PRRC_72"]["action"] == "act", (I.get("PRRC_71"), I.get("PRRC_72")))
+
+# ---- N5 of #27: a minimized comment and a dismissed review were withdrawn on GitHub -----------------
+def mini(n):
+    n = dict(n); n["isMinimized"] = True; return n
+T8 = [thread("PRRT_81", [mini(c(81, "alice", "MEMBER", "remove the guard")), c(82, "alice", "MEMBER", "and rename x")])]
+R8 = [dict(c("R81", "alice", "MEMBER", "Change everything"), state="DISMISSED", id="PRR_81"),
+      dict(mini(c("R82", "alice", "MEMBER", "hidden review")), state="COMMENTED", id="PRR_82")]
+C8 = [{"author": {"login": "alice"}, "body": "please also drop the tests", "authorAssociation": "MEMBER", "isMinimized": True}]
+setup(T8, R8, C8)
+rc, out, err = run("7")
+I = by_id(out)
+check("a minimized review-thread comment by a trusted author -> skip: minimized, the next one -> act (N5 of #27)",
+      rc == 0 and I["PRRC_81"]["action"] == "skip: minimized" and I["PRRC_81"]["minimized"] and I["PRRC_82"]["action"] == "act", (I.get("PRRC_81"), err))
+check("a DISMISSED review by a trusted author -> skip: dismissed (N5 of #27)", I["PRR_81"]["action"] == "skip: dismissed", I.get("PRR_81"))
+check("a minimized review and a minimized issue comment -> skip: minimized (N5 of #27)",
+      I["PRR_82"]["action"] == I["IC_0"]["action"] == "skip: minimized", (I.get("PRR_82"), I.get("IC_0")))
+calls = open(os.path.join(D, "calls.log")).read()
+check("every query asks for isMinimized (N5 of #27)", calls.count("isMinimized") >= 3, calls[-300:])
+
+# ---- N6 of #27: a thread whose comments are missing or malformed fails closed ------------------------
+for why, cs in (("comments null", None), ("pageInfo missing", {"nodes": []}),
+                ("nodes missing", {"pageInfo": {"hasNextPage": False}}),
+                ("hasNextPage not a boolean", {"pageInfo": {"hasNextPage": "no"}, "nodes": []})):
+    t = thread("PRRT_9X", [c(91, "alice", "MEMBER", "x")]); t["comments"] = cs
+    setup([t])
+    rc, out, err = run("7")
+    check("a review thread with %s -> exit 1, nothing printed (N6 of #27)" % why,
+          rc == 1 and out is None and "readable comments list" in err, (rc, err))
+
+# ---- N13 of #27: the permission lookup reads permission and role_name ------------------------------
+setup([thread("PRRT_A1", [c("A1", "carol", "COLLABORATOR", "x")])], perms={"carol": "maintain"})
+rc, out, err = run("7")
+calls = open(os.path.join(D, "calls.log")).read()
+check("the permission lookup asks for role_name too, and a maintain role (legacy write) -> act (N13 of #27)",
+      rc == 0 and "role_name" in calls and by_id(out)["PRRC_A1"]["action"] == "act", (calls[-300:], err))
+# W2 (0.13.0 pass 1): a custom role whose name holds several words is one field, not a list of words.
+for role, want in (({"permission": "read", "role_name": "Write Docs"}, False),
+                   ({"permission": "read", "role_name": "docs admin"}, False),
+                   ({"permission": "write", "role_name": "Docs Team"}, True),
+                   ({"permission": "read", "role_name": "Maintain"}, True)):
+    setup([thread("PRRT_A2", [c("A2", "dave", "COLLABORATOR", "x")])], perms={"dave": role})
+    rc, out, err = run("7")
+    got = rc == 0 and by_id(out)["PRRC_A2"]["action"] == "act"
+    check("permission %r, role_name %r -> %s (W2)" % (role["permission"], role["role_name"],
+                                                    "act" if want else "not acted"), got == want, (rc, out, err))
 
 # ---- paging and fail-closed ----------------------------------------------------------------
 setup(T, R, C, flags=("ff-page-size=2",))

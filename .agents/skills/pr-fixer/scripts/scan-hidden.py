@@ -31,6 +31,14 @@ WHAT IT REPORTS (`kind`):
   details         a `<details>` element (collapsed by default on GitHub)
   invisible-html  an HTML element styled or marked to be invisible (`display:none`,
                   `visibility:hidden`, `font-size:0`, `opacity:0`, `color:transparent`, `hidden`)
+  link-ref-comment
+                  a Markdown link reference definition whose destination is `#` or `<>`, such as
+                  `[//]: # (text)` or `[comment]: <> (text)`, in every shape CommonMark reads as
+                  one: the destination on the next line, an escaped `]` or a line break in the
+                  label, and inside a blockquote or list item. GitHub renders a definition as
+                  nothing, so this is the Markdown form of an HTML comment. A definition with a
+                  real destination is not reported: the text it hides is a URL, and the hits on
+                  every ordinary reference-style link would bury the real ones.
 
 NOT DONE: homoglyphs (a Cyrillic `a` in an identifier). Telling a homoglyph from an ordinary
 non-Latin word needs a confusables table and per-language context, and without one the hits on
@@ -41,6 +49,11 @@ SOURCES (any number, at least one):
   --pr <n>               the pull request's title, body and comments, read through pr-json.py
                          (edited comments included, since their body is what is shown now)
   --pr-json <file>       the same, from a file that holds pr-json.py output (`-` is stdin)
+  --feedback-json <file> every item of a fetch-feedback.py list (review-thread comments, review
+                         bodies and issue comments, edited, minimized or not), `-` is stdin. `--pr`
+                         reads issue comments only: pr-json.py does not fetch review threads or
+                         review bodies, so the fixer, which reads those, scans its own work list
+                         with this source. At most one source may read stdin.
   --diff <base> <head>   the added lines of `git diff <base>...<head>` (from the merge base)
   --commits <base> <head> the messages of the commits in <base>..<head>
   --file <file>          any other text, whole
@@ -98,6 +111,17 @@ for cp in list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A)):
 CHAR_RE = re.compile("[" + "".join(re.escape(chr(c)) for c in sorted(CHARS)) + "\U000E0000-\U000E007F]")
 
 DETAILS_RE = re.compile(r"<details\b", re.I)
+# A link reference definition whose destination is `#` or `<>`, in the shapes CommonMark accepts: any
+# indent, inside any blockquote or list item prefix (`> `, `- `, `1. `, nested), a label that may hold an
+# escaped bracket and run over lines, and the destination on the label's line or on the next one (after
+# that line's own prefix). Any indent reports a little more than CommonMark renders (an indented code
+# block), which errs on the side of a hit. Each repetition of the prefix starts at a marker character and
+# no two space quantifiers sit next to each other, so a line of spaced markers that is not a definition
+# fails after one pass over the line instead of trying every split of its spaces.
+_LR_PREFIX = r"[ \t]*(?:(?:>|[-*+][ \t]|\d{1,9}[.)][ \t])[ \t]*)*"
+LINKREF_RE = re.compile(
+    r"^" + _LR_PREFIX + r"\[(?:[^\[\]\\]|\\[\s\S]){0,999}\]:[ \t]*(?:\n" + _LR_PREFIX + r")?"
+    r"(?:#|<>)(?=[ \t]|$)", re.M)
 INVISIBLE_RE = re.compile(
     r"<[a-z][a-z0-9]*\b[^>]*?(?:"
     r"\bstyle\s*=\s*[\"'][^\"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?![.\d]*[1-9])"
@@ -147,7 +171,33 @@ def scan_text(text, verdict_re, source, where, line_offset=0):
         add(m.start(), "details", "<details>")
     for m in INVISIBLE_RE.finditer(text):
         add(m.start(), "invisible-html", esc(m.group())[:60])
+    for m in LINKREF_RE.finditer(text):
+        add(m.start(), "link-ref-comment", esc(m.group().strip())[:60])
     return hits
+
+
+def git_path(name):
+    """A path from a `+++ ` line as git prints it: one trailing tab (git adds it after a name with a
+    space) dropped, a C-quoted name (`"b/caf\\303\\251"`, a quote, a backslash or a control
+    character in it) decoded, then the `b/` prefix removed. None for /dev/null."""
+    if name.endswith("\t"):
+        name = name[:-1]
+    if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
+        out, i, body = bytearray(), 0, name[1:-1]
+        esc_map = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+        while i < len(body):
+            ch = body[i]
+            if ch == "\\" and i + 1 < len(body):
+                nx = body[i + 1]
+                if nx in esc_map:
+                    out.append(esc_map[nx]); i += 2; continue
+                if re.fullmatch(r"[0-7]{3}", body[i + 1:i + 4]):
+                    out.append(int(body[i + 1:i + 4], 8) & 0xFF); i += 4; continue
+            out += ch.encode("utf-8"); i += 1
+        name = out.decode("utf-8", "replace")
+    if name == "/dev/null":
+        return None
+    return name[2:] if name.startswith("b/") else name
 
 
 def git(*args):
@@ -187,8 +237,7 @@ def scan_diff(base, head, verdict_re):
                 n += 1
             continue
         if raw.startswith("+++ "):
-            p = raw[4:]
-            path = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
+            path = git_path(raw[4:])
             continue
         h = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
         if h:
@@ -228,19 +277,32 @@ def scan_pr(pr, verdict_re):
     return hits
 
 
+def scan_feedback(items, verdict_re):
+    """A fetch-feedback.py list: one JSON list of items, each with a `body` and a `url`."""
+    if not isinstance(items, list) or any(not isinstance(i, dict) for i in items):
+        raise Unreadable("the feedback JSON is not a list of items")
+    hits = []
+    for it in items:
+        src = {"review_thread": "review-comment", "review": "review", "issue_comment": "comment"}.get(
+            it.get("source"), "feedback")
+        url = it.get("url") or ("%s by %s" % (src, it.get("author") or "unknown"))
+        hits += scan_text(it.get("body") or "", verdict_re, src, lambda l, u=url: "%s line %d" % (u, l))
+    return hits
+
+
 def main(argv):
-    usage = ("usage: scan-hidden.py [--pr <n> | --pr-json <file>] [--diff <base> <head>] "
-             "[--commits <base> <head>] [--file <file>]...")
+    usage = ("usage: scan-hidden.py [--pr <n> | --pr-json <file>] [--feedback-json <file>] "
+             "[--diff <base> <head>] [--commits <base> <head>] [--file <file>]...")
     jobs, i = [], 0
     while i < len(argv):
         a = argv[i]
-        need = {"--pr": 1, "--pr-json": 1, "--file": 1, "--diff": 2, "--commits": 2}.get(a)
+        need = {"--pr": 1, "--pr-json": 1, "--feedback-json": 1, "--file": 1, "--diff": 2, "--commits": 2}.get(a)
         if need is None or len(argv[i + 1:i + 1 + need]) < need:
             print("scan-hidden: " + usage, file=sys.stderr)
             return 2
         jobs.append((a, argv[i + 1:i + 1 + need]))
         i += 1 + need
-    if not jobs:
+    if not jobs or sum(1 for o, v in jobs if o in ("--pr-json", "--feedback-json") and v[0] == "-") > 1:
         print("scan-hidden: " + usage, file=sys.stderr)
         return 2
     try:
@@ -258,6 +320,9 @@ def main(argv):
             elif opt == "--pr-json":
                 raw = sys.stdin.read() if vals[0] == "-" else open(vals[0], encoding="utf-8").read()
                 hits += scan_pr(json.loads(raw), verdict_re)
+            elif opt == "--feedback-json":
+                raw = sys.stdin.read() if vals[0] == "-" else open(vals[0], encoding="utf-8").read()
+                hits += scan_feedback(json.loads(raw), verdict_re)
             elif opt == "--diff":
                 hits += scan_diff(vals[0], vals[1], verdict_re)
             elif opt == "--commits":

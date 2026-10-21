@@ -47,8 +47,9 @@ Tags: [#pr #github #safety #reference]
     gitlink at one of those paths or at a parent of one (`.claude/skills -> ../skills`,
     `.agents -> ag`), or a symlink whose target, read against the link's own directory, points at,
     into or above one (`src/x -> ../.claude`, `src/x -> ..`), the whole push is refused and the
-    link is named. A symlink target with a non-ASCII byte, or one that leaves the repository, is
-    refused as if it reached every class. Names are compared after a Unicode fold (NFKD, marks
+    link is named. A symlink target with a non-ASCII byte, one that leaves the repository, or one
+    that steps back with `..` out of a component that is itself a link (the walk is lexical and
+    cannot know where that `..` lands), is refused as if it reached every class. Names are compared after a Unicode fold (NFKD, marks
     dropped, case folded) that is broader than APFS or NTFS, so `.CLAUDE/x` and `.agents/ſkills/x`
     are sensitive too. `push-guard.sh`
     refuses such a push with reason `sensitive-path`, even when a finding names the file or
@@ -98,9 +99,9 @@ user or read project settings when unset, and fall back to the safe default.
 | `max_attempts_per_concern` | Correction attempts for one concern | `2` |
 | `flaky_rerun_limit` | Check re-runs before treating a failure as genuine | `1` |
 | `verify_commands` | Project verification to run before pushing | discover from project |
-| `FIXER_TRUSTED_LOGINS` | Comma-separated bot logins the repository owns. `review-cycle.sh fix` accepts them as authors without a permission lookup, and `fetch-feedback.py` acts on their comments and may resolve threads they opened. `app/<name>` and `<name>[bot]` are the same bot | unset (no bot trusted) |
-| `PUSH_GUARD_ALLOW_SENSITIVE` | Comma-separated sensitive-path classes `push-guard.sh` lets the fixer push: `workflows`, `actions`, `codeowners`, `skills`, `claude`, `mcp`. A person sets it in the session environment, for a repository whose fixer is meant to edit that class (a skills repository sets `skills`). An unknown name refuses. The file must still be in scope | unset (every sensitive path refused) |
-| `REVIEW_MARKER_AUTHORS` | Comma-separated GitHub logins whose comments may supply a verdict, closure or extension marker (env var, read by `review-cycle.sh` and applied by the agent when it reads comments) | Set it to the login `gh` publishes as (`gh api user --jq .login`). Unset, empty or login-less makes the scripts and the gate refuse, since anyone who can comment could forge a verdict |
+| `FIXER_TRUSTED_LOGINS` | Comma-separated bot logins the repository owns. `review-cycle.sh fix` accepts them as authors without a permission lookup, and `fetch-feedback.py` acts on their comments and may resolve threads they opened. `app/<name>` and `<name>[bot]` are the same bot, and an entry in either form names only that bot, never a person whose login is `<name>`; a bare entry matches both | unset (no bot trusted) |
+| `PUSH_GUARD_ALLOW_SENSITIVE` | Comma-separated sensitive-path classes `push-guard.sh` lets the fixer push: `workflows`, `actions`, `codeowners`, `skills`, `claude`, `mcp`. A person sets it in the session environment, for a repository whose fixer is meant to edit that class (a skills repository sets `skills`). An unknown name refuses, and so does any character other than a lower-case letter, a comma, a space or a tab. The file must still be in scope | unset (every sensitive path refused) |
+| `REVIEW_MARKER_AUTHORS` | Comma-separated GitHub logins, as GraphQL prints them (a bot is its bare name, never `<name>[bot]` or `app/<name>`), whose comments may supply a verdict, closure or extension marker (env var, read by `review-cycle.sh` and applied by the agent when it reads comments) | Set it to the login `gh` publishes as (`gh api user --jq .login`). Unset, empty or login-less makes the scripts and the gate refuse, since anyone who can comment could forge a verdict |
 
 **Regeneration example**: if a conflict lands in a configured generated path (e.g.
 `generated/**`), run its configured regeneration command and re-stage the regenerated files instead

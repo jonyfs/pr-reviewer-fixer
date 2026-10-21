@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Drives triage-pr.sh against a fake gh. Prints a pass/fail table.
 set -u
+# A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what is refused; a row that
+# needs one sets it itself.
+unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
 T="$(cd "$(dirname "$0")" && pwd)"
 SRC="${1:-$T/../../../.agents/skills/pr-fixer/scripts}"
 TR="$SRC/triage-pr.sh"
-export PATH="$T/bin:$PATH" FAKE_DIR="$T/state" TRIAGE_NOW=2026-10-14T12:00:00Z TRIAGE_UNKNOWN_WAIT_S=0
+export PATH="$T/bin:$PATH" FAKE_DIR="$T/state-${TEST_TAG:-main}" TRIAGE_NOW=2026-10-14T12:00:00Z TRIAGE_UNKNOWN_WAIT_S=0
 export REVIEW_MARKER_AUTHORS=github-actions
 unset FIXER_COMMIT_AUTHORS TRIAGE_IGNORE_CHECKS
 PASS=0; FAIL=0; ROWS=()

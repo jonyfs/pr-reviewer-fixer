@@ -22,7 +22,7 @@ python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, ext
 python3 tests/scan-hidden/t.py .agents/skills/pr-reviewer/scripts  # scan-hidden.py
 ```
 
-`tests/run-all.sh` runs the suites at the same time. Each run uses its own scratch directory, named by `TEST_TAG` (`work-*/` and `state-*/`, both gitignored), so set a different `TEST_TAG` when you start two runs of the same suite together.
+`tests/run-all.sh` runs the suites at the same time. Each run uses its own scratch directory, named by `TEST_TAG` (`work-*/` and `state-*/`, both gitignored), so set a different `TEST_TAG` when you start two runs of the same suite together. `run-all.sh` puts a `TEST_TAG` you give it in front of each suite's own tag, so two runs of `run-all.sh` with different tags do not collide either. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE` when it starts, so a value exported in your shell does not change the results.
 
 The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` (`tests/*/bin/gh`, backed by `fakegh.py`), so nothing touches GitHub. There is no build or lint step. Workflows and templates are checked with `actionlint`, which is run by hand.
 
@@ -35,11 +35,12 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 - `scripts/gate-pr-review-state.py` is the check the `review-gate` required job runs.
 - `scripts/pr-json.py` is the only way the scripts read a pull request. It drops comments edited after creation and fails closed. Every marker rule (allowlist must name a login, edited comments never read as a verdict but still counted for BLOCKED history and the highest pass) is decided on its output.
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
-- `.agents/skills/pr-fixer/scripts/fetch-feedback.py` is the comment lane's work list: review threads, reviews and issue comments from GraphQL, with author association, thread state and the action the fixer may take (it acts only on OWNER, a MEMBER or COLLABORATOR with write access, the reviewer's login and `FIXER_TRUSTED_LOGINS`). It is the one script besides `pr-json.py` that reads pull request comments, and it fails closed the same way. The reviewer has no copy.
+- `.agents/skills/pr-fixer/scripts/fetch-feedback.py` is the comment lane's work list: review threads, reviews and issue comments from GraphQL, with author association, thread state and the action the fixer may take (it acts only on OWNER, a MEMBER or COLLABORATOR with write access, the reviewer's login and `FIXER_TRUSTED_LOGINS`, and skips minimized comments and dismissed reviews). It is the one script besides `pr-json.py` that reads pull request comments, and it fails closed the same way. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope, no sensitive path (unless `PUSH_GUARD_ALLOW_SENSITIVE` names its class), and no secret in the added lines (through `review-cycle.sh screen --patch`). The reviewer has no copy.
 - `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.
 - `scripts/scan-hidden.py` (both skills) reports invisible text in what the agents read: the diff's
-  added lines, the PR title, body and comments (through `pr-json.py`) and the commit messages. It
+  added lines, the PR title, body and comments (through `pr-json.py`), the commit messages and,
+  with `--feedback-json`, the fixer's `fetch-feedback.py` list (review-thread comments, review bodies and issue comments). It
   strips nothing and excludes the protocol's own markers by exact regex, the verdict one imported
   from the gate.
 - `tests/eval/` holds seeded review cases and `score.py`, which prints recall and precision for reports a person produced in a harness session. `tests/run-all.sh` runs only the scorer's own tests, never a model.
@@ -118,4 +119,4 @@ Rules for doing it:
 - Third-party actions in workflows and templates are pinned to full commit SHAs. Keep them pinned.
 - Diagrams in `README.md` are sourced from `docs/diagrams/*.mmd`. Update both together.
 - Dated facts (harness paths, model names) carry a date, currently 2026-10-14. Update the date when you re-verify them.
-- Test output directories (`tests/**/state/` and a few generated files) are gitignored.
+- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored.

@@ -32,7 +32,18 @@ if args[:1] == ["api"] and len(args) > 1 and "/collaborators/" in args[1] and ar
     login = args[1].split("/collaborators/")[1].split("/")[0]
     perms = load().get("permissions", {})
     if login not in perms: sys.exit(1)
-    print(perms[login]); sys.exit(0)
+    # The real endpoint answers {"permission": <legacy>, "role_name": <role>}: maintain reads as
+    # write and triage as read in the legacy field. A fixture names the role, or gives both fields
+    # as an object (a custom role, whose name can hold spaces). The --jq runs through real jq, as
+    # gh runs it, so a filter is tested as written.
+    role = perms[login]
+    obj = role if isinstance(role, dict) else \
+        {"permission": {"maintain": "write", "triage": "read"}.get(role, role), "role_name": role}
+    jq = next((args[i + 1] for i, a in enumerate(args[:-1]) if a == "--jq"), "")
+    if not jq: print(json.dumps(obj)); sys.exit(0)
+    import subprocess
+    r = subprocess.run(["jq", "-r", jq], input=json.dumps(obj), capture_output=True, text=True)
+    sys.stdout.write(r.stdout); sys.exit(r.returncode)
 if args[:2] == ["api", "graphql"]:
     # Serves the comment pages pr-json.py asks for. Files in the state dir steer it:
     #   graphql-fail       the call exits 1

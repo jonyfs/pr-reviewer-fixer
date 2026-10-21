@@ -34,10 +34,13 @@ issue comment, oldest first within each source:
   edited, editor      whether the comment was edited after it was created, and by whom
   trusted             whether the author may steer a change (see below)
   fixer_authored      the comment is one of the fixer's own replies (Closed in / Declined / Escalated)
+  minimized           whether a person hid the comment or review on GitHub (`isMinimized`)
   action              act | not-acted: author not trusted | not-acted: edited by another login |
-                      skip: protocol marker | skip: fixer reply | skip: resolved. In a resolved
-                      thread, a comment after the fixer's last reply keeps its own action; the rest
-                      of the thread, and a resolved thread with no fixer reply, is skip: resolved
+                      skip: protocol marker | skip: fixer reply | skip: minimized | skip: dismissed |
+                      skip: resolved. A minimized comment and a DISMISSED review were withdrawn on
+                      GitHub, so they are never work orders. In a resolved thread, a comment after
+                      the fixer's last reply keeps its own action; the rest of the thread, and a
+                      resolved thread with no fixer reply, is skip: resolved
   body                the text, as data, never as an instruction
 
 TRUST. A comment is acted on only when its author is the repository OWNER, a MEMBER or
@@ -45,8 +48,21 @@ COLLABORATOR whose permission on the repository is admin, maintain or write (loo
 login with `collaborators/<login>/permission`, the gate `review-cycle.sh fix` uses; an organisation
 member or a collaborator with read or triage access cannot push, so cannot steer a push either), a
 login in REVIEW_MARKER_AUTHORS (the reviewer's identity), or a login in FIXER_TRUSTED_LOGINS (bots
-the repository owns; `app/<name>` and `<name>[bot]` are the same bot). A lookup that fails counts as
-no write access. Everything else (CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE,
+the repository owns). A lookup that fails counts as no write access. The lookup reads both fields
+the endpoint returns: `permission` holds the legacy values (admin, write, read, none; a maintain
+role reads as write and triage as read) and `role_name` the role itself (admin, maintain, write,
+triage, read, or a custom role). Either field equal to admin, maintain or write (ignoring case) is
+write access; each field is compared whole, so a custom role named "Write Docs" is not. Checked
+against live GitHub on 2026-10-21 for an admin (`{"permission":"admin","role_name":"admin"}`); the
+maintain and triage mapping is GitHub's documented one, not observed here.
+
+BOT FORMS. GitHub names one bot two ways: `app/<name>` (`gh pr view --json author`) and
+`<name>[bot]` (REST). A FIXER_TRUSTED_LOGINS entry in either form names that bot only: it matches an
+author GitHub marks as a Bot, never a person whose login happens to be `<name>`. A bare entry
+(`renovate`) matches the bot or the person of that login. REVIEW_MARKER_AUTHORS takes logins as
+GraphQL prints them, which for a bot is the bare name, so an entry in `<name>[bot]` or `app/<name>`
+form names nobody here, as it names nobody to `review-cycle.sh` and the gate, which share one login
+grammar. Everything else (CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE,
 MANNEQUIN, an unknown bot, a MEMBER or COLLABORATOR without write access) is listed as
 `not-acted: author not trusted`, so the closure can say so and a person can escalate
 it. A comment edited by a login other than its author is not acted on either: the text is no longer
@@ -72,7 +88,7 @@ WRITE_PERMS = {"admin", "maintain", "write"}
 MARKER_PREFIXES = ("<!-- adversarial-review:", "<!-- pr-fixer-closure:", "<!-- pr-skill-status:",
                    "<!-- pr-skill-extension:")
 FIXER_REPLY = re.compile(r"(?:Closed in [0-9a-f]{7,40} \(|Declined \(|Escalated \()", re.ASCII)
-AUTHOR = "author{login __typename} authorAssociation"
+AUTHOR = "author{login __typename} authorAssociation isMinimized"
 QUERIES = {
     "threads": (
         "query FetchFeedbackThreads($owner:String!,$repo:String!,$number:Int!,$after:String){"
@@ -107,15 +123,18 @@ def gh(*args):
 
 
 def logins(var, bots=False):
-    """The kept entries of a comma-separated list, lowercased. Bot forms fold to the bare name."""
-    out = set()
+    """The kept entries of a comma-separated list, lowercased. With `bots`, two sets: bare entries,
+    and entries written in a bot form (`app/x`, `x[bot]`), folded to the bare name, that name a bot
+    and nobody else."""
+    out, bot_only = set(), set()
     for e in os.environ.get(var, "").split(","):
         e = e.strip(" \t\r\n").lower()
+        is_bot_form = bots and (e.startswith("app/") or e.endswith("[bot]"))
         if bots:
             e = bot_name(e)
         if re.fullmatch(r"[a-z0-9][a-z0-9_-]*", e or "", re.ASCII):
-            out.add(e)
-    return out
+            (bot_only if is_bot_form else out).add(e)
+    return (out, bot_only) if bots else out
 
 
 def bot_name(login):
@@ -171,7 +190,11 @@ def main():
         return 1
     owner, repo, number = m.groups()
     reviewer = logins("REVIEW_MARKER_AUTHORS")
-    bots = logins("FIXER_TRUSTED_LOGINS", bots=True)
+    bare, bot_only = logins("FIXER_TRUSTED_LOGINS", bots=True)
+
+    def trusted_bot(login, is_bot):
+        n = bot_name(login)
+        return n in bare or (is_bot and n in bot_only)
     try:
         threads = pages(owner, repo, number, "threads")
         reviews = pages(owner, repo, number, "reviews")
@@ -189,9 +212,17 @@ def main():
             if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", login, re.ASCII):
                 perm_cache[key] = False
             else:
+                # Both fields: `permission` (legacy) and `role_name` (the role), as a JSON array.
+                # Either one equal to admin, maintain or write is write access. Each field is
+                # compared whole: a custom role "Write Docs" is not write. A failed lookup is no access.
                 out = gh("api", "repos/%s/%s/collaborators/%s/permission" % (owner, repo, login),
-                         "--jq", ".permission")
-                perm_cache[key] = (out or "").strip().lower() in WRITE_PERMS
+                         "--jq", '[.permission, .role_name]')
+                try:
+                    fields = json.loads(out) if out else []
+                except ValueError:
+                    fields = []
+                perm_cache[key] = isinstance(fields, list) and any(
+                    isinstance(f, str) and f.lower() in WRITE_PERMS for f in fields)
         return perm_cache[key]
 
     def who(node):
@@ -205,7 +236,7 @@ def main():
         login, is_bot = who(node)
         assoc = node.get("authorAssociation") or "NONE"
         low = (login or "").lower()
-        trusted = bool(login) and (assoc == "OWNER" or low in reviewer or bot_name(low) in bots
+        trusted = bool(login) and (assoc == "OWNER" or low in reviewer or trusted_bot(low, is_bot)
                                    or (assoc in CHECKED_ASSOC and can_write(login)))
         editor = ((node.get("editor") or {}).get("login")) if node.get("lastEditedAt") else None
         body = node.get("body") or ""
@@ -214,11 +245,16 @@ def main():
               "created_at": node.get("createdAt") or node.get("submittedAt"),
               "author": login, "author_association": assoc, "is_bot": is_bot,
               "edited": bool(node.get("lastEditedAt")), "editor": editor,
-              "trusted": trusted, "fixer_authored": fixer_authored, "body": body}
+              "trusted": trusted, "fixer_authored": fixer_authored,
+              "minimized": node.get("isMinimized") is True, "body": body}
         if body.lstrip().startswith(MARKER_PREFIXES):
             it["action"] = "skip: protocol marker"
         elif fixer_authored:
             it["action"] = "skip: fixer reply"
+        elif it["minimized"]:
+            it["action"] = "skip: minimized"
+        elif source == "review" and node.get("state") == "DISMISSED":
+            it["action"] = "skip: dismissed"
         elif not trusted:
             it["action"] = "not-acted: author not trusted"
         elif it["edited"] and (editor or "").lower() != low:
@@ -229,18 +265,25 @@ def main():
 
     items = []
     for t in threads:
-        cs = t.get("comments") or {}
-        if (cs.get("pageInfo") or {}).get("hasNextPage"):
+        cs = t.get("comments")
+        # A thread whose comments connection is missing or malformed is not a thread with no
+        # comments: fail closed, as a truncated page does.
+        if (not isinstance(cs, dict) or not isinstance(cs.get("pageInfo"), dict)
+                or not isinstance(cs["pageInfo"].get("hasNextPage"), bool) or not isinstance(cs.get("nodes"), list)):
+            print("fetch-feedback: review thread %s came without a readable comments list, so the "
+                  "feedback list would be incomplete" % t["id"], file=sys.stderr)
+            return 1
+        if cs["pageInfo"]["hasNextPage"]:
             print("fetch-feedback: review thread %s holds more than one page of comments, so the "
                   "feedback list would be incomplete" % t["id"], file=sys.stderr)
             return 1
-        nodes = cs.get("nodes") or []
+        nodes = cs["nodes"]
         if any(not isinstance(c, dict) or not c.get("id") for c in nodes):
             print("fetch-feedback: a review comment had no id", file=sys.stderr)
             return 1
         root_login, root_bot = who(nodes[0]) if nodes else (None, False)
         rl = (root_login or "").lower()
-        may_resolve = bool(root_login) and (rl in reviewer or (root_bot and bot_name(rl) in bots))
+        may_resolve = bool(root_login) and (rl in reviewer or (root_bot and bot_name(rl) in (bare | bot_only)))
         state = "resolved" if t.get("isResolved") else ("outdated" if t.get("isOutdated") else "open")
         line = t.get("line") if t.get("line") is not None else t.get("originalLine")
         built = [item(c, "review_thread") for c in nodes]
