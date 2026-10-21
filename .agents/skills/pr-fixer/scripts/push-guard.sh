@@ -38,7 +38,11 @@
 #      a person. A person who wants the fixer to edit one class (this repository's own release pull
 #      requests edit .agents/skills/**) sets PUSH_GUARD_ALLOW_SENSITIVE to a comma list of class
 #      names; a name it does not know refuses. The fixer never sets it itself. A class named there is
-#      still subject to check 4: the file must be in scope.
+#      still subject to check 4: the file must be in scope. A symlink (mode 120000) added at a
+#      sensitive directory or file, or at a parent of one (.github, .github/workflows,
+#      .github/actions, .agents, .agents/skills, .claude, docs, a CODEOWNERS path, .mcp.json), is
+#      refused the same way, since it moves the real files to a path no class covers; it passes only
+#      when every class it covers is named (.github covers workflows, actions and codeowners).
 #   6. no commit adds a line that looks like a token or a private key: the added lines of each
 #      commit's own changes (as in 4) go through `review-cycle.sh screen --patch`, the screen
 #      `publish` uses. The patch is made with --text --no-textconv, so a file git treats as binary
@@ -124,6 +128,21 @@ sensitive_class() {
     .mcp.json) echo mcp ;;
   esac
 }
+# A symlink at a sensitive directory or file, or at a parent of one (`.claude -> evil`, `.agents ->
+# ag`), puts the real files under a path no class covers, so the symlink is itself the sensitive
+# change. The classes such a path covers, space-separated, or nothing.
+symlink_classes() {
+  local p; p="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$p" in
+    .github) echo "workflows actions codeowners" ;;
+    .github/workflows) echo workflows ;;
+    .github/actions) echo actions ;;
+    .agents|.agents/skills) echo skills ;;
+    .claude) echo claude ;;
+    docs|codeowners|.github/codeowners|docs/codeowners) echo codeowners ;;
+    .mcp.json) echo mcp ;;
+  esac
+}
 SENS_OK=","
 IFS=',' read -r -a _sens <<<"${PUSH_GUARD_ALLOW_SENSITIVE:-}"
 for _c in "${_sens[@]+"${_sens[@]}"}"; do
@@ -185,6 +204,9 @@ merge_tree_ok() {
 # this way, with the reason on stdout.
 commit_paths() {
   local c="$1" parents n tree rc fmt=(--name-only -z)
+  # `raw`: one `:oldmode newmode oldsha newsha status` record and its path, NUL-delimited, so a
+  # symlink (mode 120000) can be told from a file.
+  [ "${2:-}" = raw ] && fmt=(--raw -z)
   # --text --no-textconv: a file git treats as binary (a NUL byte, a binary or -diff attribute from
   # any .gitattributes or .git/info/attributes) would show no added line, and the screen would pass it.
   [ "${2:-}" = patch ] && fmt=(-p -U0 --text --no-textconv --no-color --no-ext-diff)
@@ -212,6 +234,15 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     PATHS="$(mktemp)"
     if ! commit_paths "$c" >"$PATHS"; then REASONS+=("$(cat "$PATHS")"); rm -f "$PATHS"; continue; fi
     commit_paths "$c" patch >>"$PATCH" || true
+    # Symlinks this commit adds or changes, checked against symlink_classes (check 5).
+    while IFS= read -r -d '' meta && IFS= read -r -d '' f; do
+      set -- $meta
+      [ "${2:-}" = 120000 ] || continue
+      cls="$(symlink_classes "$f")"; [ -n "$cls" ] || continue
+      for k in $cls; do
+        case "$SENS_OK" in *",$k,"*) ;; *) SENS+=("$f (symlink over $cls)"); break ;; esac
+      done
+    done < <(commit_paths "$c" raw 2>/dev/null)
     while IFS= read -r -d '' f; do
       [ -n "$f" ] || continue
       if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(printf '%q' "$f")"); continue; fi

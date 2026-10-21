@@ -61,6 +61,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `screen --staged`, `screen --diff`, `push-guard.sh` check 6 and `scan-hidden.py --diff` read the
   diff with `--text --no-textconv`, so a file git treats as binary (a NUL byte, or a `binary` or
   `-diff` attribute from any `.gitattributes` or `.git/info/attributes`) is screened too (#27 W2).
+- `push-guard.sh` check 5 also refuses a symlink added at a sensitive directory or file or at a
+  parent of one (`.claude -> evil`, `.agents -> ag`, `.github/workflows -> ../ci`), which moved the
+  real files to a path no class covers. It passes only when every class the path covers is named
+  in `PUSH_GUARD_ALLOW_SENSITIVE` (#27 W3).
 
 ### Not done
 

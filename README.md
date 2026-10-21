@@ -157,8 +157,9 @@ sequenceDiagram
   checked. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
-  `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**` or `.mcp.json`, even when a
-  finding names the file: such a finding goes to a person. A person can opt one class in with
+  `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**` or `.mcp.json`, or adds a
+  symlink at one of them or at a parent (`.claude`, `.agents`, `.github`), even when a finding
+  names the file: such a finding goes to a person. A person can opt one class in with
   `PUSH_GUARD_ALLOW_SENSITIVE` (for example `skills` in a repository of skills, as this one is).
 - Reads review comments through `scripts/fetch-feedback.py`, which lists every thread, review and
   comment with its author association. It acts only on comments from an OWNER, a MEMBER or

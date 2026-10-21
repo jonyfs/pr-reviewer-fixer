@@ -42,7 +42,8 @@ Tags: [#pr #github #safety #reference]
    leaves it to the reviewer and a person.
 10. **Sensitive paths go to a person.** The fixer does not push a change to the files that run or
     judge the automation: `.github/workflows/**`, `.github/actions/**`, CODEOWNERS (at the root, in
-    `.github/` or in `docs/`), `.agents/skills/**`, `.claude/**` and `.mcp.json`. `push-guard.sh`
+    `.github/` or in `docs/`), `.agents/skills/**`, `.claude/**` and `.mcp.json`, and a symlink
+    placed at one of them or at a parent of one (`.claude -> evil`, `.agents -> ag`). `push-guard.sh`
     refuses such a commit with reason `sensitive-path`, even when a finding names the file or
     `--allow` passes it. The finding is escalated instead: the closure comment names it and the
     person makes the change. A person may opt a class in for one repository with

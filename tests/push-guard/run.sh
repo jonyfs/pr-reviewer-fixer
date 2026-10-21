@@ -200,6 +200,36 @@ check "PUSH_GUARD_ALLOW_SENSITIVE='skills, workflows' with both in scope -> ok (
 r=$(PUSH_GUARD_ALLOW_SENSITIVE=skills,everything run --findings "$W/rep.md" --allow .agents/skills/s/SKILL.md)
 check "PUSH_GUARD_ALLOW_SENSITIVE naming an unknown class -> refused, naming it (I51)" eval '[ $r = 1 ] && grep -q "names .everything." "$W/out"'
 g checkout -q feat/x
+# W3 (0.12.0 pass 1): a symlink at a sensitive directory, or at a parent of one, moves the real files
+# to a path no class covers. The symlink itself is the sensitive change.
+sym() { # name link target: one commit adding evil/settings.json and the symlink link -> target
+  g checkout -q -B feat/sym "$HEAD_OID"; mkdir -p "$W/repo/evil" "$W/repo/$(dirname "$2")"
+  echo '{}' >"$W/repo/evil/settings.json"; ln -s "$3" "$W/repo/$2"; g add evil/settings.json "$2"; g commit -q -m "symlink $2"
+  prjson OPEN feat/sym "$HEAD_OID" false
+}
+sym "agent settings dir" .claude evil
+r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow .claude)
+check "a symlink .claude -> evil with both --allow'ed -> refused, sensitive-path (W3)" eval '[ $r = 1 ] && grep -q "sensitive-path: .claude (symlink over claude)" "$W/out"'
+sym "workflows dir" .github/workflows ../evil
+r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow .github/workflows)
+check "a symlink .github/workflows -> ../evil -> refused, sensitive-path (W3)" eval '[ $r = 1 ] && grep -q "sensitive-path: .github/workflows (symlink over workflows)" "$W/out"'
+sym "parent of the skills" .agents evil
+r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow .agents)
+check "a symlink at the parent .agents -> refused, sensitive-path (W3)" eval '[ $r = 1 ] && grep -q "sensitive-path: .agents (symlink over skills)" "$W/out"'
+sym "parent of three classes, other case" .GitHub evil
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows run --findings "$W/rep.md" --allow evil/settings.json --allow .GitHub)
+check "a symlink .GitHub with only workflows allowed -> refused, every class it covers named (W3)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .GitHub (symlink over workflows actions codeowners)" "$W/out"'
+sym "MCP config" .mcp.json evil/settings.json
+r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow .mcp.json)
+check "a symlink .mcp.json -> evil/settings.json -> refused, sensitive-path (W3)" eval '[ $r = 1 ] && grep -q "sensitive-path: .*\.mcp\.json (symlink over mcp)" "$W/out"'
+sym "parent of the skills, class allowed" .agents evil
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=skills run --findings "$W/rep.md" --allow evil/settings.json --allow .agents)
+check "a symlink .agents with skills allowed and in scope -> ok, the person allowed that class (W3)" eq "$r" 0
+sym "an ordinary symlink" src/link evil
+r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow src/link)
+check "a symlink at a path no class covers -> ok (W3)" eq "$r" 0
+g checkout -q -f feat/x
 
 for opt in --findings --allow; do
   (cd "$W/repo" && perl -e 'alarm shift; exec @ARGV' 5 "$PG" 7 "$opt") >"$W/out" 2>&1; r=$?
