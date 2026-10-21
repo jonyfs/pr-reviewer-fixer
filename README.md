@@ -237,9 +237,9 @@ stateDiagram-v2
 ```
 
 `review-cycle.sh stale` performs the moves back to `pending`. The fixer runs it after its push and the
-review loop runs it after any push it sees. A push made outside a session leaves the old label until
-the next loop runs, but the `review-gate` check fails at once, because the verdict marker names the
-old commit.
+review loop runs it at the start of every loop. A push made outside a session leaves the old label
+until the next loop runs, but, if the `review-gate` check is installed, it fails at once, because the
+verdict marker names the old commit.
 
 ## Cycle budget and human control
 
@@ -485,7 +485,7 @@ The rest hardens the setup and is recommended for a shared repository:
    job as a required check in branch protection or a ruleset. It runs no model and holds no secret.
    It runs from the base branch, not from the pull request, so a pull request cannot edit its own
    gate. A comment does not start a `pull_request` workflow, so the agent re-runs the check after it
-   publishes a verdict.
+   publishes a PASSED verdict (after a BLOCKED one the check fails on purpose, so it is left alone).
 4. Add CODEOWNERS entries for `.agents/skills/**` and `.github/workflows/**`.
 5. Pin each third-party action in your workflows to a full commit SHA.
 6. Claude Code only: add a Stop hook that runs `review-cycle.sh debt` and refuses to end a turn
