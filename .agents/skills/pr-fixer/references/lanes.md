@@ -57,8 +57,9 @@ Trigger: mergeable state is CONFLICTING, found by a person or by
 
 1. If the conflict is in a **configured generated path** (`regen_paths`), rerun its regeneration
    command and re-stage the regenerated files. Do **not** hand-merge generated output.
-2. Otherwise merge the base into the head (no force needed); rebase only where the project requires
-   linear history, under the force rules in [cycles-and-races.md](cycles-and-races.md).
+2. Otherwise merge the base into the head (no force needed). A rebase of a pushed branch is never
+   pushed; where the project requires linear history, hand the rebase to a person (see
+   [cycles-and-races.md](cycles-and-races.md)).
 3. If the branch has **long divergence** and a clean resolution is not achievable, **escalate**;
    do not produce `-X theirs` / inconsistent-tree merges that fail CI.
 

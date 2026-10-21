@@ -106,7 +106,7 @@ confirmed it. Short names like [U14] point to the `Verified sources` section at 
 
 | # | Improvement | Why (evidence) | Source | Target |
 |---|---|---|---|---|
-| 51 | Resolve conflicts by merging the base into the head (a new merge commit), not by rebasing, and delete the `--force-with-lease` exception. The merged skill must never force-push, and a rebase of a pushed branch cannot be pushed without one. | `--force-with-lease` "interacts very badly" with background fetches and is "trivially defeated"; `--force-if-includes` only narrows it. A merge commit makes the push an ordinary fast-forward. | [U14]; derived: .agents/skills/pr-fixer/references/cycles-and-races.md | SKILL |
+| 51 | Resolve conflicts by merging the base into the head (a new merge commit), not by rebasing. The skill never force-pushes, with or without a lease, and a rebase of a pushed branch is never pushed. Done: the references carry no `--force-with-lease` exception. | `--force-with-lease` "interacts very badly" with background fetches and is "trivially defeated"; `--force-if-includes` only narrows it. A merge commit makes the push an ordinary fast-forward. | [U14]; derived: .agents/skills/pr-fixer/references/cycles-and-races.md | SKILL |
 | 52 | Preview with `git merge-tree --write-tree <base> <head>` before touching the worktree: exit 0 clean, 1 conflicts, other means failure; parse the "Conflicted file info" section rather than scanning the tree. Route the lane (generated, mechanical, semantic) and decide on escalation before any edit. | The command writes no index or working tree and reports conflicts structurally. | [U40] | reference |
 | 53 | Treat the server's rejection of a plain non-forced push as the authoritative race detector. Keep the fetch-and-compare as an early warning only. New: fetch then compare then push is a time-of-check to time-of-use gap; the remote enforces fast-forward at the instant of the push. | "git push refuses to update a remote ref that is not an ancestor of the local ref" unless forced. | [U14] | reference |
 | 54 | Bot-owned branch rule: for Dependabot and Renovate heads, do not push. Dependabot stops rebasing once extra commits land, and a fixer commit silently freezes the bot's updates. Deliver comments, or push only when config lists that bot as "adoptable". | "Dependabot will stop rebasing a pull request once extra commits have been pushed to it." | [U39]; [U4] | reference |
@@ -195,8 +195,8 @@ The tier table, harness matrix and "escalate one tier on second failure" already
    directory currently holds only copied `pr-fixer` references and the two scripts, with no `SKILL.md`.
 2. The two source skills disagree on what blocks a merge (any blocking human comment versus only
    CRITICAL). Item 15 states the reconciliation; it needs an owner decision.
-3. The "never force-push" requirement conflicts with the `--force-with-lease` exception in
-   `pr-fixer/references/cycles-and-races.md`. Item 51 removes the exception by merging instead of rebasing.
+3. The "never force-push" requirement had an exception for a leased force push after a rebase.
+   Item 51 removed it: conflicts are resolved by merging, and nothing is force-pushed.
 4. Verified claims that are modest: Google's flaky test statistics could not be confirmed (page opened,
    body not extractable), so no Google number is used anywhere.
 

@@ -13,9 +13,9 @@ it moves history and every other lane must build on its result.
 
 1. Run `scripts/review-cycle.sh fix` right before the first edit.
 2. Bring the base in: `git fetch origin <base>` then `git merge origin/<base>`. This is the default
-   strategy, and it needs no force. Rebase only where the project requires linear history, under
-   the force rules in [cycles-and-races.md](cycles-and-races.md); the review loop agent never
-   rebases.
+   strategy, and the only one: it needs no force. A rebase of a pushed branch is never pushed (see
+   [cycles-and-races.md](cycles-and-races.md)); where the project requires linear history, hand
+   the rebase to a person. The review loop agent never rebases.
 3. List the conflicted files: `git diff --name-only --diff-filter=U`. More than
    `max_conflict_files` (default 15): `git merge --abort` and escalate.
 4. Read the intent of both sides before the first hunk: the PR description, the PR's own commit

@@ -86,15 +86,16 @@ and the replies wait for a run that has `gh api`.
 ## Conflict / Check Lanes
 
 ```bash
-gh pr checkout <n>                 # local checkout to fix, rebase, or trace
+gh pr checkout <n>                 # local checkout to fix or trace
 # ... make minimal scoped commits on the PR branch, then verify, then:
 git fetch origin "$HEAD_REF"       # re-check the remote head BEFORE pushing (race safety)
 git rev-parse "origin/$HEAD_REF"   # must equal the SHA you planned against
 git push                           # to the PR head branch only, never the protected base
 ```
 
-Never `git push --force`. If a rebase needs one, `--force-with-lease` only, only over commits you
-authored this pass, only after the lease check passes.
+Never `git push --force`, `--force-with-lease` or `--force-if-includes`. A conflict is resolved by
+merging the base into the head, which pushes as a fast-forward. A rebase of a pushed branch is
+never pushed: if the project requires linear history, hand the rebase to a person.
 
 ## Head Writability & Check Re-Runs
 
