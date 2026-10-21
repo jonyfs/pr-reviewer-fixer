@@ -1515,6 +1515,9 @@ cmd_export_audit() {
   local events
   events="$(gh api "repos/{owner}/{repo}/issues/$NUMBER/events?per_page=100" --paginate 2>/dev/null)" \
     || die "review-cycle: could not read the timeline of #$NUMBER, and an export without it would be incomplete"
+  # A symlink at the output directory would send the record wherever the link points. A branch can
+  # commit one under docs/compliance-records/, so the export refuses it instead of following it.
+  [ ! -L "$out" ] || die "review-cycle: REFUSED. $out is a symbolic link; export into a real directory"
   mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
   X_JSON="$json" X_EVENTS="$events" X_AUTHORS="$(marker_authors)" X_OUT="$out" python3 -I - <<'PY' || exit 1
 import json, os, re, sys
@@ -1580,12 +1583,32 @@ rec = {
     "ignored": ignored,
     "comments_dropped_for_edits": pr.get("commentsDroppedEdited", 0),
 }
-path = os.path.join(os.environ["X_OUT"], "%s-%s.json" % (pr.get("number"), m.group(3)))
-tmp = path + ".tmp"
-with open(tmp, "w") as fh:
-    json.dump(rec, fh, indent=2, sort_keys=True)
-    fh.write("\n")
-os.replace(tmp, path)
+out = os.environ["X_OUT"]
+path = os.path.join(out, "%s-%s.json" % (pr.get("number"), m.group(3)))
+# Neither the directory nor the record may be a symlink: a checkout can carry one that points at
+# any file of the person running the export. The temporary file is created by mkstemp (O_CREAT |
+# O_EXCL, a fresh random name), so a link planted at a predictable `<record>.tmp` is never opened,
+# and os.replace renames over the final path without following it.
+if os.path.islink(out):
+    die("%s is a symbolic link; export into a real directory." % out)
+if os.path.islink(path):
+    die("%s is a symbolic link, and the export does not write through one. Remove it and export again." % path)
+import tempfile
+fd, tmp = tempfile.mkstemp(dir=out, prefix=".%s-%s." % (pr.get("number"), m.group(3)), suffix=".tmp")
+try:
+    with os.fdopen(fd, "w") as fh:
+        json.dump(rec, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    mask = os.umask(0)
+    os.umask(mask)
+    os.chmod(tmp, 0o666 & ~mask)  # mkstemp makes 0600; a committed record reads like any other file
+    os.replace(tmp, path)
+except BaseException:
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    raise
 print(path)
 PY
 }

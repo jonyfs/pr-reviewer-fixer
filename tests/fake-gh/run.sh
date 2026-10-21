@@ -145,6 +145,21 @@ EVENTS='[{"event":"labeled","label":{"name":"review:blocked"},"actor":{"login":"
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents; touch "$FAKE_DIR/events-split"
 rm -rf "$EXPORT"; o="$("$RC" export-audit 7 --out "$EXPORT" 2>/dev/null)"; r=$?
 check "export-audit reads a timeline split across several pages (concatenated arrays)" eval '[ $r = 0 ] && python3 -I -c "import json,sys;d=json.load(open(sys.argv[1]));sys.exit(0 if len(d[\"label_events\"])==2 else 1)" "$o"'
+# S9: export-audit never writes through a symlink, at the temporary name, the record or the directory.
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$MP]" OPEN)"; withevents
+rm -rf "$EXPORT"; mkdir -p "$EXPORT"; printf 'victim\n' >"$W/victim.txt"; ln -s "$W/victim.txt" "$EXPORT/7-2.json.tmp"
+o="$("$RC" export-audit 7 --out "$EXPORT" 2>/dev/null)"; r=$?
+check "export-audit: a symlink at <record>.tmp is not followed, its target is untouched (S9)" \
+  eval '[ $r = 0 ] && [ "$(cat "$W/victim.txt")" = victim ] && [ ! -L "$EXPORT/7-2.json" ] && python3 -I -c "import json,sys;json.load(open(sys.argv[1]))" "$EXPORT/7-2.json"'
+rm -rf "$EXPORT"; mkdir -p "$EXPORT"; ln -s "$W/victim.txt" "$EXPORT/7-2.json"
+"$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$W/err"; r=$?
+check "export-audit: the record path is a symlink -> refused, target untouched (S9)" \
+  eval '[ $r != 0 ] && grep -q "symbolic link" "$W/err" && [ "$(cat "$W/victim.txt")" = victim ]'
+rm -rf "$EXPORT" "$W/real-out"; mkdir -p "$W/real-out"; ln -s "$W/real-out" "$EXPORT"
+"$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$W/err"; r=$?
+check "export-audit: the output directory is a symlink -> refused, nothing written (S9)" \
+  eval '[ $r != 0 ] && grep -q "symbolic link" "$W/err" && [ -z "$(ls -A "$W/real-out")" ]'
+rm -f "$EXPORT"
 BLK1="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=BLOCKED pass=1 critical=1 warning=0 note=0 -->")"
 reset "$(mk 7 $D '[{"name":"review:running"}]' "[$BLK1]" OPEN)"
 r1=$(pub --verdict PASSED --pass 1 --sha $D --critical 0 --warning 0 --note 0)
