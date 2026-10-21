@@ -153,7 +153,10 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    cannot recompute (more than two parents, or git older than 2.38) is refused. A touched path with
    a control character in its name is refused. It also screens the added lines of every commit it
    would push and refuses one that adds what looks like a token or private key (reason `secret`,
-   path and line named, value never shown). If the head is not writable, deliver a patch and
+   path and line named, value never shown), and one that touches a sensitive path (workflows,
+   actions, CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`; reason `sensitive-path`)
+   even when a finding names it: escalate that finding to a person instead, unless the person set
+   `PUSH_GUARD_ALLOW_SENSITIVE` for its class. Never set that variable yourself. If the head is not writable, deliver a patch and
    replies instead of pushing.
 8. **Close the loop.** Pushing moves the head, and `scripts/review-cycle.sh stale` (run it right
    after the push) retires the label to `review:pending`; the fixer never sets a

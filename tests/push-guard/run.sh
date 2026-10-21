@@ -144,6 +144,41 @@ r=$( (cd "$W/repo" && "$W/alone/push-guard.sh" 7 --findings "$W/rep.md") >"$W/ou
 check "review-cycle.sh missing beside push-guard.sh -> 2, the screen cannot run (I53)" eval '[ $r = 2 ] && grep -q "secret screen cannot run" "$W/out"'
 g checkout -q feat/x
 
+# I51: sensitive paths are refused even with --allow, and even under a test directory or name.
+sens() { # name path class: one commit on top of the head that adds that path, --allow'ed
+  g checkout -q -B "feat/sens" "$HEAD_OID"; mkdir -p "$W/repo/$(dirname "$2")"; echo x >"$W/repo/$2"; g add -A; g commit -q -m "touch $2"
+  prjson OPEN feat/sens "$HEAD_OID" false
+  r=$(run --findings "$W/rep.md" --allow "$2"); sp="$2"; sc="$3"
+  check "$1: $2 with --allow -> refused, sensitive-path ($3) (I51)" eval '[ $r = 1 ] && grep -qF "sensitive-path: $sp ($sc)" "$W/out"'
+}
+sens "workflow" .github/workflows/ci.yml workflows
+sens "composite action" .github/actions/setup/action.yml actions
+sens "CODEOWNERS at the root" CODEOWNERS codeowners
+sens "CODEOWNERS in .github" .github/CODEOWNERS codeowners
+sens "CODEOWNERS in docs" docs/CODEOWNERS codeowners
+sens "a skill file named like a test" .agents/skills/pr-fixer/tests/x.test.sh skills
+sens "agent settings" .claude/settings.json claude
+sens "MCP config" .mcp.json mcp
+sens "a workflow in other case" .GitHub/Workflows/ci.yml workflows
+# The opt-in a person sets: it excuses only the classes it names, and the file must still be in scope.
+g checkout -q -B feat/sens "$HEAD_OID"; mkdir -p "$W/repo/.agents/skills/s" "$W/repo/.github/workflows"
+echo x >"$W/repo/.agents/skills/s/SKILL.md"; g add -A; g commit -q -m "skill edit"
+prjson OPEN feat/sens "$HEAD_OID" false
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=skills run --findings "$W/rep.md" --allow .agents/skills/s/SKILL.md)
+check "PUSH_GUARD_ALLOW_SENSITIVE=skills: a skill file in scope -> ok (I51)" eq "$r" 0
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=skills run --findings "$W/rep.md")
+check "PUSH_GUARD_ALLOW_SENSITIVE=skills: a skill file not in scope -> refused as out of scope (I51)" \
+  eval '[ $r = 1 ] && grep -q "outside the findings" "$W/out" && ! grep -q "sensitive-path" "$W/out"'
+echo y >"$W/repo/.github/workflows/ci.yml"; g add -A; g commit -q -m "workflow too"
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=skills run --findings "$W/rep.md" --allow .agents/skills/s/SKILL.md --allow .github/workflows/ci.yml)
+check "PUSH_GUARD_ALLOW_SENSITIVE=skills does not excuse a workflow -> refused, workflows named (I51)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .github/workflows/ci.yml (workflows)" "$W/out" && ! grep -q "SKILL.md (skills)" "$W/out"'
+r=$(PUSH_GUARD_ALLOW_SENSITIVE="skills, workflows" run --findings "$W/rep.md" --allow .agents/skills/s/SKILL.md --allow .github/workflows/ci.yml)
+check "PUSH_GUARD_ALLOW_SENSITIVE='skills, workflows' with both in scope -> ok (I51)" eq "$r" 0
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=skills,everything run --findings "$W/rep.md" --allow .agents/skills/s/SKILL.md)
+check "PUSH_GUARD_ALLOW_SENSITIVE naming an unknown class -> refused, naming it (I51)" eval '[ $r = 1 ] && grep -q "names .everything." "$W/out"'
+g checkout -q feat/x
+
 for opt in --findings --allow; do
   (cd "$W/repo" && perl -e 'alarm shift; exec @ARGV' 5 "$PG" 7 "$opt") >"$W/out" 2>&1; r=$?
   check "$opt with no value -> refused at once (rc 2), naming it" eval '[ $r = 2 ] && grep -q -- "$opt needs a value" "$W/out"'

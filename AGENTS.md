@@ -34,7 +34,7 @@ The suite needs bash, python3, node and jq. It puts a fake `gh` first on `PATH` 
 - `scripts/gate-pr-review-state.py` is the check the `review-gate` required job runs.
 - `scripts/pr-json.py` is the only way the scripts read a pull request. It drops comments edited after creation and fails closed. Every marker rule (allowlist must name a login, edited comments never read as a verdict but still counted for BLOCKED history and the highest pass) is decided on its output.
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
-- `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope. The reviewer has no copy.
+- `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope, no sensitive path (unless `PUSH_GUARD_ALLOW_SENSITIVE` names its class), and no secret in the added lines (through `review-cycle.sh screen --patch`). The reviewer has no copy.
 - `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.
 - `scripts/scan-hidden.py` (both skills) reports invisible text in what the agents read: the diff's
   added lines, the PR title, body and comments (through `pr-json.py`) and the commit messages. It
@@ -58,6 +58,11 @@ Review and correction are done by agents in the harness session you are running 
 - Set `REVIEW_MARKER_AUTHORS` to your `gh` login (`gh api user --jq .login`) and run `review-cycle.sh ensure-labels` once per repository.
 - When the budget is spent, ask the person in the session. Never read an answer from a PR comment.
 - Never merge, approve, tag or publish a release. A person does that.
+- `push-guard.sh` refuses a fixer commit that touches `.agents/skills/**`, and this repository's
+  fixes are mostly there. So the loop in this repository runs with
+  `PUSH_GUARD_ALLOW_SENSITIVE=skills`, set by the person who owns the session (export it with
+  `REVIEW_MARKER_AUTHORS`). It names `skills` only: workflows, actions, CODEOWNERS, `.claude/` and
+  `.mcp.json` stay refused, and a finding on them goes to the person.
 - **Never use, request, store or print a provider API key** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or any other), here, in a script, a hook or a workflow. Authentication belongs to the harness. Never add a workflow, template or action that runs a model. `tests/run-all.sh` fails if one appears.
 - If the harness cannot start a fresh-context sub-agent, say that the review was not independent.
 

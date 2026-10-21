@@ -156,7 +156,10 @@ sequenceDiagram
   slipped into the merge), which needs git 2.38 or later; commits the base already holds are not
   checked. It also screens the lines those commits add and refuses one that adds what looks like a
   token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
-  same screen over the staged diff.
+  same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
+  `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**` or `.mcp.json`, even when a
+  finding names the file: such a finding goes to a person. A person can opt one class in with
+  `PUSH_GUARD_ALLOW_SENSITIVE` (for example `skills` in a repository of skills, as this one is).
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
 
 ```mermaid

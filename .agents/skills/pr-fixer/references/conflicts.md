@@ -59,6 +59,9 @@ CI.
 - A semantic conflict that the code alone does not decide.
 - A conflict in security-sensitive files: authentication, authorisation, cryptography, secrets
   handling, CI workflows, permissions, or the skills themselves (`.agents/skills/**`).
+  `push-guard.sh` refuses a merge whose own changes touch a sensitive path (workflows, actions,
+  CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`) unless a person opted that class in
+  with `PUSH_GUARD_ALLOW_SENSITIVE`.
 - More than `max_conflict_files` conflicted files.
 
 Escalation means: `git merge --abort`, no push, and a stopped line naming the files, their class

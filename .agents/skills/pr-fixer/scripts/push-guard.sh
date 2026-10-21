@@ -28,7 +28,18 @@
 #      git is older than 2.38 are refused. A commit the base branch already holds is not checked,
 #      since a merge of the base brings it in. When the base commit is not in the clone, the base's
 #      own commits are checked like any other, so fetch the base first.
-#   5. no commit adds a line that looks like a token or a private key: the added lines of each
+#   5. no commit touches a sensitive path, even one a finding names or --allow passes: the files
+#      that run or judge the automation itself. Each belongs to a class:
+#        workflows   .github/workflows/**        actions  .github/actions/**
+#        codeowners  CODEOWNERS, .github/CODEOWNERS, docs/CODEOWNERS
+#        skills      .agents/skills/**           claude   .claude/**
+#        mcp         .mcp.json
+#      Paths compare without case. A hit refuses with reason `sensitive-path`, and the change goes to
+#      a person. A person who wants the fixer to edit one class (this repository's own release pull
+#      requests edit .agents/skills/**) sets PUSH_GUARD_ALLOW_SENSITIVE to a comma list of class
+#      names; a name it does not know refuses. The fixer never sets it itself. A class named there is
+#      still subject to check 4: the file must be in scope.
+#   6. no commit adds a line that looks like a token or a private key: the added lines of each
 #      commit's own changes (as in 4) go through `review-cycle.sh screen --patch`, the screen
 #      `publish` uses. A hit refuses with reason `secret`, naming the path, the line and the kind,
 #      never the value. A value that was already on the base is not counted.
@@ -99,6 +110,29 @@ if [ -n "$FINDINGS" ]; then
     }
   ' "$FINDINGS" >>"$SCOPE" || { echo "push-guard: --findings has no fenced findings block, INCONCLUSIVE" >&2; exit 2; }
 fi
+# Sensitive paths (check 5). The class of a path, or nothing. Compared without case: on a
+# case-insensitive checkout `.GitHub/Workflows/x.yml` is the same file.
+sensitive_class() {
+  local p; p="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$p" in
+    .github/workflows/*) echo workflows ;;
+    .github/actions/*) echo actions ;;
+    codeowners|.github/codeowners|docs/codeowners) echo codeowners ;;
+    .agents/skills/*) echo skills ;;
+    .claude/*) echo claude ;;
+    .mcp.json) echo mcp ;;
+  esac
+}
+SENS_OK=","
+IFS=',' read -r -a _sens <<<"${PUSH_GUARD_ALLOW_SENSITIVE:-}"
+for _c in "${_sens[@]+"${_sens[@]}"}"; do
+  _c="$(printf '%s' "$_c" | tr -d ' \t')"
+  [ -n "$_c" ] || continue
+  case "$_c" in
+    workflows|actions|codeowners|skills|claude|mcp) SENS_OK="$SENS_OK$_c," ;;
+    *) echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE names '$_c', which is not a class (workflows, actions, codeowners, skills, claude, mcp), REFUSED" >&2; exit 1 ;;
+  esac
+done
 # A control character (newline, tab, ...) is refused in every name: in a scope entry, and below in a
 # touched path. The C locale makes the byte range below mean bytes 1-31 and 127 and nothing else.
 CTRL=$'\001'-$'\037'$'\177'
@@ -129,7 +163,7 @@ is_test() {
   return 1
 }
 
-OUT=() BADNAME=()
+OUT=() BADNAME=() SENS=()
 # Commits the base branch already holds came in through a merge of the base; they are not the fixer's.
 EXCL=()
 if [ -n "$BASE_OID" ] && git cat-file -e "$BASE_OID^{commit}" 2>/dev/null; then EXCL=(--not "$BASE_OID"); fi
@@ -178,6 +212,10 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     while IFS= read -r -d '' f; do
       [ -n "$f" ] || continue
       if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(printf '%q' "$f")"); continue; fi
+      cls="$(sensitive_class "$f")"
+      if [ -n "$cls" ]; then
+        case "$SENS_OK" in *",$cls,"*) ;; *) SENS+=("$f ($cls)"); continue ;; esac
+      fi
       in_scope "$f" && continue
       is_test "$f" && continue
       OUT+=("$f")
@@ -185,7 +223,7 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     rm -f "$PATHS"
   done < <(git rev-list "$HEAD_OID..HEAD" ${EXCL[@]+"${EXCL[@]}"} 2>/dev/null)
 fi
-# 5. The secret screen over what these commits add, the same one `publish` and the fixer's closure
+# 6. The secret screen over what these commits add, the same one `publish` and the fixer's closure
 # use. Only the commits' own changes are read, so a value already on the base does not refuse a
 # merge of the base. The value is never printed: only the path, the line and the kind.
 if [ -s "$PATCH" ]; then
@@ -197,6 +235,9 @@ if [ -s "$PATCH" ]; then
     1) REASONS+=("secret: the commits add what looks like a credential (value not shown): $(printf '%s' "$HITS" | paste -sd';' - | sed 's/;/; /g')") ;;
     *) echo "push-guard: the secret screen could not read the commits, INCONCLUSIVE" >&2; exit 2 ;;
   esac
+fi
+if [ "${#SENS[@]}" -gt 0 ]; then
+  REASONS+=("sensitive-path: $(printf '%s\n' "${SENS[@]}" | sort -u | paste -sd',' - | sed 's/,/, /g'). These files run or judge the automation, so the fixer does not push them even when a finding names them: escalate to a person (who may set PUSH_GUARD_ALLOW_SENSITIVE=<class>)")
 fi
 if [ "${#BADNAME[@]}" -gt 0 ]; then
   REASONS+=("touched paths with a control character in the name, never pushed: ${BADNAME[*]}")
