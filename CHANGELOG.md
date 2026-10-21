@@ -35,7 +35,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
-- The comment lane acts only on comments from OWNER, MEMBER or COLLABORATOR authors, the
+- The comment lane acts only on comments from the OWNER, a MEMBER or COLLABORATOR whose permission
+  on the repository is admin, maintain or write (looked up once per login, the gate `fix` uses), the
   reviewer's login and bots in `FIXER_TRUSTED_LOGINS`; everything else is listed as
   `not acted: author not trusted` and never fixed (I52).
 - The fixer resolves a review thread only when the reviewer's login or a trusted bot opened it; a

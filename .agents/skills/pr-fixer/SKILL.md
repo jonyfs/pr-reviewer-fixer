@@ -123,8 +123,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
      it green, run the whole suite.
      [references/falsify-and-prove.md](references/falsify-and-prove.md)
    - **Comment**: read the work list from `scripts/fetch-feedback.py <n>` and work only items
-     whose `action` is `act` (author OWNER, MEMBER or COLLABORATOR, the reviewer's login, or a bot
-     in `FIXER_TRUSTED_LOGINS`); list the others in the closure as `not acted: author not trusted`.
+     whose `action` is `act` (author OWNER, a MEMBER or COLLABORATOR with write access, the
+     reviewer's login, or a bot in `FIXER_TRUSTED_LOGINS`); list the others in the closure as `not acted: author not trusted`.
      Smallest correct fix, reasoned reply on any decline. Resolve a thread only when its item says
      `may_resolve`; a person's thread gets the reply and stays open.
      [references/comment-triage.md](references/comment-triage.md)

@@ -13,9 +13,12 @@ for this lane: they carry no thread state and no author association.
 
 ## 0. Who may steer a change
 
-An item is `act` only when its author is OWNER, MEMBER or COLLABORATOR on the repository, a login in
+An item is `act` only when its author is the repository OWNER, a MEMBER or COLLABORATOR whose
+permission here is admin, maintain or write (the script looks it up once per login, as
+`review-cycle.sh fix` does; a failed lookup counts as no write access), a login in
 `REVIEW_MARKER_AUTHORS` (the reviewer), or a bot named in `FIXER_TRUSTED_LOGINS`, and the comment
-was not edited by another login. Everything else is never fixed:
+was not edited by another login. An organisation member or a collaborator with read or triage
+access cannot push, so their comment does not steer a push either. Everything else is never fixed:
 
 | `action` | Do |
 |---|---|

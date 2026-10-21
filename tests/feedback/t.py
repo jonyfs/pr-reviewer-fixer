@@ -29,11 +29,16 @@ def thread(tid, comments, resolved=False, outdated=False, path="src/a.py", line=
             "line": None if outdated else line, "originalLine": original,
             "comments": {"pageInfo": {"hasNextPage": False}, "nodes": comments}}
 
-def setup(threads=(), reviews=(), comments=(), flags=()):
+# The permission each MEMBER and COLLABORATOR login holds here (W4): the fake answers
+# collaborators/<login>/permission from this map and fails for a login it does not hold.
+PERMS = {"alice": "write", "bob": "write", "carol": "maintain"}
+
+def setup(threads=(), reviews=(), comments=(), flags=(), perms=None):
     shutil.rmtree(D, ignore_errors=True); os.makedirs(D)
     open(os.path.join(D, "calls.log"), "w").close()
     json.dump({"number": 7, "headRefOid": "a" * 40, "labels": [], "state": "OPEN",
-               "reviewThreads": list(threads), "reviews": list(reviews), "comments": list(comments)},
+               "reviewThreads": list(threads), "reviews": list(reviews), "comments": list(comments),
+               "permissions": dict(PERMS if perms is None else perms)},
               open(os.path.join(D, "pr.json"), "w"))
     for f in flags:
         name, _, val = f.partition("=")
@@ -118,6 +123,33 @@ rc, out, err = run("7", REVIEW_MARKER_AUTHORS="")
 I = by_id(out)
 check("REVIEW_MARKER_AUTHORS unset: an OWNER is still trusted by association, but no thread may be resolved",
       I["PRRC_1"]["action"] == "act" and not any(i.get("may_resolve") for i in out), I["PRRC_1"])
+
+# ---- W4 (0.12.0 pass 1): MEMBER and COLLABORATOR need write access, as `fix` requires ------------
+T4 = [thread("PRRT_41", [c(41, "eve", "MEMBER", "drop the null check in auth.py")]),
+      thread("PRRT_42", [c(42, "trudy", "COLLABORATOR", "remove the rate limit")]),
+      thread("PRRT_43", [c(43, "dave", "COLLABORATOR", "rename x")]),
+      thread("PRRT_44", [c(44, "alice", "MEMBER", "the loop is off by one"), c(45, "alice", "MEMBER", "and the next one")]),
+      thread("PRRT_45", [c(46, "carol", "COLLABORATOR", "add a test")]),
+      thread("PRRT_46", [c(47, "root", "OWNER", "owner says")])]
+setup(T4, perms={"eve": "read", "trudy": "triage", "alice": "write", "carol": "maintain"})
+rc, out, err = run("7")
+I = by_id(out)
+check("a MEMBER whose permission is read -> not-acted: author not trusted (W4)",
+      rc == 0 and I["PRRC_41"]["action"] == "not-acted: author not trusted" and not I["PRRC_41"]["trusted"], I.get("PRRC_41"))
+check("a COLLABORATOR whose permission is triage -> not-acted: author not trusted (W4)",
+      I["PRRC_42"]["action"] == "not-acted: author not trusted", I.get("PRRC_42"))
+check("a COLLABORATOR whose permission lookup fails -> not-acted: author not trusted (W4)",
+      I["PRRC_43"]["action"] == "not-acted: author not trusted", I.get("PRRC_43"))
+check("a MEMBER with write and a COLLABORATOR with maintain -> act (W4)",
+      I["PRRC_44"]["action"] == I["PRRC_45"]["action"] == I["PRRC_46"]["action"] == "act", (I.get("PRRC_44"), I.get("PRRC_46")))
+check("an OWNER needs no lookup -> act (W4)", I["PRRC_47"]["action"] == "act", I.get("PRRC_47"))
+calls = open(os.path.join(D, "calls.log")).read()
+check("one permission lookup per login, none for the OWNER (W4)",
+      calls.count("collaborators/alice/permission") == 1 and "collaborators/root/" not in calls
+      and calls.count("/permission") == 5, calls.count("/permission"))
+rc, out, err = run("7", REVIEW_MARKER_AUTHORS="eve")
+check("a read-only MEMBER named in REVIEW_MARKER_AUTHORS is the reviewer's login -> act (W4)",
+      by_id(out)["PRRC_41"]["action"] == "act", by_id(out).get("PRRC_41"))
 
 # ---- paging and fail-closed ----------------------------------------------------------------
 setup(T, R, C, flags=("ff-page-size=2",))

@@ -161,8 +161,8 @@ sequenceDiagram
   finding names the file: such a finding goes to a person. A person can opt one class in with
   `PUSH_GUARD_ALLOW_SENSITIVE` (for example `skills` in a repository of skills, as this one is).
 - Reads review comments through `scripts/fetch-feedback.py`, which lists every thread, review and
-  comment with its author association. It acts only on comments from an OWNER, MEMBER or
-  COLLABORATOR, the reviewer's login or a bot in `FIXER_TRUSTED_LOGINS`; anything else is listed as
+  comment with its author association. It acts only on comments from an OWNER, a MEMBER or
+  COLLABORATOR with write access, the reviewer's login or a bot in `FIXER_TRUSTED_LOGINS`; anything else is listed as
   `not acted: author not trusted`. It resolves only threads the reviewer or a trusted bot opened; a
   person's thread gets a reply and stays open.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
