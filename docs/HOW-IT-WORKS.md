@@ -94,8 +94,9 @@ sequenceDiagram
     L->>F: dispatch for cycle 1
     F->>GH: fix: label review:fixing
     F->>F: reproduce, test red, fix, test green, suite
-    F->>GH: push, closure comment, pr-debt block
+    F->>GH: pr-debt block, push
     F->>GH: stale: label back to review:pending
+    F->>GH: closure comment
     L->>R: dispatch for pass 2
     R->>GH: verdict PASSED, label review:passed, draft marked ready
     P->>GH: reads the verdict, merges
@@ -135,7 +136,13 @@ flowchart TD
    beats generic practice, a rule a linter owns is never a finding, and a comment someone already
    made is never repeated. Before the review starts, `review-cycle.sh screen --diff <base> <head>`
    screens the lines the pull request adds for tokens and private keys; each hit is a CRITICAL
-   finding at that line, with the value redacted, whatever any agent thinks of it.
+   finding at that line, with the value redacted, whatever any agent thinks of it. Then
+   `path-floor.sh <base> <head>` maps the changed paths to the units that must run: workflows,
+   actions and the scripts they run, CODEOWNERS, agent configuration (every harness's skill folder
+   and agent directories such as `.claude/` and `.cursor/` at any depth), agent instruction files
+   (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` and the like), Dockerfiles,
+   authentication and cryptography get security at `max`, migrations get security and data integrity, manifests and lockfiles get
+   dependencies. Nothing in the diff can remove one.
 2. **Acceptance conditions, pass 1 only.** Before any agent looks for defects, the reviewer writes a
    numbered list of conditions that would make this pull request pass, taken from its own stated
    purpose. Later passes check those same conditions and nothing else, so the target does not move
@@ -174,7 +181,8 @@ flowchart TD
 7. **Report and lint.** The report ends with a fenced `findings` block, one entry per finding. Then
    `review-cycle.sh lint-report` checks it: every finding must name a file the diff touches and a line
    inside a hunk, the `counts:` line must match the open entries, and the coverage note must carry a
-   `Declined to judge:` line (it says `none` when nothing was skipped). The reviewer fixes its own
+   `Declined to judge:` line (it says `none` when nothing was skipped) and, when the path floor is not
+   empty, a `Mandatory units:` line that lists each of its units as run. The reviewer fixes its own
    report until the lint passes.
 8. **Publish.** `review-cycle.sh publish` re-reads the head from GitHub and refuses a stale `--sha`,
    so a verdict can only name a commit that really was the head. It also refuses a `BLOCKED` with no
@@ -245,7 +253,7 @@ flowchart TD
    - **Comment.** It reads the work list `fetch-feedback.py` builds and acts only on items marked
      `act`: comments by the owner, by a member or collaborator with write access, by the reviewer's
      login, or by a bot named in `FIXER_TRUSTED_LOGINS`. Everything else (an outside contributor,
-     an unknown bot, a comment edited by another login, a minimized comment, a dismissed review) is
+     an unknown bot, a comment edited by another login, a minimized comment, a dismissed review or one of its inline comments) is
      listed in the closure as not acted on, and a person can take it up. For an `act` item it applies
      the smallest correct fix, or gives a reasoned reply when it declines. It resolves only threads
      that the reviewer's login or a trusted bot opened; a person's thread gets the reply and stays
@@ -271,9 +279,11 @@ flowchart TD
    base branch already holds are not checked. A path with a control character in its name is
    refused. The lines those commits add go through the same secret screen as a verdict, and a
    token or private key refuses the push (the fixer already screens each commit with
-   `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows, actions,
-   CODEOWNERS, `.agents/skills/**`, `.claude/**`, `.mcp.json`, compared after a Unicode case and
-   normalization fold) is refused even when a finding names it, and the finding goes to a person,
+   `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows and
+   `.github/scripts/**`, actions, CODEOWNERS, the skill folders `install.sh` writes
+   (`.agents/skills/**`, `.roo/skills/**` and the others) and `.claude/**` at any depth, `.mcp.json`,
+   agent instruction files such as `AGENTS.md`, compared after a Unicode case and normalization
+   fold) is refused even when a finding names it, and the finding goes to a person,
    unless the person opted that class in with `PUSH_GUARD_ALLOW_SENSITIVE`. Links are refused, not
    followed: when the pull request head or the local HEAD holds a symlink or gitlink at one of those
    paths or at a parent such as `.claude` or `.agents`, or a symlink whose target points at, into or
@@ -323,10 +333,11 @@ never read as "reviewed".
 
 | Script | Job |
 |---|---|
-| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
+| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `findings-block`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
 | `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi and tag characters, HTML comments other than the markers, `[//]: #` link references, `<details>`, invisible HTML) in the diff, the pull request text and the commit messages, and with `--feedback-json` in the fixer's comment work list, as JSON. It strips nothing. |
+| `path-floor.sh` | Read-only, both skills. Maps the changed paths to the review units that must run, and `lint-report` runs it over the diff it checks. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
 | `fetch-feedback.py` | Read-only, fixer only. Every review thread, review body and issue comment as one list, with author association, thread state and whether the fixer may act on it or resolve it. |
 | `push-guard.sh` | Read-only. The check the fixer passes before every push. |

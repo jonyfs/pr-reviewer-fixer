@@ -132,8 +132,24 @@ sequenceDiagram
 - Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each
   token or private key it finds is a mandatory CRITICAL finding at that line, with the value
   redacted.
+- Maps the changed paths to units that must run with `scripts/path-floor.sh <base> <head>` (or
+  `--pr <n>`, which reads the pull request's file list from the API and refuses when the count
+  differs from `changedFiles` or exceeds 3000; or `--files <file>`, a NUL-separated list):
+  workflows, actions and the scripts they run (`.github/scripts/**`), CODEOWNERS, agent
+  configuration (`.mcp.json`, every project skill folder `install.sh` writes such as
+  `.agents/skills/**` and `.roo/skills/**`, and `.claude/**`, `.cursor/**` and the other agent
+  directories at any depth, so `packages/web/.cursor/rules/x.mdc` counts), agent instruction files
+  (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.codex/**`,
+  `.opencode/**`, `.cursor/**` and the rest the script's header lists), Dockerfiles,
+  authentication and cryptography (`auth/`, `AuthService.ts`) summon security at `max`;
+  migrations summon security and data integrity; manifests and lockfiles summon dependencies. No
+  text in the diff can drop one.
 - Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
-  file and a line the diff shows, and the counts must match the open entries.
+  file and a line the diff shows, the counts must match the open entries, and the coverage note
+  must list every unit of the path floor as run. Its scope comes from `--files <file>` or from
+  `--base`/`--head`. The findings are read from the report's `findings` block through the
+  `review-cycle.sh findings-block` subcommand, which the fixer's `push-guard.sh` also uses. A diff it
+  cannot read a path from makes the floor unknown, never empty.
 - Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
   the verdict is `PASSED` and the pull request is a draft, the script marks it ready for review.
 
@@ -157,8 +173,10 @@ sequenceDiagram
   checked. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
-  `.github/actions/**`, CODEOWNERS, `.agents/skills/**`, `.claude/**` or `.mcp.json`, even when
-  a finding names the file: such a finding goes to a person. Names are compared after a Unicode
+  `.github/scripts/**`, `.github/actions/**`, CODEOWNERS, a skill folder (`.agents/skills/**`,
+  `.roo/skills/**`, `.kiro/skills/**` and the others `install.sh` writes, at any depth),
+  `.claude/**` at any depth, `.mcp.json` or an agent instruction file (`AGENTS.md`, `CLAUDE.md` and the others of the
+  `instructions` class), even when a finding names the file: such a finding goes to a person. Names are compared after a Unicode
   case and normalization fold broader than APFS or NTFS, so `.CLAUDE/x` and `.agents/ſkills/x`
   count too. Links are refused rather than followed: if the pull request head or the local HEAD
   holds a symlink or a gitlink at one of those paths or at a parent (`.claude/skills -> ../skills`,
@@ -170,7 +188,7 @@ sequenceDiagram
 - Reads review comments through `scripts/fetch-feedback.py`, which lists every thread, review and
   comment with its author association. It acts only on comments from an OWNER, a MEMBER or
   COLLABORATOR with write access, the reviewer's login or a bot in `FIXER_TRUSTED_LOGINS`; anything else is listed as
-  `not acted: author not trusted`. A minimized comment and a dismissed review are skipped. It
+  `not acted: author not trusted`. A minimized comment, a dismissed review and the inline comments of a dismissed review are skipped. It
   scans that list for hidden text with `scan-hidden.py --feedback-json`. It resolves only threads the reviewer or a trusted bot opened; a
   person's thread gets a reply and stays open.
 - Writes an owner next to every warning and note in a `pr-debt` block in the PR body.
@@ -231,9 +249,9 @@ stateDiagram-v2
 ```
 
 `review-cycle.sh stale` performs the moves back to `pending`. The fixer runs it after its push and the
-review loop runs it after any push it sees. A push made outside a session leaves the old label until
-the next loop runs, but the `review-gate` check fails at once, because the verdict marker names the
-old commit.
+review loop runs it at the start of every loop. A push made outside a session leaves the old label
+until the next loop runs, but, if the `review-gate` check is installed, it fails at once, because the
+verdict marker names the old commit.
 
 ## Cycle budget and human control
 
@@ -403,7 +421,11 @@ Skills specification. It works because the references point to it by path.
 
 Both skills ship under one semantic version. It is in `VERSION`, in `metadata.version` of each
 `SKILL.md`, and in the newest `CHANGELOG.md` entry. Each release is a GitHub release tagged
-`vX.Y.Z`.
+`vX.Y.Z`. When `VERSION` changes on `main`, `.github/workflows/release.yml` runs
+`.github/scripts/release.sh`, one run at a time. It creates the release on that commit, or
+publishes a draft a failed run left for that commit, or attaches the files a published release
+of that commit is missing or holds with a wrong checksum. It marks a release Latest only when no
+published release has a higher version. Each refusal names what to delete before a rerun.
 
 At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
 exists it prints one notice with the release link, and the agent asks you whether to update. The
@@ -475,7 +497,7 @@ The rest hardens the setup and is recommended for a shared repository:
    job as a required check in branch protection or a ruleset. It runs no model and holds no secret.
    It runs from the base branch, not from the pull request, so a pull request cannot edit its own
    gate. A comment does not start a `pull_request` workflow, so the agent re-runs the check after it
-   publishes a verdict.
+   publishes a PASSED verdict (after a BLOCKED one the check fails on purpose, so it is left alone).
 4. Add CODEOWNERS entries for `.agents/skills/**` and `.github/workflows/**`.
 5. Pin each third-party action in your workflows to a full commit SHA.
 6. Claude Code only: add a Stop hook that runs `review-cycle.sh debt` and refuses to end a turn
@@ -613,6 +635,7 @@ flowchart TD
   pr-reviewer/          the reviewer skill (SKILL.md, references/, scripts/, templates/)
   pr-fixer/             the fixer skill (SKILL.md, references/, scripts/, templates/)
 .github/workflows/      the review-gate check and the release workflow. No workflow calls a model
+.github/scripts/        release.sh, the release workflow's logic, tested by tests/release/run.sh
 docs/
   HOW-IT-WORKS.md       what the two skills do, step by step, with diagrams
   ISO-27001-AND-42001.md
@@ -626,7 +649,8 @@ VERSION, CHANGELOG.md   the release version and its history
 ```
 
 Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py`,
-`scripts/pr-json.py`, `scripts/scan-hidden.py`, `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
+`scripts/pr-json.py`, `scripts/scan-hidden.py`, `scripts/path-floor.sh` (which `lint-report`
+runs), `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
 `references/harness-matrix.md` and `templates/review-gate.yml`. The copies are identical on
 purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 
@@ -636,17 +660,18 @@ purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 bash tests/run-all.sh
 ```
 
-The suite needs no network. It drives the scripts against a fake `gh` and covers label transitions,
+The suite needs no network, only bash, python3, node, jq, git and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
-eval scorer and the version check. The suites run at the same time,
+checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
+eval scorer, the version check and the release script (`tests/release/run.sh`, which drives
+`.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts your `TEST_TAG` in
 front of each suite's own tag. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
 when it starts, so a value exported in your shell does not change the results. It also
-fails if any workflow, template, script or test names a model action or a provider API key.
+fails if any workflow, workflow script, template, script or test names a model action or a provider API key.
 
 Some `install.sh` rows run only on Linux: the `SKILL.md` and `skill.md` row needs a case-sensitive
 file system, and the bind-mount row also needs root in a container that may mount. On macOS they

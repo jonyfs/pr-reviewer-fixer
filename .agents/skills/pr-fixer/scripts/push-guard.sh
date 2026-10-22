@@ -15,7 +15,9 @@
 #   3. the local HEAD contains the pull request's head commit, so the push is a fast-forward and
 #      no commit by someone else is overwritten;
 #   4. every file touched by a commit made on top of that head is in scope: named by a `file:` entry
-#      in an open entry of the report's `findings` block (--findings), given with --allow (plain
+#      in an open entry of the report's `findings` block (--findings, read by `review-cycle.sh
+#      findings-block`, the reader lint-report uses: the block that ends the report, from its one
+#      line that is exactly ```findings; a report with no such block is INCONCLUSIVE), given with --allow (plain
 #      relative paths, no globs), or a test file (under a test, tests, spec or __tests__ directory,
 #      or named x_test.*, x.test.*, x.spec.* or test_x.*). A path matches a scope entry only when the
 #      two are equal byte for byte, and a touched path holding a control character (a newline, a tab)
@@ -30,10 +32,19 @@
 #      own commits are checked like any other, so fetch the base first.
 #   5. no commit touches a sensitive path, even one a finding names or --allow passes: the files
 #      that run or judge the automation itself. Each belongs to a class:
-#        workflows   .github/workflows/**        actions  .github/actions/**
+#        workflows   .github/workflows/**, .github/scripts/** (what a workflow runs)
+#        actions     .github/actions/**
 #        codeowners  CODEOWNERS, .github/CODEOWNERS, docs/CODEOWNERS
-#        skills      .agents/skills/**           claude   .claude/**
+#        skills      the skills/ folder of .agents, .roo, .cline, .kiro, .devin or .junie, at any
+#                    depth: every project skill folder install.sh writes outside .claude, .github,
+#                    .cursor, .gemini, .opencode and .windsurf (those keep their own class)
+#        claude      .claude/** at any depth
 #        mcp         .mcp.json
+#        instructions  what an agent reads as instructions: AGENTS.md, AGENTS.override.md,
+#                    CLAUDE.md, CLAUDE.local.md, GEMINI.md in any directory,
+#                    .github/copilot-instructions.md, .github/{instructions,agents,skills,prompts}/**,
+#                    opencode.json(c), .cursorrules, .windsurfrules, and .codex/**, .opencode/**,
+#                    .cursor/**, .gemini/**, .windsurf/** at any depth (the list path-floor.sh uses)
 #      A hit refuses with reason `sensitive-path`, and the change goes to a person. A person who wants
 #      the fixer to edit one class (this repository's own release pull requests edit
 #      .agents/skills/**) sets PUSH_GUARD_ALLOW_SENSITIVE to a comma list of class names; a name it
@@ -47,14 +58,16 @@
 #      Links are refused, not followed. Every symlink (mode 120000) and gitlink (mode 160000) that the
 #      pull request head or the local HEAD holds, or that a pushed commit adds, refuses the whole push
 #      with reason `sensitive-path`, naming the link, when it sits at a sensitive path or at a parent
-#      of one (.github, .github/workflows, .github/actions, .agents, .agents/skills, .claude, docs, a
-#      CODEOWNERS path, .mcp.json), or when its target, resolved lexically against the link's own
-#      directory, points at, into or above one (`src/x -> ../.claude`, `src/x -> ..`). A target that
-#      holds a non-ASCII byte, that leaves the repository (an absolute path, `..` above the root), or
-#      that steps back with `..` out of a component that is itself a link (`x -> a/../skills` with
-#      `a -> .agents/q` really reaches .agents/skills), cannot be judged lexically, so it involves
-#      every class. A link passes only when every class it involves is named in
-#      PUSH_GUARD_ALLOW_SENSITIVE (.github involves workflows, actions and codeowners). A link name
+#      of one (.github, .github/workflows, .github/scripts, .github/actions, docs, a CODEOWNERS path,
+#      .mcp.json, an instructions directory, and at any depth an agent directory or anything inside
+#      one, a skill parent such as .agents or .roo, or its skills/ folder), or when its target,
+#      resolved lexically against the link's own directory, points at, into or above one
+#      (`src/x -> ../.claude`, `src/x -> ..`). A target that holds a non-ASCII byte, that leaves the
+#      repository (an absolute path, `..` above the root), or that steps back with `..` out of a
+#      component that is itself a link (`x -> a/../skills` with `a -> .agents/q` really reaches
+#      .agents/skills), cannot be judged lexically, so it involves every class. A link passes only
+#      when every class it involves is named in PUSH_GUARD_ALLOW_SENSITIVE (.github involves
+#      workflows, actions, codeowners and instructions). A link name
 #      or target that holds a control character is printed quoted (`printf %q`), so text the pull
 #      request author chose cannot pose as a line of this script's output.
 #   6. no commit adds a line that looks like a token or a private key: the added lines of each
@@ -107,28 +120,27 @@ CUR="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null \
   || REASONS+=("local HEAD does not contain the pull request head ${HEAD_OID:0:12}: a push would not be a fast-forward")
 
-# Files the report names, plus --allow, plus test files.
+# Files the report names, plus --allow, plus test files. The findings block is read by
+# `review-cycle.sh findings-block`, the reader lint-report uses, so the two can never take different
+# blocks from one report. review-cycle.sh ships beside this script; the secret screen (6) needs it too.
 SCOPE="$(mktemp)"; trap 'rm -f "$SCOPE"' EXIT
+RCY="$(dirname "$0")/review-cycle.sh"
+[ -f "$RCY" ] || { echo "push-guard: review-cycle.sh is not beside push-guard.sh, so the findings block cannot be read and the secret screen cannot run, INCONCLUSIVE" >&2; exit 2; }
 if [ -n "$FINDINGS" ]; then
   [ -s "$FINDINGS" ] || { echo "push-guard: --findings file is missing or empty, INCONCLUSIVE" >&2; exit 2; }
-  node -e '
-    const t = require("fs").readFileSync(process.argv[1], "utf8");
-    const m = /```findings\n([\s\S]*?)\n```/.exec(t);
-    if (!m) process.exit(3);
-    let cur = null; const out = [];
-    const flush = () => { if (cur && cur.file && ["open", "refused-rejected"].includes(cur.status || "open")) out.push(cur.file); };
-    for (const l of m[1].split("\n")) {
-      if (/^\s*-\s+id:/.test(l)) { flush(); cur = {}; continue; }
-      const k = /^\s{2,}(file|status):\s*(.+?)\s*$/.exec(l);
-      if (k && cur) cur[k[1]] = k[2].replace(/^["\x27]|["\x27]$/g, "");
-    }
-    flush();
-    for (const f of out) {
-      const p = f.replace(/^\.\//, "");
-      if (p.startsWith("/") || p.split("/").includes("..") || /[*?\[\]\x00-\x1f\x7f]/.test(p)) continue;
-      console.log(p);
-    }
-  ' "$FINDINGS" >>"$SCOPE" || { echo "push-guard: --findings has no fenced findings block, INCONCLUSIVE" >&2; exit 2; }
+  BLOCK="$(bash "$RCY" findings-block --report "$FINDINGS" 2>"$SCOPE")" \
+    || { echo "push-guard: --findings has no valid findings block ($(sed 's/^review-cycle: //' "$SCOPE" | head -1)), INCONCLUSIVE" >&2; exit 2; }
+  : >"$SCOPE"
+  printf '%s' "$BLOCK" | node -e '
+    let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      for (const f of JSON.parse(s).entries) {
+        if (!f.file || !["open", "refused-rejected"].includes(f.status || "open")) continue;
+        const p = f.file.replace(/^\.\//, "");
+        if (p.startsWith("/") || p.split("/").includes("..") || /[*?\[\]\x00-\x1f\x7f]/.test(p)) continue;
+        console.log(p);
+      }
+    });
+  ' >>"$SCOPE" || { echo "push-guard: could not read the findings block JSON, INCONCLUSIVE" >&2; exit 2; }
 fi
 # Sensitive paths and links (check 5), in one node pass. Arguments: a file of touched paths and a file
 # of `diff-tree --raw -z` records from the pushed commits, both NUL-delimited, two output files, then
@@ -140,21 +152,45 @@ CHECK5_JS='
 const fs = require("fs"), { execFileSync } = require("child_process");
 const [touchedF, rawF, outP, outL, ...trees] = process.argv.slice(1);
 const git = (a, input) => execFileSync("git", a, { maxBuffer: 1 << 30, input, stdio: ["pipe", "pipe", "ignore"] });
-const ALL = ["workflows", "actions", "codeowners", "skills", "claude", "mcp"];
+const ALL = ["workflows", "actions", "codeowners", "skills", "claude", "mcp", "instructions"];
 const drop = /[\p{M}\p{Default_Ignorable_Code_Point}]/gu;
 const nfkd = (s) => s.normalize("NFKD").replace(drop, "");
 // Raw bytes (a latin1 string) to a folded name: UTF-8, NFKD, marks and ignorables dropped, case folded.
 const fold = (b) => nfkd(nfkd(Buffer.from(b, "latin1").toString("utf8")).toLowerCase().toUpperCase().toLowerCase());
+// The files an agent reads as instructions (references/harness-matrix.md), as path-floor.sh lists them.
+// GitHub reads .github/ only at the root.
+const INSTR_DIRS = [".github/instructions/", ".github/agents/", ".github/skills/", ".github/prompts/"];
+const INSTR_FILES = [".github/copilot-instructions.md", "opencode.json", "opencode.jsonc", ".cursorrules", ".windsurfrules"];
+const INSTR_NAMES = ["agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md"];
+// Agent directories at any depth, as path-floor.sh lists them: AGENT_DIRS count whole, SKILL_PARENTS
+// through their skills/ folder (every project skill folder install.sh writes).
+const AGENT_DIRS = { ".claude": "claude", ".codex": "instructions", ".opencode": "instructions",
+  ".cursor": "instructions", ".gemini": "instructions", ".windsurf": "instructions" };
+const SKILL_PARENTS = [".agents", ".roo", ".cline", ".kiro", ".devin", ".junie"];
+// The class of the first agent directory among these directory names, or "".
+const agentClass = (dirs) => {
+  for (let i = 0; i < dirs.length; i++) {
+    if (Object.prototype.hasOwnProperty.call(AGENT_DIRS, dirs[i])) return AGENT_DIRS[dirs[i]];
+    if (SKILL_PARENTS.includes(dirs[i]) && dirs[i + 1] === "skills") return "skills";
+  }
+  return "";
+};
 const fileClass = (f) =>
-  f.startsWith(".github/workflows/") ? "workflows" : f.startsWith(".github/actions/") ? "actions"
+  f.startsWith(".github/workflows/") || f.startsWith(".github/scripts/") ? "workflows"
+  : f.startsWith(".github/actions/") ? "actions"
   : ["codeowners", ".github/codeowners", "docs/codeowners"].includes(f) ? "codeowners"
-  : f.startsWith(".agents/skills/") ? "skills" : f.startsWith(".claude/") ? "claude" : f === ".mcp.json" ? "mcp" : "";
+  : agentClass(f.split("/").slice(0, -1)) || (f === ".mcp.json" ? "mcp"
+  : INSTR_DIRS.some((d) => f.startsWith(d)) || INSTR_FILES.includes(f) || INSTR_NAMES.includes(f.split("/").pop()) ? "instructions"
+  : "");
 // A sensitive directory or file, or a parent of one: the classes a link there moves away.
-const PARENT = { ".github": "workflows actions codeowners", ".github/workflows": "workflows",
-  ".github/actions": "actions", ".agents": "skills", ".agents/skills": "skills", ".claude": "claude",
-  "docs": "codeowners", "codeowners": "codeowners", ".github/codeowners": "codeowners",
+const PARENT = { ".github": "workflows actions codeowners instructions", ".github/workflows": "workflows",
+  ".github/scripts": "workflows", ".github/actions": "actions", ".agents": "skills", ".agents/skills": "skills",
+  ".claude": "claude", "docs": "codeowners", "codeowners": "codeowners", ".github/codeowners": "codeowners",
   "docs/codeowners": "codeowners", ".mcp.json": "mcp" };
-const classesAt = (b) => { const f = fold(b); return new Set([fileClass(f), ...(PARENT[f] || "").split(" ")]); };
+for (const d of INSTR_DIRS) PARENT[d.slice(0, -1)] = "instructions";
+// A directory at any depth that is, or is inside, an agent directory, or a skill parent (.roo, .agents).
+const dirClass = (f) => { const s = f.split("/"); return agentClass(s) || (SKILL_PARENTS.includes(s[s.length - 1]) ? "skills" : ""); };
+const classesAt = (b) => { const f = fold(b); return new Set([fileClass(f), dirClass(f), ...(PARENT[f] || "").split(" ")]); };
 const order = (s) => ALL.filter((c) => s.has(c));
 const nul = (a) => Buffer.from(a.map((x) => x + "\0").join(""), "latin1");
 
@@ -224,15 +260,15 @@ SENS_OK=","
 # newline would otherwise never be looked at, and an unknown one never refused.
 _allowed=$'a-z, \t'
 if (LC_ALL=C; case "${PUSH_GUARD_ALLOW_SENSITIVE:-}" in *[!$_allowed]*) exit 0 ;; *) exit 1 ;; esac); then
-  echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE is $(printf '%q' "$PUSH_GUARD_ALLOW_SENSITIVE"); it may hold only class names (workflows, actions, codeowners, skills, claude, mcp), commas, spaces and tabs, REFUSED" >&2; exit 1
+  echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE is $(printf '%q' "$PUSH_GUARD_ALLOW_SENSITIVE"); it may hold only class names (workflows, actions, codeowners, skills, claude, mcp, instructions), commas, spaces and tabs, REFUSED" >&2; exit 1
 fi
 IFS=',' read -r -a _sens <<<"${PUSH_GUARD_ALLOW_SENSITIVE:-}"
 for _c in "${_sens[@]+"${_sens[@]}"}"; do
   _c="$(printf '%s' "$_c" | tr -d ' \t')"
   [ -n "$_c" ] || continue
   case "$_c" in
-    workflows|actions|codeowners|skills|claude|mcp) SENS_OK="$SENS_OK$_c," ;;
-    *) echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE names '$_c', which is not a class (workflows, actions, codeowners, skills, claude, mcp), REFUSED" >&2; exit 1 ;;
+    workflows|actions|codeowners|skills|claude|mcp|instructions) SENS_OK="$SENS_OK$_c," ;;
+    *) echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE names '$_c', which is not a class (workflows, actions, codeowners, skills, claude, mcp, instructions), REFUSED" >&2; exit 1 ;;
   esac
 done
 # A control character (newline, tab, ...) is refused in every name: in a scope entry, and below in a
@@ -364,8 +400,6 @@ fi
 # use. Only the commits' own changes are read, so a value already on the base does not refuse a
 # merge of the base. The value is never printed: only the path, the line and the kind.
 if [ -s "$PATCH" ]; then
-  RCY="$(dirname "$0")/review-cycle.sh"
-  [ -f "$RCY" ] || { echo "push-guard: review-cycle.sh is not beside push-guard.sh, so the secret screen cannot run, INCONCLUSIVE" >&2; exit 2; }
   HITS="$(bash "$RCY" screen --patch "$PATCH" 2>/dev/null)"; src=$?
   case "$src" in
     0) ;;

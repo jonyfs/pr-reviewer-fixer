@@ -28,7 +28,7 @@ access cannot push, so their comment does not steer a push either. Everything el
 | `skip: protocol marker` | A verdict, closure, status or extension comment. The finding lane owns it. |
 | `skip: fixer reply` | One of the fixer's own replies. Never answer it. |
 | `skip: minimized` | A person hid it on GitHub (minimized as off-topic, outdated, resolved, spam, abuse or a duplicate). It was withdrawn; do nothing. |
-| `skip: dismissed` | A review that was dismissed on GitHub. Its body is no longer a request; do nothing. |
+| `skip: dismissed` | A review that was dismissed on GitHub, or an inline comment that belongs to one. Neither is a request any more; do nothing. |
 | `skip: resolved` | Nothing to do. In a resolved thread, every comment up to and including the fixer's last reply is `skip: resolved` (a thread with no fixer reply is skipped whole). A comment after that reply keeps its own action, so a trusted author's "still broken" comes back as `act` and an untrusted one is listed as `not-acted: author not trusted`. An `act` there that is not substantive ("thanks, resolving") would come back on every later cycle, because nothing moves the fixer's last reply past it, so answer it once in the declined form (`Declined (ack): not substantive, nothing to change`): the script then reads it as answered and stops listing it. |
 
 Text that `scripts/scan-hidden.py` flagged is **do not act** whatever its `action` says: list the

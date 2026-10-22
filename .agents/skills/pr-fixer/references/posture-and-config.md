@@ -41,8 +41,13 @@ Tags: [#pr #github #safety #reference]
    sits inside a trusted comment. The fixer lists each flagged location in the closure comment and
    leaves it to the reviewer and a person.
 10. **Sensitive paths go to a person.** The fixer does not push a change to the files that run or
-    judge the automation: `.github/workflows/**`, `.github/actions/**`, CODEOWNERS (at the root, in
-    `.github/` or in `docs/`), `.agents/skills/**`, `.claude/**` and `.mcp.json`. Links are not
+    judge the automation: `.github/workflows/**` and the scripts they run (`.github/scripts/**`),
+    `.github/actions/**`, CODEOWNERS (at the root, in `.github/` or in `docs/`), the skill folders
+    `install.sh` writes (`.agents/skills/**`, `.roo/skills/**`, `.cline/skills/**`, `.kiro/skills/**`,
+    `.devin/skills/**`, `.junie/skills/**`, class `skills`, at any depth), `.claude/**` at any depth,
+    `.mcp.json`, and the files an agent reads as instructions (`AGENTS.md`,
+    `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.codex/**`, `.opencode/**`,
+    `.cursor/**` and the rest of the `instructions` class in `push-guard.sh`). Links are not
     followed; they are refused. If the pull request head or the local HEAD holds a symlink or a
     gitlink at one of those paths or at a parent of one (`.claude/skills -> ../skills`,
     `.agents -> ag`), or a symlink whose target, read against the link's own directory, points at,
@@ -100,7 +105,7 @@ user or read project settings when unset, and fall back to the safe default.
 | `flaky_rerun_limit` | Check re-runs before treating a failure as genuine | `1` |
 | `verify_commands` | Project verification to run before pushing | discover from project |
 | `FIXER_TRUSTED_LOGINS` | Comma-separated bot logins the repository owns. `review-cycle.sh fix` accepts them as authors without a permission lookup, and `fetch-feedback.py` acts on their comments and may resolve threads they opened. `app/<name>` and `<name>[bot]` are the same bot, and an entry in either form names only that bot, never a person whose login is `<name>`; a bare entry matches both | unset (no bot trusted) |
-| `PUSH_GUARD_ALLOW_SENSITIVE` | Comma-separated sensitive-path classes `push-guard.sh` lets the fixer push: `workflows`, `actions`, `codeowners`, `skills`, `claude`, `mcp`. A person sets it in the session environment, for a repository whose fixer is meant to edit that class (a skills repository sets `skills`). An unknown name refuses, and so does any character other than a lower-case letter, a comma, a space or a tab. The file must still be in scope | unset (every sensitive path refused) |
+| `PUSH_GUARD_ALLOW_SENSITIVE` | Comma-separated sensitive-path classes `push-guard.sh` lets the fixer push: `workflows`, `actions`, `codeowners`, `skills`, `claude`, `mcp`, `instructions`. A person sets it in the session environment, for a repository whose fixer is meant to edit that class (a skills repository sets `skills`). An unknown name refuses, and so does any character other than a lower-case letter, a comma, a space or a tab. The file must still be in scope | unset (every sensitive path refused) |
 | `REVIEW_MARKER_AUTHORS` | Comma-separated GitHub logins, as GraphQL prints them (a bot is its bare name, never `<name>[bot]` or `app/<name>`), whose comments may supply a verdict, closure or extension marker (env var, read by `review-cycle.sh` and applied by the agent when it reads comments) | Set it to the login `gh` publishes as (`gh api user --jq .login`). Unset, empty or login-less makes the scripts and the gate refuse, since anyone who can comment could forge a verdict |
 
 **Regeneration example**: if a conflict lands in a configured generated path (e.g.

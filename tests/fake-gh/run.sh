@@ -542,6 +542,9 @@ diff --git a/old.txt b/old.txt
 -gone
 -gone
 DIFF
+# The floor of PR 7 is its API file list (path-floor.sh --pr); a --diff row passes an empty one.
+printf '[{"filename":"src/a.ts","status":"modified"},{"filename":"old.txt","status":"removed"}]' >"$FAKE_DIR/files.json"
+NOF="$W/nofloor.z"; : >"$NOF"
 lr() { printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: %s, warning: 0, note: 0}\nfindings:\n  - id: C1\n    severity: CRITICAL\n    file: %s\n    line: %s\n    claim: "x"\n```\n' "$1" "$2" "$3" >"$W/lr.md"; }
 lr 1 src/a.ts 11; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report anchored finding -> 0" eval '[ $r = 0 ] && grep -q "ok. 1 finding" "$W/out"'
@@ -560,25 +563,25 @@ check "lint-report no Declined to judge line -> 1" eval '[ $r = 1 ] && grep -q "
 lr 1 src/a.ts 11; rm -f "$FAKE_DIR/diff.patch"; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report diff unreadable -> 2" eq "$r" 2
 lr 1 src/a.ts 11; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11 @@\n x\n' >"$W/d.patch"
-"$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >/dev/null 2>&1; r=$?
+"$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >/dev/null 2>&1; r=$?
 check "lint-report --diff file, no pull request -> 0" eq "$r" 0
 lr 1 src/a.ts 11-12; printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11,2 @@\n x\n+y\n' >"$W/d.patch"
-"$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >/dev/null 2>&1; r=$?
+"$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >/dev/null 2>&1; r=$?
 check "lint-report line range inside a hunk -> 0" eq "$r" 0
-lr 1 src/a.ts 11-40; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+lr 1 src/a.ts 11-40; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report range end outside the hunk -> 1" eq "$r" 1
-lr 1 src/a.ts abc; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+lr 1 src/a.ts abc; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report line that is not a number -> 1" eval '[ $r = 1 ] && grep -q "not a line number" "$W/out"'
 # Arabic-indic 11: `\d` without re.ASCII would take it and int() would parse it as 11, inside the hunk.
-lr 1 src/a.ts $'\xd9\xa1\xd9\xa1'; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+lr 1 src/a.ts $'\xd9\xa1\xd9\xa1'; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report line in non-ASCII digits -> 1" eval '[ $r = 1 ] && grep -q "not a line number" "$W/out"'
 printf 'diff --git a/src/s.sql b/src/s.sql\n--- a/src/s.sql\n+++ b/src/s.sql\n@@ -1,1 +1,3 @@\n a\n+++ evil\n+b\n' >"$W/d.patch"
-lr 1 src/s.sql 3; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+lr 1 src/s.sql 3; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report added line that looks like a file header -> 0" eq "$r" 0
 printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1,2 @@\n x\n+y\n@@ -20 +21,2 @@\n x\n+y\n' >"$W/d.patch"
-lr 1 src/a.ts 2-21; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+lr 1 src/a.ts 2-21; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report range spanning two hunks -> 1" eq "$r" 1
-lr 1 evil 1; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" >"$W/out" 2>&1; r=$?
+lr 1 evil 1; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report does not take that line as a file -> 1" eq "$r" 1
 REVIEW_GATE_TIMEOUT_S=7 bash -c 'grep -q "REVIEW_GATE_TIMEOUT_S:-15" "$0"' "$RC"; check "REVIEW_GATE_TIMEOUT_S read with default 15" eq "$?" 0
 "$RC" bogus >"$W/out" 2>&1; check "usage lists ensure-labels" eval 'grep -q "ensure-labels" "$W/out"'
@@ -685,11 +688,11 @@ b="$("$RC" budget 7 2>/dev/null)"
 check "budget: block_at mismatch on a marker the head left behind -> none for no verdict at the head, not the mismatch" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "^B_WHY=.no trusted verdict marker at the head.$"'
 printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 1, note: 0}\nfindings:\n  - id: W1\n    severity: WARNING\n    file: src/a.ts\n    line: 11\n    claim: "x"\n```\n' >"$W/lw.md"
 printf 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -10,2 +10,3 @@\n x\n+y\n z\n' >"$W/lw.patch"
-"$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r0=$?
-REVIEW_BLOCK_AT=warning "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r1=$?
+"$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" --files "$NOF" >"$W/out" 2>&1; r0=$?
+REVIEW_BLOCK_AT=warning "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" --files "$NOF" >"$W/out" 2>&1; r1=$?
 check "lint-report: a WARNING with no scenario is fine by default, a problem under block-at warning" eval '[ $r0 = 0 ] && [ $r1 = 1 ] && grep -q "needs a .scenario:." "$W/out"'
 sed -i.bak 's/    claim: "x"/    scenario: "n=2 returns a trailing undefined"\n    claim: "x"/' "$W/lw.md"; rm -f "$W/lw.md.bak"
-REVIEW_BLOCK_AT=warning "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" >"$W/out" 2>&1; r1=$?
+REVIEW_BLOCK_AT=warning "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" --files "$NOF" >"$W/out" 2>&1; r1=$?
 check "lint-report: a WARNING with a scenario passes under block-at warning" eq "$r1" 0
 
 # ---- secrets in a published report -----------------------------------------------------------
@@ -716,7 +719,7 @@ printf '## findings\ntoken glpat-%s\n' "$(printf 'c%.0s' $(seq 1 24))" >"$SEC"; 
 check "report with a GitLab token -> refused" eval '[ $r = 1 ] && grep -q "GitLab token" "$W/out" && [ $(ncomments) = 0 ]'
 printf '## findings\nstray %s\n\n```findings\ncounts: { critical: 0, warning: 0, note: 0 }\n```\nDeclined to judge: none\n' "$gh_tok" >"$W/lrs.md"
 printf 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n' >"$W/lrs.patch"
-"$RC" lint-report --report "$W/lrs.md" --diff "$W/lrs.patch" >"$W/out" 2>&1; r=$?
+"$RC" lint-report --report "$W/lrs.md" --diff "$W/lrs.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report fails a report with a secret and does not print it" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
 # S3: `screen --file` runs the same screen over any text an agent posts (closure, pr-debt, overflow).
 printf 'closure: closed 2, refused 0\n' >"$W/clean.md"
@@ -824,11 +827,11 @@ check "screen --patch: a name with a space, a non-ASCII name and a name with a q
 
 # ---- 0.13.0: lint-report reads a quoted path and refuses a backwards range (R7) ---------------------
 printf 'diff --git a/x b/x\n--- a/x\n+++ "b/caf\\303\\251.txt"\n@@ -1 +1,3 @@\n x\n+y\n+z\n--- a/my file.ts\t\n+++ b/my file.ts\t\n@@ -1 +1,2 @@\n x\n+y\n' >"$W/rq.patch"
-lr 1 café.txt 2; "$RC" lint-report --report "$W/lr.md" --diff "$W/rq.patch" >"$W/out" 2>&1; r=$?
+lr 1 café.txt 2; "$RC" lint-report --report "$W/lr.md" --diff "$W/rq.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report: a finding on café.txt, which git C-quotes in the diff -> 0 (R7)" eq "$r" 0
-lr 1 'my file.ts' 2; "$RC" lint-report --report "$W/lr.md" --diff "$W/rq.patch" >"$W/out" 2>&1; r=$?
+lr 1 'my file.ts' 2; "$RC" lint-report --report "$W/lr.md" --diff "$W/rq.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report: a finding on a name with a space (trailing tab in the diff) -> 0 (R7)" eq "$r" 0
-lr 1 café.txt 3-2; "$RC" lint-report --report "$W/lr.md" --diff "$W/rq.patch" >"$W/out" 2>&1; r=$?
+lr 1 café.txt 3-2; "$RC" lint-report --report "$W/lr.md" --diff "$W/rq.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report: a backwards range 3-2 inside a hunk -> 1, it runs backwards (R7)" eval '[ $r = 1 ] && grep -q "runs backwards" "$W/out"'
 
 # ---- 0.13.0: parse() itself, sourced, on crafted payloads (#4 N1, T3) ------------------------------
@@ -913,6 +916,225 @@ printf '<!-- adversarial-review: \xc5\xbfha=%s verdict=PASSED pass=1 -->\n' "$D"
 LC_ALL=C.UTF-8 "$RC" marker --author github-actions "$W/m1.txt" >/dev/null 2>&1; r1=$?
 LC_ALL=C.UTF-8 "$RC" marker --author github-actions "$W/m2.txt" >/dev/null 2>&1; r2=$?
 check "marker: a dotless i or a long s does not fold to ASCII (no marker, rc 1)" eval '[ $r1 = 1 ] && [ $r2 = 1 ]'
+
+# ---- 0.14.0: the path floor (I50) ------------------------------------------------------------------
+# The floor is read only from a structured list of paths: git (two commits), the PR's API file list
+# (--pr), or a NUL-separated list (--files). Never from diff text (W11, and the person's decision on
+# PR #29 after W1, W3, W8 and W11).
+PF="$(cd "$SRC" && pwd)/path-floor.sh"
+pg="$W/pfrepo"; rm -rf "$pg"; mkdir -p "$pg"
+( cd "$pg" && git init -q && git config user.email t@t && git config user.name t \
+  && mkdir -p src docs && echo a >src/a.ts && echo a >.github-not && git add -A && git commit -qm base \
+  && mkdir -p .github/workflows .github/actions/x .agents/skills/s .claude db/migrations sub lib/Auth \
+  && echo x >.github/workflows/ci.yml && echo x >.github/actions/x/action.yml && echo x >CODEOWNERS \
+  && echo x >.agents/skills/s/SKILL.md && echo x >.claude/settings.json && echo x >.mcp.json \
+  && echo x >Dockerfile && echo x >sub/action.yaml && echo x >db/migrations/001.sql && echo x >lib/Auth/token.py \
+  && echo x >src/crypto.ts && echo x >package.json && echo x >requirements-dev.txt && echo x >go.sum \
+  && echo x >docs/authors.md && echo x >src/b.ts && git add -A && git commit -qm change \
+  && git mv src/a.ts .github/workflows/moved.yml && git commit -qm move ) >/dev/null 2>&1
+( cd "$pg" && "$PF" HEAD~2 HEAD ) >"$W/pf.out" 2>&1; r=$?
+pfhas() { grep -qxF "$1" "$W/pf.out"; }
+check "path-floor: workflows, actions, CODEOWNERS, skills, .claude, .mcp.json, Dockerfile, action.yaml -> security max (I50)" \
+  eval '[ $r = 0 ] && pfhas "security max .github/workflows/ci.yml" && pfhas "security max .github/actions/x/action.yml" && pfhas "security max CODEOWNERS" && pfhas "security max .agents/skills/s/SKILL.md" && pfhas "security max .claude/settings.json" && pfhas "security max .mcp.json" && pfhas "security max Dockerfile" && pfhas "security max sub/action.yaml"'
+check "path-floor: a migration -> security and data-integrity; auth and crypto -> security max (I50)" \
+  eval 'pfhas "security standard db/migrations/001.sql" && pfhas "data-integrity standard db/migrations/001.sql" && pfhas "security max lib/Auth/token.py" && pfhas "security max src/crypto.ts"'
+check "path-floor: manifests and lockfiles -> dependencies (I50)" \
+  eval 'pfhas "dependencies standard package.json" && pfhas "dependencies standard requirements-dev.txt" && pfhas "dependencies standard go.sum"'
+check "path-floor: an ordinary file and authors.md summon nothing (I50)" eval '! grep -q "src/b.ts\|authors.md" "$W/pf.out"'
+( cd "$pg" && "$PF" HEAD~1 HEAD ) >"$W/pf.out" 2>&1; r=$?
+check "path-floor: a rename out of src into .github/workflows counts its new path; --no-renames lists the old one too (I50)" \
+  eval '[ $r = 0 ] && pfhas "security max .github/workflows/moved.yml"'
+( cd "$pg" && git mv .github/workflows/moved.yml docs/moved.yml && git commit -qm out && "$PF" HEAD~1 HEAD ) >"$W/pf.out" 2>&1; r=$?
+check "path-floor: a rename out of .github/workflows counts its old path (I50)" eval '[ $r = 0 ] && pfhas "security max .github/workflows/moved.yml"'
+( cd "$pg" && "$PF" HEAD~2 nope ) >/dev/null 2>&1; r=$?
+check "path-floor: git cannot resolve a commit -> 2 (I50)" eq "$r" 2
+# --files: a NUL-separated list, as `git diff --name-only -z` prints it.
+nul() { printf '%s\0' "$@"; }
+nul .github/workflows/x.yml package.json "my file.ts" $'odd\nname.ts' >"$W/pf.z"
+"$PF" --files "$W/pf.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor --files: every entry of a NUL list counts, a space or a newline in a name included (I50)" \
+  eval '[ $r = 0 ] && pfhas "security max .github/workflows/x.yml" && pfhas "dependencies standard package.json" && [ "$(wc -l <"$W/pf.out")" -eq 2 ]'
+printf '.github/workflows/x.yml\npackage.json\n' >"$W/pf-nl.z"; "$PF" --files "$W/pf-nl.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor --files: a newline-separated list (no NUL at the end) -> 2, not one long name that summons nothing" \
+  eval '[ $r = 2 ] && grep -q "does not end with a NUL" "$W/pf.out"'
+printf 'a\0\0.github/workflows/x.yml\0' >"$W/pf-e.z"; "$PF" --files "$W/pf-e.z" >/dev/null 2>&1; r=$?
+"$PF" --files "$W/missing.z" >/dev/null 2>&1; r2=$?
+: >"$W/pf-0.z"; "$PF" --files "$W/pf-0.z" >"$W/pf.out" 2>&1; r3=$?
+check "path-floor --files: an empty entry -> 2; an unreadable list -> 2; an empty list -> 0, no row" \
+  eval '[ $r = 2 ] && [ $r2 = 2 ] && [ $r3 = 0 ] && [ ! -s "$W/pf.out" ]'
+"$PF" --diff "$W/pf.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor --diff: the text mode is gone -> 2, usage (W11, PR #29)" eval '[ $r = 2 ] && grep -q "usage: path-floor.sh <base> <head> | --pr <n> | --files <file>" "$W/pf.out"'
+# W4 (PR #29): camelCase and PascalCase names are split into words before the auth keywords are
+# matched, so AuthService.ts counts; AuthorService.ts and Sessionless still do not.
+nul src/AuthService.ts src/middleware/authMiddleware.ts app/controllers/LoginController.java pkg/jwtUtils.go \
+    lib/OAuth2Client.ts src/JWTVerifier.kt src/UserPermissions.cs src/AuthorService.ts src/sessionless.ts src/Authority.java >"$W/pf-camel.z"
+"$PF" --files "$W/pf-camel.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: camelCase and PascalCase auth names -> security max (W4, PR #29)" \
+  eval '[ $r = 0 ] && pfhas "security max src/AuthService.ts" && pfhas "security max src/middleware/authMiddleware.ts" && pfhas "security max app/controllers/LoginController.java" && pfhas "security max pkg/jwtUtils.go" && pfhas "security max lib/OAuth2Client.ts" && pfhas "security max src/JWTVerifier.kt" && pfhas "security max src/UserPermissions.cs"'
+check "path-floor: AuthorService.ts, sessionless.ts and Authority.java summon nothing (W4, PR #29)" \
+  eval '! grep -q "AuthorService\|sessionless\|Authority" "$W/pf.out"'
+# W2 (PR #29): the scripts a workflow runs, and the files that instruct an agent, are CI and agent
+# configuration too.
+nul .github/scripts/release.sh AGENTS.md sub/AGENTS.md CLAUDE.md pkg/CLAUDE.local.md GEMINI.md \
+    .github/copilot-instructions.md .github/instructions/go.instructions.md .github/agents/a.md .github/skills/s/SKILL.md \
+    .github/prompts/p.prompt.md .codex/config.toml .opencode/agents/a.md opencode.json .cursor/rules/r.mdc .cursorrules \
+    .gemini/settings.json .windsurf/rules/r.md .windsurfrules docs/agents-guide.md >"$W/pf-w2.z"
+"$PF" --files "$W/pf-w2.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: .github/scripts and agent instruction files -> security max (W2, PR #29)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 19 ] && ! grep -q agents-guide "$W/pf.out" && pfhas "security max .github/scripts/release.sh" && pfhas "security max sub/AGENTS.md"'
+# W7 (PR #29): every project skill folder install.sh writes, and README's .devin/skills, summons
+# security at max; agent directories count at any depth.
+ROOTS="$(sed -n 's/^ *[a-z-]*) *echo "\([^|]*\)|.*/\1/p' "$T/../../install.sh" | sort -u) .devin/skills"
+# shellcheck disable=SC2046
+nul $(printf '%s/x/SKILL.md\n' $ROOTS) packages/web/.cursor/rules/evil.mdc pkg/.claude/settings.json \
+    apps/a/.agents/skills/x/SKILL.md apps/a/.roo/skills/x/SKILL.md lib/.codex/config.toml docs/roo/skills.md src/.agents/notes.md >"$W/pf-w7.z"
+"$PF" --files "$W/pf-w7.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: every skill folder install.sh writes, and agent dirs at any depth -> security max (W7, PR #29)" \
+  eval '[ $r = 0 ] && [ "$(printf "%s\n" $ROOTS | wc -l)" -ge 12 ] && [ "$(grep -c "^security max " "$W/pf.out")" = "$(( $(printf "%s\n" $ROOTS | wc -l) + 5 ))" ] && pfhas "security max .roo/skills/x/SKILL.md" && pfhas "security max .devin/skills/x/SKILL.md" && pfhas "security max packages/web/.cursor/rules/evil.mdc"'
+check "path-floor: docs/roo/skills.md and src/.agents/notes.md summon nothing (W7, PR #29)" \
+  eval '! grep -q "docs/roo\|src/.agents" "$W/pf.out"'
+# --pr: the pull request's file list from the API, filename and previous_filename, checked against
+# changedFiles. A coloured answer, an API error and a short list are an unknown floor (W11, PR #29).
+reset "$(mk 7 $A '[]' '[]' OPEN)"
+printf '[{"filename":"docs/new.md","status":"renamed","previous_filename":".github/workflows/old.yml"},{"filename":"package.json","status":"modified"},{"filename":"src/x.ts","status":"added"}]' >"$FAKE_DIR/files.json"
+"$PF" --pr 7 >"$W/pf.out" 2>&1; r=$?
+check "path-floor --pr: the API list, a rename's previous_filename included -> its rows (W11, PR #29)" \
+  eval '[ $r = 0 ] && pfhas "security max .github/workflows/old.yml" && pfhas "dependencies standard package.json" && [ "$(wc -l <"$W/pf.out")" -eq 2 ]'
+echo 1 >"$FAKE_DIR/files-page-size"; "$PF" --pr 7 >"$W/pf2.out" 2>&1; r=$?; rm -f "$FAKE_DIR/files-page-size"
+check "path-floor --pr: one page per entry under --paginate -> the same rows" eval '[ $r = 0 ] && cmp -s "$W/pf.out" "$W/pf2.out"'
+CLICOLOR_FORCE=1 gh api "repos/{owner}/{repo}/pulls/7/files" >"$W/pf-col.json" 2>/dev/null
+CLICOLOR_FORCE=1 "$PF" --pr 7 >"$W/pf2.out" 2>&1; r=$?
+check "path-floor --pr: CLICOLOR_FORCE=1, which colours gh's JSON, cannot change the floor (W8, W11, PR #29)" \
+  eval '[ $r = 0 ] && cmp -s "$W/pf.out" "$W/pf2.out" && grep -q "$(printf "\033")" "$W/pf-col.json"'
+touch "$FAKE_DIR/files-fail"; "$PF" --pr 7 >"$W/pf.out" 2>&1; r=$?; rm -f "$FAKE_DIR/files-fail"
+check "path-floor --pr: the API call fails -> 2, the floor is unknown" eval '[ $r = 2 ] && grep -q "could not list the files of #7" "$W/pf.out"'
+reset "$(mk 7 $A '[]' '[]' OPEN | sed 's/^{/{"changedFiles":4,/')"
+printf '[{"filename":"src/x.ts"},{"filename":"package.json"},{"filename":"README.md"}]' >"$FAKE_DIR/files.json"
+"$PF" --pr 7 >"$W/pf.out" 2>&1; r=$?
+check "path-floor --pr: the list is shorter than changedFiles (truncated, or the head moved) -> 2" \
+  eval '[ $r = 2 ] && grep -q "listed 3 files and the pull request changes 4" "$W/pf.out"'
+reset "$(mk 7 $A '[]' '[]' OPEN | sed 's/^{/{"changedFiles":3001,/')"
+python3 -I -c 'import json;print(json.dumps([{"filename":"f%d.ts"%i} for i in range(3000)]))' >"$FAKE_DIR/files.json"
+"$PF" --pr 7 >"$W/pf.out" 2>&1; r=$?
+check "path-floor --pr: more than 3000 changed files, the endpoint's cap -> 2" eval '[ $r = 2 ] && grep -q "at most 3000" "$W/pf.out"'
+reset "$(mk 7 $A '[]' '[]' OPEN)"; printf '{"filename":"x"}' >"$FAKE_DIR/files.json"
+"$PF" --pr 7 >"$W/pf.out" 2>&1; r=$?
+check "path-floor --pr: an answer that is not a list of files -> 2" eval '[ $r = 2 ] && grep -q "not the pull request.s file list" "$W/pf.out"'
+
+# lint-report computes the floor from a structured list and reads the mandatory units from the
+# findings block's `mandatory_units` field, never from prose (the person's decision on PR #29).
+printf 'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n--- a/.github/workflows/ci.yml\n+++ b/.github/workflows/ci.yml\n@@ -1 +1,2 @@\n x\n+y\ndiff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1 +1,2 @@\n x\n+y\n' >"$W/fl.patch"
+nul .github/workflows/ci.yml package.json >"$W/fl.z"
+MU_OK='mandatory_units:\n  - {unit: security, effort: max, status: run}\n  - {unit: dependencies, effort: standard, status: run}\n'
+# lf <prose before Declined to judge> <block fields after counts>: a report whose finding is anchored.
+lf() { printf '## Review\n\n### Coverage note\n%bDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 1}\n%bfindings:\n  - id: N1\n    severity: NOTE\n    file: package.json\n    line: 2\n    claim: "x"\n```\n' "$1" "${2:-}" >"$W/lf.md"; }
+lfrun() { lf "$@"; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" --files "$W/fl.z" >"$W/out" 2>&1; }
+lfrun '' ''; r=$?
+check "lint-report: a workflow and a manifest in the change, no mandatory_units field -> 1, it names both (I50)" \
+  eval '[ $r = 1 ] && grep -q "dependencies (standard), security (max) mandatory" "$W/out" && grep -q "no .mandatory_units:. field" "$W/out"'
+lfrun '' "$MU_OK"; r=$?
+check "lint-report: each mandatory unit listed with status run, security at max -> 0 (I50)" eq "$r" 0
+lfrun '' 'mandatory_units:\n  - {unit: dependencies, effort: standard, status: run}\n  - {unit: security, effort: max, status: run}\n  - {unit: performance, effort: standard, status: skipped}\n'; r=$?
+check "lint-report: any order, and a unit the floor does not need may be skipped -> 0" eq "$r" 0
+lfrun '' 'mandatory_units:\n  - {unit: security, effort: standard, status: run}\n  - {unit: dependencies, effort: standard, status: run}\n'; r=$?
+check "lint-report: security listed at standard effort where the floor says max -> 1 (I50)" \
+  eval '[ $r = 1 ] && grep -q "must run at max effort" "$W/out"'
+lfrun '' 'mandatory_units:\n  - {unit: security, effort: max, status: skipped}\n  - {unit: dependencies, effort: standard, status: run}\n'; r=$?
+check "lint-report: a mandatory unit with status skipped -> 1, a diff cannot argue it away (I50)" \
+  eval '[ $r = 1 ] && grep -q "security (.github/workflows/ci.yml, effort max) is not listed as .status: run." "$W/out"'
+lfrun '' 'mandatory_units:\n  - {unit: security, effort: max, status: run}\n'; r=$?
+check "lint-report: a mandatory unit left out of mandatory_units -> 1 (I50)" \
+  eval '[ $r = 1 ] && grep -q "dependencies (package.json, effort standard) is not listed" "$W/out"'
+lfrun '' 'mandatory_units:\n  - {unit: security, effort: max, status: declined}\n  - {unit: dependencies, effort: standard, status: run}\n'; r=$?
+check "lint-report: a status that is not run or skipped -> 1, malformed (I50, W5)" eval '[ $r = 1 ] && grep -q "status .declined.; write exactly run or skipped" "$W/out"'
+lfrun '' 'mandatory_units:\n  - {unit: security, effort: max, status: skipped}\n  - {unit: security, effort: max, status: run}\n  - {unit: dependencies, effort: standard, status: run}\n'; r=$?
+check "lint-report: a unit listed twice -> 1 (W5)" eval '[ $r = 1 ] && grep -q "security is listed more than once" "$W/out"'
+lfrun '' "$MU_OK$MU_OK"; r=$?
+check "lint-report: two mandatory_units fields -> 1, exactly one (W5)" eval '[ $r = 1 ] && grep -q "2 .mandatory_units:. fields" "$W/out"'
+lfrun '' 'mandatory_units: {security_max: run, dependencies_standard: run}\n'; r=$?
+check "lint-report: mandatory_units as a flow map, not the list -> 1, malformed" eval '[ $r = 1 ] && grep -q "must be .\[\]. or a list" "$W/out"'
+lfrun '' 'mandatory_units:\n  - security (max): run\n  - {unit: dependencies, effort: standard, status: run}\n'; r=$?
+check "lint-report: a mandatory_units line that is not {unit, effort, status} -> 1, malformed" eval '[ $r = 1 ] && grep -q "line is not" "$W/out"'
+lfrun 'Mandatory units: security (max): run; dependencies: run\n' ''; r=$?
+check "lint-report: the old prose Mandatory units line is not read -> 1, no field (W5, W9, PR #29)" eval '[ $r = 1 ] && grep -q "no .mandatory_units:. field" "$W/out"'
+lr 1 src/a.ts 11; sed -i.bak 's/^findings:$/mandatory_units: {}\nfindings:/' "$W/lr.md"; rm -f "$W/lr.md.bak"
+printf 'diff --git a/src/a.ts b/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11 @@\n x\n' >"$W/d.patch"
+"$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
+lr 1 src/a.ts 11; "$RC" lint-report --report "$W/lr.md" --diff "$W/d.patch" --files "$NOF" >"$W/out" 2>&1; r2=$?
+check "lint-report: an empty floor -> a malformed field still fails (1), an absent one is fine (0)" eval '[ $r = 1 ] && [ $r2 = 0 ]'
+# W9 (PR #29): fences inside list items fooled the old fence tracker into reading quoted prose. Prose is
+# no longer read, so the reviewer's reports L and RA (a quoted run line, no field) fail.
+FB='```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n'
+printf '## Review\n\n### Coverage note\n\nDeclined to judge: none\n\n- The PR text says:\n\n    ```text\n    Mandatory units: security (max): run; dependencies: run\n    ```\n\n'"$FB" >"$W/lf.md"
+"$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" --files "$W/fl.z" >"$W/out" 2>&1; r=$?
+printf '## Review\n\n- ```md\n  ### Coverage note\n  Mandatory units: security (max): run; dependencies: run\n  ```\n\nCoverage note\n-------------\n\nMandatory units: security (max): skipped; dependencies: run\nDeclined to judge: none\n\n'"$FB" >"$W/lf.md"
+"$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" --files "$W/fl.z" >"$W/out2" 2>&1; r2=$?
+check "lint-report: W9 reports L (quoted run line in a list-item fence) and RA (- \`\`\`md quote) -> 1, no field (W9, PR #29)" \
+  eval '[ $r = 1 ] && [ $r2 = 1 ] && grep -q "no .mandatory_units:. field" "$W/out" && grep -q "no .mandatory_units:. field" "$W/out2"'
+# W11 (PR #29): a coloured diff with a rename section. The anchors still read the text, but the floor
+# comes from the list, so the workflow stays mandatory; without a list the floor is unknown.
+E="$(printf '\033')"
+{ printf '%s[1mdiff --git a/docs/a.md b/docs/b.md%s[m\nsimilarity index 100%%\nrename from docs/a.md\nrename to docs/b.md\n' "$E" "$E"
+  printf '%s[1mdiff --git a/.github/workflows/evil.yml b/.github/workflows/evil.yml%s[m\n%s[1m--- /dev/null%s[m\n%s[1m+++ b/.github/workflows/evil.yml%s[m\n@@ -0,0 +1 @@\n%s[32m+on: push%s[m\n' "$E" "$E" "$E" "$E" "$E" "$E" "$E" "$E"; } >"$W/col.patch"
+printf '## Review\n\n### Coverage note\nDeclined to judge: none\n\n'"$FB" >"$W/le.md"
+nul docs/a.md docs/b.md .github/workflows/evil.yml >"$W/col.z"
+"$RC" lint-report --report "$W/le.md" --diff "$W/col.patch" --files "$W/col.z" >"$W/out" 2>&1; r=$?
+"$RC" lint-report --report "$W/le.md" --diff "$W/col.patch" >"$W/out2" 2>&1; r2=$?
+check "lint-report --diff: a coloured diff with a rename cannot drop the workflow (1); with no file list the floor is unknown (2) (W11, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "security (max) mandatory" "$W/out" && [ $r2 = 2 ] && grep -q "never read from diff text" "$W/out2"'
+"$RC" lint-report --report "$W/le.md" --diff "$W/fl.patch" >"$W/out" 2>&1; r=$?
+check "lint-report --diff with no structured list -> 2, even on a plain diff" eval '[ $r = 2 ] && grep -q "cannot be computed" "$W/out"'
+( cd "$pg" && git diff HEAD~3 HEAD~2 >"$W/pg.patch" && "$RCABS" lint-report --report "$W/le.md" --diff "$W/pg.patch" --base HEAD~3 --head HEAD~2 ) >"$W/out" 2>&1; r=$?
+check "lint-report --base/--head: the floor from git (1, it names the workflow)" eval '[ $r = 1 ] && grep -q "security (max) mandatory" "$W/out"'
+# With a pull request number the floor is its API file list, also under CLICOLOR_FORCE=1 (W8, W11).
+reset "$(mk 7 $A '[]' '[]' OPEN)"; cp "$W/fl.patch" "$FAKE_DIR/diff.patch"
+printf '[{"filename":".github/workflows/ci.yml"},{"filename":"package.json"}]' >"$FAKE_DIR/files.json"
+CLICOLOR_FORCE=1 "$RC" lint-report 7 --report "$W/le.md" >"$W/out" 2>&1; r=$?
+check "lint-report <pr>: CLICOLOR_FORCE=1 cannot empty the floor -> 1, it names the units (W8, W11, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "dependencies (standard), security (max) mandatory" "$W/out"'
+lf '' "$MU_OK"; CLICOLOR_FORCE=1 "$RC" lint-report 7 --report "$W/lf.md" >"$W/out" 2>&1; r=$?
+check "lint-report <pr>: the same with every unit listed as run -> 0" eq "$r" 0
+touch "$FAKE_DIR/files-fail"; "$RC" lint-report 7 --report "$W/lf.md" >"$W/out" 2>&1; r=$?; rm -f "$FAKE_DIR/files-fail"
+check "lint-report <pr>: the API file list cannot be read -> 2 (W11)" eval '[ $r = 2 ] && grep -q "mandatory units are unknown" "$W/out"'
+"$RC" lint-report 7 --report "$W/lf.md" --files "$NOF" >"$W/out" 2>&1; r=$?
+check "lint-report <pr> --files: a pull request's floor is its API list, not a list the caller gives -> 2" eval '[ $r = 2 ] && grep -q "drop --files" "$W/out"'
+
+# The findings block (W10, PR #29): one reader, `review-cycle.sh findings-block`, shared by lint-report
+# and push-guard.sh. The block ends the report: the one line that is exactly ```findings, then a last
+# non-blank line that is exactly ```.
+fbk() { "$RC" findings-block --report "$1" >"$W/fb.json" 2>"$W/fb.err"; }
+lfb() { "$RC" lint-report --report "$1" --diff "$W/fl.patch" --files "$W/fl.z" >"$W/out" 2>&1; }
+printf '## Review\n\nThe contract example:\n\n````markdown\n```findings\nversion: 1\nfindings:\n  - id: C1\n    severity: CRITICAL\n    file: src/auth/session.ts\n    line: 47\n```\n````\n\n### Coverage note\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 1, warning: 0, note: 0}\n'"$MU_OK"'findings:\n  - id: C9\n    severity: CRITICAL\n    file: package.json\n    line: 2\n    claim: "x"\n```\n' >"$W/r1.md"
+fbk "$W/r1.md"; r=$?; lfb "$W/r1.md"; r2=$?
+check "findings-block: W10's report R1 (a quoted example with its own \`\`\`findings line) -> 1 in the reader and in lint-report (W10, PR #29)" \
+  eval '[ $r = 1 ] && grep -q "2 lines that are exactly" "$W/fb.err" && [ $r2 = 1 ] && grep -q "no valid .findings. block" "$W/out"'
+python3 -I - "$W/r1.md" "$W/r1q.md" <<'PY'
+import sys
+t = open(sys.argv[1]).read().split("\n")
+first = t.index("```findings")
+t[first] = "    ```findings"   # the quote indented, so it is not the line the reader takes
+open(sys.argv[2], "w").write("\n".join(t))
+PY
+fbk "$W/r1q.md"; r=$?; lfb "$W/r1q.md"; r2=$?
+check "findings-block: the same quote without an exact \`\`\`findings line -> the last block, C9 package.json, and lint-report agrees (0) (W10)" \
+  eval '[ $r = 0 ] && [ $r2 = 0 ] && python3 -I -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if [e[\"file\"] for e in d[\"entries\"]] == [\"package.json\"] else 1)" "$W/fb.json"'
+printf '## Review\n\nDeclined to judge: none\n\n'"$FB"'\n### Summary\nprose after the block\n' >"$W/fb1.md"
+fbk "$W/fb1.md"; r=$?; lfb "$W/fb1.md"; r2=$?
+check "findings-block: a block that is not at the end of the report -> 1, and lint-report 1" eval '[ $r = 1 ] && grep -q "does not end with the .findings. block" "$W/fb.err" && [ $r2 = 1 ]'
+printf '## Review\n\nDeclined to judge: none\n\n~~~findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n~~~\n' >"$W/fb2.md"
+printf '## Review\n\nDeclined to judge: none\n\n```findings \nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/fb3.md"
+fbk "$W/fb2.md"; r=$?; fbk "$W/fb3.md"; r2=$?
+check "findings-block: a ~~~findings opener and a \`\`\`findings opener with a trailing space are no block -> 1 (W10's other shapes)" eval '[ $r = 1 ] && [ $r2 = 1 ]'
+printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\n```\nfindings: []\n```\n' >"$W/fb4.md"
+printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n' >"$W/fb5.md"
+fbk "$W/fb4.md"; r=$?; grep -q "close it early" "$W/fb.err"; g=$?; fbk "$W/fb5.md"; r2=$?
+check "findings-block: a \`\`\` line inside the block -> 1; a block never closed -> 1" eval '[ $r = 1 ] && [ $g = 0 ] && [ $r2 = 1 ]'
+printf '## Review\r\n\r\nDeclined to judge: none\r\n\r\n```findings\r\nversion: 1\r\ncounts: {critical: 0, warning: 0, note: 0}\r\n'"$(printf "$MU_OK" | sed 's/$/\r/')"'\nfindings: []\r\n```\r\n\r\n\r\n' >"$W/fb6.md"
+fbk "$W/fb6.md"; r=$?
+check "findings-block: CRLF lines and blank lines after the closer -> the block, mandatory_units read" \
+  eval '[ $r = 0 ] && python3 -I -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if len(d[\"mandatory_units\"]) == 2 and d[\"counts\"] == {\"critical\":0,\"warning\":0,\"note\":0} else 1)" "$W/fb.json"'
+"$RC" findings-block --report "$W/nope.md" >/dev/null 2>&1; r=$?
+check "findings-block: an unreadable report -> 2" eq "$r" 2
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

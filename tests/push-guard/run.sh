@@ -185,6 +185,35 @@ sens "a skill file named like a test" .agents/skills/pr-fixer/tests/x.test.sh sk
 sens "agent settings" .claude/settings.json claude
 sens "MCP config" .mcp.json mcp
 sens "a workflow in other case" .GitHub/Workflows/ci.yml workflows
+# W2 of PR #29: the scripts a workflow runs belong to workflows; the files that instruct an agent are
+# their own class.
+sens "a script release.yml runs" .github/scripts/release.sh workflows
+sens "agent instructions at the root" AGENTS.md instructions
+sens "agent instructions in a directory" sub/CLAUDE.md instructions
+sens "Gemini instructions" GEMINI.md instructions
+sens "Copilot instructions" .github/copilot-instructions.md instructions
+sens "Copilot path instructions" .github/instructions/go.instructions.md instructions
+sens "Codex config" .codex/config.toml instructions
+sens "OpenCode agent" .opencode/agents/a.md instructions
+sens "Cursor rules" .cursor/rules/r.mdc instructions
+sens "agent instructions in other case" Agents.MD instructions
+# W7 of PR #29: every project skill folder install.sh writes (and README's .devin/skills) is
+# sensitive, whatever harness it is for, and an agent directory counts at any depth.
+ROOTS="$(sed -n 's/^ *[a-z-]*) *echo "\([^|]*\)|.*/\1/p' "$T/../../install.sh" | sort -u)"
+check "install.sh names at least 11 project skill folders for the rows below (W7 of PR #29)" eval '[ "$(printf "%s\n" "$ROOTS" | grep -c /skills$)" -ge 11 ]'
+for sp in $ROOTS .devin/skills; do
+  sens "the skill folder install.sh writes" "$sp/s/SKILL.md" "$(case "$sp" in .claude/*) echo claude ;; \
+    .github/*|.gemini/*|.cursor/*|.opencode/*|.windsurf/*) echo instructions ;; *) echo skills ;; esac)"
+done
+sens "a Roo skill" .roo/skills/pr-fixer/scripts/review-cycle.sh skills
+sens "a nested Cursor rule" packages/web/.cursor/rules/evil.mdc instructions
+sens "nested agent settings" pkg/.claude/settings.json claude
+sens "a nested skill folder" apps/a/.agents/skills/x/SKILL.md skills
+sens "a nested Kiro skill" apps/a/.kiro/skills/x/SKILL.md skills
+g checkout -q -B feat/sens "$HEAD_OID"; mkdir -p "$W/repo/docs/roo" "$W/repo/src/.agents"
+echo x >"$W/repo/docs/roo/skills.md"; echo x >"$W/repo/src/.agents/notes.md"; g add -A; g commit -q -m "near misses"
+r=$(run --findings "$W/rep.md" --allow docs/roo/skills.md --allow src/.agents/notes.md)
+check "docs/roo/skills.md and src/.agents/notes.md are not skill folders -> ok (W7 of PR #29)" eq "$r" 0
 # The opt-in a person sets: it excuses only the classes it names, and the file must still be in scope.
 g checkout -q -B feat/sens "$HEAD_OID"; mkdir -p "$W/repo/.agents/skills/s" "$W/repo/.github/workflows"
 echo x >"$W/repo/.agents/skills/s/SKILL.md"; g add -A; g commit -q -m "skill edit"
@@ -208,6 +237,12 @@ check "PUSH_GUARD_ALLOW_SENSITIVE with a class after a newline -> refused, quote
   eval '[ $r = 1 ] && grep -q "may hold only class names" "$W/out" && grep -q "bogus" "$W/out"'
 r=$(PUSH_GUARD_ALLOW_SENSITIVE=$'skills,\tworkflows' run --findings "$W/rep.md" --allow .agents/skills/s/SKILL.md --allow .github/workflows/ci.yml)
 check "PUSH_GUARD_ALLOW_SENSITIVE with a tab between classes -> ok (N7 of #27)" eq "$r" 0
+g checkout -q -B feat/sens "$HEAD_OID"; echo x >"$W/repo/AGENTS.md"; g add -A; g commit -q -m "instructions edit"
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=instructions run --findings "$W/rep.md" --allow AGENTS.md)
+check "PUSH_GUARD_ALLOW_SENSITIVE=instructions: AGENTS.md in scope -> ok (W2 of PR #29)" eq "$r" 0
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=skills,workflows run --findings "$W/rep.md" --allow AGENTS.md)
+check "PUSH_GUARD_ALLOW_SENSITIVE=skills,workflows does not excuse AGENTS.md (W2 of PR #29)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: AGENTS.md (instructions)" "$W/out"'
 g checkout -q feat/x
 # W3 (0.12.0 pass 1): a symlink at a sensitive directory, or at a parent of one, moves the real files
 # to a path no class covers. The symlink itself is the sensitive change.
@@ -225,10 +260,16 @@ check "a symlink .github/workflows -> ../evil -> refused, sensitive-path (W3)" e
 sym "parent of the skills" .agents evil
 r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow .agents)
 check "a symlink at the parent .agents -> refused, sensitive-path (W3)" eval '[ $r = 1 ] && grep -q "sensitive-path: .agents (symlink over skills)" "$W/out"'
+sym "a harness skill root" .roo evil
+r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow .roo)
+check "a symlink .roo -> evil -> refused, skills (W7 of PR #29)" eval '[ $r = 1 ] && grep -q "sensitive-path: .roo (symlink over skills)" "$W/out"'
+sym "a nested agent dir" pkg/.claude ../evil
+r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow pkg/.claude)
+check "a symlink pkg/.claude -> ../evil -> refused, claude (W7 of PR #29)" eval '[ $r = 1 ] && grep -q "sensitive-path: pkg/.claude (symlink over claude)" "$W/out"'
 sym "parent of three classes, other case" .GitHub evil
 r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows run --findings "$W/rep.md" --allow evil/settings.json --allow .GitHub)
 check "a symlink .GitHub with only workflows allowed -> refused, every class it covers named (W3)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: .GitHub (symlink over workflows actions codeowners)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .GitHub (symlink over workflows actions codeowners instructions)" "$W/out"'
 sym "MCP config" .mcp.json evil/settings.json
 r=$(run --findings "$W/rep.md" --allow evil/settings.json --allow .mcp.json)
 check "a symlink .mcp.json -> evil/settings.json -> refused, sensitive-path (W3)" eval '[ $r = 1 ] && grep -q "sensitive-path: .*\.mcp\.json (symlink over mcp)" "$W/out"'
@@ -300,7 +341,7 @@ check "a link two levels down (other/y/z -> ../../deep) -> refused (W8)" \
 tlink ".claude/skills:../skills skills/y:/abs/elsewhere" "src/c.ts" src/c.ts
 r=$(run --findings "$W/rep.md" --allow src/c.ts)
 check "a link inside a sensitive target leading outside the repository -> refused, every class (W8, W10)" \
-  eval '[ $r = 1 ] && grep -q "skills/y (symlink over workflows actions codeowners skills claude mcp, its target leaves the repository)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "skills/y (symlink over workflows actions codeowners skills claude mcp instructions, its target leaves the repository)" "$W/out"'
 tlink "src/link:../skills skills/y:../other/y" "other/y/SKILL.md" other/y/SKILL.md
 r=$(run --findings "$W/rep.md" --allow other/y/SKILL.md)
 check "the same nested link under an ordinary link -> ok (W8)" eq "$r" 0
@@ -312,7 +353,7 @@ check "the fixer retargets the nested link skills/y -> ../evil and edits evil ->
 tlink ".claude/skills:../configuração" "configuração/x/SKILL.md" configuração/x/SKILL.md
 r=$(run --findings "$W/rep.md" --allow configuração/x/SKILL.md)
 check "a link .claude/skills -> ../configuração, the fixer edits under it -> refused (W9)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over workflows actions codeowners skills claude mcp, its target holds a non-ASCII byte)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over workflows actions codeowners skills claude mcp instructions, its target holds a non-ASCII byte)" "$W/out"'
 r=$(LC_ALL=C run --findings "$W/rep.md" --allow configuração/x/SKILL.md)
 check "the same under LC_ALL=C -> refused (W9)" eval '[ $r = 1 ] && grep -q "sensitive-path: .claude/skills (symlink over" "$W/out"'
 tlink ".claude/skills:../Configuração" "Configuração/x/SKILL.md" Configuração/x/SKILL.md
@@ -322,7 +363,7 @@ check "a target with an upper-case ASCII letter and a non-ASCII one -> refused (
 blink .claude /abs/elsewhere src/a.ts
 r=$(run --findings "$W/rep.md")
 check "a link .claude -> an absolute path on the base -> refused, it may lead back into the repository (W7, W10)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude (symlink over workflows actions codeowners skills claude mcp, its target leaves the repository)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: .claude (symlink over workflows actions codeowners skills claude mcp instructions, its target leaves the repository)" "$W/out"'
 blink .claude ../../outside src/a.ts
 r=$(run --findings "$W/rep.md")
 check "a link .claude -> ../../outside on the base -> refused (W7, W10)" eq "$r" 1
@@ -357,13 +398,13 @@ check "a link .claude/skills -> ../configuração spelled in NFD, the fixer edit
 ulink "src/link=../configuraÇÃo" src/a.ts
 r=$(run --findings "$W/rep.md")
 check "an ordinary link whose target holds a non-ASCII byte -> refused, every class (W10)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners skills claude mcp, its target holds a non-ASCII byte)" "$W/out"'
-r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions,codeowners,skills,claude,mcp run --findings "$W/rep.md")
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners skills claude mcp instructions, its target holds a non-ASCII byte)" "$W/out"'
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions,codeowners,skills,claude,mcp,instructions run --findings "$W/rep.md")
 check "the same with every class allowed -> ok (W10)" eq "$r" 0
 ulink "src/link=/etc" src/a.ts
 r=$(run --findings "$W/rep.md")
 check "an ordinary link to an absolute path -> refused, it leaves the repository (W10)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners skills claude mcp, its target leaves the repository)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners skills claude mcp instructions, its target leaves the repository)" "$W/out"'
 ulink "src/link=../.Claude" src/a.ts
 r=$(run --findings "$W/rep.md")
 check "an ordinary link pointing at .Claude -> refused, claude (W10)" \
@@ -372,14 +413,22 @@ ulink "src/link=../.agents/skills/x" src/a.ts
 r=$(run --findings "$W/rep.md")
 check "an ordinary link pointing into .agents/skills -> refused, skills (W10)" \
   eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over skills, its target .agents/skills/x)" "$W/out"'
+ulink "src/link=../AGENTS.md" src/a.ts
+r=$(run --findings "$W/rep.md")
+check "an ordinary link pointing at AGENTS.md -> refused, instructions (W2 of PR #29)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over instructions, its target AGENTS.md)" "$W/out"'
+ulink "src/link=../.github/scripts" src/a.ts
+r=$(run --findings "$W/rep.md")
+check "an ordinary link pointing at .github/scripts -> refused, workflows (W2 of PR #29)" \
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows, its target .github/scripts)" "$W/out"'
 ulink "src/link=.." src/a.ts
 r=$(run --findings "$W/rep.md")
 check "an ordinary link pointing at the repository root, above every sensitive path -> refused (W10)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners skills claude mcp, its target the repository root)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners skills claude mcp instructions, its target the repository root)" "$W/out"'
 ulink "src/link=../.github" src/a.ts
 r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions run --findings "$W/rep.md")
 check "an ordinary link pointing at .github with codeowners not allowed -> refused (W10)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners, its target .github)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: src/link (symlink over workflows actions codeowners instructions, its target .github)" "$W/out"'
 ulink ".agents/ſkills=../x" src/a.ts
 r=$(run --findings "$W/rep.md")
 check "a link at .agents/ſkills (long s, which folds to s) -> refused, skills (W10)" \
@@ -418,7 +467,7 @@ glink .claude
 r=$(run --findings "$W/rep.md" --allow .claude)
 check "a gitlink added at .claude, --allow'ed -> refused, sensitive-path (W7)" eval '[ $r = 1 ] && grep -q "sensitive-path: .claude (gitlink over claude)" "$W/out"'
 glink .github
-r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions,codeowners run --findings "$W/rep.md" --allow .github)
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions,codeowners,instructions run --findings "$W/rep.md" --allow .github)
 check "a gitlink at .github with every class it covers allowed -> ok (W7)" eq "$r" 0
 glink src/sub
 r=$(run --findings "$W/rep.md" --allow src/sub)
@@ -430,18 +479,18 @@ g checkout -q -f feat/x
 ulink "a=.agents/q x=a/../skills" src/a.ts
 r=$(run --findings "$W/rep.md")
 check "a link x -> a/../skills where a is a link to .agents/q -> refused, every class (N19 of #27)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: x (symlink over workflows actions codeowners skills claude mcp, its target steps back out of another link)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: x (symlink over workflows actions codeowners skills claude mcp instructions, its target steps back out of another link)" "$W/out"'
 # W1 (0.13.0 pass 1): APFS and NTFS ignore case, so `A/..` steps back out of the link `a` too.
 ulink "a=.agents/q x=A/../skills" src/a.ts
 r=$(run --findings "$W/rep.md")
 check "a link x -> A/../skills where a (other case) is a link to .agents/q -> refused, every class (W1)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: x (symlink over workflows actions codeowners skills claude mcp, its target steps back out of another link)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: x (symlink over workflows actions codeowners skills claude mcp instructions, its target steps back out of another link)" "$W/out"'
 ulink "A=.agents/q x=a/../skills" src/a.ts
 r=$(run --findings "$W/rep.md")
 check "a link x -> a/../skills where A (other case) is a link to .agents/q -> refused, every class (W1)" \
-  eval '[ $r = 1 ] && grep -q "sensitive-path: x (symlink over workflows actions codeowners skills claude mcp, its target steps back out of another link)" "$W/out"'
+  eval '[ $r = 1 ] && grep -q "sensitive-path: x (symlink over workflows actions codeowners skills claude mcp instructions, its target steps back out of another link)" "$W/out"'
 ulink "a=src x=a/../src/b.ts" src/a.ts
-r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions,codeowners,skills,claude,mcp run --findings "$W/rep.md")
+r=$(PUSH_GUARD_ALLOW_SENSITIVE=workflows,actions,codeowners,skills,claude,mcp,instructions run --findings "$W/rep.md")
 check "the same shape with every class allowed -> ok, the person decided (N19 of #27)" eq "$r" 0
 ulink "a=.agents/q y=a/skills" src/a.ts
 r=$(run --findings "$W/rep.md")

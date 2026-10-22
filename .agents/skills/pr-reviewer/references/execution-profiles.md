@@ -39,6 +39,7 @@ answer. They do not always move together.
 | Testing | New Hire | standard | Judge whether tests would fail when code breaks |
 | Complexity | New Hire | standard | Judgement, but local |
 | Dependencies | Security Auditor | standard | Changelog and CVE lookup, bounded |
+| Data integrity | Saboteur | deep | Summoned by the path floor for migrations and schema files: a lost or rewritten row is silent |
 | Readability | New Hire | fast | Pattern checks |
 | Docs | New Hire | fast | Pattern checks |
 | Observability | Saboteur | fast | Pattern checks |
@@ -46,8 +47,12 @@ answer. They do not always move together.
 | Pass 2 re-check | per unit | same tier as the unit that raised the item | A cheaper re-check can miss what the original caught |
 
 Escalate one tier on the second failure of the same unit instead of raising effort blindly. Raise
-`security` to `max` only for changes that touch authentication, authorisation, cryptography or
-parsing of untrusted input.
+`security` to `max` only for changes that touch authentication, authorisation, cryptography,
+parsing of untrusted input, or the files that run CI or instruct an agent (workflows and the
+scripts they run, actions, CODEOWNERS, every harness's skill folder, `.claude/**` and the other
+agent directories at any depth, `.mcp.json`, `AGENTS.md`
+and the other instruction files, Dockerfiles). `scripts/path-floor.sh` names those
+paths; see the path floor in [agents-and-dispatch.md](agents-and-dispatch.md).
 
 ## Per-harness setting
 

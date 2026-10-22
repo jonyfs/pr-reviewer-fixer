@@ -4,6 +4,124 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.15.0
+
+Makes the path floor and the findings block mechanical, so the reviewer and the fixer read the same
+structured lists. Interface change: `path-floor.sh --diff` is removed; the `<base> <head>` form keeps
+working, and `--pr <n>` and `--files <file>` are new.
+
+- `path-floor.sh` reads paths only from a structured list: `git diff --no-renames --name-only -z`
+  (`<base> <head>`), the pull request's file list from the API (`--pr <n>`, paginated, rename's old
+  path included, refuses when the count differs from `changedFiles` or exceeds 3000), or a NUL list
+  (`--files`). It no longer parses diff text.
+- `review-cycle.sh findings-block` prints the report's `findings` block as JSON. `lint-report` and
+  `push-guard.sh` both read it through that one function, so they cannot take different blocks.
+- `lint-report` takes `--files <file>` or `--base`/`--head` in place of a diff file for scope, and
+  reads each unit's `status` and `effort` from `mandatory_units`.
+- Test harness: the fake `gh` answers the files endpoint when the path follows `--paginate`, and
+  passes a non-list answer through so the script's own check fires. `findings-block` tests read the
+  error of their own call.
+- Suite: `tests/run-all.sh` passes on both skill copies, which are identical.
+
+## 0.14.0
+
+Adds the mechanical path floor (I50), closes the two notes PR #28 declared as debt (N1, N3), and
+the open `release.yml` and gate-template items of PR #19 (N1, N3, N5, N7, N8, N9, N12, N13, N15,
+N16, N17, N19, N23, N27, N29-N35).
+
+### Added
+
+- `scripts/path-floor.sh <base> <head>` (or `--diff <file>`), in both skills, maps the paths a change
+  touches to review units that must run: `.github/workflows/**`, `.github/scripts/**`,
+  `.github/actions/**`, `action.yml`, CODEOWNERS, `.mcp.json`, agent directories at any depth
+  (`.claude/**`, `.codex/**`, `.opencode/**`, `.cursor/**`, `.gemini/**`, `.windsurf/**`, and the
+  `skills/` folder of `.agents`, `.roo`, `.cline`, `.kiro`, `.devin` and `.junie`, so every project
+  skill folder `install.sh` writes counts; #29 W7), agent instruction files (`AGENTS.md`,
+  `CLAUDE.md`, `GEMINI.md` in any directory, `.github/copilot-instructions.md`,
+  `.github/{instructions,agents,skills,prompts}/**`, `opencode.json`, `.cursorrules`,
+  `.windsurfrules`), Dockerfiles, and authentication and cryptography paths (also as a camelCase
+  word, `AuthService.ts`) get security at `max`; migrations get security and data integrity;
+  manifests and lockfiles get dependencies. A rename counts by both paths. `--diff` splits on `\n`
+  only, so a form feed or U+2028 in a changed line cannot forge a hunk header, and reads a
+  header-only section (binary, empty, mode change) by its quoted or unquoted `diff --git` names. It
+  exits 2 when it cannot read the paths, including a diff that is not empty but names no path (a
+  coloured `gh pr diff`) (I50; #29 W1, W2, W3, W4, W8).
+- `review-cycle.sh lint-report` runs `path-floor.sh` over the diff it checks and refuses a report
+  whose coverage note has no `Mandatory units:` line listing each mandatory unit as run, with
+  `(max)` where the floor says `max`. It reads exactly one such line, in the Coverage note section
+  outside any fence or blockquote, refuses a second line, a second Coverage note section or a unit
+  listed twice, and wants the status to be exactly `run`. Fences are tracked line by line as
+  CommonMark closes them, so a ```` fence quoting a ``` block hides all of its text, and the
+  `findings` block is the first one outside every other fence (#29 W6). It reads a pull request's
+  diff with `gh pr diff --color=never`, so `CLICOLOR_FORCE=1` cannot empty the floor (#29 W8). A diff with no mandatory unit needs no such line, so reports that passed
+  before still pass. It exits 2 when the floor cannot be computed (I50; #29 W5). Its anchor parser
+  splits the diff on `\n` only, like the floor (#29 W1).
+- `push-guard.sh` counts `.github/scripts/**` in the `workflows` class (the scripts a workflow runs)
+  and has a new `instructions` class for the agent instruction files above, which
+  `PUSH_GUARD_ALLOW_SENSITIVE` may name; a link at, into or above one is refused like the others
+  (#29 W2). The `skills` class covers the `skills/` folder of `.agents`, `.roo`, `.cline`, `.kiro`,
+  `.devin` and `.junie`, and agent directories (`.claude`, `.cursor` and the rest) count at any
+  depth, as in the path floor; a test reads `install.sh`'s table so a new harness cannot be missed
+  (#29 W7).
+- `security-checklist.md` has a section for CI, workflow and agent configuration:
+  `pull_request_target` and `workflow_run`, expression injection, unpinned actions, `permissions`,
+  secrets, agent configuration (I50). The loop computes the floor in step 3 and hands it to the
+  reviewer; `SKILL.md`, `agents-and-dispatch.md`, `execution-profiles.md` (a data-integrity unit)
+  and `report-contract.md` name it.
+- `.github/scripts/release.sh` holds the release logic; `release.yml` runs it. `tests/release/run.sh`
+  drives it against the fake `gh` through every state a release can be in, and `tests/run-all.sh`
+  runs it (#19 N16). The fake `gh` answers the release and git-ref calls.
+
+### Changed
+
+- The gate template, for a run still queued after 10 minutes, says to tell the person and skip the
+  re-runs, as `harness-loop.md` does, instead of "stop" (#29 N4).
+- `tests/fake-gh/run.sh`: the `lint-report` helper expands `\n`, so each `Mandatory units:` row puts
+  the line on its own line, and a row checks that git mode and `--diff` mode of `path-floor.sh`
+  print the same floor (#29 N1, N2 in part).
+- `fetch-feedback.py` asks each review-thread comment for `pullRequestReview{state}`, and an inline
+  comment of a DISMISSED review is `skip: dismissed`, like the review's own body (#28 N1).
+- `fetch-feedback.py` fails closed on a review, issue comment or thread comment whose `isMinimized`
+  is not a boolean, and on a thread comment without the `pullRequestReview` key. Introspection on
+  2026-10-21 shows `isMinimized` is a non-null Boolean on IssueComment, PullRequestReviewComment and
+  PullRequestReview, and `pullRequestReview` a nullable object; the docstring records it (#28 N3).
+- `release.yml` has a concurrency group (`release`, `cancel-in-progress: false`), so two runs never
+  interleave their lookups and writes (#19 N33), and its step is named "Create, complete or publish
+  the release for VERSION", with the four states as a table in the script's header (#19 N32).
+- The release lookup lists every release through the API with `--paginate`, so a draft (which has
+  no tag) is seen and any error fails the run instead of reading as "no release". Two releases of
+  one tag are refused (#19 N15).
+- A release is marked Latest only when no published release has a higher x.y.z, compared as
+  numbers; drafts and other tags do not count. `--latest` or `--latest=false` is passed on both
+  `create` and the draft's `edit` (#19 N3).
+- A published release counts as complete only when it has both the archive and `SHA256SUMS` and the
+  downloaded archive matches the sum. Otherwise the files of this commit's release are attached
+  again (#19 N17). The early exit prints the tag's commit, not `target_commitish`, and says when that
+  commit is not this run's (#19 N34).
+- A draft is published with the title and notes from `CHANGELOG.md`, and a draft carrying any other
+  file is refused (#19 N5).
+- A published release with no tag and a draft that targets another commit get their own refusals,
+  apart from a tag on another commit (#19 N31). Every refusal names what to delete or fix before a
+  rerun, including a tag that resolves to something other than a commit (#19 N29). The comments say
+  what reruns the workflow (#19 N30) and that the `matching-refs` lookup now pages (#19 N35).
+  `VERSION` must be exactly x.y.z.
+- `harness-loop.md` step 1 runs `stale` at the start of every loop, since the loop agent cannot see
+  a person's push (#19 N9). Step 4 is skipped after a BLOCKED verdict (#19 N12) and says a
+  `gh run watch` that has not finished after 10 minutes is stopped, since `timeout-minutes` does not
+  bound a queued run (#19 N27).
+- The gate template, and `harness-loop.md`, say a new head cancels the old head's runs and re-runs
+  on purpose (#19 N7), what to do when a run is still queued after 10 minutes (#19 N19), and that
+  the gate also fails, inconclusive, on an invalid `REVIEW_BLOCK_AT` or one that differs from the
+  marker's `block_at` (#19 N23).
+- README: the gate fails at once on a push made outside a session only if it is installed (#19 N1).
+  HOW-IT-WORKS draws the fixer's push, `stale` and closure comment in the order the skill runs them
+  (#19 N8).
+
+### Not changed
+
+- Step 4 of the loop (re-running the gate) stays prose with no `review-cycle.sh` subcommand and no
+  test; `harness-loop.md` says so (#19 N13).
+
 ## 0.13.0
 
 Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items of the debt sweeps
