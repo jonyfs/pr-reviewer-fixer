@@ -44,7 +44,7 @@ The suite needs bash, python3, node, jq, git and sha256sum. It puts a fake `gh` 
   with `--feedback-json`, the fixer's `fetch-feedback.py` list (review-thread comments, review bodies and issue comments). It
   strips nothing and excludes the protocol's own markers by exact regex, the verdict one imported
   from the gate.
-- `scripts/path-floor.sh` (both skills) maps the paths a change touches to the review units that must run (CI and agent configuration, auth and crypto: security at `max`; migrations: security and data integrity; manifests and lockfiles: dependencies). `review-cycle.sh lint-report` runs it over the diff and refuses a report whose `Mandatory units:` line does not list each unit as run, which is why it ships beside `review-cycle.sh` in both skills.
+- `scripts/path-floor.sh` (both skills) maps the paths a change touches to the review units that must run (CI and agent configuration, auth and crypto: security at `max`; migrations: security and data integrity; manifests and lockfiles: dependencies). `review-cycle.sh lint-report` runs it over the diff and refuses a report whose findings block `mandatory_units:` field does not list each unit as run, which is why it ships beside `review-cycle.sh` in both skills.
 - `.github/scripts/release.sh` is what `.github/workflows/release.yml` runs: it creates, completes or publishes the release for `VERSION`, sets Latest only for the highest version, and refuses with a remedy when a tag or a release belongs to another commit. `tests/release/run.sh` drives it against the fake `gh`.
 - `tests/eval/` holds seeded review cases and `score.py`, which prints recall and precision for reports a person produced in a harness session. `tests/run-all.sh` runs only the scorer's own tests, never a model.
 

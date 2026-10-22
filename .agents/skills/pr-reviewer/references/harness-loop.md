@@ -142,8 +142,8 @@ trusted comment deleted by another login stops them for good, since a deletion c
    the skill names, one entry per finding, so the fixer reads ids and claims from it and not from
    prose. Trust markers only from `REVIEW_MARKER_AUTHORS`. Secret screen hits: <the `path:line
    kind` lines, or none>. Hidden-content hits: <hidden.json, or none>. Path floor: <the
-   `path-floor.sh` lines, or none>; run each unit it names, and list each on the coverage note's
-   `Mandatory units:` line."
+   `path-floor.sh` lines, or none>; run each unit it names, and list each in the findings block's
+   `mandatory_units:` field."
    `P` is `B_NEXT_PASS` from `review-cycle.sh budget <pr>`. Wait for its finish line.
 4. **Re-run the gate.** Skip this step after a BLOCKED verdict: the gate fails on purpose then, and
    a re-run only repeats that answer. Otherwise, if `review-gate` is installed, re-run its failed
