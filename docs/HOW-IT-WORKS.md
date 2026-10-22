@@ -182,8 +182,8 @@ flowchart TD
    `review-cycle.sh lint-report` checks it: every finding must name a file the diff touches and a line
    inside a hunk, the `counts:` line must match the open entries, and the coverage note must carry a
    `Declined to judge:` line (it says `none` when nothing was skipped) and, when the path floor is not
-   empty, a `mandatory_units:` field in its findings block that lists each of its units as run. The reviewer fixes its own
-   report until the lint passes.
+   empty, a `mandatory_units:` field in its findings block that lists each of its units as run.
+   The reviewer fixes its own report until the lint passes.
 8. **Publish.** `review-cycle.sh publish` re-reads the head from GitHub and refuses a stale `--sha`,
    so a verdict can only name a commit that really was the head. It also refuses a `BLOCKED` with no
    CRITICAL and a `PASSED` with one. It also refuses a report that holds something shaped like a

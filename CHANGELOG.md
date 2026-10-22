@@ -4,6 +4,14 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.15.2
+
+Documentation only. Fixes the four notes declared on PR #31: the residual
+`Mandatory units:` label in the report template is renamed to `Unit floor:`,
+the ambiguous status wording is clarified, an over-long sentence in
+HOW-IT-WORKS.md is wrapped, and the CHANGELOG claim about WR-01 is now
+accurate because the template label is gone.
+
 ## 0.15.1
 
 Documentation only. The reviewer contract now says where mandatory units are written: in the
