@@ -35,14 +35,12 @@ Tags: [#pr #review #contract #reference]
  Declined to judge: files or regions the review did not assess, each with the reason (too large,
  generated, binary, context missing, tool unavailable). Write `Declined to judge: none` when it
  read everything. Never leave the line out.
- Mandatory units: each unit `scripts/path-floor.sh` printed for this diff, as `<unit>: run`,
- separated by `;`, with `(max)` after a unit it printed at `max`. For example
- `Mandatory units: security (max): run; dependencies: run`. Required whenever the floor is not
- empty. Write it once, in this section, outside any fence or blockquote: `lint-report` reads only
- that line, and refuses a report that leaves a unit out, lists a unit twice, has a second
- `Mandatory units:` line or a second `Coverage note` section, or gives any status but exactly
- `run`. It tracks fences as CommonMark does, so text quoted in a ```` fence, even one holding a
- ``` block, stays quoted and never counts.>
+ Mandatory units: not written here. They go in the `findings` block as the `mandatory_units:`
+ field (see [Findings block](#findings-block)). `lint-report` reads only that field: a prose line
+ with this name is ignored and counts as no field. Every unit `scripts/path-floor.sh` printed for
+ this diff must be listed there with `effort` and `status: run`; `lint-report` refuses a report
+ that leaves one out, lists one twice, writes the field twice, or gives any status but `run`.>
+
 
 ### Prior findings
 <Re-review only. Each earlier finding with one status: verified (closed, red and green re-run by
@@ -57,9 +55,10 @@ Tags: [#pr #review #contract #reference]
 ## Findings block
 
 The report ends with one fenced block tagged `findings`. `pr-fixer` reads this block and nothing
-else for the work list, so prose and block must agree. It must sit outside every other fence:
-`lint-report` reads the first `findings` block that no other fence quotes, so a quoted example (like
-the one below, in a ```` fence) is not taken for it.
+else for the work list, so prose and block must agree. The report must contain exactly one line that
+is exactly ```` ```findings ````, and that fence must be the last block in the report. `lint-report`
+refuses a report with a second such line, even one quoted inside another fence, so examples elsewhere
+in the report must not use that exact opener (the example below is in this contract, not in a report).
 
 ````markdown
 ```findings
@@ -69,6 +68,9 @@ head: 9f2c1ab4e0d3
 pass: 1
 verdict: BLOCKED
 counts: {critical: 1, warning: 2, note: 3}
+mandatory_units:
+  - {unit: security, effort: max, status: run}
+  - {unit: dependencies, effort: standard, status: run}
 acceptance:
   - {id: A1, text: "Login rejects expired tokens", status: open}
 findings:

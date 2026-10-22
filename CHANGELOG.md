@@ -4,6 +4,13 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.15.1
+
+Documentation only. The reviewer contract now says where mandatory units are written: in the
+findings block's `mandatory_units:` field, not a prose `Mandatory units:` line, which `lint-report`
+ignores. The contract also states the one-`findings`-line rule that `lint-report` enforces. Fixes
+the two warnings declared on PR #30 (WR-01, WR-02).
+
 ## 0.15.0
 
 Makes the path floor and the findings block mechanical, so the reviewer and the fixer read the same

@@ -30,8 +30,8 @@ minimum. `scripts/path-floor.sh <base> <head>` does the mechanical part and prin
 | migrations and schema files | security and data-integrity |
 | manifests and lockfiles | dependencies |
 
-The script's header has the exact patterns. The coverage note lists each of those units as run on
-its `Mandatory units:` line ([report-contract.md](report-contract.md)), and `review-cycle.sh
+The script's header has the exact patterns. The findings block lists each of those units as run in
+its `mandatory_units:` field ([report-contract.md](report-contract.md)), and `review-cycle.sh
 lint-report` refuses the report when one is missing, listed as anything but run, or below `max`
 where the floor says `max`. Judgement adds to the floor: a UI file summons design review, for
 example. Projects may extend the map in their own guide; nothing removes a unit from it.

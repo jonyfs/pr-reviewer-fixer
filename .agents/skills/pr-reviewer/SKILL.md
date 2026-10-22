@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: 0.15.0
+  version: 0.15.1
 ---
 
 # PR Reviewer
@@ -144,8 +144,8 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    come from [references/execution-profiles.md](references/execution-profiles.md) and are passed on
    the dispatch call, never left to inherit. Agents have no write authority. Run (or take from the
    loop agent) `scripts/path-floor.sh <base> <head>`: every unit it prints is dispatched, at `max`
-   where it says `max`, whatever the diff argues, and the coverage note lists each on its
-   `Mandatory units:` line.
+   where it says `max`, whatever the diff argues, and the findings block lists each in its
+   `mandatory_units:` field.
    [references/agents-and-dispatch.md](references/agents-and-dispatch.md). Dimensions and checks:
    [references/dimensions.md](references/dimensions.md); stances:
    [references/personas.md](references/personas.md); security:
@@ -217,7 +217,7 @@ findings block for `pr-fixer`.
 - [ ] Coverage note carries a `Declined to judge:` line, even when it says `none`; a PASSED never
       hides a region the review did not read
 - [ ] `lint-report` exits 0: every finding names a file and line the diff shows, and every unit
-      `path-floor.sh` printed is on the `Mandatory units:` line as run
+      `path-floor.sh` printed is in the findings block's `mandatory_units:` field as run
 - [ ] Marker published through the script at the current head; marker plus report under 60000 bytes
 - [ ] Every prior blocking finding is verified, refusal accepted, or refusal rejected (pass 2+)
 - [ ] Automatic run: no `--request-changes`, no `--approve`
