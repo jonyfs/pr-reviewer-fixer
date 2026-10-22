@@ -10,8 +10,17 @@
 # a light review.
 #
 # USAGE
-#   path-floor.sh <base> <head>     the paths of `git diff <base>...<head>`, as the secret screen reads it
-#   path-floor.sh --diff <file>     the paths of a unified diff (`gh pr diff` output); lint-report uses this
+#   path-floor.sh <base> <head>     the paths of `git diff --no-renames --name-only -z <base>...<head>`
+#                                   (a rename is a deletion and an addition, so its old path counts)
+#   path-floor.sh --pr <n>          the pull request's file list from the GitHub API
+#                                   (`gh api --paginate repos/{owner}/{repo}/pulls/<n>/files`: each
+#                                   `filename`, and `previous_filename` for a rename); lint-report uses this
+#   path-floor.sh --files <file>    a NUL-separated list of paths, as `git diff --name-only -z` prints it
+#                                   (tests and offline use)
+#
+# The floor is read only from a structured list of paths, never from diff text. A unified diff is
+# text the author shapes (a form feed, a coloured `gh pr diff`, a rename section), and three review
+# passes of PR #29 found a way to hide a path from every parser of it that was tried.
 #
 # OUTPUT. One line per mandatory unit and path, sorted: `<unit> <effort> <path>`. The path is the
 # rest of the line and may hold spaces. No output means no unit is mandatory. A renamed or deleted
@@ -50,144 +59,100 @@
 # The CI, agent and instruction classes are the ones push-guard.sh refuses for the fixer, plus action
 # metadata and Dockerfiles. A project may add units in its own guide; nothing may remove one from this list.
 #
-# `review-cycle.sh lint-report` runs this over the diff it checks and refuses a report whose
-# coverage note does not list each mandatory unit as run (`Mandatory units:` line, see
-# references/report-contract.md). A unit with effort `max` must be listed as `(max)`.
+# `review-cycle.sh lint-report` computes this floor for the report it checks and refuses a report
+# whose `findings` block does not list each mandatory unit as run in its `mandatory_units:` field
+# (references/report-contract.md). A unit with effort `max` must be listed with `effort: max`.
 #
-# EXIT. 0 when it read every path (with or without units), 2 when git or the diff could not be read,
-# a diff section named no path it could read, or a diff that is not empty named no path at all (a
-# coloured `gh pr diff`, for one). It fails closed: no floor is never a guess.
+# EXIT. 0 when it read the whole list (with or without units). 2 when it could not: git failed; gh
+# failed or answered something that is not the JSON it asked for (a coloured answer included); the
+# API list is shorter or longer than the pull request's `changedFiles`, or that count is over 3000,
+# the most files that endpoint returns; or the --files list is unreadable, holds an empty entry, or
+# does not end with a NUL. It fails closed: no floor is never a guess.
 set -u
 
 die2() { echo "path-floor: $*" >&2; exit 2; }
+USAGE="usage: path-floor.sh <base> <head> | --pr <n> | --files <file>"
 
-mode="" base="" head="" file=""
+mode="" base="" head="" file="" pr=""
 case "${1:-}" in
-  --diff) [ $# -eq 2 ] || die2 "usage: path-floor.sh <base> <head> | --diff <file>"; mode="diff"; file="$2" ;;
-  -h|--help) sed -n '2,55p' "$0"; exit 0 ;;
-  *) [ $# -eq 2 ] || die2 "usage: path-floor.sh <base> <head> | --diff <file>"; mode="git"; base="$1"; head="$2" ;;
+  --files) [ $# -eq 2 ] || die2 "$USAGE"; mode="files"; file="$2" ;;
+  --pr) [ $# -eq 2 ] || die2 "$USAGE"; mode="pr"; pr="$2"
+        case "$pr" in ''|*[!0-9]*) die2 "--pr needs a pull request number; $USAGE" ;; esac ;;
+  -h|--help) sed -n '2,70p' "$0"; exit 0 ;;
+  -*) die2 "$USAGE" ;;
+  *) [ $# -eq 2 ] || die2 "$USAGE"; mode="git"; base="$1"; head="$2" ;;
 esac
 
-tmp="$(mktemp)" || die2 "could not create a temporary file"
-trap 'rm -f "$tmp"' EXIT
-if [ "$mode" = git ]; then
-  # --no-renames lists a rename as a deletion and an addition, so both paths are judged.
-  git diff --no-renames --name-only -z "$base...$head" -- >"$tmp" 2>/dev/null \
-    || die2 "git could not list the paths of $base...$head (fetch both commits first)"
-else
-  [ -r "$file" ] && [ -f "$file" ] || die2 "cannot read the diff file $file"
-  cat -- "$file" >"$tmp" || die2 "cannot read the diff file $file"
-fi
+tmp="$(mktemp)" && meta="$(mktemp)" || die2 "could not create a temporary file"
+trap 'rm -f "$tmp" "$meta"' EXIT
+case "$mode" in
+  git)
+    # --no-renames lists a rename as a deletion and an addition, so both paths are judged.
+    git diff --no-renames --name-only -z "$base...$head" -- >"$tmp" 2>/dev/null \
+      || die2 "git could not list the paths of $base...$head (fetch both commits first)" ;;
+  files)
+    [ -r "$file" ] && [ -f "$file" ] || die2 "cannot read the file list $file"
+    cat -- "$file" >"$tmp" || die2 "cannot read the file list $file" ;;
+  pr)
+    # CLICOLOR_FORCE=1 makes gh colour JSON even into a pipe (NO_COLOR does not undo it), so both
+    # calls run without it; any answer that still is not plain JSON fails the parse below.
+    env -u CLICOLOR_FORCE -u GH_FORCE_TTY gh pr view "$pr" --json changedFiles >"$meta" 2>/dev/null \
+      || die2 "gh could not read #$pr, so the floor is unknown"
+    env -u CLICOLOR_FORCE -u GH_FORCE_TTY gh api --paginate "repos/{owner}/{repo}/pulls/$pr/files?per_page=100" >"$tmp" 2>/dev/null \
+      || die2 "gh could not list the files of #$pr, so the floor is unknown" ;;
+esac
 
-X_MODE="$mode" X_IN="$tmp" python3 -I - <<'PY'
-import os, re, sys
+X_MODE="$mode" X_IN="$tmp" X_META="$meta" python3 -I - <<'PY'
+import json, os, re, sys
+
+def fail(msg):
+    print("path-floor: " + msg + ", so the floor is unknown", file=sys.stderr)
+    sys.exit(2)
 
 data = open(os.environ["X_IN"], "rb").read()
-
-def unquote(name):
-    """A path as git prints it in a diff header: a C-quoted name decoded, one trailing tab dropped."""
-    if name.endswith("\t"):
-        name = name[:-1]
-    if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
-        out, i, body = bytearray(), 0, name[1:-1]
-        esc = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
-        while i < len(body):
-            if body[i] == "\\" and i + 1 < len(body):
-                if body[i + 1] in esc:
-                    out.append(esc[body[i + 1]]); i += 2; continue
-                if re.fullmatch(r"[0-7]{3}", body[i + 1:i + 4]):
-                    out.append(int(body[i + 1:i + 4], 8) & 0xFF); i += 4; continue
-            out += body[i].encode("utf-8"); i += 1
-        name = out.decode("utf-8", "replace")
-    return name
-
-def strip(name, side):
-    return name[2:] if name.startswith(side) else name
-
-QUOTED = r'"(?:[^"\\]|\\.)*"'
-
-def header_paths(rest):
-    """The two paths of a `diff --git` header, prefixes removed, or [] when they cannot be read."""
-    m = (re.fullmatch("(%s) (%s)" % (QUOTED, QUOTED), rest) or re.fullmatch("(%s) (b/.*)" % QUOTED, rest)
-         or re.fullmatch('(a/[^"]*) (%s)' % QUOTED, rest))
-    if m:
-        a, b = unquote(m.group(1)), unquote(m.group(2))
-    else:
-        half = (len(rest) - 5) // 2      # rest is "a/" + X + " b/" + X
-        if len(rest) < 7 or len(rest) % 2 == 0 or rest[:2] != "a/" or rest[2 + half:5 + half] != " b/" \
-                or rest[2:2 + half] != rest[5 + half:]:
-            return []
-        a, b = rest[:2 + half], rest[3 + half:]
-    if not (a.startswith("a/") and b.startswith("b/")):
-        return []
-    return [a[2:], b[2:]]
-
 paths = set()
-if os.environ["X_MODE"] == "git":
-    for p in data.decode("utf-8", "replace").split("\0"):
-        if p:
-            paths.add(p)
+if os.environ["X_MODE"] in ("git", "files"):
+    # `git diff --name-only -z` ends every name with a NUL. A list that does not (a newline-separated
+    # one passed by mistake) would read as one long name and summon nothing.
+    if data and not data.endswith(b"\0"):
+        fail("the file list does not end with a NUL (write it as `git diff --name-only -z` does)")
+    names = data[:-1].split(b"\0") if data else []
+    if any(n == b"" for n in names):
+        fail("the file list holds an empty entry")
+    paths = {n.decode("utf-8", "replace") for n in names}
 else:
-    # Only \n ends a line, as in git. str.splitlines() also breaks on \f, \v, a lone \r, \x1c-\x1e,
-    # U+0085 and U+2028/2029, so one of them inside a changed line would start a new line that can
-    # read as a hunk header with a count the author chose, and hide every later path. A trailing \r
-    # (a diff saved with CRLF) is dropped from each line; git quotes a name that ends in \r.
-    lines = [ln[:-1] if ln.endswith("\r") else ln for ln in data.decode("utf-8", "replace").split("\n")]
-    rem_old = rem_new = 0
-    section_named = None   # None outside a `diff --git` section; else whether it named a path
-    def close_section():
-        if section_named is False:
-            print("path-floor: a diff section named no path it could read, so the floor is unknown",
-                  file=sys.stderr)
-            sys.exit(2)
-    for ln in lines:
-        if rem_old > 0 or rem_new > 0:
-            # Inside a hunk every line is content, even one that reads like a header.
-            if ln.startswith("+"):
-                rem_new -= 1
-            elif ln.startswith("-"):
-                rem_old -= 1
-            elif not ln.startswith("\\"):
-                rem_old -= 1; rem_new -= 1
-            continue
-        if ln.startswith("diff --git "):
-            close_section()
-            section_named = False
-            # A mode change, an empty file or a binary file has no ---/+++ lines, so the header is
-            # the only place it is named. Each side is C-quoted when git quotes it; an unquoted pair
-            # `a/X b/X` is split in the middle, which holds when X itself contains " b/". A header
-            # that fits none of these waits for ---/+++ or rename lines, and exit 2 when none come.
-            for side in header_paths(ln[len("diff --git "):]):
-                paths.add(side); section_named = True
-            continue
-        hit = None
-        if ln.startswith("--- "):
-            hit = strip(unquote(ln[4:]), "a/")
-        elif ln.startswith("+++ "):
-            hit = strip(unquote(ln[4:]), "b/")
-        else:
-            m = re.match(r"(rename|copy) (from|to) (.+)$", ln)
-            if m:
-                hit = unquote(m.group(3))
-        if hit is not None:
-            if hit != "/dev/null":
-                paths.add(hit)
-            if section_named is not None:
-                section_named = True
-            continue
-        if ln.startswith("@@"):
-            h = re.match(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@", ln, re.ASCII)
-            if h:
-                rem_old = int(h.group(1)) if h.group(1) is not None else 1
-                rem_new = int(h.group(2)) if h.group(2) is not None else 1
-    close_section()
-    # Text that is not empty and named no path is not a diff this parser can read: a coloured
-    # `gh pr diff` (CLICOLOR_FORCE=1 puts an escape code before every `diff --git`) or another
-    # format. An empty floor from it would be a guess, so the floor is unknown.
-    if data.strip() and not paths:
-        print("path-floor: the diff is not empty but names no path it could read (coloured output?), "
-              "so the floor is unknown", file=sys.stderr)
-        sys.exit(2)
+    # `gh api --paginate` prints one JSON array per page, or one merged array: read them all.
+    try:
+        want = json.loads(open(os.environ["X_META"], "rb").read().decode("utf-8"))["changedFiles"]
+        text, dec, i, entries = data.decode("utf-8"), json.JSONDecoder(), 0, []
+        while True:
+            while i < len(text) and text[i] in " \t\r\n":
+                i += 1
+            if i >= len(text):
+                break
+            page, i = dec.raw_decode(text, i)
+            if not isinstance(page, list):
+                raise ValueError("a page is not a list")
+            entries += page
+        for e in entries:
+            if not isinstance(e, dict) or not isinstance(e.get("filename"), str) or not e["filename"]:
+                raise ValueError("an entry has no filename")
+            paths.add(e["filename"])
+            # A rename carries its old path; a file that was not renamed has none (or a null).
+            old = e.get("previous_filename")
+            if old is not None:
+                if not isinstance(old, str) or not old:
+                    raise ValueError("an entry has an empty or non-string previous_filename")
+                paths.add(old)
+    except (ValueError, KeyError, TypeError, AttributeError, UnicodeDecodeError) as exc:
+        fail("gh answered something that is not the pull request's file list (%s)" % exc)
+    if not isinstance(want, int) or isinstance(want, bool):
+        fail("gh gave no changedFiles count for the pull request")
+    if want > 3000:
+        fail("the pull request changes %d files and the files endpoint returns at most 3000" % want)
+    if len(entries) != want:
+        fail("the API listed %d files and the pull request changes %d (truncated, or the head moved)"
+             % (len(entries), want))
 
 CI_PREFIXES = (".github/workflows/", ".github/actions/", ".github/scripts/")
 # Agent directories, matched at any depth: a harness also reads them in a subdirectory of a monorepo

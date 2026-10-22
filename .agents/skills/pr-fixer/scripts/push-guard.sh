@@ -15,7 +15,9 @@
 #   3. the local HEAD contains the pull request's head commit, so the push is a fast-forward and
 #      no commit by someone else is overwritten;
 #   4. every file touched by a commit made on top of that head is in scope: named by a `file:` entry
-#      in an open entry of the report's `findings` block (--findings), given with --allow (plain
+#      in an open entry of the report's `findings` block (--findings, read by `review-cycle.sh
+#      findings-block`, the reader lint-report uses: the block that ends the report, from its one
+#      line that is exactly ```findings; a report with no such block is INCONCLUSIVE), given with --allow (plain
 #      relative paths, no globs), or a test file (under a test, tests, spec or __tests__ directory,
 #      or named x_test.*, x.test.*, x.spec.* or test_x.*). A path matches a scope entry only when the
 #      two are equal byte for byte, and a touched path holding a control character (a newline, a tab)
@@ -118,28 +120,27 @@ CUR="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null \
   || REASONS+=("local HEAD does not contain the pull request head ${HEAD_OID:0:12}: a push would not be a fast-forward")
 
-# Files the report names, plus --allow, plus test files.
+# Files the report names, plus --allow, plus test files. The findings block is read by
+# `review-cycle.sh findings-block`, the reader lint-report uses, so the two can never take different
+# blocks from one report. review-cycle.sh ships beside this script; the secret screen (6) needs it too.
 SCOPE="$(mktemp)"; trap 'rm -f "$SCOPE"' EXIT
+RCY="$(dirname "$0")/review-cycle.sh"
+[ -f "$RCY" ] || { echo "push-guard: review-cycle.sh is not beside push-guard.sh, so the findings block cannot be read and the secret screen cannot run, INCONCLUSIVE" >&2; exit 2; }
 if [ -n "$FINDINGS" ]; then
   [ -s "$FINDINGS" ] || { echo "push-guard: --findings file is missing or empty, INCONCLUSIVE" >&2; exit 2; }
-  node -e '
-    const t = require("fs").readFileSync(process.argv[1], "utf8");
-    const m = /```findings\n([\s\S]*?)\n```/.exec(t);
-    if (!m) process.exit(3);
-    let cur = null; const out = [];
-    const flush = () => { if (cur && cur.file && ["open", "refused-rejected"].includes(cur.status || "open")) out.push(cur.file); };
-    for (const l of m[1].split("\n")) {
-      if (/^\s*-\s+id:/.test(l)) { flush(); cur = {}; continue; }
-      const k = /^\s{2,}(file|status):\s*(.+?)\s*$/.exec(l);
-      if (k && cur) cur[k[1]] = k[2].replace(/^["\x27]|["\x27]$/g, "");
-    }
-    flush();
-    for (const f of out) {
-      const p = f.replace(/^\.\//, "");
-      if (p.startsWith("/") || p.split("/").includes("..") || /[*?\[\]\x00-\x1f\x7f]/.test(p)) continue;
-      console.log(p);
-    }
-  ' "$FINDINGS" >>"$SCOPE" || { echo "push-guard: --findings has no fenced findings block, INCONCLUSIVE" >&2; exit 2; }
+  BLOCK="$(bash "$RCY" findings-block --report "$FINDINGS" 2>"$SCOPE")" \
+    || { echo "push-guard: --findings has no valid findings block ($(sed 's/^review-cycle: //' "$SCOPE" | head -1)), INCONCLUSIVE" >&2; exit 2; }
+  : >"$SCOPE"
+  printf '%s' "$BLOCK" | node -e '
+    let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      for (const f of JSON.parse(s).entries) {
+        if (!f.file || !["open", "refused-rejected"].includes(f.status || "open")) continue;
+        const p = f.file.replace(/^\.\//, "");
+        if (p.startsWith("/") || p.split("/").includes("..") || /[*?\[\]\x00-\x1f\x7f]/.test(p)) continue;
+        console.log(p);
+      }
+    });
+  ' >>"$SCOPE" || { echo "push-guard: could not read the findings block JSON, INCONCLUSIVE" >&2; exit 2; }
 fi
 # Sensitive paths and links (check 5), in one node pass. Arguments: a file of touched paths and a file
 # of `diff-tree --raw -z` records from the pushed commits, both NUL-delimited, two output files, then
@@ -399,8 +400,6 @@ fi
 # use. Only the commits' own changes are read, so a value already on the base does not refuse a
 # merge of the base. The value is never printed: only the path, the line and the kind.
 if [ -s "$PATCH" ]; then
-  RCY="$(dirname "$0")/review-cycle.sh"
-  [ -f "$RCY" ] || { echo "push-guard: review-cycle.sh is not beside push-guard.sh, so the secret screen cannot run, INCONCLUSIVE" >&2; exit 2; }
   HITS="$(bash "$RCY" screen --patch "$PATCH" 2>/dev/null)"; src=$?
   case "$src" in
     0) ;;

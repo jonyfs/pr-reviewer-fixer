@@ -132,7 +132,9 @@ sequenceDiagram
 - Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each
   token or private key it finds is a mandatory CRITICAL finding at that line, with the value
   redacted.
-- Maps the changed paths to units that must run with `scripts/path-floor.sh <base> <head>`:
+- Maps the changed paths to units that must run with `scripts/path-floor.sh <base> <head>` (or
+  `--pr <n>`, which reads the pull request's file list from the API and refuses when the count
+  differs from `changedFiles` or exceeds 3000; or `--files <file>`, a NUL-separated list):
   workflows, actions and the scripts they run (`.github/scripts/**`), CODEOWNERS, agent
   configuration (`.mcp.json`, every project skill folder `install.sh` writes such as
   `.agents/skills/**` and `.roo/skills/**`, and `.claude/**`, `.cursor/**` and the other agent
@@ -144,8 +146,10 @@ sequenceDiagram
   text in the diff can drop one.
 - Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
   file and a line the diff shows, the counts must match the open entries, and the coverage note
-  must list every unit of the path floor as run. It reads the diff with `gh pr diff --color=never`,
-  and a diff it cannot read a path from makes the floor unknown, never empty.
+  must list every unit of the path floor as run. Its scope comes from `--files <file>` or from
+  `--base`/`--head`. The findings are read from the report's `findings` block through the
+  `review-cycle.sh findings-block` subcommand, which the fixer's `push-guard.sh` also uses. A diff it
+  cannot read a path from makes the floor unknown, never empty.
 - Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
   the verdict is `PASSED` and the pull request is a draft, the script marks it ready for review.
 

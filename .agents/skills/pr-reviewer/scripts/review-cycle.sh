@@ -96,17 +96,23 @@
 #                          report that holds a token or private key (never printed), and a gh
 #                          login that is not on REVIEW_MARKER_AUTHORS. It does not rewrite the
 #                          report: write a login as `@login` in backticks so it notifies nobody.
-#     lint-report [pr] --report <file> [--diff <file>]
+#     lint-report [pr] --report <file> [--diff <file>] [--files <file> | --base <sha> --head <sha>]
 #                          checks that every finding names a file and a line the diff shows, and
 #                          that the `counts:` line matches the open entries, and that the coverage note says what was
 #                          declined, and fails a report that holds a token or private key. When
-#                          path-floor.sh (beside this script) finds mandatory units in the diff's
-#                          paths, the coverage note's `Mandatory units:` line must list each as run,
-#                          `(max)` where the floor says max; only the one Coverage note section and
-#                          the first `findings` block outside every fence count (fences tracked as
-#                          CommonMark does). It reads a PR's diff with `gh pr diff --color=never`.
-#                          Run before publish; posts nothing. Exit 1 on a problem, 2 when it could
-#                          not read an input or compute the floor.
+#                          path-floor.sh (beside this script) finds mandatory units in the changed
+#                          paths, the `findings` block's `mandatory_units` field must list each with
+#                          `status: run`, `effort: max` where the floor says max. The floor comes
+#                          from a structured file list only: the PR's API file list with a number,
+#                          else --files (NUL-separated) or --base/--head; --diff alone is exit 2.
+#                          The anchors read `gh pr diff --color=never`, or --diff. Run before
+#                          publish; posts nothing. Exit 1 on a problem, 2 when it could not read an
+#                          input or compute the floor.
+#     findings-block --report <file>
+#                          prints the report's `findings` block as JSON: the one reader lint-report
+#                          and push-guard.sh share. The block is the last thing in the report, from
+#                          the one line that is exactly ```findings to a last non-blank line that is
+#                          exactly ```. Exit 1 when the report has no such block, 2 when unreadable.
 #     screen --file <file> runs the secret screen `publish` and `lint-report` use over any text an
 #                          agent is about to post (closure comment, `pr-debt` body, overflow
 #                          comment). Exit 0 clean, 1 when it holds a token, a private key or a
@@ -1914,30 +1920,162 @@ PY
   [ "$xrc" = 0 ] || exit 1
 }
 
+# The one reader of a report's `findings` block. `lint-report` and push-guard.sh both call it, so they
+# can never take different blocks from the same report. The block is defined by position, not by
+# fence tracking: the report's last non-blank line is exactly ``` (three backticks, nothing else),
+# and the block runs from the one line in the whole report that is exactly ```findings down to it. A
+# trailing \r is dropped from each line first (a report saved with CRLF). Refused, exit 1, with the
+# reason on stderr: no such closing line; no ```findings line, or more than one anywhere in the report
+# (a quoted example counts, so quote it without that line); and a line inside the block that starts
+# with three backticks, which would close the fence early when it renders.
+#
+# Prints one JSON object: `entries` (each finding's id and its file, line, severity, status and
+# scenario fields, from the `findings:` list), `counts` ({critical, warning, note} or null when the
+# block has no `counts:` line), `mandatory_units` (a list of {unit, effort, status}, or null when the
+# field is absent) and `mandatory_problems` (what is wrong with that field, empty when it is well
+# formed). Exit 2 when the file cannot be read.
+findings_block_json() {
+  [ -r "${1:-}" ] && [ -f "${1:-}" ] || { echo "review-cycle: cannot read the report ${1:-}" >&2; return 2; }
+  X_REPORT="$1" python3 -I - <<'PY'
+import json, os, re, sys
+
+try:
+    raw = open(os.environ["X_REPORT"], "rb").read().decode("utf-8", "replace")
+except OSError:
+    print("review-cycle: cannot read the report", file=sys.stderr); sys.exit(2)
+lines = [ln[:-1] if ln.endswith("\r") else ln for ln in raw.split("\n")]
+
+def refuse(msg):
+    print("review-cycle: " + msg, file=sys.stderr); sys.exit(1)
+
+last = max((i for i, ln in enumerate(lines) if ln.strip(" \t")), default=None)
+if last is None or lines[last] != "```":
+    refuse("the report does not end with the `findings` block: its last non-blank line must be exactly ``` (the block's closing fence)")
+openers = [i for i, ln in enumerate(lines) if ln == "```findings"]
+if not openers:
+    refuse("the report has no line that is exactly ```findings, so it has no `findings` block")
+if len(openers) > 1:
+    refuse("the report has %d lines that are exactly ```findings; it has one `findings` block, at its end (quote an example without that line)" % len(openers))
+if openers[0] > last:
+    refuse("the ```findings line comes after the report's last fence; the block must end the report")
+body = lines[openers[0] + 1:last]
+for ln in body:
+    if re.match(r" {0,3}```", ln):
+        refuse("a line inside the `findings` block starts with ```, which would close it early; the block must be one fence")
+
+entries, counts, mu, mu_seen, problems = [], None, None, 0, []
+section, e = None, None
+for ln in body:
+    if re.match(r"\s*(#|$)", ln):
+        continue
+    top = re.match(r"([A-Za-z_][A-Za-z0-9_-]*):[ \t]*(.*?)[ \t]*$", ln)
+    if top:
+        section, e, key, val = top.group(1), None, top.group(1), top.group(2)
+        if key == "counts":
+            cm = re.fullmatch(r"\{\s*critical:\s*(\d+),\s*warning:\s*(\d+),\s*note:\s*(\d+)\s*\}", val, re.ASCII)
+            counts = ({"critical": int(cm.group(1)), "warning": int(cm.group(2)), "note": int(cm.group(3))}
+                      if cm else "malformed")
+        elif key == "mandatory_units":
+            mu_seen += 1
+            mu = []
+            if val == "[]":
+                section = None
+            elif val:
+                problems.append("`mandatory_units:` must be `[]` or a list of `- {unit: <u>, effort: max|standard, status: run|skipped}` lines, not `%s`" % val)
+        continue
+    if section == "findings":
+        s = re.match(r"\s*-\s+id:\s*(\S+)", ln)
+        if s:
+            e = {"id": s.group(1).strip("\"'")}
+            entries.append(e)
+            continue
+        kv = re.match(r"\s{2,}(file|line|severity|status|scenario):\s*(.*?)\s*$", ln)
+        if kv and e is not None:
+            e[kv.group(1)] = kv.group(2).strip("\"'")
+    elif section == "mandatory_units":
+        m = re.fullmatch(r"\s+-\s*\{\s*unit:\s*([a-z][a-z-]*)\s*,\s*effort:\s*([a-z]+)\s*,\s*status:\s*([a-z]+)\s*\}\s*", ln)
+        if not m:
+            problems.append("a `mandatory_units` line is not `- {unit: <u>, effort: max|standard, status: run|skipped}`: %s" % ln.strip())
+            continue
+        unit, effort, status = m.groups()
+        if effort not in ("max", "standard"):
+            problems.append("unit %s has effort `%s`; write max or standard" % (unit, effort))
+        if status not in ("run", "skipped"):
+            problems.append("unit %s has status `%s`; write exactly run or skipped" % (unit, status))
+        if any(u["unit"] == unit for u in mu):
+            problems.append("unit %s is listed more than once in `mandatory_units`; list it once" % unit)
+        mu.append({"unit": unit, "effort": effort, "status": status})
+if mu_seen > 1:
+    problems.append("the block has %d `mandatory_units:` fields; write exactly one" % mu_seen)
+print(json.dumps({"entries": entries, "counts": counts, "mandatory_units": mu, "mandatory_problems": problems}))
+PY
+}
+
+# Prints the report's `findings` block as JSON (findings_block_json above). Exit 0 with a block, 1
+# when the report has none by the rule above, 2 when the report cannot be read.
+cmd_findings_block() {
+  local report=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --report) [ $# -ge 2 ] || die "review-cycle: --report needs a value"; report="${2:-}"; shift 2 ;;
+      *) echo "review-cycle: usage: review-cycle.sh findings-block --report <file>" >&2; return 2 ;;
+    esac
+  done
+  [ -n "$report" ] || { echo "review-cycle: usage: review-cycle.sh findings-block --report <file>" >&2; return 2; }
+  findings_block_json "$report"
+}
+
 # Checks the `findings` block of a report against the diff it claims to review, before `publish`.
 # A finding must name a file the diff touches, and a line the diff shows (a hunk's new side). The
-# `counts:` line must equal the number of entries still open, and the coverage note must carry a
-# `Declined to judge:` line, and a `Mandatory units:` line naming each unit path-floor.sh makes
-# mandatory for the diff's paths as run. Nothing here posts or labels.
+# `counts:` line must equal the number of entries still open, the coverage note must carry a
+# `Declined to judge:` line, and the block's `mandatory_units` field must list each unit the path
+# floor makes mandatory as run. Nothing here posts or labels.
 #
-# Exit 0 = every finding is anchored · 1 = at least one is not, or the report has no findings
-# block · 2 = the diff or the report could not be read, or path-floor.sh could not read the diff.
+# The floor comes from a structured file list, never from diff text: with a pull request number, the
+# PR's file list from the GitHub API (`path-floor.sh --pr`); with no number, a NUL-separated list
+# (`--files`) or two commits (`--base`/`--head`, git mode). `--diff FILE` alone gives the line anchors
+# but no floor, and the floor is always needed, so that is exit 2. The line anchors read the diff text,
+# from `--diff` or from `gh pr diff --color=never`.
+#
+# Exit 0 = every check holds · 1 = a finding is not anchored, the report has no valid findings block,
+# or a mandatory unit is not listed as run · 2 = an input could not be read, or the floor could not be
+# computed.
 cmd_lint_report() {
-  local pr="" report="" diff=""
+  local pr="" report="" diff="" files="" fbase="" fhead=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --report) [ $# -ge 2 ] || die "review-cycle: --report needs a value"; report="${2:-}"; shift 2 ;;
       --diff)   [ $# -ge 2 ] || die "review-cycle: --diff needs a value"; diff="${2:-}"; shift 2 ;;
+      --files)  [ $# -ge 2 ] || die "review-cycle: --files needs a value"; files="${2:-}"; shift 2 ;;
+      --base)   [ $# -ge 2 ] || die "review-cycle: --base needs a value"; fbase="${2:-}"; shift 2 ;;
+      --head)   [ $# -ge 2 ] || die "review-cycle: --head needs a value"; fhead="${2:-}"; shift 2 ;;
       *) pr="$1"; shift ;;
     esac
   done
   [ -s "$report" ] || { echo "review-cycle: lint-report needs --report <file> that exists and is not empty" >&2; return 2; }
+  # Where the floor comes from. A pull request's floor is its API file list and nothing else.
+  local -a floor_args=()
+  if [ -n "$pr" ]; then
+    case "$pr" in *[!0-9]*) echo "review-cycle: lint-report takes a pull request number, not '$pr'" >&2; return 2 ;; esac
+    if [ -n "$files$fbase$fhead" ]; then
+      echo "review-cycle: with a pull request number the floor is its API file list; drop --files, --base and --head" >&2; return 2
+    fi
+    floor_args=(--pr "$pr")
+  elif [ -n "$files" ]; then
+    [ -z "$fbase$fhead" ] || { echo "review-cycle: give --files or --base and --head, not both" >&2; return 2; }
+    floor_args=(--files "$files")
+  elif [ -n "$fbase" ] && [ -n "$fhead" ]; then
+    floor_args=("$fbase" "$fhead")
+  else
+    [ -n "$diff" ] || { echo "review-cycle: lint-report needs a pull request number or --diff <file>" >&2; return 2; }
+    echo "review-cycle: lint-report --diff needs a structured file list for the path floor (--files <NUL-separated list>, or --base <sha> --head <sha>); the floor is never read from diff text, so it cannot be computed, INCONCLUSIVE" >&2
+    return 2
+  fi
   local tmp=""
   if [ -z "$diff" ]; then
-    [ -n "$pr" ] || { echo "review-cycle: lint-report needs a pull request number or --diff <file>" >&2; return 2; }
     tmp="$(mktemp)"; diff="$tmp"
     # --color=never: with CLICOLOR_FORCE=1 gh colours even a redirected diff, and an escape code
-    # before each `diff --git` hides every path from the anchors and from path-floor.sh.
+    # before each `diff --git` hides every path from the anchors.
     gh pr diff --color=never "$pr" >"$diff" 2>/dev/null || { rm -f "$tmp"; echo "review-cycle: could not read the diff of #$pr" >&2; return 2; }
   fi
   [ -s "$diff" ] || { rm -f "$tmp"; echo "review-cycle: the diff is empty or unreadable, so no finding can be checked against it" >&2; return 2; }
@@ -1953,14 +2091,23 @@ cmd_lint_report() {
     return 1
   fi
   # The path floor (path-floor.sh, shipped beside this script in both skills): the units the paths
-  # of this diff make mandatory. A floor that cannot be computed is not an empty floor.
+  # of this change make mandatory. A floor that cannot be computed is not an empty floor.
   local floor frc
-  floor="$(bash "$(dirname "$0")/path-floor.sh" --diff "$diff")"; frc=$?
+  floor="$(bash "$(dirname "$0")/path-floor.sh" "${floor_args[@]}")"; frc=$?
   if [ "$frc" -ne 0 ]; then
-    rm -f "$tmp"; echo "review-cycle: path-floor.sh could not read the paths of the diff (exit $frc), so the mandatory units are unknown, INCONCLUSIVE" >&2; return 2
+    rm -f "$tmp"; echo "review-cycle: path-floor.sh could not read the changed paths (exit $frc), so the mandatory units are unknown, INCONCLUSIVE" >&2; return 2
   fi
-  X_REPORT="$report" X_DIFF="$diff" X_FLOOR="$floor" X_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" python3 -I - <<'PY'
-import os, re, sys
+  local block brc
+  block="$(findings_block_json "$report" 2>&1)"; brc=$?
+  if [ "$brc" -ne 0 ]; then
+    rm -f "$tmp"
+    [ "$brc" = 1 ] || { echo "$block" >&2; return 2; }
+    echo "lint-report: FAIL. The report has no valid \`findings\` block:"
+    echo "  - ${block#review-cycle: }"
+    return 1
+  fi
+  X_REPORT="$report" X_DIFF="$diff" X_FLOOR="$floor" X_BLOCK="$block" X_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" python3 -I - <<'PY'
+import json, os, re, sys
 
 report = open(os.environ["X_REPORT"], encoding="utf-8", errors="replace").read()
 # Only \n ends a line, as in git (path-floor.sh splits the same way): splitlines() would also break
@@ -2024,50 +2171,9 @@ for ln in diff:
             rem_old = int(h.group(1)) if h.group(1) is not None else 1
             rem_new = int(h.group(2)) if h.group(2) is not None else 1
 
-def fences(text):
-    """The report's lines with every fenced code block blanked out, and the closed blocks as
-    (info string, body). Fences are tracked line by line as CommonMark reads them: an opener is three
-    or more backticks or tildes indented at most three spaces (a backtick opener's info string holds
-    no backtick); its closer uses the same character, is at least as long, is indented at most three
-    spaces and has nothing after it but spaces or tabs. So a ```` fence that quotes a ``` block is not
-    closed by the inner one. A block never closed runs to the end and is not a block."""
-    out, blocks, cur = [], [], None   # cur: [char, length, info, body lines]
-    for ln in text.split("\n"):
-        if cur is None:
-            o = re.match(r" {0,3}(`{3,}|~{3,})(.*)$", ln)
-            if o and not (o.group(1)[0] == "`" and "`" in o.group(2)):
-                cur = [o.group(1)[0], len(o.group(1)), o.group(2).strip(), []]
-                out.append("")
-            else:
-                out.append(ln)
-            continue
-        c = re.match(r" {0,3}(`{3,}|~{3,})[ \t]*$", ln)
-        if c and c.group(1)[0] == cur[0] and len(c.group(1)) >= cur[1]:
-            blocks.append((cur[2], "\n".join(cur[3])))
-            cur = None
-        else:
-            cur[3].append(ln)
-        out.append("")
-    return "\n".join(out), blocks
 
-unfenced, blocks = fences(report)
-# The findings block is the first fenced block, outside every other fence, whose info string is
-# `findings`: one quoted inside a longer fence (the contract's own example) is not it.
-block = next((body for info, body in blocks if info == "findings"), None)
-if block is None:
-    print("lint-report: FAIL. The report has no fenced `findings` block.")
-    sys.exit(1)
-
-entries, e = [], None
-for ln in block.splitlines():
-    s = re.match(r"^\s*-\s+id:\s*(\S+)", ln)
-    if s:
-        e = {"id": s.group(1).strip("\"'")}
-        entries.append(e)
-        continue
-    kv = re.match(r"^\s{2,}(file|line|severity|status|scenario):\s*(.*?)\s*$", ln)
-    if kv and e is not None:
-        e[kv.group(1)] = kv.group(2).strip("\"'")
+blk = json.loads(os.environ["X_BLOCK"])
+entries = blk["entries"]
 
 problems = []
 for f in entries:
@@ -2100,12 +2206,9 @@ for f in entries:
 if not re.search(r"Declined to judge:", report):
     problems.append("the coverage note has no `Declined to judge:` line (write `none` when nothing was skipped)")
 
-# The path floor: each mandatory unit must be listed as run on the one `Mandatory units:` line of the
-# coverage note, and a unit the floor wants at `max` must say `(max)`. With no mandatory unit the
-# line is not required. Only the coverage section counts, with every fenced block taken out (fences()
-# above), so a line in a blockquote, a finding, a quoted example or another section cannot stand in
-# for it; a second Coverage note section, a second line, or a unit listed twice is refused rather than
-# resolved; and the status must be exactly `run`.
+# The path floor: each mandatory unit must be in the block's `mandatory_units` field with status `run`,
+# and a unit the floor wants at `max` with `effort: max`. A malformed field is refused whatever the
+# floor; an absent one only when the floor is not empty. Prose is not read for this.
 need, why = {}, {}
 for ln in os.environ.get("X_FLOOR", "").splitlines():
     parts = ln.split(" ", 2)
@@ -2114,56 +2217,37 @@ for ln in os.environ.get("X_FLOOR", "").splitlines():
         if need.get(u) != "max":
             need[u] = eff
         why.setdefault(u, path)
-if need:
-    listed, twice = {}, set()
-    covs = list(re.finditer(r"^ {0,3}(#{1,6})[ \t]+Coverage note[ \t]*#*[ \t]*$", unfenced, re.M | re.I))
-    if len(covs) > 1:
-        problems.append("the report has more than one `Coverage note` section outside code fences; write exactly one")
-    cov, sect = (covs[0] if covs else None), ""
-    if cov:
-        # The section runs to the next heading of the same level or higher.
-        end = re.search(r"^ {0,3}#{1,%d}[ \t]" % len(cov.group(1)), unfenced[cov.end():], re.M)
-        sect = unfenced[cov.end():cov.end() + end.start()] if end else unfenced[cov.end():]
-    lines = re.findall(r"^[ \t*_-]*Mandatory units:[*_]*[ \t]*(.*)$", sect, re.M)
-    if len(lines) > 1:
-        problems.append("the coverage note has more than one `Mandatory units:` line; write exactly one")
-    for itm in re.split(r"[;,]", lines[0] if len(lines) == 1 else ""):
-        im = re.fullmatch(r"([A-Za-z][A-Za-z-]*)[ \t]*(?:\((max|standard)\))?[ \t]*:[ \t]*(.*)", itm.strip(" \t`*_"))
-        if im:
-            u = im.group(1).lower()
-            if u in listed:
-                twice.add(u)
-            listed[u] = ((im.group(2) or "").lower(), im.group(3).strip(" \t`*_.").lower())
-    for u in sorted(twice):
-        problems.append("unit %s is listed more than once on the `Mandatory units:` line; list it once" % u)
-    want = ", ".join("%s (max)" % u if e == "max" else u for u, e in sorted(need.items()))
-    if not listed:
-        problems.append("the path floor makes %s mandatory, and the coverage note has no `Mandatory units:` line "
-                        "listing each as run (for example `Mandatory units: %s`)"
-                        % (want, "; ".join("%s: run" % w for w in want.split(", "))))
-    else:
-        for u, eff in sorted(need.items()):
-            got = listed.get(u)
-            label = "%s (max)" % u if eff == "max" else u
-            if got is None or got[1] != "run" or u in twice:
-                problems.append("mandatory unit %s (%s) is not listed as run on the `Mandatory units:` line"
-                                % (label, why[u]))
-            elif eff == "max" and got[0] != "max":
-                problems.append("mandatory unit %s (%s) must run at max effort; list it as `%s: run`"
-                                % (u, why[u], label))
+problems += blk["mandatory_problems"]
+mu = blk["mandatory_units"]
+want = ", ".join("{unit: %s, effort: %s, status: run}" % (u, e) for u, e in sorted(need.items()))
+if need and mu is None:
+    problems.append("the path floor makes %s mandatory, and the findings block has no `mandatory_units:` field; add "
+                    "`mandatory_units:` with one line per unit: %s"
+                    % (", ".join("%s (%s)" % (u, e) for u, e in sorted(need.items())), want))
+elif need and not blk["mandatory_problems"]:
+    listed = {m["unit"]: m for m in mu}
+    for u, eff in sorted(need.items()):
+        got = listed.get(u)
+        if got is None or got["status"] != "run":
+            problems.append("mandatory unit %s (%s, effort %s) is not listed as `status: run` in `mandatory_units`"
+                            % (u, why[u], eff))
+        elif eff == "max" and got["effort"] != "max":
+            problems.append("mandatory unit %s (%s) must run at max effort; list it as `{unit: %s, effort: max, status: run}`"
+                            % (u, why[u], u))
 
 # The counts line equals the entries that still count: open or refused-rejected.
-cm = re.search(r"^counts:\s*\{\s*critical:\s*(\d+),\s*warning:\s*(\d+),\s*note:\s*(\d+)\s*\}", block, re.M | re.ASCII)
-if cm:
+if isinstance(blk["counts"], dict):
     want = {"CRITICAL": 0, "WARNING": 0, "NOTE": 0}
     for f in entries:
         if (f.get("status") or "open") in ("open", "refused-rejected") and f.get("severity", "").upper() in want:
             want[f["severity"].upper()] += 1
-    got = {"CRITICAL": int(cm.group(1)), "WARNING": int(cm.group(2)), "NOTE": int(cm.group(3))}
+    c = blk["counts"]
+    got = {"CRITICAL": c["critical"], "WARNING": c["warning"], "NOTE": c["note"]}
     if got != want:
         problems.append("counts line says %s but the entries add up to %s" % (got, want))
 else:
-    problems.append("the findings block has no `counts:` line")
+    problems.append("the findings block has no `counts:` line" if blk["counts"] is None
+                    else "the findings block's `counts:` line is not `{critical: N, warning: N, note: N}`")
 
 if problems:
     print("lint-report: FAIL. %d problem(s):" % len(problems))
@@ -2225,8 +2309,9 @@ case "${1:-status}" in
   marker)  shift || true; cmd_marker  "$@" ;;
   publish) shift || true; cmd_publish "$@" ;;
   lint-report) shift || true; cmd_lint_report "$@" ;;
+  findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|screen|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels} [pr]" ;;
 esac
 fi

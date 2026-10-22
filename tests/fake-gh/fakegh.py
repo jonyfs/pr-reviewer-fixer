@@ -119,9 +119,36 @@ if args[:1] == ["release"]:
         if _opt("--notes-file") is not None: rel["notes"] = open(_opt("--notes-file")).read()
         rel["latest"] = next((a for a in args if a.startswith("--latest")), rel.get("latest"))
         _save_rels(rels); sys.exit(0)
+def _colour_json(text):
+    # Like gh 2.103.0: CLICOLOR_FORCE=1 colours JSON output even into a pipe, and NO_COLOR does not
+    # undo it. Every token gets an escape code, so a parser that does not refuse it reads nothing.
+    if os.environ.get("CLICOLOR_FORCE") == "1" and not any(a == "--jq" for a in args):
+        return "".join("\033[1;37m%s\033[m" % ch if ch in "[]{}:," else ch for ch in text)
+    return text
+# ---- the pull request's file list, for path-floor.sh --pr ------------------------------------------
+# `files.json` holds the entries as the REST endpoint gives them ({filename, status, previous_filename}).
+# `pr view --json changedFiles` answers pr.json's "changedFiles", or the length of files.json. Files:
+#   files-fail          the files call exits 1
+#   files-page-size     entries per page (default 100); with --paginate each page is its own array
+_fpath = next((a for a in args[1:] if not a.startswith("-")), "")  # skip --paginate before the path
+if args[:1] == ["api"] and _fpath.split("?")[0].endswith("/files") and "/pulls/" in _fpath:
+    f = os.path.join(d, "files.json")
+    if not os.path.exists(f) or os.path.exists(os.path.join(d, "files-fail")):
+        print("HTTP 502: Bad Gateway (fake files-fail)", file=sys.stderr); sys.exit(1)
+    items = json.load(open(f))
+    if not isinstance(items, list):  # a non-list answer goes out verbatim, so the script's own check fires
+        sys.stdout.write(open(f).read()); sys.exit(0)
+    fs = os.path.join(d, "files-page-size")
+    size = int(open(fs).read()) if os.path.exists(fs) else 100
+    pages = [items[i:i + size] for i in range(0, len(items), size)] or [[]]
+    if "--paginate" not in args: pages = pages[:1]
+    sys.stdout.write(_colour_json("".join(json.dumps(pg) for pg in pages)) + "\n"); sys.exit(0)
 if args[:2] == ["pr", "view"]:
     if not os.path.exists(p): sys.exit(1)
-    sys.stdout.write(json.dumps(with_ids(load()))); sys.exit(0)
+    pr = with_ids(load())
+    f = os.path.join(d, "files.json")
+    if "changedFiles" not in pr and os.path.exists(f): pr["changedFiles"] = len(json.load(open(f)))
+    sys.stdout.write(_colour_json(json.dumps(pr))); sys.exit(0)
 if args[:2] == ["api", "user"]:
     if os.path.exists(os.path.join(d, "user-fail")): sys.exit(1)  # a token with no user behind it
     print(os.environ.get("FAKE_LOGIN", "github-actions")); sys.exit(0)
@@ -250,7 +277,9 @@ if args[:2] == ["pr", "diff"]:
     # Like gh 2.102.0: CLICOLOR_FORCE=1 colours a redirected diff unless --color=never is given.
     never = "--color=never" in args or any(a == "--color" and b == "never" for a, b in zip(args, args[1:]))
     if os.environ.get("CLICOLOR_FORCE") == "1" and not never:
-        text = "".join("\033[1;37m%s\033[m\n" % ln for ln in text.split("\n")[:-1]) if text.endswith("\n") else text
+        # gh colours the header, ---/+++ and +/- lines; rename, similarity, mode and @@ lines stay plain.
+        col = lambda ln: ("\033[1;37m%s\033[m" % ln) if ln.startswith(("diff --git", "index ", "--- ", "+++ ", "+", "-")) else ln
+        text = "".join(col(ln) + "\n" for ln in text.split("\n")[:-1]) if text.endswith("\n") else text
     sys.stdout.write(text); sys.exit(0)
 if args[:2] == ["pr", "comment"]:
     body = sys.stdin.read()

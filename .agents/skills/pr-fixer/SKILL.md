@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: 0.14.0
+  version: 0.15.0
 ---
 
 # PR Fixer

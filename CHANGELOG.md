@@ -4,6 +4,25 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.15.0
+
+Makes the path floor and the findings block mechanical, so the reviewer and the fixer read the same
+structured lists. Interface change: `path-floor.sh --diff` is removed; the `<base> <head>` form keeps
+working, and `--pr <n>` and `--files <file>` are new.
+
+- `path-floor.sh` reads paths only from a structured list: `git diff --no-renames --name-only -z`
+  (`<base> <head>`), the pull request's file list from the API (`--pr <n>`, paginated, rename's old
+  path included, refuses when the count differs from `changedFiles` or exceeds 3000), or a NUL list
+  (`--files`). It no longer parses diff text.
+- `review-cycle.sh findings-block` prints the report's `findings` block as JSON. `lint-report` and
+  `push-guard.sh` both read it through that one function, so they cannot take different blocks.
+- `lint-report` takes `--files <file>` or `--base`/`--head` in place of a diff file for scope, and
+  reads each unit's `status` and `effort` from `mandatory_units`.
+- Test harness: the fake `gh` answers the files endpoint when the path follows `--paginate`, and
+  passes a non-list answer through so the script's own check fires. `findings-block` tests read the
+  error of their own call.
+- Suite: `tests/run-all.sh` passes on both skill copies, which are identical.
+
 ## 0.14.0
 
 Adds the mechanical path floor (I50), closes the two notes PR #28 declared as debt (N1, N3), and
