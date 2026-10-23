@@ -35,11 +35,12 @@ Tags: [#pr #review #contract #reference]
  Declined to judge: files or regions the review did not assess, each with the reason (too large,
  generated, binary, context missing, tool unavailable). Write `Declined to judge: none` when it
  read everything. Never leave the line out.
- Mandatory units: not written here. They go in the `findings` block as the `mandatory_units:`
- field (see [Findings block](#findings-block)). `lint-report` reads only that field: a prose line
- with this name is ignored and counts as no field. Every unit `scripts/path-floor.sh` printed for
- this diff must be listed there with `effort` and `status: run`; `lint-report` refuses a report
- that leaves one out, lists one twice, writes the field twice, or gives any status but `run`.>
+ Unit floor: see the findings block's `mandatory_units` field. They go in the `findings` block as
+ the `mandatory_units:` field (see [Findings block](#findings-block)). `lint-report` reads only
+ that field: a prose line with this name is ignored and counts as no field. Every unit
+ `scripts/path-floor.sh` printed for this diff must be listed there with `effort` and
+ `status: run`; `lint-report` refuses a report that leaves one out, lists one twice, writes the
+ field twice, or lists a unit the floor prints with any status but `run`.
 
 
 ### Prior findings
