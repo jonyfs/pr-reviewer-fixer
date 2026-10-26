@@ -19,8 +19,9 @@ prints nothing and exits 1. Callers read that as "could not read the pull reques
 the same as approved.
 
 Usage: pr-json.py [<pr-number>]
-Output: one JSON object with number, headRefOid, labels, comments, state, isDraft, url, title and
-body (read by scan-hidden.py, never by a marker reader),
+Output: one JSON object with number, headRefOid, labels, comments, state, isDraft, url, title,
+body (read by scan-hidden.py, never by a marker reader), author and isCrossRepository (read by the
+fix guard in review-cycle.sh),
 `commentsDroppedEdited` (how many comments were removed for having been edited) and
 `editedComments` (those comments, author, last editor, body, id and url only, never read as a verdict;
 kept so an edit cannot erase a BLOCKED marker from the history or lower the highest `pass=` while it
@@ -34,7 +35,7 @@ import re
 import subprocess
 import sys
 
-FIELDS = "number,headRefOid,labels,comments,state,isDraft,url,title,body"
+FIELDS = "number,headRefOid,labels,comments,state,isDraft,url,title,body,author,isCrossRepository"
 QUERY = (
     "query($owner:String!,$repo:String!,$number:Int!,$after:String){"
     "repository(owner:$owner,name:$repo){pullRequest(number:$number){"

@@ -4,6 +4,42 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.17.1
+
+Performance only. No output, marker, label, subcommand or exit code changes.
+
+- `review-cycle.sh halt` reads the newest trusted extension marker from `parse()`, which already
+  reads the pull request in one `node` process, instead of starting a `python3` of its own. The
+  reading is the same: the marker at the start of a comment by a listed login, its `state=` and
+  `reason=` compared byte for byte, as `budget` compares them (a value is not trimmed, and a
+  missing `reason=` is not `-`).
+- `review-cycle.sh export-audit` checks that `--out` resolves inside the repository, and creates
+  it, in the `python3` that writes the record, instead of a separate `python3` and `mkdir -p`
+  before it. The check still runs before the directory is created, and again before the write.
+
+## 0.17.0
+
+The rest of the 0.15.2 audit: `push-guard.sh` refuses CI outside GitHub, and the performance items
+0.15.4 left out.
+
+- `push-guard.sh`: CI files that do not run on GitHub Actions join the `workflows` class, as
+  `path-floor.sh` lists them: `.gitlab-ci.yml`, `.gitlab/ci/**`, `.circleci/**`, `.buildkite/**`,
+  `buildkite/**`, `buildkite.{yml,yaml,json}`, `.woodpecker(.yml|.yaml|/**)`, `.tekton/**`,
+  `.travis.yml`, `azure-pipelines.yml`, `bitbucket-pipelines.yml`, `.drone.yml`, `cloudbuild.yaml`,
+  `buildspec.yml`, `appveyor.yml`, `codemagic.yaml` at the root, and a `Jenkinsfile` anywhere. A
+  fixer commit that touches one is refused with `sensitive-path` unless the person names
+  `workflows` in `PUSH_GUARD_ALLOW_SENSITIVE`, and a link at one of their directories counts as a
+  link over `workflows`.
+- `review-cycle.sh parse()` reads the pull request fields and the markers in one `node` process
+  instead of two, and the fifteen marker fields with one `read` instead of fifteen `printf | cut`
+  pipelines. Every subcommand that reads the pull request pays it.
+- `review-cycle.sh fix` takes the author and `isCrossRepository` from the pull request it already
+  read, instead of a second `gh pr view`; `pr-json.py` now carries those two fields.
+- `review-cycle.sh ensure-labels` writes its six labels at the same time and prints the results in
+  the same order as before.
+- Not changed: `halt` and `export-audit` keep their one extra `python3` each. They run once per halt
+  or export, and with the interpreter called directly a start costs about 30 ms.
+
 ## 0.16.0
 
 Engineering-quality knowledge for `pr-reviewer`, and the security pass keyed to OWASP. New

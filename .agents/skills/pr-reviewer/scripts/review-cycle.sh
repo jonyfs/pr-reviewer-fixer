@@ -487,7 +487,8 @@ pr_json() {
   python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"}
 }
 
-# Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS.
+# Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS, and
+# MARKER_EXT_STATE / MARKER_EXT_REASON from the newest trusted extension marker (read by `halt`).
 parse() {
   local json="$1"
   # One node process reads the six simple fields (a fork per field was the cost of every call).
@@ -495,13 +496,73 @@ parse() {
   # never retyped here: a second copy of the vocabulary is a second thing to forget, and an unlisted
   # state leaves `$LABEL` empty, which every caller reads as "nobody reviewed this".
   local fields
-  fields=$(printf '%s' "$json" | STATES_RE="$STATES_RE" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
+  fields=$(printf '%s' "$json" | STATES_RE="$STATES_RE" P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let head="",mk="",ext="";try{
     const p=JSON.parse(s),re=new RegExp("^"+process.env.STATES_RE+"$"),L=(p.labels||[]).map(x=>x.name);
     const a=[String(p.number||""),String(p.headRefOid||"").toLowerCase(),String(p.state||""),
       p.isDraft===true?"yes":"",L.filter(n=>re.test(n)).join(" "),L.includes("review:needs-human")?"yes":""];
     // A field holding the separator would shift every field after it. Print nothing instead: every
     // variable comes out empty, which callers read as "could not read the pull request".
-    if(!a.some(x=>x.includes("\x1f")))process.stdout.write(a.join("\x1f"))}catch(e){}})')
+    if(!a.some(x=>/[\x1e\x1f]/.test(x)))head=a.join("\x1f")}catch(e){}
+    if(!head)return;
+    try{
+    const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
+    const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
+    let last=null,blocked="no",maxp=0,foreign="-",fkind="-",fauthor="-",fwhere="-";
+    // A field of the space-joined answer cannot hold a space.
+    const tok=v=>String(v||"").replace(/[\s\x1e\x1f]/g,"")||"-";
+    for(const c of (JSON.parse(s).comments||[])){
+      if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
+      const mm=re.exec(c.body||"");
+      if(mm){last=mm;maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    for(const c of (JSON.parse(s).editedComments||[])){
+      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
+      if(active&&(!who||!allow.includes(who)))continue;
+      const mm=re.exec(c.body||"");
+      // Anyone with write access can edit another login'"'"'s comment, so a trusted comment edited by
+      // someone else may carry a number or verdict its author never wrote. It is reported (and
+      // counted as BLOCKED history, which only tightens), and `publish` and `budget` refuse on it.
+      // Whether the body still reads as a marker does not matter: an edit that breaks the marker
+      // would otherwise drop it from the count unseen, so any foreign edit counts (fails closed).
+      const ed=String((c&&c.editor&&c.editor.login)||"").toLowerCase();
+      if(ed!==who){foreign=tok(ed||"unknown");fkind="edit";fauthor=tok(who);fwhere=tok(c&&c.url);blocked="yes";}
+      // An edited marker is never the verdict, but its pass still counts: an edit that keeps the
+      // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
+      // body after the edit is kept, so an edit that rewrites the number counts as the new one.
+      if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    // A trusted comment deleted by someone other than its author may have been a verdict marker
+    // (BLOCKED, or the highest pass), and its body is gone, so it counts the way a foreign edit does:
+    // BLOCKED history, and a stop. A deletion by the author itself is the documented limit.
+    for(const c of (JSON.parse(s).deletedComments||[])){
+      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
+      if(!who||(active&&!allow.includes(who)))continue;
+      const by=String((c&&c.actor&&c.actor.login)||"").toLowerCase();
+      if(by!==who){foreign=tok(by||"unknown");fkind="delete";fauthor=tok(who);fwhere=tok(c&&c.createdAt);blocked="yes";}}
+    mk=(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign,fkind,fauthor,fwhere].join("\x1f"):
+      // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
+      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign,fkind,fauthor,fwhere].join("\x1f"):""))
+      // The newest extension marker by a listed login (`halt` skips posting a halted marker that
+      // is already the newest one with its reason), as `budget` reads it: at the start of the body.
+      const xre=/^<!-- pr-skill-extension: (state=[^>]*)-->/;
+      for(const c of (JSON.parse(s).comments||[])){
+        const who=String((c&&c.author&&c.author.login)||"").toLowerCase(),xm=xre.exec((c&&c.body)||"");
+        if(!xm||!allow.includes(who))continue;
+        const kv={};for(const p of xm[1].matchAll(/([a-z_]+)=([^ \t\n\r\f\v>]+)/g))kv[p[1]]=p[2];
+        // The values go out byte for byte, an absent key as an empty field, so `halt` compares
+        // them the way `budget` does: no tok(), which strips Unicode spaces and maps "" to "-".
+        // A value holding a separator or a NUL (which bash would drop) can equal no `--reason`,
+        // so the marker is left out and `halt` posts, as the comparison would decide anyway.
+        const st=kv.state===undefined?"":String(kv.state),rs=kv.reason===undefined?"":String(kv.reason);
+        ext=/[\x00\x1e\x1f]/.test(st+rs)?"":[st,rs].join("\x1f");}
+    }catch(e){mk="";ext=""}
+    process.stdout.write(head+"\x1e"+mk+"\x1e"+ext)})')
+  # The marker fields follow a record separator, joined by the unit separator like the six above.
+  local m="" ext=""
+  case "$fields" in *$'\x1e'*) m="${fields#*$'\x1e'}"; fields="${fields%%$'\x1e'*}" ;; esac
+  case "$m" in *$'\x1e'*) ext="${m#*$'\x1e'}"; m="${m%%$'\x1e'*}" ;; esac
+  # The newest trusted extension marker's state and reason, byte for byte; a field it names none
+  # of, or no marker at all, reads as empty.
+  IFS=$'\x1f' read -r MARKER_EXT_STATE MARKER_EXT_REASON <<<"$ext"
   IFS=$'\x1f' read -r NUMBER HEAD STATE IS_DRAFT LABEL HALTED <<<"$fields"
   # No number means the payload was unreadable (or held the separator). Every caller treats the
   # variables as facts, so stop here, with the code `status` uses for "could not read".
@@ -533,62 +594,14 @@ parse() {
   # before they get here. Only a list that is not active (unset, empty or ASCII whitespace) skips
   # nothing; an active list that keeps no login (a lone comma, invisible characters) skips every
   # comment, since `allow` is then empty.
-  local m
-  m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
-    const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
-    const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
-    let last=null,blocked="no",maxp=0,foreign="-",fkind="-",fauthor="-",fwhere="-";
-    // A field of the space-joined answer cannot hold a space.
-    const tok=v=>String(v||"").replace(/[\s]/g,"")||"-";
-    for(const c of (JSON.parse(s).comments||[])){
-      if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
-      const mm=re.exec(c.body||"");
-      if(mm){last=mm;maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
-    for(const c of (JSON.parse(s).editedComments||[])){
-      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
-      if(active&&(!who||!allow.includes(who)))continue;
-      const mm=re.exec(c.body||"");
-      // Anyone with write access can edit another login'"'"'s comment, so a trusted comment edited by
-      // someone else may carry a number or verdict its author never wrote. It is reported (and
-      // counted as BLOCKED history, which only tightens), and `publish` and `budget` refuse on it.
-      // Whether the body still reads as a marker does not matter: an edit that breaks the marker
-      // would otherwise drop it from the count unseen, so any foreign edit counts (fails closed).
-      const ed=String((c&&c.editor&&c.editor.login)||"").toLowerCase();
-      if(ed!==who){foreign=ed||"unknown";fkind="edit";fauthor=tok(who);fwhere=tok(c&&c.url);blocked="yes";}
-      // An edited marker is never the verdict, but its pass still counts: an edit that keeps the
-      // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
-      // body after the edit is kept, so an edit that rewrites the number counts as the new one.
-      if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
-    // A trusted comment deleted by someone other than its author may have been a verdict marker
-    // (BLOCKED, or the highest pass), and its body is gone, so it counts the way a foreign edit does:
-    // BLOCKED history, and a stop. A deletion by the author itself is the documented limit.
-    for(const c of (JSON.parse(s).deletedComments||[])){
-      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
-      if(!who||(active&&!allow.includes(who)))continue;
-      const by=String((c&&c.actor&&c.actor.login)||"").toLowerCase();
-      if(by!==who){foreign=by||"unknown";fkind="delete";fauthor=tok(who);fwhere=tok(c&&c.createdAt);blocked="yes";}}
-    process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
-      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign,fkind,fauthor,fwhere].join(" "):
-      // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
-      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign,fkind,fauthor,fwhere].join(" "):""))
-  }catch(e){}})')
-  MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
-  MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
-  MARKER_PASS=$(printf '%s' "$m" | cut -d' ' -f3)
-  MARKER_CRITICAL=$(printf '%s' "$m" | cut -d' ' -f4)
-  MARKER_WARNING=$(printf '%s' "$m" | cut -d' ' -f5)
-  MARKER_NOTE=$(printf '%s' "$m" | cut -d' ' -f6)
+  IFS=$'\x1f' read -r MARKER_SHA MARKER_VERDICT MARKER_PASS MARKER_CRITICAL MARKER_WARNING MARKER_NOTE MARKER_BLOCKED_SEEN MARKER_MODEL MARKER_TIER MARKER_BLOCK_AT MARKER_MAX_PASS MARKER_FOREIGN_EDIT MARKER_FOREIGN_KIND MARKER_FOREIGN_AUTHOR MARKER_FOREIGN_WHERE <<<"$m"
   # **Whether the pull request was EVER blocked, which is a different question from what the newest
   # marker says.** It is what makes `pass>=2` mean the thing it was written to mean: the second pass
   # exists to review a CORRECTION, so the bar applies where a correction was demanded and nowhere
   # else. Reading only the last marker cannot answer it: a BLOCKED at pass 1 is precisely the
   # marker a later PASSED overwrites as "current".
-  MARKER_BLOCKED_SEEN=$(printf '%s' "$m" | cut -d' ' -f7)
   # Self-attested by the publishing session, never verified. `-` when the marker carries none.
-  MARKER_MODEL=$(printf '%s' "$m" | cut -d' ' -f8)
-  MARKER_TIER=$(printf '%s' "$m" | cut -d' ' -f9)
   # The REVIEW_BLOCK_AT the marker was published under, `-` when it names none (critical, or older).
-  MARKER_BLOCK_AT=$(printf '%s' "$m" | cut -d' ' -f10)
   # A BLOCKED marker that counts no CRITICAL but a WARNING, and names no setting, was published
   # under `warning` before `block_at=` existed (0.7.x): `publish` never writes one under `critical`.
   # It is read as `warning`, so a reader under `critical` answers inconclusive instead of reading
@@ -599,18 +612,13 @@ parse() {
   # 0 when there is none.
   # `publish` takes only the next one, and `budget` counts cycles from it, so a head that returns to
   # an older commit, or a low `--pass`, cannot restart the count.
-  MARKER_MAX_PASS=$(printf '%s' "$m" | cut -d' ' -f11)
   case "$MARKER_MAX_PASS" in ''|*[!0-9]*) MARKER_MAX_PASS=0 ;; esac
   # The login that edited or deleted a trusted comment it did not write (`unknown` when GitHub names
   # none), `-` when there is none. Such an edit can rewrite `pass=` or break the marker so it no longer counts,
   # so the count is not trusted while it stands.
-  MARKER_FOREIGN_EDIT=$(printf '%s' "$m" | cut -d' ' -f12)
   [ -n "$MARKER_FOREIGN_EDIT" ] || MARKER_FOREIGN_EDIT=-
   # Which comment it was, so a refusal can name it: the kind (`edit` or `delete`), the login that
   # wrote it, and its url for an edit or the time of the deletion (`-` when GitHub gave none).
-  MARKER_FOREIGN_KIND=$(printf '%s' "$m" | cut -d' ' -f13)
-  MARKER_FOREIGN_AUTHOR=$(printf '%s' "$m" | cut -d' ' -f14)
-  MARKER_FOREIGN_WHERE=$(printf '%s' "$m" | cut -d' ' -f15)
 }
 
 # One line, no newline, naming the comment a foreign edit touched and the way to clear it. For an
@@ -961,23 +969,9 @@ cmd_halt() {
   # ceiling; a label alone is not evidence of it (a person can add the label by hand).
   local posted=""
   if [ -n "$reason" ]; then
-    local have
-    have="$(printf '%s' "$json" | R="$reason" A="$(marker_authors)" python3 -I -c '
-import json, os, re, sys
-allow = set(os.environ["A"].split(",")) - {""}
-try:
-    comments = json.load(sys.stdin).get("comments") or []
-except ValueError:
-    comments = []
-last = None
-for c in comments:
-    who = str(((c or {}).get("author") or {}).get("login") or "").lower()
-    m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", (c or {}).get("body") or "", re.ASCII)
-    if who in allow and m:
-        last = dict(re.findall(r"([a-z_]+)=([^ \t\n\r\f\v>]+)", m.group(1)))  # MARKER_WS, as `budget` splits
-if last and last.get("state") == "halted" and last.get("reason") == os.environ["R"]:
-    print("yes")
-' 2>/dev/null)"
+    local have=""
+    # parse() read the newest trusted extension marker, the reading `budget` makes.
+    [ "${MARKER_EXT_STATE:-}" = halted ] && [ "${MARKER_EXT_REASON:-}" = "$reason" ] && have=yes
     if [ "$have" != "yes" ]; then
       printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on #%s (reason: %s). The pull request stays review:blocked and a person decides.\n' \
         "$reason" "$NUMBER" "$reason" | gh pr comment "$NUMBER" --body-file - >/dev/null \
@@ -1212,8 +1206,13 @@ cmd_start() {
 # separated) names logins allowed without a lookup, for a bot the repository owns; `app/<name>` and
 # `<name>[bot]` are the same bot and either form matches both. Base-branch merge
 # commits are covered because their authors are resolved like any other.
+# $2 is the pull request JSON `cmd_fix` already read through pr-json.py, which carries the author and
+# isCrossRepository, so the guard asks gh only for the commits and the permissions. It reaches python
+# on file descriptor 3, never in an argument or the environment: the JSON holds every comment body,
+# and an environment string over 128 KiB (Linux) or 1 MiB of arguments plus environment (macOS)
+# makes the exec fail, which would refuse every long pull request.
 fix_guard() {
-  FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - <<'PY'
+  FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - 3<<<"$2" <<'PY'
 import json, os, subprocess, sys
 
 pr = os.environ["FG_PR"]
@@ -1239,10 +1238,12 @@ def refuse(msg):
     print("review-cycle: REFUSED. " + msg, file=sys.stderr)
     sys.exit(1)
 
-out = gh("pr", "view", pr, "--json", "isCrossRepository,author")
 try:
-    meta = json.loads(out or "")
-except ValueError:
+    with os.fdopen(3, encoding="utf-8") as f:
+        meta = json.loads(f.read())
+    if not isinstance(meta, dict):
+        raise ValueError
+except (OSError, ValueError):
     refuse("could not read who wrote #%s, and an unreadable author is not a trusted one" % pr)
 if not isinstance(meta.get("isCrossRepository"), bool):
     refuse("could not tell whether #%s comes from a fork, and an unknown origin is not a trusted one" % pr)
@@ -1327,7 +1328,7 @@ cmd_fix() {
   # never existed, produced by a label applied by mistake after the fact.
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no cycle to claim on a pull request that already merged or closed"
   # Before any label moves: a refused correction leaves the pull request exactly as it was.
-  fix_guard "$NUMBER" || die "review-cycle: #$NUMBER was not claimed for correction"
+  fix_guard "$NUMBER" "$json" || die "review-cycle: #$NUMBER was not claimed for correction"
   gh pr edit "$NUMBER" --add-label review:fixing ${HALTED:+--remove-label review:needs-human} \
       $(remove_states_except review:fixing) >/dev/null \
     || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
@@ -1818,11 +1819,7 @@ cmd_export_audit() {
   # export runs in, where a person reviews and commits the record.
   local top; top="$(git rev-parse --show-toplevel 2>/dev/null)" && [ -n "$top" ] \
     || die "review-cycle: REFUSED. export-audit writes into the repository it runs in, and this is not inside a git work tree"
-  X_OUT="$out" X_TOP="$top" python3 -I -c 'import os,sys
-o,t=os.path.realpath(os.environ["X_OUT"]),os.path.realpath(os.environ["X_TOP"])
-sys.exit(0 if os.path.commonpath([o,t])==t else 1)' \
-    || die "review-cycle: REFUSED. $out resolves outside the repository top level $top (a symbolic link in the path, or a path outside the work tree); export into a directory inside it"
-  mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
+  # The resolution check and the `mkdir -p` run in the export's own python below, before it writes.
   # The pull request and the timeline go through files, never the environment: one environment
   # string over 128 KiB (Linux) or a total over ARG_MAX (macOS) fails with "argument list too long",
   # and a pull request with a few long reports reaches that.
@@ -1895,6 +1892,15 @@ rec = {
 }
 out = os.environ["X_OUT"]
 path = os.path.join(out, "%s-%s.json" % (pr.get("number"), m.group(3)))
+# Resolved before the directory is made, so `mkdir -p` never follows a link out of the repository.
+_top0 = os.path.realpath(os.environ["X_TOP"])
+if os.path.commonpath([os.path.realpath(out), _top0]) != _top0:
+    die("%s resolves outside the repository top level %s (a symbolic link in the path, or a path outside the work tree); export into a directory inside it" % (out, _top0))
+try:
+    os.makedirs(out, exist_ok=True)
+except OSError:
+    print("review-cycle: cannot create %s" % out, file=sys.stderr)
+    sys.exit(1)
 # Neither the directory nor the record may be a symlink: a checkout can carry one that points at
 # any file of the person running the export. The temporary file is created by mkstemp (O_CREAT |
 # O_EXCL, a fresh random name), so a link planted at a predictable `<record>.tmp` is never opened,
@@ -2280,7 +2286,10 @@ PY
 # Exit 0 when all six were written, 2 when any one was not: `gh` offline, no token, or a token
 # without permission to write labels. A partial run says which labels it could not write.
 cmd_ensure_labels() {
-  local failed="" spec name color desc
+  local failed="" spec name color desc dir i=0 names=()
+  # The six writes are independent, so they run at the same time; each records its own success in
+  # a file, and the results print in the order below.
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/ensure-labels.XXXXXX")" || { echo "review-cycle: could not create a temporary directory; INCONCLUSIVE" >&2; return 2; }
   for spec in \
     "review:pending|fbca04|Not reviewed at this head yet" \
     "review:running|1d76db|A review pass is in flight" \
@@ -2289,12 +2298,17 @@ cmd_ensure_labels() {
     "review:passed|0e8a16|Nothing blocks at this head; the marker comment is the evidence" \
     "review:needs-human|d93f0b|The loop paused or stopped and a person has to decide; only with review:blocked"; do
     name="${spec%%|*}"; desc="${spec##*|}"; color="${spec#*|}"; color="${color%%|*}"
-    if gh label create "$name" --force --color "$color" --description "$desc" >/dev/null 2>&1; then
-      echo "label $name ok"
-    else
-      failed="${failed:+$failed }$name"
-    fi
+    names+=("$name")
+    ( gh label create "$name" --force --color "$color" --description "$desc" >/dev/null 2>&1 && : >"$dir/$i.ok" ) &
+    i=$((i + 1))
   done
+  wait
+  i=0
+  for name in "${names[@]}"; do
+    if [ -e "$dir/$i.ok" ]; then echo "label $name ok"; else failed="${failed:+$failed }$name"; fi
+    i=$((i + 1))
+  done
+  rm -rf "$dir"
   if [ -n "$failed" ]; then
     echo "review-cycle: could not create or update: $failed (gh offline, not authenticated, or no permission to write labels); INCONCLUSIVE" >&2
     return 2
