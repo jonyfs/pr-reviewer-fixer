@@ -487,7 +487,8 @@ pr_json() {
   python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"}
 }
 
-# Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS.
+# Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS, and
+# MARKER_EXT_STATE / MARKER_EXT_REASON from the newest trusted extension marker (read by `halt`).
 parse() {
   local json="$1"
   # One node process reads the six simple fields (a fork per field was the cost of every call).
@@ -547,14 +548,20 @@ parse() {
         const who=String((c&&c.author&&c.author.login)||"").toLowerCase(),xm=xre.exec((c&&c.body)||"");
         if(!xm||!allow.includes(who))continue;
         const kv={};for(const p of xm[1].matchAll(/([a-z_]+)=([^ \t\n\r\f\v>]+)/g))kv[p[1]]=p[2];
-        ext=[tok(kv.state),tok(kv.reason)].join("\x1f");}
+        // The values go out byte for byte, an absent key as an empty field, so `halt` compares
+        // them the way `budget` does: no tok(), which strips Unicode spaces and maps "" to "-".
+        // A value holding a separator or a NUL (which bash would drop) can equal no `--reason`,
+        // so the marker is left out and `halt` posts, as the comparison would decide anyway.
+        const st=kv.state===undefined?"":String(kv.state),rs=kv.reason===undefined?"":String(kv.reason);
+        ext=/[\x00\x1e\x1f]/.test(st+rs)?"":[st,rs].join("\x1f");}
     }catch(e){mk="";ext=""}
     process.stdout.write(head+"\x1e"+mk+"\x1e"+ext)})')
   # The marker fields follow a record separator, joined by the unit separator like the six above.
   local m="" ext=""
   case "$fields" in *$'\x1e'*) m="${fields#*$'\x1e'}"; fields="${fields%%$'\x1e'*}" ;; esac
   case "$m" in *$'\x1e'*) ext="${m#*$'\x1e'}"; m="${m%%$'\x1e'*}" ;; esac
-  # The newest trusted extension marker's state and reason (`-` when it names none), empty when none.
+  # The newest trusted extension marker's state and reason, byte for byte; a field it names none
+  # of, or no marker at all, reads as empty.
   IFS=$'\x1f' read -r MARKER_EXT_STATE MARKER_EXT_REASON <<<"$ext"
   IFS=$'\x1f' read -r NUMBER HEAD STATE IS_DRAFT LABEL HALTED <<<"$fields"
   # No number means the payload was unreadable (or held the separator). Every caller treats the

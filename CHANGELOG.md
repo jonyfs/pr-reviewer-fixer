@@ -11,7 +11,8 @@ Performance only. No output, marker, label, subcommand or exit code changes.
 - `review-cycle.sh halt` reads the newest trusted extension marker from `parse()`, which already
   reads the pull request in one `node` process, instead of starting a `python3` of its own. The
   reading is the same: the marker at the start of a comment by a listed login, its `state=` and
-  `reason=`.
+  `reason=` compared byte for byte, as `budget` compares them (a value is not trimmed, and a
+  missing `reason=` is not `-`).
 - `review-cycle.sh export-audit` checks that `--out` resolves inside the repository, and creates
   it, in the `python3` that writes the record, instead of a separate `python3` and `mkdir -p`
   before it. The check still runs before the directory is created, and again before the write.

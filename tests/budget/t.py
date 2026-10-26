@@ -189,6 +189,23 @@ p = run(["halt", "7", "--reason", "stop"], d)
 check("an older halted marker under a newer grant does not stop halt from posting (0.17.1)",
       p.returncode == 0 and len(comments_posted(d)) == n + 1, p.stderr)
 
+# W1 of #40: halt compares the marker's values byte for byte, as budget does. A reason that ends in
+# a no-break space is not `ceiling` to budget, so halt must not read it as `ceiling` either, and a
+# halted marker that names no reason is not one with reason `-`.
+nbsp = "<!-- pr-skill-extension: state=halted reason=ceiling  -->"
+b = budget(hist([2] * 11) + [e("2026-10-14T11:51:00Z", nbsp)])
+check("budget still asks for a ceiling halt over a reason ending in a no-break space", b.get("next") == "ceiling", str(b))
+d = setup(hist([2] * 11) + [e("2026-10-14T11:51:00Z", nbsp)])
+n = len(comments_posted(d))
+p = run(["halt", "7", "--reason", "ceiling"], d)
+check("halt posts the ceiling marker over a reason ending in a no-break space (W1 of #40)",
+      p.returncode == 0 and len(comments_posted(d)) == n + 1 and "state=halted reason=ceiling -->" in comments_posted(d)[-1], p.stderr)
+d = setup(hist([1] * 6) + [e("2026-10-14T11:51:00Z", "<!-- pr-skill-extension: state=halted -->")])
+n = len(comments_posted(d))
+p = run(["halt", "7", "--reason", "-"], d)
+check("a halted marker with no reason does not stop halt --reason - from posting (W1 of #40)",
+      p.returncode == 0 and len(comments_posted(d)) == n + 1, p.stderr)
+
 d = setup(hist([1] * 6), labels=("review:blocked", "review:needs-human"))
 p = run(["halt", "7", "--reason", "ceiling"], d)
 check("a hand-added needs-human label does not suppress the ceiling marker",
