@@ -18,7 +18,7 @@ dimensions, path-floor units and optional finding fields; existing installs can 
   place each new unit; `dimensions.md` gives severity guidance per area, bound to
   `severity-and-verdict.md` (an outage of one endpoint or one region is still CRITICAL).
 - `security-checklist.md` is keyed to the OWASP Top 10:2025 (A01 to A10) with code-level checks
-  (CSRF under cookie authentication, cookie flags on every cookie a change sets, path traversal, XXE, open redirect, ReDoS, TOCTOU, mass
+  (CSRF under cookie authentication, `Secure` and `SameSite` on every cookie a change sets, `HttpOnly` on session and credential cookies but not on a CSRF token cookie that script reads, path traversal, XXE, open redirect, ReDoS, TOCTOU, mass
   assignment, uploads, rate limiting, JWT and sessions), ASVS 5.0.0 chapters for depth (Level 1 by default, Level 2 when the floor hits
   authentication, session or cryptography), a per-change threat model, and stack lists read when the
   change has that stack: API Security Top 10 2023, CI/CD Top 10, LLM Top 10 2025, Agentic Top 10
