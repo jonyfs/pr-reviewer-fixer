@@ -26,7 +26,8 @@ see whether the reviewer backs each one with a `scenario:` and whether precision
 twin. `retry-double-charge` (reliability), `n-plus-one` (scalability), `drop-column` (data
 integrity, CRITICAL), `pii-in-logs` (privacy) and `recreate-deploy` (operability) each seed one
 defect of the engineering-quality dimensions added in 0.16.0, with a decoy.
-Check that the expected lines sit inside the diffs with `python3 tests/eval/score.py --validate`.
+Check that the expected lines sit inside the diffs, and that no decoy's window overlaps a defect's (a
+finding there would score as the defect), with `python3 tests/eval/score.py --validate`.
 
 ## Run it
 

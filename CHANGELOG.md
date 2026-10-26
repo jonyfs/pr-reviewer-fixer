@@ -31,7 +31,8 @@ dimensions, path-floor units and optional finding fields; existing installs can 
   `mandatory_units:` like any other floor unit.
 - Eval: seven seeded cases, `missing-authz` (A01), `fail-open` (A10), `retry-double-charge`,
   `n-plus-one`, `drop-column`, `pii-in-logs` and `recreate-deploy`, one per new area, each with a
-  decoy.
+  decoy. `score.py --validate` refuses a case whose decoy window overlaps a defect's, and takes
+  `--cases DIR` (W1 of #35).
 - `docs/ISO-27001-AND-42001.md` maps the dimensions to the ISO/IEC 25010:2023 quality
   characteristics, and assesses the two skills against the OWASP Top 10 for Agentic Applications
   for 2026, risk by risk, with what each leaves to the person or the harness.

@@ -73,6 +73,23 @@ printf 'no block\n' >"$W/empty/sql-injection.md"; sc empty >/dev/null 2>&1; r=$?
 
 python3 -I "$SC" --validate >/dev/null; r=$?; check "case anchors sit inside their diffs" eq "$r" 0
 
+# a finding on a decoy line is a decoy hit, never a defect hit (W1 of #35).
+rep decoy sql-injection; rep decoy off-by-one; rep decoy clean-rename
+rest decoy
+rep decoy pii-in-logs src/accounts/signup.py:9:WARNING; rep decoy drop-column db/migrations/0042_rename_email.sql:2:CRITICAL
+check "a WARNING on the pii-in-logs decoy is a decoy hit, not D1" eval \
+  '[ "$(sc decoy --json | jq -c ".cases[\"pii-in-logs\"] | [.hit, .decoy_hits]")" = "[0,1]" ]'
+check "a CRITICAL on the drop-column decoy is a decoy hit, not D1" eval \
+  '[ "$(sc decoy --json | jq -c ".cases[\"drop-column\"] | [.hit, .decoy_hits]")" = "[0,1]" ]'
+
+# --validate refuses a case whose decoy window overlaps a defect's window.
+mkdir -p "$W/badcases/overlap"
+printf '%s\n' 'diff --git a/a.py b/a.py' '--- /dev/null' '+++ b/a.py' '@@ -0,0 +1,3 @@' '+x = 1' '+y = 2' '+z = 3' >"$W/badcases/overlap/diff.patch"
+echo "overlap" >"$W/badcases/overlap/description.txt"
+echo '{"defects":[{"id":"D1","file":"a.py","line":2,"tolerance":1}],"decoys":[{"file":"a.py","line":3,"tolerance":0}]}' >"$W/badcases/overlap/expected.json"
+out="$(python3 -I "$SC" --validate --cases "$W/badcases" 2>&1)"; r=$?
+check "--validate refuses a decoy inside a defect's tolerance" eval '[ "$r" = 1 ] && grep -q "overlap: decoy a.py:3 is within the window of defect D1" <<<"$out"'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
