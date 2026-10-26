@@ -21,6 +21,6 @@ failure, or turn the feature off.
 | **Infrastructure as code** | Resources changed by hand instead of in code; a Terraform change with `prevent_destroy` removed or a replacement of a stateful resource; a Kubernetes workload with no resource requests and limits. |
 | **Cost** | A resource whose cost grows with traffic or data with no cap (autoscaling with no maximum, log volume with no retention). |
 
-Anchors: ISO/IEC 25010:2023 flexibility (adaptability, installability, replaceability) and
+Anchors: ISO/IEC 25010:2023 flexibility (adaptability, scalability, installability, replaceability) and
 maintainability, the AWS Well-Architected operational excellence pillar, and SRE practice (SLOs,
 error budgets, runbooks).

@@ -21,4 +21,5 @@ per request) and the size at which it hurts. Micro-optimisation without that is 
 | **Capacity limits** | A new dependency on a rate-limited API or a quota with no budget or backoff; a fixed pool size that the expected load exceeds. |
 
 Anchors: ISO/IEC 25010:2023 performance efficiency (time behaviour, resource utilisation, capacity)
-and the AWS Well-Architected performance efficiency and cost optimisation pillars.
+and flexibility (scalability), and the AWS Well-Architected performance efficiency and cost
+optimisation pillars.
