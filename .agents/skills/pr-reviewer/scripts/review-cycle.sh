@@ -487,7 +487,8 @@ pr_json() {
   python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"}
 }
 
-# Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS.
+# Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS, and
+# MARKER_EXT_STATE / MARKER_EXT_REASON from the newest trusted extension marker (read by `halt`).
 parse() {
   local json="$1"
   # One node process reads the six simple fields (a fork per field was the cost of every call).
@@ -495,7 +496,7 @@ parse() {
   # never retyped here: a second copy of the vocabulary is a second thing to forget, and an unlisted
   # state leaves `$LABEL` empty, which every caller reads as "nobody reviewed this".
   local fields
-  fields=$(printf '%s' "$json" | STATES_RE="$STATES_RE" P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let head="",mk="";try{
+  fields=$(printf '%s' "$json" | STATES_RE="$STATES_RE" P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let head="",mk="",ext="";try{
     const p=JSON.parse(s),re=new RegExp("^"+process.env.STATES_RE+"$"),L=(p.labels||[]).map(x=>x.name);
     const a=[String(p.number||""),String(p.headRefOid||"").toLowerCase(),String(p.state||""),
       p.isDraft===true?"yes":"",L.filter(n=>re.test(n)).join(" "),L.includes("review:needs-human")?"yes":""];
@@ -540,11 +541,28 @@ parse() {
       last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign,fkind,fauthor,fwhere].join("\x1f"):
       // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
       (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign,fkind,fauthor,fwhere].join("\x1f"):""))
-    }catch(e){mk=""}
-    process.stdout.write(head+"\x1e"+mk)})')
+      // The newest extension marker by a listed login (`halt` skips posting a halted marker that
+      // is already the newest one with its reason), as `budget` reads it: at the start of the body.
+      const xre=/^<!-- pr-skill-extension: (state=[^>]*)-->/;
+      for(const c of (JSON.parse(s).comments||[])){
+        const who=String((c&&c.author&&c.author.login)||"").toLowerCase(),xm=xre.exec((c&&c.body)||"");
+        if(!xm||!allow.includes(who))continue;
+        const kv={};for(const p of xm[1].matchAll(/([a-z_]+)=([^ \t\n\r\f\v>]+)/g))kv[p[1]]=p[2];
+        // The values go out byte for byte, an absent key as an empty field, so `halt` compares
+        // them the way `budget` does: no tok(), which strips Unicode spaces and maps "" to "-".
+        // A value holding a separator or a NUL (which bash would drop) can equal no `--reason`,
+        // so the marker is left out and `halt` posts, as the comparison would decide anyway.
+        const st=kv.state===undefined?"":String(kv.state),rs=kv.reason===undefined?"":String(kv.reason);
+        ext=/[\x00\x1e\x1f]/.test(st+rs)?"":[st,rs].join("\x1f");}
+    }catch(e){mk="";ext=""}
+    process.stdout.write(head+"\x1e"+mk+"\x1e"+ext)})')
   # The marker fields follow a record separator, joined by the unit separator like the six above.
-  local m=""
+  local m="" ext=""
   case "$fields" in *$'\x1e'*) m="${fields#*$'\x1e'}"; fields="${fields%%$'\x1e'*}" ;; esac
+  case "$m" in *$'\x1e'*) ext="${m#*$'\x1e'}"; m="${m%%$'\x1e'*}" ;; esac
+  # The newest trusted extension marker's state and reason, byte for byte; a field it names none
+  # of, or no marker at all, reads as empty.
+  IFS=$'\x1f' read -r MARKER_EXT_STATE MARKER_EXT_REASON <<<"$ext"
   IFS=$'\x1f' read -r NUMBER HEAD STATE IS_DRAFT LABEL HALTED <<<"$fields"
   # No number means the payload was unreadable (or held the separator). Every caller treats the
   # variables as facts, so stop here, with the code `status` uses for "could not read".
@@ -951,23 +969,9 @@ cmd_halt() {
   # ceiling; a label alone is not evidence of it (a person can add the label by hand).
   local posted=""
   if [ -n "$reason" ]; then
-    local have
-    have="$(printf '%s' "$json" | R="$reason" A="$(marker_authors)" python3 -I -c '
-import json, os, re, sys
-allow = set(os.environ["A"].split(",")) - {""}
-try:
-    comments = json.load(sys.stdin).get("comments") or []
-except ValueError:
-    comments = []
-last = None
-for c in comments:
-    who = str(((c or {}).get("author") or {}).get("login") or "").lower()
-    m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", (c or {}).get("body") or "", re.ASCII)
-    if who in allow and m:
-        last = dict(re.findall(r"([a-z_]+)=([^ \t\n\r\f\v>]+)", m.group(1)))  # MARKER_WS, as `budget` splits
-if last and last.get("state") == "halted" and last.get("reason") == os.environ["R"]:
-    print("yes")
-' 2>/dev/null)"
+    local have=""
+    # parse() read the newest trusted extension marker, the reading `budget` makes.
+    [ "${MARKER_EXT_STATE:-}" = halted ] && [ "${MARKER_EXT_REASON:-}" = "$reason" ] && have=yes
     if [ "$have" != "yes" ]; then
       printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on #%s (reason: %s). The pull request stays review:blocked and a person decides.\n' \
         "$reason" "$NUMBER" "$reason" | gh pr comment "$NUMBER" --body-file - >/dev/null \
@@ -1815,11 +1819,7 @@ cmd_export_audit() {
   # export runs in, where a person reviews and commits the record.
   local top; top="$(git rev-parse --show-toplevel 2>/dev/null)" && [ -n "$top" ] \
     || die "review-cycle: REFUSED. export-audit writes into the repository it runs in, and this is not inside a git work tree"
-  X_OUT="$out" X_TOP="$top" python3 -I -c 'import os,sys
-o,t=os.path.realpath(os.environ["X_OUT"]),os.path.realpath(os.environ["X_TOP"])
-sys.exit(0 if os.path.commonpath([o,t])==t else 1)' \
-    || die "review-cycle: REFUSED. $out resolves outside the repository top level $top (a symbolic link in the path, or a path outside the work tree); export into a directory inside it"
-  mkdir -p "$out" 2>/dev/null || die "review-cycle: cannot create $out"
+  # The resolution check and the `mkdir -p` run in the export's own python below, before it writes.
   # The pull request and the timeline go through files, never the environment: one environment
   # string over 128 KiB (Linux) or a total over ARG_MAX (macOS) fails with "argument list too long",
   # and a pull request with a few long reports reaches that.
@@ -1892,6 +1892,15 @@ rec = {
 }
 out = os.environ["X_OUT"]
 path = os.path.join(out, "%s-%s.json" % (pr.get("number"), m.group(3)))
+# Resolved before the directory is made, so `mkdir -p` never follows a link out of the repository.
+_top0 = os.path.realpath(os.environ["X_TOP"])
+if os.path.commonpath([os.path.realpath(out), _top0]) != _top0:
+    die("%s resolves outside the repository top level %s (a symbolic link in the path, or a path outside the work tree); export into a directory inside it" % (out, _top0))
+try:
+    os.makedirs(out, exist_ok=True)
+except OSError:
+    print("review-cycle: cannot create %s" % out, file=sys.stderr)
+    sys.exit(1)
 # Neither the directory nor the record may be a symlink: a checkout can carry one that points at
 # any file of the person running the export. The temporary file is created by mkstemp (O_CREAT |
 # O_EXCL, a fresh random name), so a link planted at a predictable `<record>.tmp` is never opened,
