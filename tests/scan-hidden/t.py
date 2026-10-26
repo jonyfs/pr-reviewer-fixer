@@ -256,7 +256,10 @@ check("a definition after 20 spaced list markers -> still kind link-ref-comment 
 rc, out, err = scan("--file", write("k.md", "ok \u2764\ufe0f and \u263a\ufe0e\n"))
 check("one variation selector after an emoji -> no hit (0.15.3)", rc == 0, out)
 for name, text in (("'<a' x 20000", "<a" * 20000), ("'<a style=\"x' x 20000", '<a style="x' * 20000),
-                   ("'[x' x 30000 after a definition", "[d]: #y\n" + "[x" * 30000)):
+                   ("'[x' x 30000 after a definition", "[d]: #y\n" + "[x" * 30000),
+                   # W1 of #33: a run of escaped brackets after one '[' cost about 1000 steps per byte.
+                   ("'[' then '\\[' x 30000 after a definition", "[d]: #y\n[" + "\\[" * 30000),
+                   ("'\\[' x 30000 after a titled definition", '[d]: https://e.com "t"\n' + "\\[" * 30000)):
     path = write("big.md", text + "\n")
     t0 = time.monotonic()
     try:
@@ -265,6 +268,16 @@ for name, text in (("'<a' x 20000", "<a" * 20000), ("'<a style=\"x' x 20000", '<
     except subprocess.TimeoutExpired:
         rc, el = None, time.monotonic() - t0
     check("%s -> done within 2 s (0.15.3)" % name, rc in (0, 1) and el < 2, (rc, round(el, 2)))
+
+# W1 of #33: the label-use scan keeps its meaning: a use after a run of escaped brackets still counts,
+# an escaped bracket inside a used label still matches, and '[x]:' or a label over 999 characters is no use.
+rc, out, err = scan("--file", write("lu.md", "\\[" * 5000 + " see [d]\n\n[d]: #y\n"))
+check("a used label after 5000 escaped brackets -> no hit (W1 of #33)", rc == 0, (rc, out, err))
+rc, out, err = scan("--file", write("lu.md", "see [a\\]b]\n\n[a\\]b]: #y\n"))
+check("a used label holding an escaped ] -> no hit (W1 of #33)", rc == 0, (rc, out, err))
+rc, out, err = scan("--file", write("lu.md", "[d]: #y\n[e]: #z\nsee [" + "x" * 1000 + "] and [d\n"))
+check("only definitions, a 1000-character bracket and an open one -> both definitions hit (W1 of #33)",
+      rc == 1 and kinds(out) == ["link-ref-comment"] and len(out["hits"]) == 2, (rc, out, err))
 
 # ---- N2 of #27: the fixer's work list (review threads and review bodies) is a source ---------------
 FB = [{"source": "review_thread", "id": "PRRC_1", "url": "https://github.com/o/r/pull/7#discussion_r1", "author": "alice", "body": "fix" + ZW + " this"},

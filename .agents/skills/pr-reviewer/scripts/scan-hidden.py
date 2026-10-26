@@ -145,7 +145,6 @@ LINKREF_RE = re.compile(
 LINKREF_ANY_RE = re.compile(
     r"^" + _LR_PREFIX + r"\[((?:[^\[\]\\]|\\[\s\S]){0,999})\]:[ \t]*(?:\n" + _LR_PREFIX + r")?"
     r"(<[^<>\n]*>|[^\s<]\S*)((?:[ \t]+|[ \t]*\n" + _LR_PREFIX + r")[\"'(])?", re.M)
-LABEL_USE_RE = re.compile(r"\[((?:[^\[\]\\]|\\[\s\S]){0,999})\](?!:)")
 # An HTML element styled or marked to be invisible. The tag's start, its `>` and the invisibility
 # marker are found by three linear scans and joined by position, so a text of many `<a` with no `>`
 # costs one pass instead of one pass per `<a`. A marker counts when a tag start sits after the last
@@ -181,6 +180,42 @@ def invisible_html(text):
 
 def norm_label(label):
     return " ".join(label.split()).casefold()
+
+
+def label_uses(text):
+    """The normalised labels of every `[label]` not followed by `:`, the label up to 999 characters or
+    escape pairs with no unescaped bracket in it, found left to right without overlap as the regex
+    `\\[((?:[^\\[\\]\\\\]|\\\\[\\s\\S]){0,999})\\](?!:)` would. One pass splits the text into escape pairs
+    and single characters; the character after any `[` always starts a piece, so every `[` (escaped
+    or not) sees the same split, and its label ends at the next unescaped bracket, found by bisect.
+    The regex rescanned up to 999 pairs from every `[`, about 1000 steps per byte on a run of `\\[`."""
+    n = len(text)
+    piece = [0] * (n + 1)
+    brackets = []
+    i = k = 0
+    while i < n:
+        piece[i] = k
+        if text[i] == "\\" and i + 1 < n:
+            i += 2
+        else:
+            if text[i] in "[]":
+                brackets.append(i)
+            i += 1
+        k += 1
+    piece[n] = k
+    uses, resume = set(), 0
+    for m in re.finditer(r"\[", text):
+        p = m.start()
+        if p < resume:
+            continue
+        j = bisect.bisect_right(brackets, p)
+        if j == len(brackets):
+            break
+        r = brackets[j]
+        if text[r] == "]" and piece[r] - piece[p + 1] <= 999 and text[r + 1:r + 2] != ":":
+            uses.add(norm_label(text[p + 1:r]))
+            resume = r + 1
+    return uses
 
 
 def esc(s):
@@ -236,7 +271,7 @@ def scan_text(text, verdict_re, source, where, line_offset=0):
         if m.start() in seen or not (m.group(2).startswith("#") or m.group(3)):
             continue
         if used is None:
-            used = {norm_label(u.group(1)) for u in LABEL_USE_RE.finditer(text)}
+            used = label_uses(text)
         if norm_label(m.group(1)) not in used:
             add(m.start(), "link-ref-comment", esc(m.group().strip())[:60])
     return hits
