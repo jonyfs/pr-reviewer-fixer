@@ -316,6 +316,17 @@ check "fix: another bot listed does not admit app/dependabot (R5)" eval '[ $r !=
 fixpr '{"apiCommits": [{"sha": "1111111", "author": {"login": "helper"}}], "author": {"login": "helper"}}'
 "$RC" fix 7 >"$W/out" 2>&1; r=$?
 check "fix: a write collaborator author passes" eval '[ $r = 0 ] && has review:fixing'
+# W1 (0.17.0 pass 1): the pull request JSON goes to the guard whole, comments included. A comment
+# over 1.1 MB is past the 1 MiB that macOS allows for arguments plus environment and past Linux's
+# 128 KiB per string, so the guard must not receive it through either.
+fixpr '{}'
+python3 -I - <<'PY'
+import json, os
+p = os.environ["FAKE_DIR"] + "/pr.json"
+d = json.load(open(p)); d["comments"] = [{"body": "x" * 1200000, "author": {"login": "jony"}}]; json.dump(d, open(p, "w"))
+PY
+"$RC" fix 7 >"$W/out" 2>&1; r=$?
+check "fix: a pull request with a 1.2 MB comment is still claimed (W1, 0.17.0)" eval '[ $r = 0 ] && has review:fixing && ! grep -q "Argument list too long" "$W/out"'
 
 # ---- draft pull requests: PASSED marks ready for review -------------------------------------
 reset "$(mk 7 $D '[{"name":"review:running"}]' '[]' OPEN true)"

@@ -1203,9 +1203,12 @@ cmd_start() {
 # `<name>[bot]` are the same bot and either form matches both. Base-branch merge
 # commits are covered because their authors are resolved like any other.
 # $2 is the pull request JSON `cmd_fix` already read through pr-json.py, which carries the author and
-# isCrossRepository, so the guard asks gh only for the commits and the permissions.
+# isCrossRepository, so the guard asks gh only for the commits and the permissions. It reaches python
+# on file descriptor 3, never in an argument or the environment: the JSON holds every comment body,
+# and an environment string over 128 KiB (Linux) or 1 MiB of arguments plus environment (macOS)
+# makes the exec fail, which would refuse every long pull request.
 fix_guard() {
-  FG_PR="$1" FG_META="$2" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - <<'PY'
+  FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - 3<<<"$2" <<'PY'
 import json, os, subprocess, sys
 
 pr = os.environ["FG_PR"]
@@ -1232,8 +1235,11 @@ def refuse(msg):
     sys.exit(1)
 
 try:
-    meta = json.loads(os.environ.get("FG_META") or "")
-except ValueError:
+    with os.fdopen(3, encoding="utf-8") as f:
+        meta = json.loads(f.read())
+    if not isinstance(meta, dict):
+        raise ValueError
+except (OSError, ValueError):
     refuse("could not read who wrote #%s, and an unreadable author is not a trusted one" % pr)
 if not isinstance(meta.get("isCrossRepository"), bool):
     refuse("could not tell whether #%s comes from a fork, and an unknown origin is not a trusted one" % pr)
