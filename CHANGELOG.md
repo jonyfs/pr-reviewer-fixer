@@ -4,6 +4,18 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.17.1
+
+Performance only. No output, marker, label, subcommand or exit code changes.
+
+- `review-cycle.sh halt` reads the newest trusted extension marker from `parse()`, which already
+  reads the pull request in one `node` process, instead of starting a `python3` of its own. The
+  reading is the same: the marker at the start of a comment by a listed login, its `state=` and
+  `reason=`.
+- `review-cycle.sh export-audit` checks that `--out` resolves inside the repository, and creates
+  it, in the `python3` that writes the record, instead of a separate `python3` and `mkdir -p`
+  before it. The check still runs before the directory is created, and again before the write.
+
 ## 0.17.0
 
 The rest of the 0.15.2 audit: `push-guard.sh` refuses CI outside GitHub, and the performance items
