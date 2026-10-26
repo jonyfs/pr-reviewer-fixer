@@ -1,0 +1,1 @@
+Rename the email column to email_address. The application code is updated in a later pull request.

@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: "0.15.4"
+  version: "0.17.0"
 ---
 
 # PR Fixer
@@ -159,7 +159,7 @@ either way. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`.
    a control character in its name is refused. It also screens the added lines of every commit it
    would push and refuses one that adds what looks like a token or private key (reason `secret`,
    path and line named, value never shown), and one that touches a sensitive path (workflows and
-   `.github/scripts/**`, actions, CODEOWNERS, the skill folders `install.sh` writes (`.agents/skills/**`,
+   `.github/scripts/**`, CI files outside GitHub such as `.gitlab-ci.yml` and `Jenkinsfile`, actions, CODEOWNERS, the skill folders `install.sh` writes (`.agents/skills/**`,
    `.roo/skills/**` and the others) and `.claude/**` at any depth, `.mcp.json`,
    agent instruction files such as `AGENTS.md` and `CLAUDE.md`, compared after a Unicode
    case and normalization fold; reason `sensitive-path`) even when a finding names it. It refuses

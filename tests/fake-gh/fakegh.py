@@ -213,16 +213,19 @@ if args[:2] == ["api", "graphql"]:
         print(json.dumps({"data": {"repository": {"pullRequest": {field: {
             "pageInfo": {"hasNextPage": more, "endCursor": cursor}, "nodes": chunk}}}}}))
         sys.exit(0)
-    def deleted_page():
+    def deleted_page(after):
         # The CommentDeletedEvent connection. `deleted-events` holds "<author> <deleter>" lines ("-"
-        # is a login GitHub does not name).
+        # is a login GitHub does not name); `deleted-page-size` sets events per page (default 100).
         f = os.path.join(d, "deleted-events")
         lines = [l.split() for l in open(f).read().splitlines() if l.strip()] if os.path.exists(f) else []
         nul = lambda l: None if l == "-" else l
         nodes = [{"id": "CDE_%d" % i, "createdAt": "2026-10-16T00:%02d:00Z" % i,
                   "deletedCommentAuthor": ({"login": nul(a)} if nul(a) else None), "actor": ({"login": nul(b)} if nul(b) else None)}
                  for i, (a, b) in enumerate(lines)]
-        return {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}
+        size = int(open(os.path.join(d, "deleted-page-size")).read()) if os.path.exists(os.path.join(d, "deleted-page-size")) else 100
+        start = int(after) if after else 0
+        more = start + size < len(nodes)
+        return {"pageInfo": {"hasNextPage": more, "endCursor": str(start + size) if more else None}, "nodes": nodes[start:start + size]}
 
     def comments_page(after):
         comments = with_ids(load())["comments"]
@@ -246,7 +249,7 @@ if args[:2] == ["api", "graphql"]:
         # call, `graphql-deleted-badshape` leaves timelineItems out.
         if os.path.exists(os.path.join(d, "graphql-deleted-fail")): sys.exit(1)
         pr = {"comments": comments_page(None)}
-        if not os.path.exists(os.path.join(d, "graphql-deleted-badshape")): pr["timelineItems"] = deleted_page()
+        if not os.path.exists(os.path.join(d, "graphql-deleted-badshape")): pr["timelineItems"] = deleted_page(None)
         print(json.dumps({"data": {"repository": {"pullRequest": pr}}}))
         sys.exit(0)
     if any(a.startswith("query=") and "timelineItems" in a for a in args):
@@ -255,7 +258,8 @@ if args[:2] == ["api", "graphql"]:
         if os.path.exists(os.path.join(d, "graphql-deleted-fail")): sys.exit(1)
         if os.path.exists(os.path.join(d, "graphql-deleted-badshape")):
             print(json.dumps({"data": {"repository": {"pullRequest": {}}}})); sys.exit(0)
-        print(json.dumps({"data": {"repository": {"pullRequest": {"timelineItems": deleted_page()}}}}))
+        after = next((a.split("=", 1)[1] for a in args if a.startswith("after=")), None)
+        print(json.dumps({"data": {"repository": {"pullRequest": {"timelineItems": deleted_page(after)}}}}))
         sys.exit(0)
     after = next((a.split("=", 1)[1] for a in args if a.startswith("after=")), None)
     print(json.dumps({"data": {"repository": {"pullRequest": {"comments": comments_page(after)}}}}))

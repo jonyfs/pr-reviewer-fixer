@@ -1,0 +1,9 @@
+{
+  "description": "Data integrity. The migration drops the email column without copying it into the new one, so every address is lost, and the running code still reads email. Adding the new column is fine.",
+  "defects": [
+    {"id": "D1", "file": "db/migrations/0042_rename_email.sql", "line": 3, "tolerance": 0, "min_severity": "CRITICAL", "note": "data loss: no backfill before DROP COLUMN, and the old code still reads it"}
+  ],
+  "decoys": [
+    {"file": "db/migrations/0042_rename_email.sql", "line": 2, "tolerance": 0, "note": "additive column, safe"}
+  ]
+}

@@ -141,20 +141,24 @@ flowchart TD
    actions and the scripts they run, CODEOWNERS, agent configuration (every harness's skill folder
    and agent directories such as `.claude/` and `.cursor/` at any depth), agent instruction files
    (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` and the like), Dockerfiles,
-   authentication and cryptography get security at `max`, migrations get security and data integrity, manifests and lockfiles get
-   dependencies. Nothing in the diff can remove one.
+   authentication and cryptography get security at `max`, migrations get security and data integrity,
+   infrastructure and deployment files get reliability and operability, privacy-named paths get
+   privacy, manifests and lockfiles get dependencies. Nothing in the diff can remove one.
 2. **Acceptance conditions, pass 1 only.** Before any agent looks for defects, the reviewer writes a
    numbered list of conditions that would make this pull request pass, taken from its own stated
    purpose. Later passes check those same conditions and nothing else, so the target does not move
    between passes.
-3. **Dimension agents.** One read-only agent per applicable dimension. There are thirteen
-   (correctness, design, security, testing, concurrency, error handling, performance and others, see
+3. **Dimension agents.** One read-only agent per applicable dimension. There are eighteen
+   (correctness, design, security, testing, concurrency, error handling, performance, reliability,
+   scalability, data integrity, operability, privacy and others, see
    [`dimensions.md`](../.agents/skills/pr-reviewer/references/dimensions.md)). Each agent works under
    one of four stances:
-   - Saboteur: how does this fail? Covers correctness, errors, concurrency, performance, observability.
-   - Security Auditor: how would an attacker use this? Covers security, dependencies, API surface.
+   - Saboteur: how does this fail? Covers correctness, errors, concurrency, performance, observability,
+     data integrity, reliability, scalability.
+   - Security Auditor: how would an attacker use this? Covers security, dependencies, API surface,
+     privacy.
    - New Hire: can someone new read and change this? Covers readability, complexity, docs, tests.
-   - Architect: does the design hold? Covers design.
+   - Architect: does the design hold? Covers design and operability.
 
    Each stance must report something, so a rubber stamp is impossible. A stance that finds no defect
    reports its most fragile assumption as a NOTE labelled `assumption:`. It never invents a defect to
@@ -280,7 +284,7 @@ flowchart TD
    refused. The lines those commits add go through the same secret screen as a verdict, and a
    token or private key refuses the push (the fixer already screens each commit with
    `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows and
-   `.github/scripts/**`, actions, CODEOWNERS, the skill folders `install.sh` writes
+   `.github/scripts/**`, CI files outside GitHub such as `.gitlab-ci.yml` and `Jenkinsfile`, actions, CODEOWNERS, the skill folders `install.sh` writes
    (`.agents/skills/**`, `.roo/skills/**` and the others) and `.claude/**` at any depth, `.mcp.json`,
    agent instruction files such as `AGENTS.md`, compared after a Unicode case and normalization
    fold) is refused even when a finding names it, and the finding goes to a person,

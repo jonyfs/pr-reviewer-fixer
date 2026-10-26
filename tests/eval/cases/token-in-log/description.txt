@@ -1,0 +1,1 @@
+Log every API request for debugging production issues.

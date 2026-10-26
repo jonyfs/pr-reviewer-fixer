@@ -67,7 +67,7 @@ export REVIEW_BLOCK_AT=critical   # or warning: a WARNING then blocks too; match
 ```
 
 `push-guard.sh` refuses any fixer commit that touches the files that run or judge the automation
-(workflows and `.github/scripts/**`, actions, CODEOWNERS, the skill folders `install.sh` writes
+(workflows and `.github/scripts/**`, CI files outside GitHub such as `.gitlab-ci.yml` and `Jenkinsfile`, actions, CODEOWNERS, the skill folders `install.sh` writes
 such as `.agents/skills/**` and `.roo/skills/**`, `.claude/**` at any depth, `.mcp.json`, agent
 instruction files such as `AGENTS.md`).
 `PUSH_GUARD_ALLOW_SENSITIVE` opts named classes in. The person sets it; the loop agent and the fixer
@@ -136,8 +136,8 @@ trusted comment deleted by another login stops them for good, since a deletion c
 
    It prints one `<unit> <effort> <path>` line for each changed path that makes a review unit
    mandatory (CI files, actions, CODEOWNERS, agent configuration, Dockerfiles, auth and crypto:
-   security at `max`; migrations: security and data integrity; manifests and lockfiles:
-   dependencies). Exit 2: git could not list the paths; fetch again. Then dispatch the reviewer
+   security at `max`; migrations: security and data integrity; infrastructure files: reliability
+   and operability; privacy paths: privacy; manifests and lockfiles: dependencies). Exit 2: git could not list the paths; fetch again. Then dispatch the reviewer
    sub-agent: "Follow `.agents/skills/pr-reviewer/SKILL.md` on
    pull request #N, pass P. Read-only on code. Write the report to a file outside the tree and
    run `review-cycle.sh lint-report` on it and publish it with `review-cycle.sh publish`. The report must end with the fenced `findings` block

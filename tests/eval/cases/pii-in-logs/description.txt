@@ -1,0 +1,1 @@
+Log signups so support can trace account creation problems. Logs are shipped to a third-party log service.

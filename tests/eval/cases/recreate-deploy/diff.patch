@@ -1,0 +1,27 @@
+diff --git a/k8s/api/deployment.yaml b/k8s/api/deployment.yaml
+new file mode 100644
+--- /dev/null
++++ b/k8s/api/deployment.yaml
+@@ -0,0 +1,22 @@
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  name: api
++spec:
++  replicas: 3
++  strategy:
++    type: Recreate
++  selector:
++    matchLabels:
++      app: api
++  template:
++    metadata:
++      labels:
++        app: api
++    spec:
++      containers:
++        - name: api
++          image: registry.example.com/api@sha256:4f1c0a6e9b8d7c5a3e2f1d0c9b8a7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a09
++          resources:
++            requests: {cpu: 250m, memory: 256Mi}
++            limits: {memory: 512Mi}

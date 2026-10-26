@@ -1,0 +1,26 @@
+diff --git a/src/checkout/payments.py b/src/checkout/payments.py
+new file mode 100644
+--- /dev/null
++++ b/src/checkout/payments.py
+@@ -0,0 +1,21 @@
++import time
++
++import requests
++
++PAYMENTS = "https://payments.internal/charges"
++
++
++def charge(order):
++    while True:
++        try:
++            r = requests.post(PAYMENTS, json={"order": order.id, "amount": order.total}, timeout=5)
++            r.raise_for_status()
++            return r.json()["charge_id"]
++        except requests.RequestException:
++            time.sleep(1)
++
++
++def fetch_rate(currency):
++    r = requests.get("https://rates.internal/" + currency, timeout=2)
++    r.raise_for_status()
++    return r.json()["rate"]

@@ -197,6 +197,14 @@ sens "Codex config" .codex/config.toml instructions
 sens "OpenCode agent" .opencode/agents/a.md instructions
 sens "Cursor rules" .cursor/rules/r.mdc instructions
 sens "agent instructions in other case" Agents.MD instructions
+# 0.17.0: CI that does not run on GitHub belongs to workflows too, as path-floor.sh lists it.
+sens "GitLab CI" .gitlab-ci.yml workflows
+sens "GitLab CI include" .gitlab/ci/build.yml workflows
+sens "CircleCI" .circleci/config.yml workflows
+sens "a Jenkinsfile in a directory" ci/Jenkinsfile workflows
+sens "Azure Pipelines" azure-pipelines.yml workflows
+sens "Buildkite" .buildkite/pipeline.yml workflows
+sens "Woodpecker" .woodpecker.yaml workflows
 # W7 of PR #29: every project skill folder install.sh writes (and README's .devin/skills) is
 # sensitive, whatever harness it is for, and an agent directory counts at any depth.
 ROOTS="$(sed -n 's/^ *[a-z-]*) *echo "\([^|]*\)|.*/\1/p' "$T/../../install.sh" | sort -u)"

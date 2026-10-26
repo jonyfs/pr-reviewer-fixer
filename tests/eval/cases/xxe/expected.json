@@ -1,0 +1,9 @@
+{
+  "description": "OWASP A02:2025. The upload parser resolves external entities and may fetch from the network (XXE) on customer input. The config parser has both off.",
+  "defects": [
+    {"id": "D1", "file": "src/imports/xml_reader.py", "line": 3, "tolerance": 0, "min_severity": "CRITICAL", "note": "XXE: resolve_entities on a parser for customer uploads"}
+  ],
+  "decoys": [
+    {"file": "src/imports/xml_reader.py", "line": 4, "tolerance": 0, "note": "entities and network off, safe"}
+  ]
+}

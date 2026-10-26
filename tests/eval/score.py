@@ -2,7 +2,8 @@
 """Scores pr-reviewer reports against seeded cases. No network, no model.
 
 Usage:
-  score.py --validate                       check that every case's expected lines sit in its diff
+  score.py --validate [--cases DIR]         check that every case's expected lines sit in its diff
+                                            and that no decoy's window overlaps a defect's
   score.py --reports DIR [--min-recall R] [--min-precision P] [--json]
 
 Each case lives in cases/<name>/ with diff.patch, description.txt and expected.json. A reviewer
@@ -22,6 +23,7 @@ import argparse, json, os, re, sys
 RANK = {"NOTE": 1, "WARNING": 2, "CRITICAL": 3}
 HERE = os.path.dirname(os.path.abspath(__file__))
 CASES = os.path.join(HERE, "cases")
+DEFAULT_TOLERANCE = 3
 
 
 def parse_findings(text):
@@ -45,7 +47,7 @@ def near(f, anchor):
         line = int(f.get("line", ""))
     except ValueError:
         return False
-    return f.get("file") == anchor["file"] and abs(line - anchor["line"]) <= anchor.get("tolerance", 3)
+    return f.get("file") == anchor["file"] and abs(line - anchor["line"]) <= anchor.get("tolerance", DEFAULT_TOLERANCE)
 
 
 def score_case(expected, findings):
@@ -109,17 +111,29 @@ def validate():
             for a in exp.get(kind, []):
                 if not any(s <= a["line"] <= e for s, e in rng.get(a["file"], [])):
                     problems.append("%s: %s %s:%s is not inside a hunk of diff.patch" % (name, kind[:-1], a["file"], a["line"]))
+        # A line inside both windows would score as the defect (defects are matched first), so the
+        # case could not see the false positive the decoy was seeded for.
+        for d in exp.get("defects", []):
+            for x in exp.get("decoys", []):
+                reach = d.get("tolerance", DEFAULT_TOLERANCE) + x.get("tolerance", DEFAULT_TOLERANCE)
+                if x["file"] == d["file"] and abs(x["line"] - d["line"]) <= reach:
+                    problems.append("%s: decoy %s:%s is within the window of defect %s (%s:%s, tolerance %s)"
+                                    % (name, x["file"], x["line"], d["id"], d["file"], d["line"], d.get("tolerance", DEFAULT_TOLERANCE)))
     return problems
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--validate", action="store_true")
+    ap.add_argument("--cases", help="cases directory (default: cases/ beside this script)")
     ap.add_argument("--reports")
     ap.add_argument("--min-recall", type=float)
     ap.add_argument("--min-precision", type=float)
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
+    if a.cases:
+        global CASES
+        CASES = os.path.abspath(a.cases)
     if a.validate:
         probs = validate()
         for p in probs:

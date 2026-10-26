@@ -1,0 +1,17 @@
+diff --git a/src/imports/xml_reader.py b/src/imports/xml_reader.py
+new file mode 100644
+--- /dev/null
++++ b/src/imports/xml_reader.py
+@@ -0,0 +1,12 @@
++from lxml import etree
++
++UPLOAD_PARSER = etree.XMLParser(resolve_entities=True, no_network=False)
++CONFIG_PARSER = etree.XMLParser(resolve_entities=False, no_network=True)
++
++
++def read_upload(data):
++    return etree.fromstring(data, UPLOAD_PARSER)
++
++
++def read_config(path):
++    return etree.parse(path, CONFIG_PARSER)

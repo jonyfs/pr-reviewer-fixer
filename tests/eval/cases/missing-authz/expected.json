@@ -1,0 +1,9 @@
+{
+  "description": "OWASP A01:2025. The invoice endpoint returns any invoice by id with no owner check (IDOR). The order endpoint beside it checks the owner.",
+  "defects": [
+    {"id": "D1", "file": "src/billing/views.py", "line": 8, "tolerance": 1, "min_severity": "CRITICAL", "note": "no ownership check on the invoice id from the URL"}
+  ],
+  "decoys": [
+    {"file": "src/billing/views.py", "line": 15, "tolerance": 1, "note": "owner check present, safe"}
+  ]
+}

@@ -1,0 +1,1 @@
+Add read endpoints for invoices and orders on the customer portal. Every logged-in customer can call them with an id from the URL.

@@ -4,6 +4,71 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.17.0
+
+The rest of the 0.15.2 audit: `push-guard.sh` refuses CI outside GitHub, and the performance items
+0.15.4 left out.
+
+- `push-guard.sh`: CI files that do not run on GitHub Actions join the `workflows` class, as
+  `path-floor.sh` lists them: `.gitlab-ci.yml`, `.gitlab/ci/**`, `.circleci/**`, `.buildkite/**`,
+  `buildkite/**`, `buildkite.{yml,yaml,json}`, `.woodpecker(.yml|.yaml|/**)`, `.tekton/**`,
+  `.travis.yml`, `azure-pipelines.yml`, `bitbucket-pipelines.yml`, `.drone.yml`, `cloudbuild.yaml`,
+  `buildspec.yml`, `appveyor.yml`, `codemagic.yaml` at the root, and a `Jenkinsfile` anywhere. A
+  fixer commit that touches one is refused with `sensitive-path` unless the person names
+  `workflows` in `PUSH_GUARD_ALLOW_SENSITIVE`, and a link at one of their directories counts as a
+  link over `workflows`.
+- `review-cycle.sh parse()` reads the pull request fields and the markers in one `node` process
+  instead of two, and the fifteen marker fields with one `read` instead of fifteen `printf | cut`
+  pipelines. Every subcommand that reads the pull request pays it.
+- `review-cycle.sh fix` takes the author and `isCrossRepository` from the pull request it already
+  read, instead of a second `gh pr view`; `pr-json.py` now carries those two fields.
+- `review-cycle.sh ensure-labels` writes its six labels at the same time and prints the results in
+  the same order as before.
+- Not changed: `halt` and `export-audit` keep their one extra `python3` each. They run once per halt
+  or export, and with the interpreter called directly a start costs about 30 ms.
+
+## 0.16.0
+
+Engineering-quality knowledge for `pr-reviewer`, and the security pass keyed to OWASP. New
+dimensions, path-floor units and optional finding fields; existing installs can ignore them.
+
+- Five dimensions join the reviewer, for eighteen in all: data integrity and migrations, reliability
+  and resilience, scalability and capacity, operability and deployability, and privacy and data
+  protection (LGPD, GDPR). Each has a checklist under `references/`, and design has one too:
+  `architecture-checklist.md`, `reliability-checklist.md`, `scalability-checklist.md`,
+  `data-and-migrations-checklist.md`, `operability-checklist.md`, `privacy-checklist.md`. The
+  dispatch limit goes from thirteen agents to eighteen; the stance table and `execution-profiles.md`
+  place each new unit; `dimensions.md` gives severity guidance per area.
+- `security-checklist.md` is keyed to the OWASP Top 10:2025 (A01 to A10) with code-level checks
+  (path traversal, XXE, open redirect, ReDoS, TOCTOU, mass assignment, uploads, rate limiting,
+  JWT and sessions), ASVS 5.0.0 chapters for depth (Level 1 by default, Level 2 when the floor hits
+  authentication, session or cryptography), a per-change threat model, and stack lists read when the
+  change has that stack: API Security Top 10 2023, CI/CD Top 10, LLM Top 10 2025, Agentic Top 10
+  for 2026, Mobile Top 10 2024 and Kubernetes Top 10 (2025). Sources, dates and licences are named.
+- Findings may carry optional `owasp:` and `cwe:` fields (`report-contract.md`). `lint-report` and
+  the fixer ignore them.
+- `path-floor.sh`: infrastructure and deployment files (Terraform and OpenTofu, Kubernetes, Helm,
+  Kustomize, Compose, Pulumi, CloudFormation, Ansible, Nomad, and others in its header) summon
+  `reliability` and `operability`; privacy-named paths (`privacy`, `gdpr`, `lgpd`, `consent`, `pii`,
+  `personal-data` and others) summon `privacy`. `lint-report` requires these units in
+  `mandatory_units:` like any other floor unit.
+- Eval: fourteen seeded cases, each with a decoy. One per OWASP Top 10:2025 category that had none
+  (`missing-authz` A01, `xxe` A02, `install-script` A03, `fast-hash` A04, `coupon-race` A06,
+  `jwt-noverify` A07, `webhook-unsigned` A08, `token-in-log` A09, `fail-open` A10; A05 was already
+  `sql-injection`), and one per new dimension (`retry-double-charge`, `n-plus-one`, `drop-column`,
+  `pii-in-logs`, `recreate-deploy`). `score.py --validate` refuses a case whose decoy window overlaps a defect's, and takes
+  `--cases DIR` (W1 of #35).
+- `docs/ISO-27001-AND-42001.md` maps the dimensions to the ISO/IEC 25010:2023 quality
+  characteristics, and assesses the two skills against the OWASP Top 10 for Agentic Applications
+  for 2026, risk by risk, with what each leaves to the person or the harness.
+- `security-checklist.md` says which OWASP lists were confirmed on their pages that day (Top
+  10:2025, ASVS chapters, Kubernetes items, the Agentic title and date) and which came from the
+  editions or secondary sources (the Agentic item names, API, CI/CD, LLM, Mobile).
+- Tests: the fake `gh` pages comment deletions (`deleted-page-size`), and a row checks that
+  `pr-json.py` reads deletions past the first page (N2 of #34); a row checks that
+  `path-floor.sh --help` prints its whole header. The 0.15.4 entry's suite time is corrected to the
+  measured figure (N1 of #34).
+
 ## 0.15.4
 
 Performance only. No output, marker, label, subcommand or exit code changes.
@@ -19,7 +84,7 @@ Performance only. No output, marker, label, subcommand or exit code changes.
   its `cmp` checks already fail when the fixer's copy differs, so the second run added time and no
   coverage. It also puts a link to the real `python3` first on `PATH`, because a pyenv or asdf shim
   costs a few hundred milliseconds per start; `tests/fake-gh/run.sh` does the same and reads labels,
-  comment counts and the head through `jq`. The whole suite went from 11.6 to about 4.4 minutes on a
+  comment counts and the head through `jq`. The whole suite went from 11.6 to about 3 minutes on a
   machine with a pyenv shim.
 - Tests: the scan-hidden rows for W1 of #33 use 120000 escaped brackets instead of 30000, so the
   quadratic code they guard against takes about 8 s against the 2 s bound instead of about 2 s

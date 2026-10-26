@@ -1,0 +1,1 @@
+Handle payment and refund webhooks from the payment provider. Both endpoints are public.

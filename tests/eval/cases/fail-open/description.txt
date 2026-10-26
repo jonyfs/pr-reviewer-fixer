@@ -1,0 +1,1 @@
+Move document permission checks to the central policy service. The service is sometimes slow during deploys.

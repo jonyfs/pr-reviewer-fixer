@@ -1,0 +1,18 @@
+diff --git a/src/shop/coupons.py b/src/shop/coupons.py
+new file mode 100644
+--- /dev/null
++++ b/src/shop/coupons.py
+@@ -0,0 +1,13 @@
++from shop.models import Coupon, Order
++
++
++def redeem(user, code, order_id):
++    coupon = Coupon.objects.get(code=code)
++    if coupon.used:
++        raise ValueError("coupon already used")
++    order = Order.objects.get(id=order_id, user=user)
++    order.discount = coupon.amount
++    order.save()
++    coupon.used = True
++    coupon.save()
++    return order

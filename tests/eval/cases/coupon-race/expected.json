@@ -1,0 +1,9 @@
+{
+  "description": "OWASP A06:2025. Check-then-act on a single-use coupon with no lock or conditional update: two concurrent requests both pass the check and both get the discount. The order lookup scopes by user and is fine.",
+  "defects": [
+    {"id": "D1", "file": "src/shop/coupons.py", "line": 6, "tolerance": 1, "min_severity": "WARNING", "note": "TOCTOU: the used check and the update are not atomic"}
+  ],
+  "decoys": [
+    {"file": "src/shop/coupons.py", "line": 8, "tolerance": 0, "note": "order scoped to the user, fine"}
+  ]
+}
