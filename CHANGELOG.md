@@ -4,6 +4,25 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.17.2
+
+Reviewer guidance only, from the reviews of #38. No script, marker, label or exit code changes.
+
+- `security-checklist.md`, A01: the CSRF check the OWASP rewrite of 0.16.0 dropped is back. A
+  state-changing request under cookie authentication needs a CSRF token or an origin check against
+  an allowlist (`Origin` or `Referer`). A state-changing `GET` is a gap even under `SameSite=Lax`,
+  `SameSite` alone does not cover a sibling subdomain or a `SameSite=None` cookie, and a request
+  with no `Origin` or `Referer` fails closed.
+- `security-checklist.md`, A02: cookie flags apply wherever the change sets a cookie, a JSON API
+  included, not only where it serves pages. Every cookie is `Secure` with a `SameSite` value chosen
+  for its purpose; a session or credential cookie is also `HttpOnly`. A CSRF token cookie that
+  script reads and echoes in a header is the one exception to `HttpOnly`, and stays `Secure` and
+  bound to the session.
+- `dimensions.md` and `reliability-checklist.md`: severity per area defers to
+  `severity-and-verdict.md`. Data loss, exposed personal data, an attacker path (crafted input
+  counts) or a production outage of any scope (one endpoint or one region counts) is CRITICAL; the
+  0.16.0 wording limited an outage to one that takes the service down for every user.
+
 ## 0.17.1
 
 Performance only. No output, marker, label, subcommand or exit code changes.
@@ -51,11 +70,10 @@ dimensions, path-floor units and optional finding fields; existing installs can 
   `architecture-checklist.md`, `reliability-checklist.md`, `scalability-checklist.md`,
   `data-and-migrations-checklist.md`, `operability-checklist.md`, `privacy-checklist.md`. The
   dispatch limit goes from thirteen agents to eighteen; the stance table and `execution-profiles.md`
-  place each new unit; `dimensions.md` gives severity guidance per area, bound to
-  `severity-and-verdict.md` (an outage of one endpoint or one region is still CRITICAL).
+  place each new unit; `dimensions.md` gives severity guidance per area.
 - `security-checklist.md` is keyed to the OWASP Top 10:2025 (A01 to A10) with code-level checks
-  (CSRF under cookie authentication, `Secure` and `SameSite` on every cookie a change sets, `HttpOnly` on session and credential cookies but not on a CSRF token cookie that script reads, path traversal, XXE, open redirect, ReDoS, TOCTOU, mass
-  assignment, uploads, rate limiting, JWT and sessions), ASVS 5.0.0 chapters for depth (Level 1 by default, Level 2 when the floor hits
+  (path traversal, XXE, open redirect, ReDoS, TOCTOU, mass assignment, uploads, rate limiting,
+  JWT and sessions), ASVS 5.0.0 chapters for depth (Level 1 by default, Level 2 when the floor hits
   authentication, session or cryptography), a per-change threat model, and stack lists read when the
   change has that stack: API Security Top 10 2023, CI/CD Top 10, LLM Top 10 2025, Agentic Top 10
   for 2026, Mobile Top 10 2024 and Kubernetes Top 10 (2025). Sources, dates and licences are named.
