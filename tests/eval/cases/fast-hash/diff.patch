@@ -1,0 +1,15 @@
+diff --git a/src/accounts/passwords.py b/src/accounts/passwords.py
+new file mode 100644
+--- /dev/null
++++ b/src/accounts/passwords.py
+@@ -0,0 +1,10 @@
++import hashlib
++import secrets
++
++
++def hash_password(password):
++    return hashlib.sha256(password.encode()).hexdigest()
++
++
++def new_reset_token():
++    return secrets.token_urlsafe(32)

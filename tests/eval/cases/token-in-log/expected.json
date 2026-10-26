@@ -1,0 +1,9 @@
+{
+  "description": "OWASP A09:2025. The bearer token is written to the log on every request, so anyone who reads logs can act as any user. Logging the user id is fine.",
+  "defects": [
+    {"id": "D1", "file": "src/api/middleware.py", "line": 7, "tolerance": 0, "min_severity": "WARNING", "note": "credential in logs"}
+  ],
+  "decoys": [
+    {"file": "src/api/middleware.py", "line": 8, "tolerance": 0, "note": "internal id only, fine"}
+  ]
+}

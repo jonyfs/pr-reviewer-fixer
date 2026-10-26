@@ -1,0 +1,9 @@
+{
+  "description": "OWASP A04:2025. Passwords hashed with one unsalted SHA-256, which a GPU cracks fast. The reset token uses a CSPRNG and is fine.",
+  "defects": [
+    {"id": "D1", "file": "src/accounts/passwords.py", "line": 6, "tolerance": 0, "min_severity": "CRITICAL", "note": "unsalted fast hash for passwords; use Argon2id, scrypt or bcrypt"}
+  ],
+  "decoys": [
+    {"file": "src/accounts/passwords.py", "line": 10, "tolerance": 0, "note": "CSPRNG token, safe"}
+  ]
+}

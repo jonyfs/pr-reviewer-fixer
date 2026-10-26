@@ -1,0 +1,1 @@
+Accept XML invoices uploaded by customers, and read the internal XML config with the same library.

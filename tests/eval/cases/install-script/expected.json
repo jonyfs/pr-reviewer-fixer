@@ -1,0 +1,9 @@
+{
+  "description": "OWASP A03:2025. A postinstall hook pipes a remote script to a shell on every install, from a domain nobody pins or verifies. The pinned dependency is fine.",
+  "defects": [
+    {"id": "D1", "file": "package.json", "line": 6, "tolerance": 0, "min_severity": "CRITICAL", "note": "postinstall runs an unverified remote script"}
+  ],
+  "decoys": [
+    {"file": "package.json", "line": 9, "tolerance": 0, "note": "exact version pin, fine"}
+  ]
+}

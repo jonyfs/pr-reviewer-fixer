@@ -1,0 +1,13 @@
+diff --git a/src/api/middleware.py b/src/api/middleware.py
+new file mode 100644
+--- /dev/null
++++ b/src/api/middleware.py
+@@ -0,0 +1,8 @@
++import logging
++
++log = logging.getLogger("api")
++
++
++def before_request(request, user):
++    log.info("request %s %s auth=%s", request.method, request.path, request.headers.get("Authorization"))
++    log.info("user id=%s", user.id)

@@ -29,13 +29,18 @@ dimensions, path-floor units and optional finding fields; existing installs can 
   `reliability` and `operability`; privacy-named paths (`privacy`, `gdpr`, `lgpd`, `consent`, `pii`,
   `personal-data` and others) summon `privacy`. `lint-report` requires these units in
   `mandatory_units:` like any other floor unit.
-- Eval: seven seeded cases, `missing-authz` (A01), `fail-open` (A10), `retry-double-charge`,
-  `n-plus-one`, `drop-column`, `pii-in-logs` and `recreate-deploy`, one per new area, each with a
-  decoy. `score.py --validate` refuses a case whose decoy window overlaps a defect's, and takes
+- Eval: fourteen seeded cases, each with a decoy. One per OWASP Top 10:2025 category that had none
+  (`missing-authz` A01, `xxe` A02, `install-script` A03, `fast-hash` A04, `coupon-race` A06,
+  `jwt-noverify` A07, `webhook-unsigned` A08, `token-in-log` A09, `fail-open` A10; A05 was already
+  `sql-injection`), and one per new dimension (`retry-double-charge`, `n-plus-one`, `drop-column`,
+  `pii-in-logs`, `recreate-deploy`). `score.py --validate` refuses a case whose decoy window overlaps a defect's, and takes
   `--cases DIR` (W1 of #35).
 - `docs/ISO-27001-AND-42001.md` maps the dimensions to the ISO/IEC 25010:2023 quality
   characteristics, and assesses the two skills against the OWASP Top 10 for Agentic Applications
   for 2026, risk by risk, with what each leaves to the person or the harness.
+- `security-checklist.md` says which OWASP lists were confirmed on their pages that day (Top
+  10:2025, ASVS chapters, Kubernetes items, the Agentic title and date) and which came from the
+  editions or secondary sources (the Agentic item names, API, CI/CD, LLM, Mobile).
 - Tests: the fake `gh` pages comment deletions (`deleted-page-size`), and a row checks that
   `pr-json.py` reads deletions past the first page (N2 of #34); a row checks that
   `path-floor.sh --help` prints its whole header. The 0.15.4 entry's suite time is corrected to the

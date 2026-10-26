@@ -40,10 +40,13 @@ floor summons security at `max` for authentication, session or cryptography path
 
 ## Stack Lists, Read When the Change Has That Stack
 
-Use these on top of the Top 10 when the change touches the stack. The Agentic and Kubernetes lists,
-like the Top 10:2025 and ASVS above, were checked against their OWASP pages on 2026-10-26; the API,
-CI/CD, LLM and Mobile lists are as their named editions publish them and were not re-fetched that
-day. Re-check a list when its project announces a new edition.
+Use these on top of the Top 10 when the change touches the stack. On 2026-10-26 the Kubernetes item
+names were checked against its OWASP page, as were the Top 10:2025 and the ASVS chapters above. The
+Agentic page confirmed the title and the 2025-12-09 date but does not show the item names; those
+come from secondary sources, and their exact wording (for example "Tool Misuse" or "Tool Misuse and
+Exploitation") was not confirmed. The API, CI/CD, LLM and Mobile lists are as their named editions
+publish them and were not re-fetched that day. Re-check a list when its project announces a new
+edition.
 
 | When the change touches | Read | Items |
 |---|---|---|
@@ -158,5 +161,5 @@ anchors only what the diff shows.
 The category names and ids above come from OWASP projects, used under their licences: the OWASP
 Top 10:2025 by the OWASP Top 10 Team (CC BY 3.0), ASVS 5.0.0 by the OWASP Foundation (CC BY-SA
 4.0), and the GenAI Security Project lists (Top 10 for LLM Applications 2025, Top 10 for Agentic
-Applications for 2026). The checks in the tables are this project's summary, not OWASP text. See
+Applications for 2026), whose licence was not checked for this file. The checks in the tables are this project's summary, not OWASP text. See
 also the OWASP Code Review Guide.

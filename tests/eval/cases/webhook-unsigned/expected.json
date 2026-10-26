@@ -1,0 +1,9 @@
+{
+  "description": "OWASP A08:2025. The payment webhook marks orders paid without verifying the provider's signature, so anyone can post a fake payment. The refund webhook verifies it in constant time.",
+  "defects": [
+    {"id": "D1", "file": "src/payments/webhooks.py", "line": 11, "tolerance": 1, "min_severity": "CRITICAL", "note": "unsigned webhook acted on"}
+  ],
+  "decoys": [
+    {"file": "src/payments/webhooks.py", "line": 16, "tolerance": 0, "note": "signature verified, safe"}
+  ]
+}

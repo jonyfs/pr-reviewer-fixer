@@ -1,0 +1,9 @@
+{
+  "description": "OWASP A07:2025. The user token is decoded without checking its signature, so anyone can forge any user. The service token check pins the algorithm and audience.",
+  "defects": [
+    {"id": "D1", "file": "src/auth/tokens.py", "line": 7, "tolerance": 0, "min_severity": "CRITICAL", "note": "JWT signature not verified"}
+  ],
+  "decoys": [
+    {"file": "src/auth/tokens.py", "line": 12, "tolerance": 0, "note": "verified with a pinned algorithm and audience"}
+  ]
+}

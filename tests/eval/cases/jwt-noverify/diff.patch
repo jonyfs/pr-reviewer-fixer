@@ -1,0 +1,18 @@
+diff --git a/src/auth/tokens.py b/src/auth/tokens.py
+new file mode 100644
+--- /dev/null
++++ b/src/auth/tokens.py
+@@ -0,0 +1,13 @@
++import jwt
++
++SECRET = __import__("os").environ["JWT_SECRET"]
++
++
++def user_from_token(token):
++    claims = jwt.decode(token, options={"verify_signature": False})
++    return claims["sub"]
++
++
++def service_from_token(token):
++    claims = jwt.decode(token, SECRET, algorithms=["HS256"], audience="internal")
++    return claims["sub"]

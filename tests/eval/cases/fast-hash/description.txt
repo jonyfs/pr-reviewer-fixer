@@ -1,0 +1,1 @@
+Store password hashes instead of plain text, and add reset tokens.

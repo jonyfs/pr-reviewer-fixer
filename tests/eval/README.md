@@ -22,8 +22,10 @@ Each case is a folder under `cases/`:
 self-contained diff. Each has one WARNING. With the default `REVIEW_BLOCK_AT=critical` such a bug is
 reported and the pull request still passes; run the cases again with `REVIEW_BLOCK_AT=warning` set to
 see whether the reviewer backs each one with a `scenario:` and whether precision holds.
-`missing-authz` (OWASP A01:2025) and `fail-open` (A10:2025) have one CRITICAL each beside a safe
-twin. `retry-double-charge` (reliability), `n-plus-one` (scalability), `drop-column` (data
+One case per OWASP Top 10:2025 category, each beside a safe twin: `missing-authz` (A01), `xxe`
+(A02), `install-script` (A03), `fast-hash` (A04), `sql-injection` (A05), `coupon-race` (A06, a
+WARNING), `jwt-noverify` (A07), `webhook-unsigned` (A08), `token-in-log` (A09, a WARNING) and
+`fail-open` (A10). `retry-double-charge` (reliability), `n-plus-one` (scalability), `drop-column` (data
 integrity, CRITICAL), `pii-in-logs` (privacy) and `recreate-deploy` (operability) each seed one
 defect of the engineering-quality dimensions added in 0.16.0, with a decoy.
 Check that the expected lines sit inside the diffs, and that no decoy's window overlaps a defect's (a
