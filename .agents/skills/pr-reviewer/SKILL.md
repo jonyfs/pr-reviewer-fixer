@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: 0.15.2
+  version: "0.15.3"
 ---
 
 # PR Reviewer
@@ -248,8 +248,9 @@ findings block for `pr-fixer`.
 - `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py` the state machine and its gate
   (need `gh`, `python3` 3.9+, `node`)
 - `scripts/pr-json.py` the one way the scripts read a pull request (drops edited comments, fails closed)
-- `scripts/scan-hidden.py` read-only: reports invisible text (zero-width, bidi and tag characters,
-  HTML comments other than the markers, `[//]: #` link references, `<details>`, invisible HTML) in
+- `scripts/scan-hidden.py` read-only: reports invisible text (zero-width, bidi, tag and filler
+  characters, variation-selector runs, HTML comments other than the markers, link references that
+  hide text, `<details>`, invisible HTML) in
   the diff, the pull request text and the commit messages (needs `git`, `python3`)
 - `scripts/check-version.sh` the update notice (never installs)
 - `templates/review-gate.yml` the required status check: no model, no secrets (shared with `pr-fixer`)

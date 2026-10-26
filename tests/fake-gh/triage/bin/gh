@@ -11,5 +11,8 @@ case "$1 $2" in
   "api repos/{owner}/{repo}/issues/"*)
     [ -f "$D/events-fail" ] && exit 1
     cat "$D/events.tsv" 2>/dev/null ;;
+  "api repos/{owner}/{repo}/commits/"*)
+    [ -f "$D/head-commit.json" ] || exit 1
+    cat "$D/head-commit.json" ;;
   *) echo "fake gh: unhandled $*" >&2; exit 1 ;;
 esac

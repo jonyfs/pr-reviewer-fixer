@@ -48,7 +48,8 @@ The loop is dispatched by the review loop agent in the person's session, as desc
   It runs no model and calls `review-cycle.sh` from the base commit, not from the PR tree. Protect
   `.agents/skills/**` and `.github/workflows/**` with CODEOWNERS and require code owner review.
 - Optional environment variables: `MAX_REVIEW_CYCLES` (5), `MAX_REVIEW_CYCLES_HARD` (10),
-  `MAX_CONFLICT_FILES` (15), `REVIEW_MARKER_AUTHORS`.
+  `MAX_CONFLICT_FILES` (15; the fixer agent reads it in the conflict lane, no script enforces it),
+  `REVIEW_MARKER_AUTHORS`.
 
 ## Order of operations
 

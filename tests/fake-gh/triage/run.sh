@@ -106,6 +106,22 @@ unset FIXER_COMMIT_AUTHORS
 reset; pr '{"commits": [{"oid": "dddddddddddddddddddddddddddddddddddddddd", "committedDate": "2026-10-14T11:59:00Z", "authors": [{"login": "alice", "name": "Alice", "email": "a@x"}]}]}'
 expect "human commit 1 min ago: no skip" '.skip_reason == null'
 
+# 0.15.3: gh lists at most 100 commits, so on a longer pull request the 100th is not the head. The
+# head commit is then read on its own, and an unreadable head counts as a fixer at work.
+C100="$(python3 -I -c 'import json;print(json.dumps([{"oid": "%040x" % i, "committedDate": "2026-10-14T08:00:00Z", "authors": [{"login": "alice", "name": "Alice", "email": "a@x"}]} for i in range(1, 101)]))')"
+F40=ffffffffffffffffffffffffffffffffffffffff
+reset; pr "{\"commits\": $C100, \"headRefOid\": \"$F40\"}"
+printf '{"oid": "%s", "committedDate": "2026-10-14T11:58:00Z", "authors": [{"login": "", "name": "Fixer Bot", "email": "fixer@example.com"}]}' "$F40" >"$FAKE_DIR/head-commit.json"
+export FIXER_COMMIT_AUTHORS="fixer bot"
+expect "over 100 commits: the head is read on its own, a fixer commit 2 min ago -> recent-fixer-commit" '.skip_reason == "recent-fixer-commit"'
+rm -f "$FAKE_DIR/head-commit.json"
+expect "over 100 commits, the head commit unreadable, fixer authors set -> recent-fixer-commit" '.skip_reason == "recent-fixer-commit"'
+unset FIXER_COMMIT_AUTHORS
+expect "over 100 commits, the head commit unreadable, no fixer authors -> no skip" '.skip_reason == null'
+reset; pr "{\"commits\": $C100, \"headRefOid\": \"0000000000000000000000000000000000000064\"}"
+expect "exactly 100 commits ending at the head: no skip" '.skip_reason == null'
+if grep -q 'commits/' "$FAKE_DIR/calls.log"; then row "100 commits ending at the head: no extra read" bad "$(cat "$FAKE_DIR/calls.log")"; else row "100 commits ending at the head: no extra read" ok; fi
+
 # A configured name that holds a space is compared as written, trimmed and without case. Removing
 # every space from the setting made "CI Tests" and "Fixer Bot" match nothing.
 reset; pr '{"statusCheckRollup": [{"__typename": "CheckRun", "name": "CI Tests", "workflowName": "CI", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://github.com/o/r/actions/runs/7/job/1"}]}'

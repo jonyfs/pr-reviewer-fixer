@@ -16,8 +16,9 @@ Cursor, Gemini CLI, OpenCode and other harnesses that read that format (see
 
 > Status: the scripts are covered by tests that run against a fake `gh`. The review and the fix run
 > as agents in your own harness session. No GitHub Actions workflow calls a model and no provider
-> API key is used. The one workflow template, the `review-gate` check, has not run on a live
-> repository yet. See [Limits](#limits-and-honest-caveats).
+> API key is used. The one workflow template, the `review-gate` check, runs on this repository's own
+> pull requests; it has not been tried on another repository yet. See
+> [Limits](#limits-and-honest-caveats).
 
 For a plain-language walk through everything the two skills do, with diagrams, read
 [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md).
@@ -126,7 +127,8 @@ sequenceDiagram
 - Splits large diffs into units, reviews the seams between them, and reports what was and was not
   read in depth.
 - Takes the hits of `scripts/scan-hidden.py` (zero-width and bidi characters, Unicode tag
-  characters, HTML comments other than the protocol's markers, `<details>` blocks, invisible HTML)
+  characters, blank fillers, runs of variation selectors, HTML comments other than the protocol's
+  markers, link reference definitions that hide text, `<details>` blocks, invisible HTML)
   in the added lines, the pull request text, its comments and the commit messages, and judges each
   as a candidate CRITICAL prompt-injection finding. The scanner strips nothing.
 - Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each
@@ -288,7 +290,7 @@ back to an older reviewed commit, or a low `--pass`, cannot restart the count.
 
 - `gh`, signed in. Check with `gh auth status`.
 - `python3` 3.9 or newer, and `node`.
-- Only to run this repository's test suite: `jq` and PyYAML.
+- Only to run this repository's test suite: `jq`, `git` and `sha256sum` as well.
 
 ### Quick install, project level
 
@@ -602,8 +604,9 @@ flowchart TD
 
 ## Limits and honest caveats
 
-- The `review-gate` workflow has not run on a live repository yet. It passes `actionlint`, and the
-  script it calls is tested against a fake `gh`. Use a scratch repository first.
+- The `review-gate` workflow runs on this repository's own pull requests, and the script it calls
+  is tested against a fake `gh`. It has not been tried on another repository, so try it on a scratch
+  repository before you make it a required check.
 - A review starts only inside an agent session: when the agent opens a pull request, pushes to an
   open one, or a person asks. A pull request opened by someone else on GitHub, with no session
   running, is not reviewed by itself. The `review-gate` check stays red until a session runs the

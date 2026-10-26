@@ -42,6 +42,9 @@ echo stale >"$W/proj/.claude/skills/pr-reviewer/old-file.md"
 r=$(ins --harness claude-code); check "dry run names the folder it would remove" eval 'grep -q "will REPLACE" "$W/out" && [ -f "$W/proj/.claude/skills/pr-reviewer/old-file.md" ]'
 r=$(ins --harness claude-code --yes); check "reinstall drops a file the release no longer ships" eval '[ $r = 0 ] && [ ! -e "$W/proj/.claude/skills/pr-reviewer/old-file.md" ]'
 
+mkdir -p "$SRC/pr-reviewer/scripts/__pycache__"; echo x >"$SRC/pr-reviewer/scripts/__pycache__/gate.cpython-399.pyc"; echo x >"$SRC/pr-fixer/scripts/stray.pyc"
+r=$(ins --target "$W/nocache" --yes); check "Python caches in the source are not installed (0.15.3)" eval '[ $r = 0 ] && [ -f "$W/nocache/pr-reviewer/SKILL.md" ] && [ -z "$(find "$W/nocache" \( -name __pycache__ -o -name "*.pyc" \) -print)" ]'
+rm -rf "$SRC/pr-reviewer/scripts/__pycache__" "$SRC/pr-fixer/scripts/stray.pyc"
 r=$(ins --harness codex --yes); check "codex keeps the .agents/skills prefix" eval '[ $r = 0 ] && grep -q "\.agents/skills/pr-reviewer/scripts/" "$W/proj/.agents/skills/pr-reviewer/templates/review-gate.yml"'
 r=$(ins --harness claude-code --scope user --skill pr-fixer --yes); check "user scope, one skill, under HOME" eval '[ $r = 0 ] && [ -f "$W/home/.claude/skills/pr-fixer/SKILL.md" ] && [ ! -e "$W/home/.claude/skills/pr-reviewer" ]'
 r=$(ins --target "$W/custom" --yes); check "--target needs no harness" eval '[ $r = 0 ] && [ -f "$W/custom/pr-reviewer/SKILL.md" ]'

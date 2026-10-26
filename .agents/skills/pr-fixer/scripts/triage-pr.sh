@@ -89,7 +89,23 @@ if node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"
     --jq '.[] | select(.event == "labeled") | "\(.label.name)\t\(.created_at)"' > "$TMP/events.tsv" 2>/dev/null || EVENTS_OK=0
 fi
 
-EVENTS_OK=$EVENTS_OK node -e '
+# `gh pr view --json commits` stops at the first 100 commits, so on a longer pull request its last
+# entry is not the head. Then the head commit is read on its own; a failed read leaves the head's
+# author unknown, and an unknown author with FIXER_COMMIT_AUTHORS set counts as a fixer at work.
+HEAD_STATE=listed
+if node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const c=p.commits||[];process.exit(c.length>=100&&(c[c.length-1]||{}).oid!==p.headRefOid?0:1)' "$TMP/pr.json"; then
+  HEAD_OID=$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).headRefOid||""))' "$TMP/pr.json")
+  HEAD_STATE=unknown
+  case "$HEAD_OID" in
+    *[!0-9a-f]*|'') ;;
+    *) gh api "repos/{owner}/{repo}/commits/$HEAD_OID" \
+         --jq '{oid: .sha, committedDate: .commit.committer.date, authoredDate: .commit.author.date, authors: [{login: (.author.login // ""), name: .commit.author.name, email: .commit.author.email}]}' \
+         > "$TMP/head.json" 2>/dev/null && [ -s "$TMP/head.json" ] && HEAD_STATE=fetched ;;
+  esac
+fi
+[ -f "$TMP/head.json" ] || : > "$TMP/head.json"
+
+HEAD_STATE=$HEAD_STATE EVENTS_OK=$EVENTS_OK node -e '
 const fs = require("fs");
 const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 const events = fs.readFileSync(process.argv[2], "utf8").split("\n").filter(Boolean).map(l => l.split("\t"));
@@ -128,9 +144,15 @@ for (const name of ["review:running", "review:fixing"]) {
 // The fixer'"'"'s own last commit, younger than TRIAGE_RECENT_FIXER_MINUTES, means a fixer is still at work.
 const fixers = list(env.FIXER_COMMIT_AUTHORS === undefined ? "" : env.FIXER_COMMIT_AUTHORS);
 const commits = p.commits || [];
-const lastCommit = commits.length ? commits[commits.length - 1] : null;
+let lastCommit = commits.length ? commits[commits.length - 1] : null;
+if (env.HEAD_STATE !== "listed") {
+  try { lastCommit = JSON.parse(fs.readFileSync(process.argv[3], "utf8")); } catch (e) { lastCommit = null; }
+  if (!lastCommit || lastCommit.oid !== p.headRefOid) lastCommit = null;
+}
 let recentFixer = false;
-if (lastCommit) {
+if (!lastCommit && env.HEAD_STATE !== "listed") {
+  recentFixer = fixers.length > 0;
+} else if (lastCommit) {
   const who = (lastCommit.authors || []).flatMap(a => [a.login, a.name, a.email]).filter(Boolean).map(s => String(s).trim().toLowerCase());
   const t = Date.parse(lastCommit.committedDate || lastCommit.authoredDate || "");
   recentFixer = who.some(w => fixers.includes(w)) && !isNaN(t) && now - t < num(env.TRIAGE_RECENT_FIXER_MINUTES, 10) * 60000;
@@ -155,5 +177,5 @@ process.stdout.write(JSON.stringify({
   conflicts, headWritable, failing_checks: failing, lane_suggestions: lanes,
   skip_reason: skip, live_label: skip === "live-label" ? liveLabel : null,
 }) + "\n");
-' "$TMP/pr.json" "$TMP/events.tsv" || { echo "triage-pr: could not parse the PR payload" >&2; exit 2; }
+' "$TMP/pr.json" "$TMP/events.tsv" "$TMP/head.json" || { echo "triage-pr: could not parse the PR payload" >&2; exit 2; }
 exit 0

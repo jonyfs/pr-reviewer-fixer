@@ -294,6 +294,12 @@ for s in "${SKILLS[@]}"; do
   cp -R "$SRC_P/$s" "$stage" || { drop_stage "$stage"; die "copy of $s failed; the old install is untouched"; }
   # `cp -R` keeps a read-only folder read-only, and the next run could not remove the copy.
   find "$stage" -type d -exec chmod u+w {} + || { drop_stage "$stage"; die "could not make the copy of $s writable; the old install is untouched"; }
+  # A checkout that ran the tests holds Python bytecode caches; they are build output, not the skill.
+  find "$stage" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null
+  find "$stage" -name '*.pyc' -type f -exec rm -f {} + 2>/dev/null
+  if [ -n "$(find "$stage" \( -name __pycache__ -o -name '*.pyc' \) -print 2>/dev/null | head -n 1)" ]; then
+    drop_stage "$stage"; die "could not remove the Python caches from the copy of $s; the old install is untouched"
+  fi
   old="$DEST_P/.$s.old.$$"
   if [ -e "$dest" ]; then mv -- "$dest" "$old" || { drop_stage "$stage"; die "could not set the old $s aside; it is untouched"; }; fi
   if ! mv -- "$stage" "$dest"; then

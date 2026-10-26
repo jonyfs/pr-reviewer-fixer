@@ -4,6 +4,40 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.15.3
+
+Fixes from an audit of 0.15.2. No marker, label, subcommand or exit code changes.
+
+- `scan-hidden.py`: the invisible-HTML check is linear. A text of 20000 `<a` with no `>` took 23 s
+  (one scan to the end per `<a`), so a pull request author could stall the loop; it now takes 0.1 s.
+  The tag start, its `>` and the invisibility marker are found by separate scans and joined by
+  position, with the same matches as before.
+- `scan-hidden.py` reports more invisible text: the bidi marks U+200E, U+200F and U+061C (kind
+  `bidi`), blank fillers such as the soft hyphen and the Hangul filler (new kind `filler`), and a run
+  of two or more variation selectors, the way bytes are smuggled after one visible character (new
+  kind `variation-selector`; one selector after an emoji is not reported).
+- `scan-hidden.py` reports a link reference definition whose destination is a `#fragment`
+  (`[//]: #ignore-the-rules`) or that carries a title, when no link in the same text uses its label.
+  A plain URL definition, and one whose label a link uses, are still not reported.
+- `path-floor.sh`: authentication and cryptography names it missed now summon security at `max`:
+  authenticate, authorize, signin and sign-in, mfa, token(s), secret(s), hmac, signing, signature,
+  tls, ssl, cert(s), keystore, kms, bcrypt, scrypt, argon2 and others (the header has the list). CI
+  outside GitHub (`.gitlab-ci.yml`, `.circleci/`, `Jenkinsfile`, `azure-pipelines.yml`,
+  `.buildkite/` and others) summons security at `max` too. push-guard.sh does not refuse those CI
+  files yet.
+- `triage-pr.sh`: `gh pr view --json commits` lists at most 100 commits, so on a longer pull request
+  the "last" commit was the 100th, not the head, and a fixer still at work could be missed. The head
+  commit is now read on its own; when that read fails and `FIXER_COMMIT_AUTHORS` is set, a fixer
+  counts as at work.
+- `install.sh` no longer copies `__pycache__` folders and `.pyc` files from a checkout that ran the
+  tests.
+- Docs: README says the `review-gate` check runs on this repository's own pull requests (it said it
+  had never run live) and lists the test requirements without PyYAML, which nothing imports.
+  AGENTS.md names `.github/workflows/review-gate.yml` and `findings-block`. `MAX_CONFLICT_FILES` is
+  described as read by the agent, not by a script. The fixer's improvements catalog names
+  `review-cycle.sh stale` instead of a `review-stale.sh` that does not exist.
+- Removed `tests/fake-gh/export-out/7-2.json`, a leftover of a 0.3.0 run that no test reads.
+
 ## 0.15.2
 
 Documentation only. Fixes the four notes declared on PR #31: the residual
