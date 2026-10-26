@@ -1,0 +1,1 @@
+Add a setup step that installs our image tools on every npm install.

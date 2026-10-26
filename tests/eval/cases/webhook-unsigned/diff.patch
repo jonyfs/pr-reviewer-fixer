@@ -1,0 +1,23 @@
+diff --git a/src/payments/webhooks.py b/src/payments/webhooks.py
+new file mode 100644
+--- /dev/null
++++ b/src/payments/webhooks.py
+@@ -0,0 +1,18 @@
++import hashlib
++import hmac
++import json
++import os
++
++KEY = os.environ["HOOK_KEY"].encode()
++
++
++def on_payment(request, orders):
++    event = json.loads(request.body)
++    orders.mark_paid(event["order_id"])
++
++
++def on_refund(request, orders):
++    sig = hmac.new(KEY, request.body, hashlib.sha256).hexdigest()
++    if not hmac.compare_digest(sig, request.headers.get("X-Signature", "")):
++        return 403
++    orders.mark_refunded(json.loads(request.body)["order_id"])

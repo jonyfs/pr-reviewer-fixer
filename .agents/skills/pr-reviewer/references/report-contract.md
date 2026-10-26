@@ -119,6 +119,10 @@ The fixer's closure comment uses a smaller vocabulary per finding: `closed`, `re
 `escalated`, or `open` (not reached). `refused` is the fixer's claim; only the reviewer turns it into
 `refused-accepted` or `refused-rejected`.
 
+Optional fields: a security finding may carry `owasp:` (a category id such as `A01:2025`,
+`API3:2023`, `LLM01:2025` or `ASI02:2026`) and `cwe:` (such as `CWE-639`), as described in
+[security-checklist.md](security-checklist.md). `lint-report` and the fixer ignore them.
+
 Field rules: `severity` is one of CRITICAL, WARNING, NOTE. `failure_scenario` is mandatory for CRITICAL.
 `testable: no` is allowed only for a NOTE; a CRITICAL nobody can reproduce goes back to the
 reviewer rather than to the fixer. `owner_proposed` is mandatory for WARNING and NOTE. `refusal`

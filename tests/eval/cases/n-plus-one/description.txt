@@ -1,0 +1,1 @@
+Add an admin report of every active customer with their orders. The shop has about 200000 active customers.

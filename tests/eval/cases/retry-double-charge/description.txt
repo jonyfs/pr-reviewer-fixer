@@ -1,0 +1,1 @@
+Retry payment calls so a short outage of the payments service does not fail checkout.

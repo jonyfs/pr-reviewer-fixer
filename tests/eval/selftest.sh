@@ -23,19 +23,30 @@ rep() {
     done
     echo '```'; } >"$W/$d/$c.md"
 }
-# The three real-bug cases: empty reports for every run except "perfect".
-rest() { rep "$1" mention-url; rep "$1" push-guard-rename; rep "$1" hunk-header; }
+# The three real-bug cases and the seven 0.16.0 engineering-quality cases: empty reports for every
+# run except "perfect".
+rest() { local c; for c in mention-url push-guard-rename hunk-header missing-authz fail-open retry-double-charge \
+  n-plus-one drop-column pii-in-logs recreate-deploy xxe install-script fast-hash coupon-race jwt-noverify \
+  webhook-unsigned token-in-log; do rep "$1" "$c"; done; }
 sc() { python3 -I "$SC" --reports "$W/$1" "${@:2}"; }
 
 # perfect: every defect hit, nothing else.
 rep perfect sql-injection src/users.py:6:CRITICAL; rep perfect off-by-one src/page.js:3:WARNING; rep perfect clean-rename
 rep perfect mention-url tools/mentions.py:10:WARNING; rep perfect push-guard-rename scripts/scope-check.sh:10:WARNING; rep perfect hunk-header tools/anchors.py:9:WARNING
+rep perfect missing-authz src/billing/views.py:8:CRITICAL; rep perfect fail-open src/docs/permissions.py:14:CRITICAL
+rep perfect retry-double-charge src/checkout/payments.py:11:WARNING; rep perfect n-plus-one src/shop/reports.py:9:WARNING
+rep perfect drop-column db/migrations/0042_rename_email.sql:3:CRITICAL; rep perfect pii-in-logs src/accounts/signup.py:8:WARNING
+rep perfect recreate-deploy k8s/api/deployment.yaml:8:WARNING
+rep perfect xxe src/imports/xml_reader.py:3:CRITICAL; rep perfect install-script package.json:6:CRITICAL
+rep perfect fast-hash src/accounts/passwords.py:6:CRITICAL; rep perfect coupon-race src/shop/coupons.py:6:WARNING
+rep perfect jwt-noverify src/auth/tokens.py:7:CRITICAL; rep perfect webhook-unsigned src/payments/webhooks.py:11:CRITICAL
+rep perfect token-in-log src/api/middleware.py:7:WARNING
 check "perfect run -> recall 1, precision 1" eval 'sc perfect --json | jq -e ".recall == 1 and .precision == 1" >/dev/null'
 
 # missed: the SQL injection is not found; the off-by-one is.
 rep missed sql-injection; rep missed off-by-one src/page.js:4:WARNING; rep missed clean-rename
 rest missed
-check "a missed defect lowers recall and is named" eval '[ "$(sc missed --json | jq -r ".recall")" = "0.2" ] && sc missed | grep -q "D1"'
+check "a missed defect lowers recall and is named" eval '[ "$(sc missed --json | jq -r ".recall")" = "0.053" ] && sc missed | grep -q "D1"'
 
 # noisy: both defects hit, plus a CRITICAL on the decoy and a WARNING on the clean rename.
 rep noisy sql-injection src/users.py:6:CRITICAL src/users.py:12:CRITICAL; rep noisy off-by-one src/page.js:3:CRITICAL; rep noisy clean-rename src/util.ts:3:WARNING
@@ -66,6 +77,23 @@ mkdir -p "$W/empty"; sc empty >/dev/null 2>&1; r=$?; check "missing report -> ex
 printf 'no block\n' >"$W/empty/sql-injection.md"; sc empty >/dev/null 2>&1; r=$?; check "report without findings block -> exit 2" eq "$r" 2
 
 python3 -I "$SC" --validate >/dev/null; r=$?; check "case anchors sit inside their diffs" eq "$r" 0
+
+# a finding on a decoy line is a decoy hit, never a defect hit (W1 of #35).
+rep decoy sql-injection; rep decoy off-by-one; rep decoy clean-rename
+rest decoy
+rep decoy pii-in-logs src/accounts/signup.py:9:WARNING; rep decoy drop-column db/migrations/0042_rename_email.sql:2:CRITICAL
+check "a WARNING on the pii-in-logs decoy is a decoy hit, not D1" eval \
+  '[ "$(sc decoy --json | jq -c ".cases[\"pii-in-logs\"] | [.hit, .decoy_hits]")" = "[0,1]" ]'
+check "a CRITICAL on the drop-column decoy is a decoy hit, not D1" eval \
+  '[ "$(sc decoy --json | jq -c ".cases[\"drop-column\"] | [.hit, .decoy_hits]")" = "[0,1]" ]'
+
+# --validate refuses a case whose decoy window overlaps a defect's window.
+mkdir -p "$W/badcases/overlap"
+printf '%s\n' 'diff --git a/a.py b/a.py' '--- /dev/null' '+++ b/a.py' '@@ -0,0 +1,3 @@' '+x = 1' '+y = 2' '+z = 3' >"$W/badcases/overlap/diff.patch"
+echo "overlap" >"$W/badcases/overlap/description.txt"
+echo '{"defects":[{"id":"D1","file":"a.py","line":2,"tolerance":1}],"decoys":[{"file":"a.py","line":3,"tolerance":0}]}' >"$W/badcases/overlap/expected.json"
+out="$(python3 -I "$SC" --validate --cases "$W/badcases" 2>&1)"; r=$?
+check "--validate refuses a decoy inside a defect's tolerance" eval '[ "$r" = 1 ] && grep -q "overlap: decoy a.py:3 is within the window of defect D1" <<<"$out"'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

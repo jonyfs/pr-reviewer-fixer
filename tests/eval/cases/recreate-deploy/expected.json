@@ -1,0 +1,9 @@
+{
+  "description": "Operability. The Recreate strategy stops every pod before starting new ones, so every deploy is an outage, and there is no readiness probe. The resources block is fine.",
+  "defects": [
+    {"id": "D1", "file": "k8s/api/deployment.yaml", "line": 8, "tolerance": 1, "min_severity": "WARNING", "note": "Recreate strategy takes the API down on every deploy; no readiness probe"}
+  ],
+  "decoys": [
+    {"file": "k8s/api/deployment.yaml", "line": 21, "tolerance": 1, "note": "requests and limits set"}
+  ]
+}

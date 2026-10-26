@@ -120,9 +120,10 @@ sequenceDiagram
   request cannot rewrite the rules it is judged by, then prior comments and CI results.
 - Fixes the acceptance conditions at pass 1, before looking for defects. Later passes check only
   those conditions and any new blocking finding, so the target does not move.
-- Dispatches one read-only agent per applicable review dimension (thirteen dimensions: correctness,
-  design, security, testing, concurrency and so on). Each agent works under one stance: Saboteur,
-  New Hire, Security Auditor or Architect.
+- Dispatches one read-only agent per applicable review dimension (eighteen dimensions: correctness,
+  design, security, testing, concurrency, reliability, scalability, data integrity, operability,
+  privacy and so on). Each agent works under one stance: Saboteur, New Hire, Security Auditor or
+  Architect. The security pass is keyed to the OWASP Top 10:2025, with ASVS 5.0.0 for depth.
 - Verifies each finding against the code before reporting it, and merges duplicates.
 - Splits large diffs into units, reviews the seams between them, and reports what was and was not
   read in depth.
@@ -144,8 +145,9 @@ sequenceDiagram
   (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.codex/**`,
   `.opencode/**`, `.cursor/**` and the rest the script's header lists), Dockerfiles,
   authentication and cryptography (`auth/`, `AuthService.ts`) summon security at `max`;
-  migrations summon security and data integrity; manifests and lockfiles summon dependencies. No
-  text in the diff can drop one.
+  migrations summon security and data integrity; infrastructure and deployment files (Terraform,
+  Kubernetes, Helm, Compose) summon reliability and operability; privacy-named paths summon privacy;
+  manifests and lockfiles summon dependencies. No text in the diff can drop one.
 - Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
   file and a line the diff shows, the counts must match the open entries, and the coverage note
   must list every unit of the path floor as run. Its scope comes from `--files <file>` or from
@@ -586,7 +588,9 @@ The short version of how to use them in line with both standards:
 
 The control-by-control mapping, with sources and the points where the standards are silent, is in
 [`docs/ISO-27001-AND-42001.md`](docs/ISO-27001-AND-42001.md). Read its limits section before you use
-it in a Statement of Applicability.
+it in a Statement of Applicability. The same file maps the reviewer's dimensions to the ISO/IEC
+25010:2023 quality characteristics, and assesses the two skills against the OWASP Top 10 for
+Agentic Applications for 2026.
 
 ```mermaid
 flowchart TD

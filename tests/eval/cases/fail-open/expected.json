@@ -1,0 +1,9 @@
+{
+  "description": "OWASP A10:2025. An exception from the policy service grants delete. The read check beside it fails closed.",
+  "defects": [
+    {"id": "D1", "file": "src/docs/permissions.py", "line": 14, "tolerance": 1, "min_severity": "CRITICAL", "note": "fails open: any error in the policy call allows delete"}
+  ],
+  "decoys": [
+    {"file": "src/docs/permissions.py", "line": 21, "tolerance": 1, "note": "fails closed, safe"}
+  ]
+}

@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.15.4"
+  version: "0.16.0"
 ---
 
 # PR Reviewer
@@ -228,9 +228,10 @@ findings block for `pr-fixer`.
 
 ## References
 
-- [references/dimensions.md](references/dimensions.md) the thirteen dimensions with concrete checks
+- [references/dimensions.md](references/dimensions.md) the eighteen dimensions with concrete checks
+- [references/architecture-checklist.md](references/architecture-checklist.md), [reliability-checklist.md](references/reliability-checklist.md), [scalability-checklist.md](references/scalability-checklist.md), [data-and-migrations-checklist.md](references/data-and-migrations-checklist.md), [operability-checklist.md](references/operability-checklist.md), [privacy-checklist.md](references/privacy-checklist.md) the engineering-quality checklists behind those dimensions
 - [references/personas.md](references/personas.md) the hostile stances and the self-review trap breaker
-- [references/security-checklist.md](references/security-checklist.md) OWASP-based security pass
+- [references/security-checklist.md](references/security-checklist.md) security pass keyed to the OWASP Top 10:2025, ASVS 5.0.0 and the stack lists (API, CI/CD, LLM, Agentic, Mobile, Kubernetes)
 - [references/severity-and-verdict.md](references/severity-and-verdict.md) severity, promotion cap, verdict, comment labels, tone
 - [references/scale-and-verification.md](references/scale-and-verification.md) partitioning, low-signal classes, self-verification
 - [references/targets-and-context.md](references/targets-and-context.md) targets, conventions, checks, prior comments, re-review

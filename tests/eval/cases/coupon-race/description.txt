@@ -1,0 +1,1 @@
+Let customers redeem single-use coupons at checkout.
