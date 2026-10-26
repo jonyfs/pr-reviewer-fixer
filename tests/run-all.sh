@@ -14,22 +14,26 @@ fail=0
 # The independent suites run at the same time, each with its own scratch directory (TEST_TAG), and
 # print in a fixed order afterwards.
 OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
+# A version-manager shim (pyenv, asdf) costs a few hundred ms per python3, and the suites start it
+# thousands of times. A link to the interpreter the shim resolves to goes first on PATH; that halves
+# the run on a machine with a shim and changes nothing on one without.
+mkdir -p "$OUT/python"
+PYEXE="$(python3 -I -c 'import sys; print(sys.executable)' 2>/dev/null)" && [ -x "$PYEXE" ] && ln -sf "$PYEXE" "$OUT/python/python3"
+export PATH="$OUT/python:$PATH"
 names=(); pids=()
 start() { local n="$1"; shift; names+=("$n"); ( "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc" ) & pids+=($!); }
-start "review-cycle.sh and gate (reviewer copy)" env TEST_TAG="${P}rev" bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
-start "review-cycle.sh and gate (fixer copy)"    env TEST_TAG="${P}fix" bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+# The shared scripts run once, from the reviewer's copy: the cmp checks below fail when the fixer's
+# copy differs by one byte, so a second run of the same bytes adds time and no coverage.
+start "review-cycle.sh and gate"                 env TEST_TAG="${P}rev" bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "triage-pr.sh"                             env TEST_TAG="${P}run" bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "push-guard.sh"                             env TEST_TAG="${P}run" bash "$HERE/push-guard/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "fetch-feedback.py"                        env TEST_TAG="${P}run" python3 "$HERE/feedback/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "review eval scorer"                       env TEST_TAG="${P}run" bash "$HERE/eval/selftest.sh"
 start "install.sh"                                env TEST_TAG="${P}run" bash "$HERE/install/run.sh" "$ROOT/install.sh"
-start "cycle budget and extend (reviewer copy)"  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
-start "cycle budget and extend (fixer copy)"     env TEST_TAG="${P}fix" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
-start "scan-hidden.py (reviewer copy)"          env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
-start "scan-hidden.py (fixer copy)"             env TEST_TAG="${P}fix" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
-start "check-version.sh (reviewer copy)"         env TEST_TAG="${P}rev" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "cycle budget and extend"                  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "scan-hidden.py"                           env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "check-version.sh"                         env TEST_TAG="${P}rev" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "release.sh"                                env TEST_TAG="${P}run" bash "$HERE/release/run.sh"
-start "check-version.sh (fixer copy)"            env TEST_TAG="${P}fix" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 wait "${pids[@]}"
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]}"; tail -n 3 "$OUT/$n.log"

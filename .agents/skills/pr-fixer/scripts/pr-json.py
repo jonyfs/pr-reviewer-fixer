@@ -49,6 +49,15 @@ DELETED_QUERY = (
     "timelineItems(first:100,after:$after,itemTypes:[COMMENT_DELETED_EVENT]){pageInfo{hasNextPage endCursor} "
     "nodes{... on CommentDeletedEvent{id createdAt actor{login} deletedCommentAuthor{login}}}}}}}"
 )
+# The first page of both connections in one call: most pull requests fit in it, so most reads cost
+# one GraphQL round trip instead of two. A connection with more pages goes on with its own query.
+FIRST_QUERY = (
+    "query PrJsonFirst($owner:String!,$repo:String!,$number:Int!){"
+    "repository(owner:$owner,name:$repo){pullRequest(number:$number){"
+    "comments(first:100){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt editor{login}}} "
+    "timelineItems(first:100,itemTypes:[COMMENT_DELETED_EVENT]){pageInfo{hasNextPage endCursor} "
+    "nodes{... on CommentDeletedEvent{id createdAt actor{login} deletedCommentAuthor{login}}}}}}}"
+)
 MAX_PAGES = 100
 
 
@@ -84,17 +93,26 @@ def main():
     owner, repo, number = m.groups()
     comments = pr.get("comments") or []
 
+    raw = gh("api", "graphql", "-f", "query=" + FIRST_QUERY, "-f", "owner=" + owner,
+             "-f", "repo=" + repo, "-F", "number=" + number)
+    if raw is None:
+        return fail("gh api graphql failed, so comment edits and deletions cannot be checked")
+    try:
+        first = json.loads(raw)["data"]["repository"]["pullRequest"]
+        if not isinstance(first, dict):
+            raise TypeError("no pullRequest object")
+    except (ValueError, KeyError, TypeError):
+        return fail("gh api graphql answered an unexpected shape")
+
     seen, edited, editors, after = set(), set(), {}, None
-    for _ in range(MAX_PAGES):
-        args = ["api", "graphql", "-f", "query=" + QUERY, "-f", "owner=" + owner,
-                "-f", "repo=" + repo, "-F", "number=" + number]
-        if after:
-            args += ["-f", "after=" + after]
-        raw = gh(*args)
-        if raw is None:
-            return fail("gh api graphql failed, so comment edits cannot be checked")
+    for i in range(MAX_PAGES):
+        if i:
+            raw = gh("api", "graphql", "-f", "query=" + QUERY, "-f", "owner=" + owner,
+                     "-f", "repo=" + repo, "-F", "number=" + number, "-f", "after=" + after)
+            if raw is None:
+                return fail("gh api graphql failed, so comment edits cannot be checked")
         try:
-            page = json.loads(raw)["data"]["repository"]["pullRequest"]["comments"]
+            page = (json.loads(raw)["data"]["repository"]["pullRequest"] if i else first)["comments"]
             nodes, info = page["nodes"], page["pageInfo"]
             more, cursor = bool(info["hasNextPage"]), info.get("endCursor")
         except (ValueError, KeyError, TypeError):
@@ -118,16 +136,14 @@ def main():
 
     # The deletions, paged and checked the same way. Any failure here is a failure of the whole read.
     deleted, after = [], None
-    for _ in range(MAX_PAGES):
-        args = ["api", "graphql", "-f", "query=" + DELETED_QUERY, "-f", "owner=" + owner,
-                "-f", "repo=" + repo, "-F", "number=" + number]
-        if after:
-            args += ["-f", "after=" + after]
-        raw = gh(*args)
-        if raw is None:
-            return fail("gh api graphql failed, so comment deletions cannot be checked")
+    for i in range(MAX_PAGES):
+        if i:
+            raw = gh("api", "graphql", "-f", "query=" + DELETED_QUERY, "-f", "owner=" + owner,
+                     "-f", "repo=" + repo, "-F", "number=" + number, "-f", "after=" + after)
+            if raw is None:
+                return fail("gh api graphql failed, so comment deletions cannot be checked")
         try:
-            page = json.loads(raw)["data"]["repository"]["pullRequest"]["timelineItems"]
+            page = (json.loads(raw)["data"]["repository"]["pullRequest"] if i else first)["timelineItems"]
             nodes, info = page["nodes"], page["pageInfo"]
             more, cursor = bool(info["hasNextPage"]), info.get("endCursor")
         except (ValueError, KeyError, TypeError):
