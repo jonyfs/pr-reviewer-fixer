@@ -973,6 +973,24 @@ check "path-floor: camelCase and PascalCase auth names -> security max (W4, PR #
   eval '[ $r = 0 ] && pfhas "security max src/AuthService.ts" && pfhas "security max src/middleware/authMiddleware.ts" && pfhas "security max app/controllers/LoginController.java" && pfhas "security max pkg/jwtUtils.go" && pfhas "security max lib/OAuth2Client.ts" && pfhas "security max src/JWTVerifier.kt" && pfhas "security max src/UserPermissions.cs"'
 check "path-floor: AuthorService.ts, sessionless.ts and Authority.java summon nothing (W4, PR #29)" \
   eval '! grep -q "AuthorService\|sessionless\|Authority" "$W/pf.out"'
+# 0.15.3: auth and crypto words that are not `auth` itself, and CI that does not run on GitHub.
+nul src/authenticate.py src/authorize.ts lib/authenticator.go pkg/hmac.go lib/tls/config.go pkg/signing/verify.go \
+    src/bcrypt_util.py src/tokens.py src/secrets.py src/SignInPage.tsx certs/ca.pem src/MfaSetup.kt >"$W/pf-auth2.z"
+"$PF" --files "$W/pf-auth2.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: authenticate, authorize, hmac, tls, signing, bcrypt, tokens, secrets, SignIn, certs, Mfa -> security max (0.15.3)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 12 ]'
+nul .gitlab-ci.yml .gitlab/ci/build.yml .circleci/config.yml Jenkinsfile ci/Jenkinsfile.release azure-pipelines.yml \
+    bitbucket-pipelines.yml .buildkite/pipeline.yml .travis.yml .drone.yml cloudbuild.yaml buildspec.yml \
+    docs/gitlab-ci.md src/jenkins.ts sub/.travis.yml >"$W/pf-ci.z"
+"$PF" --files "$W/pf-ci.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: CI files outside GitHub at the root, a Jenkinsfile anywhere -> security max (0.15.3)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 12 ] && pfhas "security max ci/Jenkinsfile.release" && ! grep -q "docs/gitlab-ci\|jenkins.ts\|sub/.travis" "$W/pf.out"'
+# W2 of #33: the other default names Woodpecker, Buildkite, Drone and AppVeyor read.
+nul .woodpecker.yaml buildkite.yml buildkite.yaml buildkite.json buildkite/pipeline.yml .drone.yaml appveyor.yaml \
+    sub/buildkite.yml docs/buildkite/notes.md >"$W/pf-ci2.z"
+"$PF" --files "$W/pf-ci2.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: .woodpecker.yaml, buildkite.{yml,yaml,json}, buildkite/, .drone.yaml, appveyor.yaml -> security max (W2 of #33)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 7 ] && ! grep -q "sub/buildkite\|docs/buildkite" "$W/pf.out"'
 # W2 (PR #29): the scripts a workflow runs, and the files that instruct an agent, are CI and agent
 # configuration too.
 nul .github/scripts/release.sh AGENTS.md sub/AGENTS.md CLAUDE.md pkg/CLAUDE.local.md GEMINI.md \

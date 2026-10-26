@@ -25,8 +25,16 @@ WHAT IT REPORTS (`kind`):
 
   zero-width      U+200B-U+200D, U+2060-U+2064, U+180E
   bom             U+FEFF anywhere
-  bidi            U+202A-U+202E and U+2066-U+2069 (the Trojan Source overrides and isolates)
+  bidi            U+202A-U+202E and U+2066-U+2069 (the Trojan Source overrides and isolates), and
+                  the marks U+200E, U+200F and U+061C
   tag             U+E0000-U+E007F (Unicode tag characters, invisible ASCII look-alikes)
+  filler          U+00AD (soft hyphen), U+034F, U+115F, U+1160, U+17B4, U+17B5, U+3164 and U+FFA0
+                  (blank fillers that render as nothing)
+  variation-selector
+                  a run of two or more variation selectors (U+FE00-U+FE0F, U+E0100-U+E01EF). One
+                  selector after a character is how an emoji or an ideograph picks its glyph, so a
+                  single one is not reported; a run of them is how bytes are smuggled after one
+                  visible character.
   html-comment    an HTML comment that is not one of the markers above
   details         a `<details>` element (collapsed by default on GitHub)
   invisible-html  an HTML element styled or marked to be invisible (`display:none`,
@@ -36,9 +44,13 @@ WHAT IT REPORTS (`kind`):
                   `[//]: # (text)` or `[comment]: <> (text)`, in every shape CommonMark reads as
                   one: the destination on the next line, an escaped `]` or a line break in the
                   label, and inside a blockquote or list item. GitHub renders a definition as
-                  nothing, so this is the Markdown form of an HTML comment. A definition with a
-                  real destination is not reported: the text it hides is a URL, and the hits on
-                  every ordinary reference-style link would bury the real ones.
+                  nothing, so this is the Markdown form of an HTML comment. A definition whose
+                  destination is a `#fragment` or that carries a title (`"..."`, `'...'`,
+                  `(...)`) is reported too when no link in the same text uses its label: the
+                  fragment and the title are free text nobody sees. A definition with a plain URL
+                  and no title is not reported, nor one whose label a link uses (its title shows
+                  as the link's tooltip). Each added line of a diff is scanned alone, so there a
+                  titled definition is reported even when another line uses it.
 
 NOT DONE: homoglyphs (a Cyrillic `a` in an identifier). Telling a homoglyph from an ordinary
 non-Latin word needs a confusables table and per-language context, and without one the hits on
@@ -66,6 +78,7 @@ it, ASCII-escaped and cut to 120 characters, so an invisible character is shown 
 EXIT CODES: 0 nothing found, 1 at least one hit, 2 an input could not be read (git failed, pr-json.py
 failed, a file is missing); then nothing is printed on stdout. Exit 2 never means clean.
 """
+import bisect
 import importlib.util
 import json
 import os
@@ -106,9 +119,13 @@ CHARS = {}
 for cp in list(range(0x200B, 0x200E)) + list(range(0x2060, 0x2065)) + [0x180E]:
     CHARS[cp] = "zero-width"
 CHARS[0xFEFF] = "bom"
-for cp in list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A)):
+for cp in list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A)) + [0x200E, 0x200F, 0x061C]:
     CHARS[cp] = "bidi"
+for cp in (0x00AD, 0x034F, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x3164, 0xFFA0):
+    CHARS[cp] = "filler"
 CHAR_RE = re.compile("[" + "".join(re.escape(chr(c)) for c in sorted(CHARS)) + "\U000E0000-\U000E007F]")
+# Two or more variation selectors in a row: one picks a glyph, a run carries hidden bytes.
+VS_RUN_RE = re.compile("[\uFE00-\uFE0F\U000E0100-\U000E01EF]{2,}")
 
 DETAILS_RE = re.compile(r"<details\b", re.I)
 # A link reference definition whose destination is `#` or `<>`, in the shapes CommonMark accepts: any
@@ -122,11 +139,83 @@ _LR_PREFIX = r"[ \t]*(?:(?:>|[-*+][ \t]|\d{1,9}[.)][ \t])[ \t]*)*"
 LINKREF_RE = re.compile(
     r"^" + _LR_PREFIX + r"\[(?:[^\[\]\\]|\\[\s\S]){0,999}\]:[ \t]*(?:\n" + _LR_PREFIX + r")?"
     r"(?:#|<>)(?=[ \t]|$)", re.M)
-INVISIBLE_RE = re.compile(
-    r"<[a-z][a-z0-9]*\b[^>]*?(?:"
-    r"\bstyle\s*=\s*[\"'][^\"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?![.\d]*[1-9])"
-    r"|opacity\s*:\s*0(?![.\d]*[1-9])|color\s*:\s*transparent)"
-    r"|\shidden(?:\s|=|/?>))", re.I)
+# Any link reference definition: its label, its destination and whether a title follows it (on the same
+# line or the next). The destination and the space before a title are disjoint classes, so a long line
+# fails in one pass.
+LINKREF_ANY_RE = re.compile(
+    r"^" + _LR_PREFIX + r"\[((?:[^\[\]\\]|\\[\s\S]){0,999})\]:[ \t]*(?:\n" + _LR_PREFIX + r")?"
+    r"(<[^<>\n]*>|[^\s<]\S*)((?:[ \t]+|[ \t]*\n" + _LR_PREFIX + r")[\"'(])?", re.M)
+# An HTML element styled or marked to be invisible. The tag's start, its `>` and the invisibility
+# marker are found by three linear scans and joined by position, so a text of many `<a` with no `>`
+# costs one pass instead of one pass per `<a`. A marker counts when a tag start sits after the last
+# `>` before it, which is what `<tag [^>]* marker` matched.
+TAG_START_RE = re.compile(r"<[a-z][a-z0-9]*\b", re.I)
+STYLE_ATTR_RE = re.compile(r"\bstyle\s*=\s*[\"']([^\"']*)", re.I)
+HIDING_STYLE_RE = re.compile(
+    r"display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?![.\d]*[1-9])"
+    r"|opacity\s*:\s*0(?![.\d]*[1-9])|color\s*:\s*transparent", re.I)
+HIDDEN_ATTR_RE = re.compile(r"\shidden(?:\s|=|/?>)", re.I)
+
+
+def invisible_html(text):
+    """(start, end) of each element hidden by its style or its `hidden` attribute: start is the tag's
+    `<`, end the end of the marker. One per tag."""
+    gts = [m.start() for m in re.finditer(">", text)]
+    starts = [m.start() for m in TAG_START_RE.finditer(text)]
+    marks = []
+    for m in STYLE_ATTR_RE.finditer(text):
+        h = HIDING_STYLE_RE.search(m.group(1))
+        if h:
+            marks.append((m.start(), m.start(1) + h.end()))
+    marks += [(m.start(), m.end()) for m in HIDDEN_ATTR_RE.finditer(text)]
+    found = {}
+    for pos, end in sorted(marks):
+        k = bisect.bisect_left(gts, pos)
+        last_gt = gts[k - 1] if k else -1
+        j = bisect.bisect_right(starts, last_gt)
+        if j < len(starts) and starts[j] < pos and starts[j] not in found:
+            found[starts[j]] = end
+    return sorted(found.items())
+
+
+def norm_label(label):
+    return " ".join(label.split()).casefold()
+
+
+def label_uses(text):
+    """The normalised labels of every `[label]` not followed by `:`, the label up to 999 characters or
+    escape pairs with no unescaped bracket in it, found left to right without overlap as the regex
+    `\\[((?:[^\\[\\]\\\\]|\\\\[\\s\\S]){0,999})\\](?!:)` would. One pass splits the text into escape pairs
+    and single characters; the character after any `[` always starts a piece, so every `[` (escaped
+    or not) sees the same split, and its label ends at the next unescaped bracket, found by bisect.
+    The regex rescanned up to 999 pairs from every `[`, about 1000 steps per byte on a run of `\\[`."""
+    n = len(text)
+    piece = [0] * (n + 1)
+    brackets = []
+    i = k = 0
+    while i < n:
+        piece[i] = k
+        if text[i] == "\\" and i + 1 < n:
+            i += 2
+        else:
+            if text[i] in "[]":
+                brackets.append(i)
+            i += 1
+        k += 1
+    piece[n] = k
+    uses, resume = set(), 0
+    for m in re.finditer(r"\[", text):
+        p = m.start()
+        if p < resume:
+            continue
+        j = bisect.bisect_right(brackets, p)
+        if j == len(brackets):
+            break
+        r = brackets[j]
+        if text[r] == "]" and piece[r] - piece[p + 1] <= 999 and text[r + 1:r + 2] != ":":
+            uses.add(norm_label(text[p + 1:r]))
+            resume = r + 1
+    return uses
 
 
 def esc(s):
@@ -169,10 +258,22 @@ def scan_text(text, verdict_re, source, where, line_offset=0):
         add(m.start(), "html-comment", "unterminated" if end < 0 else "%d characters" % (end + 3 - m.start()))
     for m in DETAILS_RE.finditer(text):
         add(m.start(), "details", "<details>")
-    for m in INVISIBLE_RE.finditer(text):
-        add(m.start(), "invisible-html", esc(m.group())[:60])
+    for m in VS_RUN_RE.finditer(text):
+        add(m.start(), "variation-selector", "%d selectors from U+%04X" % (len(m.group()), ord(m.group()[0])))
+    for start, end in invisible_html(text):
+        add(start, "invisible-html", esc(text[start:end])[:60])
+    seen = set()
     for m in LINKREF_RE.finditer(text):
+        seen.add(m.start())
         add(m.start(), "link-ref-comment", esc(m.group().strip())[:60])
+    used = None
+    for m in LINKREF_ANY_RE.finditer(text):
+        if m.start() in seen or not (m.group(2).startswith("#") or m.group(3)):
+            continue
+        if used is None:
+            used = label_uses(text)
+        if norm_label(m.group(1)) not in used:
+            add(m.start(), "link-ref-comment", esc(m.group().strip())[:60])
     return hits
 
 

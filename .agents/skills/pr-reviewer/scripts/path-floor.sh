@@ -31,6 +31,12 @@
 #                              workflow runs), action.yml or action.yaml in any directory, CODEOWNERS
 #                              (root, .github/, docs/), .mcp.json, a Dockerfile or Containerfile (also
 #                              Dockerfile.<x> and <x>.dockerfile): the files that run CI or an agent
+#   security         max       CI outside GitHub, at the root: .gitlab-ci.yml, .gitlab/ci/**,
+#                              .circleci/**, .buildkite/**, buildkite/**, buildkite.(yml|yaml|json),
+#                              .woodpecker(.yml|.yaml|/**), .tekton/**, .travis.yml, azure-pipelines.yml,
+#                              bitbucket-pipelines.yml, .drone(.yml|.yaml), cloudbuild.yaml, buildspec.yml,
+#                              (.)appveyor(.yml|.yaml), codemagic.yaml, and a Jenkinsfile (or
+#                              Jenkinsfile.<x>) in any directory
 #   security         max       agent directories at any depth: .claude/**, .codex/**, .opencode/**,
 #                              .cursor/**, .gemini/**, .windsurf/**, and the skills/ folder of .agents,
 #                              .roo, .cline, .kiro, .devin and .junie (every project skill folder
@@ -40,9 +46,11 @@
 #                              .github/{instructions,agents,skills,prompts}/** (root only, where GitHub
 #                              reads them), opencode.json(c), .cursorrules, .windsurfrules
 #   security         max       authentication, authorisation and cryptography: a path segment or
-#                              file stem such as auth, oauth, login, session, password, crypto,
-#                              cipher, jwt, saml, oidc, rbac, acl, permission(s), credential(s),
-#                              also as a camelCase or PascalCase word (AuthService.ts, jwtUtils.go)
+#                              file stem such as auth, authenticate, authorize, oauth, login, signin,
+#                              mfa, session, password, token, secret, crypto, cipher, hmac, signing,
+#                              tls, cert, jwt, saml, oidc, rbac, acl, permission(s), credential(s),
+#                              bcrypt (the AUTH pattern below has the full list), also as a camelCase
+#                              or PascalCase word (AuthService.ts, jwtUtils.go)
 #   security         standard  migrations (below)
 #   data-integrity   standard  migrations: a directory named migrations, migration, migrate or
 #                              alembic, or a schema file (schema.sql, structure.sql, schema.rb,
@@ -57,7 +65,7 @@
 #
 # Names are compared case-insensitively, so `Codeowners` on a case-insensitive file system counts.
 # The CI, agent and instruction classes are the ones push-guard.sh refuses for the fixer, plus action
-# metadata and Dockerfiles. A project may add units in its own guide; nothing may remove one from this list.
+# metadata, Dockerfiles and CI outside GitHub. A project may add units in its own guide; nothing may remove one from this list.
 #
 # `review-cycle.sh lint-report` computes this floor for the report it checks and refuses a report
 # whose `findings` block does not list each mandatory unit as run in its `mandatory_units:` field
@@ -78,7 +86,7 @@ case "${1:-}" in
   --files) [ $# -eq 2 ] || die2 "$USAGE"; mode="files"; file="$2" ;;
   --pr) [ $# -eq 2 ] || die2 "$USAGE"; mode="pr"; pr="$2"
         case "$pr" in ''|*[!0-9]*) die2 "--pr needs a pull request number; $USAGE" ;; esac ;;
-  -h|--help) sed -n '2,70p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,77p' "$0"; exit 0 ;;
   -*) die2 "$USAGE" ;;
   *) [ $# -eq 2 ] || die2 "$USAGE"; mode="git"; base="$1"; head="$2" ;;
 esac
@@ -155,6 +163,13 @@ else:
              % (len(entries), want))
 
 CI_PREFIXES = (".github/workflows/", ".github/actions/", ".github/scripts/")
+# CI outside GitHub Actions, at the root where each service reads it: what runs on every push.
+OTHER_CI_PREFIXES = (".circleci/", ".buildkite/", "buildkite/", ".gitlab/ci/", ".woodpecker/", ".tekton/")
+OTHER_CI_FILES = {".gitlab-ci.yml", ".gitlab-ci.yaml", ".travis.yml", "azure-pipelines.yml",
+                  "azure-pipelines.yaml", "bitbucket-pipelines.yml", ".drone.yml", ".drone.yaml",
+                  ".woodpecker.yml", ".woodpecker.yaml", "buildkite.yml", "buildkite.yaml", "buildkite.json",
+                  "cloudbuild.yaml", "cloudbuild.yml", "buildspec.yml", "buildspec.yaml", "appveyor.yml",
+                  ".appveyor.yml", "appveyor.yaml", ".appveyor.yaml", "codemagic.yaml"}
 # Agent directories, matched at any depth: a harness also reads them in a subdirectory of a monorepo
 # (a nested .cursor/rules, .claude/skills or .agents/skills). AGENT_DIRS count whole; SKILL_PARENTS
 # count through their skills/ folder, which is where install.sh puts these skills for each harness
@@ -169,10 +184,18 @@ INSTRUCTION_FILES = {".github/copilot-instructions.md", "opencode.json", "openco
                      ".windsurfrules"}
 INSTRUCTION_NAMES = {"agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md"}
 CODEOWNERS = {"codeowners", ".github/codeowners", "docs/codeowners"}
+# Auth and crypto words, matched as whole path components. The broad ones (token, secret, signature,
+# cert, tls) also catch paths that are not about security, such as src/lexer/token.rs or
+# docs/signature.md. That is on purpose: a floor that over-includes costs review effort, one that
+# misses costs safety. Do not trim a word to cut those extra hits.
 AUTH = re.compile(
     r"(?:^|[/._-])(auth|authn|authz|authentication|authorization|authorisation|oauth|oauth2|login|logout|"
+    r"authenticate|authenticated|authenticator|authenticators|authorize|authorise|authorized|authorised|"
+    r"authorizer|authorizers|signin|signup|sign[-_]in|sign[-_]up|log[-_]in|logon|mfa|totp|otp|webauthn|passkey|passkeys|csrf|"
     r"session|sessions|password|passwords|passwd|crypto|cryptography|cipher|ciphers|encrypt|encryption|"
-    r"decrypt|jwt|saml|oidc|sso|rbac|acl|acls|permission|permissions|credential|credentials)(?=$|[/._-])")
+    r"decrypt|jwt|jwk|jwks|saml|oidc|sso|rbac|abac|acl|acls|permission|permissions|credential|credentials|"
+    r"token|tokens|secret|secrets|apikey|apikeys|hmac|signing|signature|signatures|tls|ssl|x509|pki|cert|"
+    r"certs|certificate|certificates|keystore|keychain|kms|bcrypt|scrypt|argon2|pbkdf2)(?=$|[/._-])")
 MIGRATION_DIRS = {"migrations", "migration", "migrate", "alembic"}
 SCHEMAS = {"schema.sql", "structure.sql", "schema.rb", "schema.prisma"}
 MANIFESTS = {
@@ -195,7 +218,8 @@ def units(path):
     base = p.rsplit("/", 1)[-1]
     parts = p.split("/")
     out = []
-    if (p.startswith(CI_PREFIXES) or agent_dir(parts[:-1]) or p in CODEOWNERS or p == ".mcp.json"
+    if (p.startswith(CI_PREFIXES) or p.startswith(OTHER_CI_PREFIXES) or p in OTHER_CI_FILES
+            or base == "jenkinsfile" or base.startswith("jenkinsfile.") or agent_dir(parts[:-1]) or p in CODEOWNERS or p == ".mcp.json"
             or p.startswith(INSTRUCTION_PREFIXES) or p in INSTRUCTION_FILES or base in INSTRUCTION_NAMES
             or base in ("action.yml", "action.yaml", "dockerfile", "containerfile")
             or base.startswith(("dockerfile.", "containerfile.")) or base.endswith(".dockerfile")):
