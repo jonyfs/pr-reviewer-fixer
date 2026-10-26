@@ -35,8 +35,13 @@
 #                              .circleci/**, .buildkite/**, buildkite/**, buildkite.(yml|yaml|json),
 #                              .woodpecker(.yml|.yaml|/**), .tekton/**, .travis.yml, azure-pipelines.yml,
 #                              bitbucket-pipelines.yml, .drone(.yml|.yaml), cloudbuild.yaml, buildspec.yml,
-#                              (.)appveyor(.yml|.yaml), codemagic.yaml, and a Jenkinsfile (or
-#                              Jenkinsfile.<x>) in any directory
+#                              (.)appveyor(.yml|.yaml), codemagic.yaml, .cirrus.yml, .cirrus.star,
+#                              .semaphore/**, .drone.jsonnet, .drone.star, bitrise.yml,
+#                              .azure-pipelines/**, codefresh.yml, .codefresh/**, and a Jenkinsfile
+#                              (or Jenkinsfile.<x>) in any directory. A CI config can load files from
+#                              any path (GitLab `include: local:`, a Jenkinsfile `load`); those files
+#                              are not summoned by name, and the change to the config that names them
+#                              is, so the security unit reads what it loads.
 #   security         max       agent directories at any depth: .claude/**, .codex/**, .opencode/**,
 #                              .cursor/**, .gemini/**, .windsurf/**, and the skills/ folder of .agents,
 #                              .roo, .cline, .kiro, .devin and .junie (every project skill folder
@@ -55,14 +60,17 @@
 #   data-integrity   standard  migrations: a directory named migrations, migration, migrate or
 #                              alembic, or a schema file (schema.sql, structure.sql, schema.rb,
 #                              schema.prisma)
+#   security         standard  infrastructure and deployment (below): IAM, network and secret
+#                              settings live there
 #   reliability      standard  infrastructure and deployment: a directory named terraform, k8s,
 #   operability      standard  kubernetes, helm, charts, kustomize, ansible, pulumi, cloudformation,
 #                              infra or infrastructure; *.tf, *.tfvars, *.tf.json, *.hcl (not
 #                              .terraform.lock.hcl), *.nomad; Chart.yaml, kustomization.y(a)ml,
 #                              (docker-)compose*.y(a)ml, Pulumi(.<stack>).yaml, skaffold.yaml,
 #                              serverless.y(a)ml, fly.toml, Procfile, values*.y(a)ml under charts/
-#   privacy          standard  a path segment or word such as privacy, gdpr, lgpd, consent, pii, dsar,
-#                              personal-data, data-subject, data-retention, anonymise, redact
+#   privacy          standard  a path segment or word such as privacy, gdpr, lgpd, consent(ed|s|ing),
+#                              pii, dsar, personal-data, data-subject, data-retention,
+#                              anonymise(d)/anonymization, pseudonymise(d), redact(ed|ion|ing)
 #   dependencies     standard  manifests and lockfiles (package.json, package-lock.json, yarn.lock,
 #                              pnpm-lock.yaml, requirements*.txt, pyproject.toml, poetry.lock,
 #                              uv.lock, Pipfile(.lock), go.mod, go.sum, Cargo.toml, Cargo.lock,
@@ -94,7 +102,7 @@ case "${1:-}" in
   --files) [ $# -eq 2 ] || die2 "$USAGE"; mode="files"; file="$2" ;;
   --pr) [ $# -eq 2 ] || die2 "$USAGE"; mode="pr"; pr="$2"
         case "$pr" in ''|*[!0-9]*) die2 "--pr needs a pull request number; $USAGE" ;; esac ;;
-  -h|--help) sed -n '2,86p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,94p' "$0"; exit 0 ;;
   -*) die2 "$USAGE" ;;
   *) [ $# -eq 2 ] || die2 "$USAGE"; mode="git"; base="$1"; head="$2" ;;
 esac
@@ -172,12 +180,14 @@ else:
 
 CI_PREFIXES = (".github/workflows/", ".github/actions/", ".github/scripts/")
 # CI outside GitHub Actions, at the root where each service reads it: what runs on every push.
-OTHER_CI_PREFIXES = (".circleci/", ".buildkite/", "buildkite/", ".gitlab/ci/", ".woodpecker/", ".tekton/")
+OTHER_CI_PREFIXES = (".circleci/", ".buildkite/", "buildkite/", ".gitlab/ci/", ".woodpecker/", ".tekton/",
+                     ".semaphore/", ".azure-pipelines/", ".codefresh/")
 OTHER_CI_FILES = {".gitlab-ci.yml", ".gitlab-ci.yaml", ".travis.yml", "azure-pipelines.yml",
                   "azure-pipelines.yaml", "bitbucket-pipelines.yml", ".drone.yml", ".drone.yaml",
                   ".woodpecker.yml", ".woodpecker.yaml", "buildkite.yml", "buildkite.yaml", "buildkite.json",
                   "cloudbuild.yaml", "cloudbuild.yml", "buildspec.yml", "buildspec.yaml", "appveyor.yml",
-                  ".appveyor.yml", "appveyor.yaml", ".appveyor.yaml", "codemagic.yaml"}
+                  ".appveyor.yml", "appveyor.yaml", ".appveyor.yaml", "codemagic.yaml", ".cirrus.yml",
+                  ".cirrus.star", ".drone.jsonnet", ".drone.star", "bitrise.yml", "codefresh.yml"}
 # Agent directories, matched at any depth: a harness also reads them in a subdirectory of a monorepo
 # (a nested .cursor/rules, .claude/skills or .agents/skills). AGENT_DIRS count whole; SKILL_PARENTS
 # count through their skills/ folder, which is where install.sh puts these skills for each harness
@@ -212,7 +222,8 @@ INFRA_NAMES = {"chart.yaml", "kustomization.yaml", "kustomization.yml", "compose
                "pulumi.yaml", "skaffold.yaml", "serverless.yml", "serverless.yaml", "fly.toml", "procfile"}
 PRIVACY = re.compile(
     r"(?:^|[/._-])(privacy|gdpr|lgpd|ccpa|consent|consents|pii|dsar|personal[-_]data|personaldata|"
-    r"data[-_]subject|data[-_]retention|anonymi[sz]e|anonymi[sz]ation|pseudonymi[sz]e|redact|redaction)(?=$|[/._-])")
+    r"consented|consenting|data[-_]subject|data[-_]retention|anonymi[sz](?:e|ed|es|ing|ation)|"
+    r"pseudonymi[sz](?:e|ed|es|ing|ation)|redact|redacted|redacting|redaction)(?=$|[/._-])")
 SCHEMAS = {"schema.sql", "structure.sql", "schema.rb", "schema.prisma"}
 MANIFESTS = {
     "package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml",
@@ -251,7 +262,7 @@ def units(path):
             or base.endswith((".tf", ".tfvars", ".tf.json", ".nomad")) or (base.endswith(".hcl") and base != ".terraform.lock.hcl")
             or re.fullmatch(r"(?:docker-)?compose[^/]*\.ya?ml", base) or re.fullmatch(r"pulumi\.[^/]+\.yaml", base)
             or re.fullmatch(r"values[^/]*\.ya?ml", base) and "charts" in parts[:-1]):
-        out += [("reliability", "standard"), ("operability", "standard")]
+        out += [("security", "standard"), ("reliability", "standard"), ("operability", "standard")]
     if PRIVACY.search(p) or PRIVACY.search(humps):
         out.append(("privacy", "standard"))
     if (base in MANIFESTS or re.fullmatch(r"requirements[^/]*\.(txt|in)", base)

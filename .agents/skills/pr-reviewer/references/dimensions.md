@@ -33,10 +33,12 @@ Evaluate every applicable dimension. Design is the highest-leverage; judge it be
 - Not every dimension applies to every PR. Skip cleanly those that don't, but always cover
   correctness, design, security, and tests, and every unit the path floor makes mandatory.
 - Severity per area follows [severity-and-verdict.md](severity-and-verdict.md): a defect that loses
-  data, exposes personal data, lets an attacker in (crafted input counts as a path) or causes a
-  production outage of any scope, one endpoint or one region included, is CRITICAL. A reliability,
-  scalability or operability defect short of that is a WARNING with its scenario (the load, the
-  failure or the deploy that triggers it), and a NOTE without one.
+  data, exposes personal data, gives an attacker a way in, causes a production outage of any scope
+  (one endpoint or one region included), or breaks an invariant the host project declares
+  non-negotiable is CRITICAL when an attacker or an ordinary trigger reaches it (crafted input, a
+  slow dependency, a restart, a retry, normal load). A reliability, scalability or operability
+  defect short of that is a WARNING with its scenario (the load, the failure or the deploy that
+  triggers it), and a NOTE without one.
 - Tie each finding to a specific dimension so the author sees the category of risk.
 - Weight design and correctness above style; a clean-looking PR with a design flaw is worse than a
   rough one that is structurally sound.

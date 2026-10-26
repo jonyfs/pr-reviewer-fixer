@@ -24,12 +24,12 @@ minimum. `scripts/path-floor.sh <base> <head>` does the mechanical part and prin
 | Paths | Units |
 |---|---|
 | `.github/workflows/**`, `.github/scripts/**`, `.github/actions/**`, `action.yml`, CODEOWNERS, `.mcp.json`, Dockerfiles | security at `max` |
-| CI outside GitHub: `.gitlab-ci.yml`, `.circleci/**`, `Jenkinsfile`, `azure-pipelines.yml`, `.buildkite/**` and others in the script's header | security at `max` |
+| CI outside GitHub: `.gitlab-ci.yml`, `.circleci/**`, `Jenkinsfile`, `azure-pipelines.yml`, `.buildkite/**`, `.cirrus.yml`, `.semaphore/**` and others in the script's header | security at `max` |
 | agent directories at any depth: `.claude/**`, `.codex/**`, `.opencode/**`, `.cursor/**`, `.gemini/**`, `.windsurf/**`, and the `skills/` folder of `.agents`, `.roo`, `.cline`, `.kiro`, `.devin` and `.junie` (every project skill folder `install.sh` writes) | security at `max` |
 | agent instruction files: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` in any directory, `.github/copilot-instructions.md`, `.github/instructions/**` (the script's header has the full list) | security at `max` |
 | authentication, authorisation and cryptography (`auth`, `authenticate`, `authorize`, `login`, `session`, `token`, `secret`, `crypto`, `hmac`, `tls`, `jwt`, ... as a path segment, a file stem or a camelCase word, so `AuthService.ts` counts) | security at `max` |
 | migrations and schema files | security and data-integrity |
-| infrastructure and deployment: Terraform and OpenTofu (`*.tf`, `*.tfvars`, `*.hcl`), Kubernetes, Helm and Kustomize (`k8s/`, `kubernetes/`, `helm/`, `charts/`, `Chart.yaml`, `values*.yaml` under `charts/`, `kustomization.yaml`), Compose files, Pulumi and CloudFormation, Ansible | reliability and operability |
+| infrastructure and deployment: Terraform and OpenTofu (`*.tf`, `*.tfvars`, `*.hcl`), Kubernetes, Helm and Kustomize (`k8s/`, `kubernetes/`, `helm/`, `charts/`, `Chart.yaml`, `values*.yaml` under `charts/`, `kustomization.yaml`), Compose files, Pulumi and CloudFormation, Ansible | security (standard), reliability and operability |
 | privacy-named paths (`privacy`, `gdpr`, `lgpd`, `consent`, `pii`, `personal-data` as a segment or a word) | privacy |
 | manifests and lockfiles | dependencies |
 

@@ -1,7 +1,7 @@
 {
   "description": "Privacy (LGPD, GDPR). The email, CPF and name go to a third-party log service. Logging the user id is enough for support.",
   "defects": [
-    {"id": "D1", "file": "src/accounts/signup.py", "line": 8, "tolerance": 0, "min_severity": "WARNING", "note": "personal data, including a CPF, written to logs sent to a third party"}
+    {"id": "D1", "file": "src/accounts/signup.py", "line": 8, "tolerance": 0, "min_severity": "CRITICAL", "note": "personal data, including a CPF, written to logs sent to a third party: an exposure to someone outside the controller"}
   ],
   "decoys": [
     {"file": "src/accounts/signup.py", "line": 9, "tolerance": 0, "note": "only the internal id, fine"}

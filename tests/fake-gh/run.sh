@@ -227,6 +227,20 @@ python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
 echo "IC_0 mallory" >"$FAKE_DIR/edited-by"
 python3 -I "$GATE" 7 >"$W/gout" 2>&1; g1=$?
 check "gate: an older PASSED edited by its author passes; edited by another login it is BLOCKED history" eval '[ $g0 = 0 ] && [ $g1 != 0 ]'
+# 0.18.0 (N5 of #38): the last editor comes from the edit history, not from `editor`, which the fake
+# sets to the FIRST editor here. A foreign edit after the author's own one is caught; the author's
+# edit after a foreign one clears it.
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$PS1,$PH1]" OPEN)"; echo "IC_0 github-actions,mallory" >"$FAKE_DIR/edit-history"
+python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+python3 -I "$SRC/pr-json.py" 7 >"$W/pjh" 2>/dev/null
+check "gate: an author's edit then another login's -> the last editor is the other login, BLOCKED history (0.18.0)" \
+  eval '[ $g1 != 0 ] && [ "$(jq -r ".editedComments[0].editor.login" "$W/pjh")" = mallory ]'
+echo "IC_0 mallory,github-actions" >"$FAKE_DIR/edit-history"
+python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
+python3 -I "$SRC/pr-json.py" 7 >"$W/pjh" 2>/dev/null
+check "gate: another login's edit then the author's -> the last editor is the author, it passes (0.18.0)" \
+  eval '[ $g0 = 0 ] && [ "$(jq -r ".editedComments[0].editor.login" "$W/pjh")" = github-actions ]'
+rm -f "$FAKE_DIR/edit-history"
 # W1 of #25: the same, with the edit breaking the marker shape. It is still BLOCKED history.
 PS1X="$(mc github-actions "<!-- adversarial_review: sha=$B verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$PS1X,$PH1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
@@ -249,6 +263,9 @@ printf 'alice bob\ncarol dave\nerin frank\n' >"$FAKE_DIR/deleted-events"; echo 2
 : >"$FAKE_DIR/calls.log"; python3 -I "$SRC/pr-json.py" 7 >"$W/pjd" 2>/dev/null; jd=$?
 check "pr-json.py reads deletions past the first page (N2 of #34)" \
   eval '[ $jd = 0 ] && [ "$(jq "[.deletedComments[].id] | join(\",\")" -r "$W/pjd")" = "CDE_0,CDE_1,CDE_2" ] && [ $(calls "api graphql") = 2 ]'
+touch "$FAKE_DIR/graphql-deleted-fail-after"; python3 -I "$SRC/pr-json.py" 7 >"$W/pjd2" 2>"$W/pjd2.err"; jd2=$?; rm -f "$FAKE_DIR/graphql-deleted-fail-after"
+check "pr-json.py: a failed later page of deletions -> fails closed, nothing on stdout (N4 of #38)" \
+  eval '[ $jd2 != 0 ] && [ ! -s "$W/pjd2" ] && grep -q "deletions cannot be checked" "$W/pjd2.err"'
 rm -f "$FAKE_DIR/deleted-page-size"; echo "github-actions mallory" >"$FAKE_DIR/deleted-events"
 touch "$FAKE_DIR/graphql-deleted-fail"; python3 -I "$SRC/pr-json.py" 7 >"$W/pj" 2>/dev/null; j1=$?; rm -f "$FAKE_DIR/graphql-deleted-fail"
 touch "$FAKE_DIR/graphql-deleted-badshape"; python3 -I "$SRC/pr-json.py" 7 >"$W/pj2" 2>/dev/null; j2=$?; rm -f "$FAKE_DIR/graphql-deleted-badshape"
@@ -371,6 +388,11 @@ check "ensure-labels (no PR) -> six label create --force calls, rc 0" eval '[ $r
 check "ensure-labels colors are distinct" eval '[ $(grep -o -- "--color [0-9a-f]*" "$FAKE_DIR/calls.log" | sort -u | wc -l) -eq 6 ]'
 touch "$FAKE_DIR/offline"; "$RC" ensure-labels >/dev/null 2>&1; r=$?
 check "ensure-labels offline -> rc 2" eq "$r" 2
+rm -f "$FAKE_DIR/offline"; : >"$FAKE_DIR/calls.log"; echo "review:fixing" >"$FAKE_DIR/label-fail"
+"$RC" ensure-labels >"$W/out" 2>"$W/err"; r=$?
+check "ensure-labels with one label failing -> rc 2, that one named, the other five ok in order (0.18.0)" \
+  eval '[ $r = 2 ] && grep -q "could not create or update: review:fixing " "$W/err" && [ "$(tr "\n" " " <"$W/out")" = "label review:pending ok label review:running ok label review:blocked ok label review:passed ok label review:needs-human ok " ] && [ $(calls "label create") = 6 ]'
+rm -f "$FAKE_DIR/label-fail"
 
 # ---- marker author allowlist --------------------------------------------------------------
 GOOD_PASS="$(mc github-actions "<!-- adversarial-review: sha=$D verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
@@ -878,6 +900,10 @@ check "parse(): a 0.7.x warning-only BLOCKED with no block_at is read as warning
 EDJ="$(printf '{"number":7,"headRefOid":"%s","labels":[],"state":"OPEN","comments":[],"editedComments":[{"author":{"login":"github-actions"},"editor":{"login":"mallory"},"url":"u1","body":"plain text now"}]}' "$D")"
 o="$(pp "$EDJ")"
 check "parse(): a trusted comment edited by another login, no longer a marker -> foreign edit named, BLOCKED history kept (#4 N1)" eq "$o" "7|$D||||||-|-|yes|-|0|mallory|"
+# 0.18.0 (#39 N4): a marker half that throws is an unreadable pull request, never "no marker".
+o="$(pp "$(printf '{"number":7,"headRefOid":"%s","labels":[],"state":"OPEN","comments":{"x":1}}' "$D")")"; r=$?
+check "parse(): a comments list the marker reader cannot read -> stops, could not read, no fields (0.18.0)" \
+  eval '[ -z "$o" ] && grep -q "could not read the pull request fields" "$W/perr"'
 pp "$(printf '{"number":7,"headRefOid":"%s","labels":[],"state":"OPEN\\u001fx","comments":[]}' "$D")" >/dev/null; r=$?
 check "parse(): a field holding the unit separator -> exit 2, could not read the fields (#4 N1)" eval '[ $r = 2 ] && grep -q "could not read the pull request fields" "$W/perr"'
 # T3: an upper-case block_at value, read by status and the gate under REVIEW_BLOCK_AT=warning.
@@ -1019,6 +1045,21 @@ nul .woodpecker.yaml buildkite.yml buildkite.yaml buildkite.json buildkite/pipel
 "$PF" --files "$W/pf-ci2.z" >"$W/pf.out" 2>&1; r=$?
 check "path-floor: .woodpecker.yaml, buildkite.{yml,yaml,json}, buildkite/, .drone.yaml, appveyor.yaml -> security max (W2 of #33)" \
   eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 7 ] && ! grep -q "sub/buildkite\|docs/buildkite" "$W/pf.out"'
+# 0.18.0 (#39 N5, #38 N1, #38 N3): more CI names, inflected privacy words, and infrastructure summons
+# security too.
+nul .cirrus.yml .cirrus.star .semaphore/semaphore.yml .drone.jsonnet .drone.star bitrise.yml .azure-pipelines/ci.yml \
+    codefresh.yml .codefresh/build.yml sub/.cirrus.yml >"$W/pf-ci3.z"
+"$PF" --files "$W/pf-ci3.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: Cirrus, Semaphore, Drone jsonnet/star, Bitrise, .azure-pipelines, Codefresh -> security max; not under sub/ (0.18.0)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 9 ] && ! grep -q "sub/.cirrus" "$W/pf.out"'
+nul src/anonymized_export.py src/pseudonymised.go app/redacted_view.ts lib/consented_users.rb src/anonymizes.py src/redactor.ts >"$W/pf-priv2.z"
+"$PF" --files "$W/pf-priv2.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: anonymized, pseudonymised, redacted, consented, anonymizes -> privacy; redactor does not (0.18.0)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^privacy standard " "$W/pf.out")" = 5 ] && ! grep -q redactor "$W/pf.out"'
+nul infra/main.tf k8s/deploy.yaml >"$W/pf-infra2.z"
+"$PF" --files "$W/pf-infra2.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: infrastructure files summon security at standard too (0.18.0)" \
+  eval '[ $r = 0 ] && pfhas "security standard infra/main.tf" && pfhas "security standard k8s/deploy.yaml"'
 # 0.16.0: --help prints the whole header, down to the line before `set -u` (a fixed range once cut it).
 PF_LAST="$(awk '/^set -u$/ {print prev; exit} {prev=$0}' "$PF")"
 check "path-floor --help ends with the header's last line (0.16.0)" eval '[ "$("$PF" --help | tail -n 1)" = "$PF_LAST" ]'

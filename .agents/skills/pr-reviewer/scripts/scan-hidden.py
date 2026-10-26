@@ -49,8 +49,9 @@ WHAT IT REPORTS (`kind`):
                   `(...)`) is reported too when no link in the same text uses its label: the
                   fragment and the title are free text nobody sees. A definition with a plain URL
                   and no title is not reported, nor one whose label a link uses (its title shows
-                  as the link's tooltip). Each added line of a diff is scanned alone, so there a
-                  titled definition is reported even when another line uses it.
+                  as the link's tooltip). A `[label]` inside a code span or a fenced block is not a
+                  use. Each added line of a diff is scanned alone, so there a titled definition is
+                  reported even when another line uses it.
 
 NOT DONE: homoglyphs (a Cyrillic `a` in an identifier). Telling a homoglyph from an ordinary
 non-Latin word needs a confusables table and per-language context, and without one the hits on
@@ -218,6 +219,49 @@ def label_uses(text):
     return uses
 
 
+def blank_code(text):
+    """The text with fenced code blocks and inline code spans replaced by spaces (newlines kept), so a
+    `[label]` shown as code is not read as a link that uses the label. A fence is a line that opens
+    with three or more backticks or tildes (up to three spaces of indent) and closes with the same
+    character, at least as many times. A code span is a backtick run closed by the next run of the
+    same length, as CommonMark pairs them; each run is visited once, so the cost is linear."""
+    out = list(text)
+
+    def blank(a, b):
+        for k in range(a, b):
+            if out[k] != "\n":
+                out[k] = " "
+
+    pos, fence = 0, None
+    for line in text.split("\n"):
+        m = re.match(r" {0,3}(`{3,}|~{3,})", line)
+        if fence is None and m:
+            fence = (m.group(1)[0], len(m.group(1)))
+            blank(pos, pos + len(line))
+        elif fence is not None:
+            blank(pos, pos + len(line))
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1]:
+                fence = None
+        pos += len(line) + 1
+    flat = "".join(out)
+    runs = [(m.start(), m.end()) for m in re.finditer(r"`+", flat)]
+    by_len = {}
+    for idx, (a, b) in enumerate(runs):
+        by_len.setdefault(b - a, []).append(idx)
+    i = 0
+    while i < len(runs):
+        a, b = runs[i]
+        same = by_len[b - a]
+        j = bisect.bisect_right(same, i)
+        if j < len(same):
+            close = runs[same[j]]
+            blank(a, close[1])
+            i = same[j] + 1
+        else:
+            i += 1
+    return "".join(out)
+
+
 def esc(s):
     return ascii(s)[1:-1][:120]
 
@@ -271,7 +315,7 @@ def scan_text(text, verdict_re, source, where, line_offset=0):
         if m.start() in seen or not (m.group(2).startswith("#") or m.group(3)):
             continue
         if used is None:
-            used = label_uses(text)
+            used = label_uses(blank_code(text))
         if norm_label(m.group(1)) not in used:
             add(m.start(), "link-ref-comment", esc(m.group().strip())[:60])
     return hits

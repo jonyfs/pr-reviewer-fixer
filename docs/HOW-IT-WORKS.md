@@ -142,7 +142,7 @@ flowchart TD
    and agent directories such as `.claude/` and `.cursor/` at any depth), agent instruction files
    (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` and the like), Dockerfiles,
    authentication and cryptography get security at `max`, migrations get security and data integrity,
-   infrastructure and deployment files get reliability and operability, privacy-named paths get
+   infrastructure and deployment files get security, reliability and operability, privacy-named paths get
    privacy, manifests and lockfiles get dependencies. Nothing in the diff can remove one.
 2. **Acceptance conditions, pass 1 only.** Before any agent looks for defects, the reviewer writes a
    numbered list of conditions that would make this pull request pass, taken from its own stated

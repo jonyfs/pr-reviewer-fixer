@@ -37,8 +37,12 @@
 #                    .circleci/**, .buildkite/**, buildkite/** and buildkite.{yml,yaml,json},
 #                    .woodpecker(.yml|.yaml|/**), .tekton/**, .travis.yml, azure-pipelines.yml,
 #                    bitbucket-pipelines.yml, .drone.yml, cloudbuild.yaml, buildspec.yml,
-#                    appveyor.yml, codemagic.yaml (with their .yaml/.yml twins), and a Jenkinsfile
-#                    (or Jenkinsfile.<x>) in any directory
+#                    appveyor.yml, codemagic.yaml (with their .yaml/.yml twins), .cirrus.yml,
+#                    .cirrus.star, .semaphore/**, .drone.jsonnet, .drone.star, bitrise.yml,
+#                    .azure-pipelines/**, codefresh.yml, .codefresh/**, and a Jenkinsfile (or
+#                    Jenkinsfile.<x>) in any directory. A file a CI config loads from another
+#                    path (GitLab `include: local:`, a Jenkinsfile `load`) is not refused by name;
+#                    the reviewer's security unit reads what the config loads.
 #        actions     .github/actions/**
 #        codeowners  CODEOWNERS, .github/CODEOWNERS, docs/CODEOWNERS
 #        skills      the skills/ folder of .agents, .roo, .cline, .kiro, .devin or .junie, at any
@@ -182,11 +186,13 @@ const agentClass = (dirs) => {
   return "";
 };
 // CI outside GitHub Actions, at the root, as path-floor.sh lists it; a Jenkinsfile anywhere.
-const OTHER_CI_DIRS = [".circleci/", ".buildkite/", "buildkite/", ".gitlab/ci/", ".woodpecker/", ".tekton/"];
+const OTHER_CI_DIRS = [".circleci/", ".buildkite/", "buildkite/", ".gitlab/ci/", ".woodpecker/", ".tekton/",
+  ".semaphore/", ".azure-pipelines/", ".codefresh/"];
 const OTHER_CI_FILES = [".gitlab-ci.yml", ".gitlab-ci.yaml", ".travis.yml", "azure-pipelines.yml",
   "azure-pipelines.yaml", "bitbucket-pipelines.yml", ".drone.yml", ".drone.yaml", ".woodpecker.yml",
   ".woodpecker.yaml", "buildkite.yml", "buildkite.yaml", "buildkite.json", "cloudbuild.yaml", "cloudbuild.yml",
-  "buildspec.yml", "buildspec.yaml", "appveyor.yml", ".appveyor.yml", "appveyor.yaml", ".appveyor.yaml", "codemagic.yaml"];
+  "buildspec.yml", "buildspec.yaml", "appveyor.yml", ".appveyor.yml", "appveyor.yaml", ".appveyor.yaml", "codemagic.yaml",
+  ".cirrus.yml", ".cirrus.star", ".drone.jsonnet", ".drone.star", "bitrise.yml", "codefresh.yml"];
 const otherCI = (f) => { const b = f.split("/").pop();
   return OTHER_CI_DIRS.some((d) => f.startsWith(d)) || OTHER_CI_FILES.includes(f) || b === "jenkinsfile" || b.startsWith("jenkinsfile."); };
 const fileClass = (f) =>
@@ -200,7 +206,8 @@ const fileClass = (f) =>
 const PARENT = { ".github": "workflows actions codeowners instructions", ".github/workflows": "workflows",
   ".github/scripts": "workflows", ".github/actions": "actions", ".agents": "skills", ".agents/skills": "skills",
   ".claude": "claude", "docs": "codeowners", ".circleci": "workflows", ".buildkite": "workflows",
-  "buildkite": "workflows", ".gitlab": "workflows", ".gitlab/ci": "workflows", ".woodpecker": "workflows", ".tekton": "workflows", "codeowners": "codeowners", ".github/codeowners": "codeowners",
+  "buildkite": "workflows", ".gitlab": "workflows", ".gitlab/ci": "workflows", ".woodpecker": "workflows", ".tekton": "workflows",
+  ".semaphore": "workflows", ".azure-pipelines": "workflows", ".codefresh": "workflows", "codeowners": "codeowners", ".github/codeowners": "codeowners",
   "docs/codeowners": "codeowners", ".mcp.json": "mcp" };
 for (const d of INSTR_DIRS) PARENT[d.slice(0, -1)] = "instructions";
 // A directory at any depth that is, or is inside, an agent directory, or a skill parent (.roo, .agents).
