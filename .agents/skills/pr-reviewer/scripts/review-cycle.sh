@@ -495,13 +495,56 @@ parse() {
   # never retyped here: a second copy of the vocabulary is a second thing to forget, and an unlisted
   # state leaves `$LABEL` empty, which every caller reads as "nobody reviewed this".
   local fields
-  fields=$(printf '%s' "$json" | STATES_RE="$STATES_RE" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
+  fields=$(printf '%s' "$json" | STATES_RE="$STATES_RE" P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let head="",mk="";try{
     const p=JSON.parse(s),re=new RegExp("^"+process.env.STATES_RE+"$"),L=(p.labels||[]).map(x=>x.name);
     const a=[String(p.number||""),String(p.headRefOid||"").toLowerCase(),String(p.state||""),
       p.isDraft===true?"yes":"",L.filter(n=>re.test(n)).join(" "),L.includes("review:needs-human")?"yes":""];
     // A field holding the separator would shift every field after it. Print nothing instead: every
     // variable comes out empty, which callers read as "could not read the pull request".
-    if(!a.some(x=>x.includes("\x1f")))process.stdout.write(a.join("\x1f"))}catch(e){}})')
+    if(!a.some(x=>/[\x1e\x1f]/.test(x)))head=a.join("\x1f")}catch(e){}
+    if(!head)return;
+    try{
+    const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
+    const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
+    let last=null,blocked="no",maxp=0,foreign="-",fkind="-",fauthor="-",fwhere="-";
+    // A field of the space-joined answer cannot hold a space.
+    const tok=v=>String(v||"").replace(/[\s\x1e\x1f]/g,"")||"-";
+    for(const c of (JSON.parse(s).comments||[])){
+      if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
+      const mm=re.exec(c.body||"");
+      if(mm){last=mm;maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    for(const c of (JSON.parse(s).editedComments||[])){
+      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
+      if(active&&(!who||!allow.includes(who)))continue;
+      const mm=re.exec(c.body||"");
+      // Anyone with write access can edit another login'"'"'s comment, so a trusted comment edited by
+      // someone else may carry a number or verdict its author never wrote. It is reported (and
+      // counted as BLOCKED history, which only tightens), and `publish` and `budget` refuse on it.
+      // Whether the body still reads as a marker does not matter: an edit that breaks the marker
+      // would otherwise drop it from the count unseen, so any foreign edit counts (fails closed).
+      const ed=String((c&&c.editor&&c.editor.login)||"").toLowerCase();
+      if(ed!==who){foreign=tok(ed||"unknown");fkind="edit";fauthor=tok(who);fwhere=tok(c&&c.url);blocked="yes";}
+      // An edited marker is never the verdict, but its pass still counts: an edit that keeps the
+      // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
+      // body after the edit is kept, so an edit that rewrites the number counts as the new one.
+      if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    // A trusted comment deleted by someone other than its author may have been a verdict marker
+    // (BLOCKED, or the highest pass), and its body is gone, so it counts the way a foreign edit does:
+    // BLOCKED history, and a stop. A deletion by the author itself is the documented limit.
+    for(const c of (JSON.parse(s).deletedComments||[])){
+      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
+      if(!who||(active&&!allow.includes(who)))continue;
+      const by=String((c&&c.actor&&c.actor.login)||"").toLowerCase();
+      if(by!==who){foreign=tok(by||"unknown");fkind="delete";fauthor=tok(who);fwhere=tok(c&&c.createdAt);blocked="yes";}}
+    mk=(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign,fkind,fauthor,fwhere].join("\x1f"):
+      // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
+      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign,fkind,fauthor,fwhere].join("\x1f"):""))
+    }catch(e){mk=""}
+    process.stdout.write(head+"\x1e"+mk)})')
+  # The marker fields follow a record separator, joined by the unit separator like the six above.
+  local m=""
+  case "$fields" in *$'\x1e'*) m="${fields#*$'\x1e'}"; fields="${fields%%$'\x1e'*}" ;; esac
   IFS=$'\x1f' read -r NUMBER HEAD STATE IS_DRAFT LABEL HALTED <<<"$fields"
   # No number means the payload was unreadable (or held the separator). Every caller treats the
   # variables as facts, so stop here, with the code `status` uses for "could not read".
@@ -533,62 +576,14 @@ parse() {
   # before they get here. Only a list that is not active (unset, empty or ASCII whitespace) skips
   # nothing; an active list that keeps no login (a lone comma, invisible characters) skips every
   # comment, since `allow` is then empty.
-  local m
-  m=$(printf '%s' "$json" | P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
-    const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
-    const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
-    let last=null,blocked="no",maxp=0,foreign="-",fkind="-",fauthor="-",fwhere="-";
-    // A field of the space-joined answer cannot hold a space.
-    const tok=v=>String(v||"").replace(/[\s]/g,"")||"-";
-    for(const c of (JSON.parse(s).comments||[])){
-      if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
-      const mm=re.exec(c.body||"");
-      if(mm){last=mm;maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
-    for(const c of (JSON.parse(s).editedComments||[])){
-      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
-      if(active&&(!who||!allow.includes(who)))continue;
-      const mm=re.exec(c.body||"");
-      // Anyone with write access can edit another login'"'"'s comment, so a trusted comment edited by
-      // someone else may carry a number or verdict its author never wrote. It is reported (and
-      // counted as BLOCKED history, which only tightens), and `publish` and `budget` refuse on it.
-      // Whether the body still reads as a marker does not matter: an edit that breaks the marker
-      // would otherwise drop it from the count unseen, so any foreign edit counts (fails closed).
-      const ed=String((c&&c.editor&&c.editor.login)||"").toLowerCase();
-      if(ed!==who){foreign=ed||"unknown";fkind="edit";fauthor=tok(who);fwhere=tok(c&&c.url);blocked="yes";}
-      // An edited marker is never the verdict, but its pass still counts: an edit that keeps the
-      // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
-      // body after the edit is kept, so an edit that rewrites the number counts as the new one.
-      if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
-    // A trusted comment deleted by someone other than its author may have been a verdict marker
-    // (BLOCKED, or the highest pass), and its body is gone, so it counts the way a foreign edit does:
-    // BLOCKED history, and a stop. A deletion by the author itself is the documented limit.
-    for(const c of (JSON.parse(s).deletedComments||[])){
-      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
-      if(!who||(active&&!allow.includes(who)))continue;
-      const by=String((c&&c.actor&&c.actor.login)||"").toLowerCase();
-      if(by!==who){foreign=by||"unknown";fkind="delete";fauthor=tok(who);fwhere=tok(c&&c.createdAt);blocked="yes";}}
-    process.stdout.write(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
-      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign,fkind,fauthor,fwhere].join(" "):
-      // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
-      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign,fkind,fauthor,fwhere].join(" "):""))
-  }catch(e){}})')
-  MARKER_SHA=$(printf '%s' "$m" | cut -d' ' -f1)
-  MARKER_VERDICT=$(printf '%s' "$m" | cut -d' ' -f2)
-  MARKER_PASS=$(printf '%s' "$m" | cut -d' ' -f3)
-  MARKER_CRITICAL=$(printf '%s' "$m" | cut -d' ' -f4)
-  MARKER_WARNING=$(printf '%s' "$m" | cut -d' ' -f5)
-  MARKER_NOTE=$(printf '%s' "$m" | cut -d' ' -f6)
+  IFS=$'\x1f' read -r MARKER_SHA MARKER_VERDICT MARKER_PASS MARKER_CRITICAL MARKER_WARNING MARKER_NOTE MARKER_BLOCKED_SEEN MARKER_MODEL MARKER_TIER MARKER_BLOCK_AT MARKER_MAX_PASS MARKER_FOREIGN_EDIT MARKER_FOREIGN_KIND MARKER_FOREIGN_AUTHOR MARKER_FOREIGN_WHERE <<<"$m"
   # **Whether the pull request was EVER blocked, which is a different question from what the newest
   # marker says.** It is what makes `pass>=2` mean the thing it was written to mean: the second pass
   # exists to review a CORRECTION, so the bar applies where a correction was demanded and nowhere
   # else. Reading only the last marker cannot answer it: a BLOCKED at pass 1 is precisely the
   # marker a later PASSED overwrites as "current".
-  MARKER_BLOCKED_SEEN=$(printf '%s' "$m" | cut -d' ' -f7)
   # Self-attested by the publishing session, never verified. `-` when the marker carries none.
-  MARKER_MODEL=$(printf '%s' "$m" | cut -d' ' -f8)
-  MARKER_TIER=$(printf '%s' "$m" | cut -d' ' -f9)
   # The REVIEW_BLOCK_AT the marker was published under, `-` when it names none (critical, or older).
-  MARKER_BLOCK_AT=$(printf '%s' "$m" | cut -d' ' -f10)
   # A BLOCKED marker that counts no CRITICAL but a WARNING, and names no setting, was published
   # under `warning` before `block_at=` existed (0.7.x): `publish` never writes one under `critical`.
   # It is read as `warning`, so a reader under `critical` answers inconclusive instead of reading
@@ -599,18 +594,13 @@ parse() {
   # 0 when there is none.
   # `publish` takes only the next one, and `budget` counts cycles from it, so a head that returns to
   # an older commit, or a low `--pass`, cannot restart the count.
-  MARKER_MAX_PASS=$(printf '%s' "$m" | cut -d' ' -f11)
   case "$MARKER_MAX_PASS" in ''|*[!0-9]*) MARKER_MAX_PASS=0 ;; esac
   # The login that edited or deleted a trusted comment it did not write (`unknown` when GitHub names
   # none), `-` when there is none. Such an edit can rewrite `pass=` or break the marker so it no longer counts,
   # so the count is not trusted while it stands.
-  MARKER_FOREIGN_EDIT=$(printf '%s' "$m" | cut -d' ' -f12)
   [ -n "$MARKER_FOREIGN_EDIT" ] || MARKER_FOREIGN_EDIT=-
   # Which comment it was, so a refusal can name it: the kind (`edit` or `delete`), the login that
   # wrote it, and its url for an edit or the time of the deletion (`-` when GitHub gave none).
-  MARKER_FOREIGN_KIND=$(printf '%s' "$m" | cut -d' ' -f13)
-  MARKER_FOREIGN_AUTHOR=$(printf '%s' "$m" | cut -d' ' -f14)
-  MARKER_FOREIGN_WHERE=$(printf '%s' "$m" | cut -d' ' -f15)
 }
 
 # One line, no newline, naming the comment a foreign edit touched and the way to clear it. For an
@@ -1212,8 +1202,13 @@ cmd_start() {
 # separated) names logins allowed without a lookup, for a bot the repository owns; `app/<name>` and
 # `<name>[bot]` are the same bot and either form matches both. Base-branch merge
 # commits are covered because their authors are resolved like any other.
+# $2 is the pull request JSON `cmd_fix` already read through pr-json.py, which carries the author and
+# isCrossRepository, so the guard asks gh only for the commits and the permissions. It reaches python
+# on file descriptor 3, never in an argument or the environment: the JSON holds every comment body,
+# and an environment string over 128 KiB (Linux) or 1 MiB of arguments plus environment (macOS)
+# makes the exec fail, which would refuse every long pull request.
 fix_guard() {
-  FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - <<'PY'
+  FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - 3<<<"$2" <<'PY'
 import json, os, subprocess, sys
 
 pr = os.environ["FG_PR"]
@@ -1239,10 +1234,12 @@ def refuse(msg):
     print("review-cycle: REFUSED. " + msg, file=sys.stderr)
     sys.exit(1)
 
-out = gh("pr", "view", pr, "--json", "isCrossRepository,author")
 try:
-    meta = json.loads(out or "")
-except ValueError:
+    with os.fdopen(3, encoding="utf-8") as f:
+        meta = json.loads(f.read())
+    if not isinstance(meta, dict):
+        raise ValueError
+except (OSError, ValueError):
     refuse("could not read who wrote #%s, and an unreadable author is not a trusted one" % pr)
 if not isinstance(meta.get("isCrossRepository"), bool):
     refuse("could not tell whether #%s comes from a fork, and an unknown origin is not a trusted one" % pr)
@@ -1327,7 +1324,7 @@ cmd_fix() {
   # never existed, produced by a label applied by mistake after the fact.
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no cycle to claim on a pull request that already merged or closed"
   # Before any label moves: a refused correction leaves the pull request exactly as it was.
-  fix_guard "$NUMBER" || die "review-cycle: #$NUMBER was not claimed for correction"
+  fix_guard "$NUMBER" "$json" || die "review-cycle: #$NUMBER was not claimed for correction"
   gh pr edit "$NUMBER" --add-label review:fixing ${HALTED:+--remove-label review:needs-human} \
       $(remove_states_except review:fixing) >/dev/null \
     || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
@@ -2280,7 +2277,10 @@ PY
 # Exit 0 when all six were written, 2 when any one was not: `gh` offline, no token, or a token
 # without permission to write labels. A partial run says which labels it could not write.
 cmd_ensure_labels() {
-  local failed="" spec name color desc
+  local failed="" spec name color desc dir i=0 names=()
+  # The six writes are independent, so they run at the same time; each records its own success in
+  # a file, and the results print in the order below.
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/ensure-labels.XXXXXX")" || { echo "review-cycle: could not create a temporary directory; INCONCLUSIVE" >&2; return 2; }
   for spec in \
     "review:pending|fbca04|Not reviewed at this head yet" \
     "review:running|1d76db|A review pass is in flight" \
@@ -2289,12 +2289,17 @@ cmd_ensure_labels() {
     "review:passed|0e8a16|Nothing blocks at this head; the marker comment is the evidence" \
     "review:needs-human|d93f0b|The loop paused or stopped and a person has to decide; only with review:blocked"; do
     name="${spec%%|*}"; desc="${spec##*|}"; color="${spec#*|}"; color="${color%%|*}"
-    if gh label create "$name" --force --color "$color" --description "$desc" >/dev/null 2>&1; then
-      echo "label $name ok"
-    else
-      failed="${failed:+$failed }$name"
-    fi
+    names+=("$name")
+    ( gh label create "$name" --force --color "$color" --description "$desc" >/dev/null 2>&1 && : >"$dir/$i.ok" ) &
+    i=$((i + 1))
   done
+  wait
+  i=0
+  for name in "${names[@]}"; do
+    if [ -e "$dir/$i.ok" ]; then echo "label $name ok"; else failed="${failed:+$failed }$name"; fi
+    i=$((i + 1))
+  done
+  rm -rf "$dir"
   if [ -n "$failed" ]; then
     echo "review-cycle: could not create or update: $failed (gh offline, not authenticated, or no permission to write labels); INCONCLUSIVE" >&2
     return 2

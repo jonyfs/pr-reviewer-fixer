@@ -73,7 +73,7 @@
 #
 # Names are compared case-insensitively, so `Codeowners` on a case-insensitive file system counts.
 # The CI, agent and instruction classes are the ones push-guard.sh refuses for the fixer, plus action
-# metadata, Dockerfiles and CI outside GitHub. A project may add units in its own guide; nothing may remove one from this list.
+# metadata and Dockerfiles. A project may add units in its own guide; nothing may remove one from this list.
 #
 # `review-cycle.sh lint-report` computes this floor for the report it checks and refuses a report
 # whose `findings` block does not list each mandatory unit as run in its `mandatory_units:` field
