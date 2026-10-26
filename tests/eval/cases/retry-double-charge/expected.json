@@ -1,0 +1,9 @@
+{
+  "description": "Reliability. The charge is retried forever with no backoff and no idempotency key: a timeout after the charge succeeded charges the customer again. The rate lookup has a timeout and no retry.",
+  "defects": [
+    {"id": "D1", "file": "src/checkout/payments.py", "line": 9, "tolerance": 3, "min_severity": "WARNING", "note": "unbounded retry of a non-idempotent POST; double charge on a lost response"}
+  ],
+  "decoys": [
+    {"file": "src/checkout/payments.py", "line": 19, "tolerance": 1, "note": "bounded read with a timeout"}
+  ]
+}

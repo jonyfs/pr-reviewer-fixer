@@ -23,19 +23,25 @@ rep() {
     done
     echo '```'; } >"$W/$d/$c.md"
 }
-# The three real-bug cases: empty reports for every run except "perfect".
-rest() { rep "$1" mention-url; rep "$1" push-guard-rename; rep "$1" hunk-header; }
+# The three real-bug cases and the seven 0.16.0 engineering-quality cases: empty reports for every
+# run except "perfect".
+rest() { local c; for c in mention-url push-guard-rename hunk-header missing-authz fail-open retry-double-charge \
+  n-plus-one drop-column pii-in-logs recreate-deploy; do rep "$1" "$c"; done; }
 sc() { python3 -I "$SC" --reports "$W/$1" "${@:2}"; }
 
 # perfect: every defect hit, nothing else.
 rep perfect sql-injection src/users.py:6:CRITICAL; rep perfect off-by-one src/page.js:3:WARNING; rep perfect clean-rename
 rep perfect mention-url tools/mentions.py:10:WARNING; rep perfect push-guard-rename scripts/scope-check.sh:10:WARNING; rep perfect hunk-header tools/anchors.py:9:WARNING
+rep perfect missing-authz src/billing/views.py:8:CRITICAL; rep perfect fail-open src/docs/permissions.py:14:CRITICAL
+rep perfect retry-double-charge src/checkout/payments.py:11:WARNING; rep perfect n-plus-one src/shop/reports.py:9:WARNING
+rep perfect drop-column db/migrations/0042_rename_email.sql:3:CRITICAL; rep perfect pii-in-logs src/accounts/signup.py:8:WARNING
+rep perfect recreate-deploy k8s/api/deployment.yaml:8:WARNING
 check "perfect run -> recall 1, precision 1" eval 'sc perfect --json | jq -e ".recall == 1 and .precision == 1" >/dev/null'
 
 # missed: the SQL injection is not found; the off-by-one is.
 rep missed sql-injection; rep missed off-by-one src/page.js:4:WARNING; rep missed clean-rename
 rest missed
-check "a missed defect lowers recall and is named" eval '[ "$(sc missed --json | jq -r ".recall")" = "0.2" ] && sc missed | grep -q "D1"'
+check "a missed defect lowers recall and is named" eval '[ "$(sc missed --json | jq -r ".recall")" = "0.083" ] && sc missed | grep -q "D1"'
 
 # noisy: both defects hit, plus a CRITICAL on the decoy and a WARNING on the clean rename.
 rep noisy sql-injection src/users.py:6:CRITICAL src/users.py:12:CRITICAL; rep noisy off-by-one src/page.js:3:CRITICAL; rep noisy clean-rename src/util.ts:3:WARNING

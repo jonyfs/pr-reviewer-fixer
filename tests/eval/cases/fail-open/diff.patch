@@ -1,0 +1,27 @@
+diff --git a/src/docs/permissions.py b/src/docs/permissions.py
+new file mode 100644
+--- /dev/null
++++ b/src/docs/permissions.py
+@@ -0,0 +1,22 @@
++import logging
++
++from policy import PolicyClient
++
++log = logging.getLogger(__name__)
++client = PolicyClient()
++
++
++def can_delete(user, document):
++    try:
++        return client.allowed(user.id, "delete", document.id)
++    except Exception:
++        log.warning("policy service unavailable")
++        return True
++
++
++def can_read(user, document):
++    try:
++        return client.allowed(user.id, "read", document.id)
++    except Exception:
++        log.warning("policy service unavailable")
++        return False

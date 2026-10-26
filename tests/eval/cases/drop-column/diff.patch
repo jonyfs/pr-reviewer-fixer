@@ -1,0 +1,9 @@
+diff --git a/db/migrations/0042_rename_email.sql b/db/migrations/0042_rename_email.sql
+new file mode 100644
+--- /dev/null
++++ b/db/migrations/0042_rename_email.sql
+@@ -0,0 +1,4 @@
++-- Rename users.email to users.email_address.
++ALTER TABLE users ADD COLUMN email_address TEXT;
++ALTER TABLE users DROP COLUMN email;
++CREATE INDEX users_email_address_idx ON users (email_address);

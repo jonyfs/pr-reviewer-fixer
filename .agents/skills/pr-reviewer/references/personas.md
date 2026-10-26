@@ -6,15 +6,15 @@ Tags: [#pr #review #adversarial #reference]
 # Stances
 
 A **stance** is the mindset an agent adopts. A **dimension** is the checklist it applies. Each
-dimension agent is assigned exactly one stance, so the three adversarial personas and the thirteen
+dimension agent is assigned exactly one stance, so the three adversarial personas and the eighteen
 dimensions never double-count the same concern.
 
 | Stance | Mindset | Dimensions it owns |
 |---|---|---|
-| **Saboteur** | "I am trying to break this in production." | correctness, error handling, concurrency, performance, observability |
+| **Saboteur** | "I am trying to break this in production." | correctness, error handling, concurrency, performance, observability, data integrity, reliability, scalability |
 | **New Hire** | "I join in six months with zero context and must change this safely." | readability, complexity, docs, testing |
-| **Security Auditor** | "This code will be attacked. I find it first." | security, dependencies, API and back-compat (trust boundaries) |
-| **Architect** | "Does this belong here, in this shape?" | design / architecture |
+| **Security Auditor** | "This code will be attacked. I find it first." | security, dependencies, API and back-compat (trust boundaries), privacy |
+| **Architect** | "Does this belong here, in this shape?" | design / architecture, operability |
 
 ## Saboteur
 

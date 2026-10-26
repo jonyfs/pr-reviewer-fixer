@@ -1,0 +1,9 @@
+{
+  "description": "Scalability. One query per active customer (N+1) over 200000 customers, and no pagination. The recent orders view is bounded.",
+  "defects": [
+    {"id": "D1", "file": "src/shop/reports.py", "line": 9, "tolerance": 1, "min_severity": "WARNING", "note": "query inside the loop over all active customers, unbounded response"}
+  ],
+  "decoys": [
+    {"file": "src/shop/reports.py", "line": 15, "tolerance": 1, "note": "bounded to 50 rows"}
+  ]
+}

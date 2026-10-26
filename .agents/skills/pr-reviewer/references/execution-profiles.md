@@ -40,6 +40,10 @@ answer. They do not always move together.
 | Complexity | New Hire | standard | Judgement, but local |
 | Dependencies | Security Auditor | standard | Changelog and CVE lookup, bounded |
 | Data integrity | Saboteur | deep | Summoned by the path floor for migrations and schema files: a lost or rewritten row is silent |
+| Reliability | Saboteur | deep | Summoned by the path floor for infrastructure files; failure paths need tracing across calls |
+| Privacy | Security Auditor | deep | A leak of personal data is not undone by a later fix |
+| Scalability | Saboteur | standard | Needs evidence of growth, bounded by the changed queries and loops |
+| Operability | Architect | standard | Summoned by the path floor for infrastructure files; judges rollout, rollback and diagnosis |
 | Readability | New Hire | fast | Pattern checks |
 | Docs | New Hire | fast | Pattern checks |
 | Observability | Saboteur | fast | Pattern checks |

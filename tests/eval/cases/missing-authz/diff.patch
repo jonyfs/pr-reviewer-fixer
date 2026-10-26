@@ -1,0 +1,22 @@
+diff --git a/src/billing/views.py b/src/billing/views.py
+new file mode 100644
+--- /dev/null
++++ b/src/billing/views.py
+@@ -0,0 +1,17 @@
++from flask import abort, g, jsonify
++
++from app import app, db
++
++
++@app.get("/invoices/<int:invoice_id>")
++def get_invoice(invoice_id):
++    invoice = db.invoices.get(invoice_id)
++    return jsonify(invoice.to_dict())
++
++
++@app.get("/orders/<int:order_id>")
++def get_order(order_id):
++    order = db.orders.get(order_id)
++    if order is None or order.owner_id != g.user.id:
++        abort(404)
++    return jsonify(order.to_dict())

@@ -244,6 +244,12 @@ check "gate: PASSED pass 1 passes; a trusted comment deleted by its author still
 python3 -I "$SRC/pr-json.py" 7 >"$W/pj" 2>/dev/null; j0=$?
 check "pr-json.py lists deletions as deletedComments with author and deleter (N5)" \
   eval '[ $j0 = 0 ] && python3 -I -c "import json,sys;d=json.load(open(sys.argv[1]))[\"deletedComments\"];sys.exit(0 if d[0][\"author\"][\"login\"]==\"github-actions\" and d[0][\"actor\"][\"login\"]==\"mallory\" else 1)" "$W/pj"'
+# N2 of #34: deletions on a second page are read by the deletion query with the first page's cursor.
+printf 'alice bob\ncarol dave\nerin frank\n' >"$FAKE_DIR/deleted-events"; echo 2 >"$FAKE_DIR/deleted-page-size"
+: >"$FAKE_DIR/calls.log"; python3 -I "$SRC/pr-json.py" 7 >"$W/pjd" 2>/dev/null; jd=$?
+check "pr-json.py reads deletions past the first page (N2 of #34)" \
+  eval '[ $jd = 0 ] && [ "$(jq "[.deletedComments[].id] | join(\",\")" -r "$W/pjd")" = "CDE_0,CDE_1,CDE_2" ] && [ $(calls "api graphql") = 2 ]'
+rm -f "$FAKE_DIR/deleted-page-size"; echo "github-actions mallory" >"$FAKE_DIR/deleted-events"
 touch "$FAKE_DIR/graphql-deleted-fail"; python3 -I "$SRC/pr-json.py" 7 >"$W/pj" 2>/dev/null; j1=$?; rm -f "$FAKE_DIR/graphql-deleted-fail"
 touch "$FAKE_DIR/graphql-deleted-badshape"; python3 -I "$SRC/pr-json.py" 7 >"$W/pj2" 2>/dev/null; j2=$?; rm -f "$FAKE_DIR/graphql-deleted-badshape"
 check "pr-json.py fails closed (exit 1, no output) when the deletion query fails or answers another shape (N5)" \
@@ -1001,6 +1007,20 @@ nul .woodpecker.yaml buildkite.yml buildkite.yaml buildkite.json buildkite/pipel
 "$PF" --files "$W/pf-ci2.z" >"$W/pf.out" 2>&1; r=$?
 check "path-floor: .woodpecker.yaml, buildkite.{yml,yaml,json}, buildkite/, .drone.yaml, appveyor.yaml -> security max (W2 of #33)" \
   eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 7 ] && ! grep -q "sub/buildkite\|docs/buildkite" "$W/pf.out"'
+# 0.16.0: --help prints the whole header, down to the line before `set -u` (a fixed range once cut it).
+PF_LAST="$(awk '/^set -u$/ {print prev; exit} {prev=$0}' "$PF")"
+check "path-floor --help ends with the header's last line (0.16.0)" eval '[ "$("$PF" --help | tail -n 1)" = "$PF_LAST" ]'
+# 0.16.0: infrastructure and deployment files summon reliability and operability; privacy-named
+# paths summon privacy.
+nul infra/main.tf terraform/modules/x/variables.tf env/prod.tfvars k8s/deploy.yaml charts/api/values.yaml \
+    charts/api/Chart.yaml docker-compose.yml compose.prod.yaml Pulumi.yaml .terraform.lock.hcl src/values.yaml >"$W/pf-infra.z"
+"$PF" --files "$W/pf-infra.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: infrastructure files -> reliability and operability; the Terraform lockfile and src/values.yaml do not (0.16.0)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^reliability standard " "$W/pf.out")" = 9 ] && [ "$(grep -c "^operability standard " "$W/pf.out")" = 9 ] && ! grep -q "standard src/values.yaml\|ability standard .terraform.lock.hcl" "$W/pf.out" && pfhas "dependencies standard .terraform.lock.hcl"'
+nul src/privacy/export.py app/ConsentBanner.tsx lib/pii_redact.go docs/gdpr.md src/personal_data.py src/redactor.ts src/consentient.py >"$W/pf-priv.z"
+"$PF" --files "$W/pf-priv.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: privacy, consent, pii, gdpr and personal_data paths -> privacy; redactor and consentient do not (0.16.0)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^privacy standard " "$W/pf.out")" = 5 ] && ! grep -q "redactor\|consentient" "$W/pf.out"'
 # W2 (PR #29): the scripts a workflow runs, and the files that instruct an agent, are CI and agent
 # configuration too.
 nul .github/scripts/release.sh AGENTS.md sub/AGENTS.md CLAUDE.md pkg/CLAUDE.local.md GEMINI.md \

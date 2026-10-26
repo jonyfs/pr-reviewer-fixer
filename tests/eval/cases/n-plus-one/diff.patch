@@ -1,0 +1,21 @@
+diff --git a/src/shop/reports.py b/src/shop/reports.py
+new file mode 100644
+--- /dev/null
++++ b/src/shop/reports.py
+@@ -0,0 +1,16 @@
++from django.http import JsonResponse
++
++from shop.models import Customer, Order
++
++
++def customer_orders(request):
++    rows = []
++    for customer in Customer.objects.filter(active=True):
++        orders = Order.objects.filter(customer=customer)
++        rows.append({"customer": customer.id, "orders": [o.id for o in orders]})
++    return JsonResponse({"rows": rows})
++
++
++def recent_orders(request):
++    orders = Order.objects.order_by("-created")[:50]
++    return JsonResponse({"orders": [o.id for o in orders]})

@@ -1,0 +1,15 @@
+diff --git a/src/accounts/signup.py b/src/accounts/signup.py
+new file mode 100644
+--- /dev/null
++++ b/src/accounts/signup.py
+@@ -0,0 +1,10 @@
++import logging
++
++log = logging.getLogger("signup")
++
++
++def register(form, users):
++    user = users.create(email=form["email"], cpf=form["cpf"], name=form["name"])
++    log.info("new signup email=%s cpf=%s name=%s", form["email"], form["cpf"], form["name"])
++    log.info("created user id=%s", user.id)
++    return user

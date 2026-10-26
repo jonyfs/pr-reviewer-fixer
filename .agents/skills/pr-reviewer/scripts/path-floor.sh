@@ -55,6 +55,14 @@
 #   data-integrity   standard  migrations: a directory named migrations, migration, migrate or
 #                              alembic, or a schema file (schema.sql, structure.sql, schema.rb,
 #                              schema.prisma)
+#   reliability      standard  infrastructure and deployment: a directory named terraform, k8s,
+#   operability      standard  kubernetes, helm, charts, kustomize, ansible, pulumi, cloudformation,
+#                              infra or infrastructure; *.tf, *.tfvars, *.tf.json, *.hcl (not
+#                              .terraform.lock.hcl), *.nomad; Chart.yaml, kustomization.y(a)ml,
+#                              (docker-)compose*.y(a)ml, Pulumi(.<stack>).yaml, skaffold.yaml,
+#                              serverless.y(a)ml, fly.toml, Procfile, values*.y(a)ml under charts/
+#   privacy          standard  a path segment or word such as privacy, gdpr, lgpd, consent, pii, dsar,
+#                              personal-data, data-subject, data-retention, anonymise, redact
 #   dependencies     standard  manifests and lockfiles (package.json, package-lock.json, yarn.lock,
 #                              pnpm-lock.yaml, requirements*.txt, pyproject.toml, poetry.lock,
 #                              uv.lock, Pipfile(.lock), go.mod, go.sum, Cargo.toml, Cargo.lock,
@@ -86,7 +94,7 @@ case "${1:-}" in
   --files) [ $# -eq 2 ] || die2 "$USAGE"; mode="files"; file="$2" ;;
   --pr) [ $# -eq 2 ] || die2 "$USAGE"; mode="pr"; pr="$2"
         case "$pr" in ''|*[!0-9]*) die2 "--pr needs a pull request number; $USAGE" ;; esac ;;
-  -h|--help) sed -n '2,77p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,86p' "$0"; exit 0 ;;
   -*) die2 "$USAGE" ;;
   *) [ $# -eq 2 ] || die2 "$USAGE"; mode="git"; base="$1"; head="$2" ;;
 esac
@@ -197,6 +205,14 @@ AUTH = re.compile(
     r"token|tokens|secret|secrets|apikey|apikeys|hmac|signing|signature|signatures|tls|ssl|x509|pki|cert|"
     r"certs|certificate|certificates|keystore|keychain|kms|bcrypt|scrypt|argon2|pbkdf2)(?=$|[/._-])")
 MIGRATION_DIRS = {"migrations", "migration", "migrate", "alembic"}
+# Infrastructure and deployment: what changes how the service runs, scales and recovers.
+INFRA_DIRS = {"terraform", "k8s", "kubernetes", "helm", "charts", "kustomize", "ansible", "pulumi",
+              "cloudformation", "infra", "infrastructure"}
+INFRA_NAMES = {"chart.yaml", "kustomization.yaml", "kustomization.yml", "compose.yaml", "compose.yml",
+               "pulumi.yaml", "skaffold.yaml", "serverless.yml", "serverless.yaml", "fly.toml", "procfile"}
+PRIVACY = re.compile(
+    r"(?:^|[/._-])(privacy|gdpr|lgpd|ccpa|consent|consents|pii|dsar|personal[-_]data|personaldata|"
+    r"data[-_]subject|data[-_]retention|anonymi[sz]e|anonymi[sz]ation|pseudonymi[sz]e|redact|redaction)(?=$|[/._-])")
 SCHEMAS = {"schema.sql", "structure.sql", "schema.rb", "schema.prisma"}
 MANIFESTS = {
     "package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml",
@@ -231,6 +247,13 @@ def units(path):
         out.append(("security", "max"))
     if any(d in MIGRATION_DIRS for d in parts[:-1]) or base in SCHEMAS:
         out += [("security", "standard"), ("data-integrity", "standard")]
+    if (any(d in INFRA_DIRS for d in parts[:-1]) or base in INFRA_NAMES
+            or base.endswith((".tf", ".tfvars", ".tf.json", ".nomad")) or (base.endswith(".hcl") and base != ".terraform.lock.hcl")
+            or re.fullmatch(r"(?:docker-)?compose[^/]*\.ya?ml", base) or re.fullmatch(r"pulumi\.[^/]+\.yaml", base)
+            or re.fullmatch(r"values[^/]*\.ya?ml", base) and "charts" in parts[:-1]):
+        out += [("reliability", "standard"), ("operability", "standard")]
+    if PRIVACY.search(p) or PRIVACY.search(humps):
+        out.append(("privacy", "standard"))
     if (base in MANIFESTS or re.fullmatch(r"requirements[^/]*\.(txt|in)", base)
             or base.endswith((".gemspec", ".csproj", ".fsproj", ".vbproj"))):
         out.append(("dependencies", "standard"))

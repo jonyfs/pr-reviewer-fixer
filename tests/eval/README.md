@@ -22,6 +22,10 @@ Each case is a folder under `cases/`:
 self-contained diff. Each has one WARNING. With the default `REVIEW_BLOCK_AT=critical` such a bug is
 reported and the pull request still passes; run the cases again with `REVIEW_BLOCK_AT=warning` set to
 see whether the reviewer backs each one with a `scenario:` and whether precision holds.
+`missing-authz` (OWASP A01:2025) and `fail-open` (A10:2025) have one CRITICAL each beside a safe
+twin. `retry-double-charge` (reliability), `n-plus-one` (scalability), `drop-column` (data
+integrity, CRITICAL), `pii-in-logs` (privacy) and `recreate-deploy` (operability) each seed one
+defect of the engineering-quality dimensions added in 0.16.0, with a decoy.
 Check that the expected lines sit inside the diffs with `python3 tests/eval/score.py --validate`.
 
 ## Run it

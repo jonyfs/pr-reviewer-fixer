@@ -7,7 +7,7 @@ Tags: [#pr #review #agents #dispatch #reference]
 
 ## Roster
 
-One agent per applicable dimension, thirteen at most. Each carries a stance
+One agent per applicable dimension, eighteen at most. Each carries a stance
 ([personas.md](personas.md)) and a tier ([execution-profiles.md](execution-profiles.md)). The
 orchestrator is the session itself: it dispatches, merges, verifies, counts and publishes.
 
@@ -29,6 +29,8 @@ minimum. `scripts/path-floor.sh <base> <head>` does the mechanical part and prin
 | agent instruction files: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` in any directory, `.github/copilot-instructions.md`, `.github/instructions/**` (the script's header has the full list) | security at `max` |
 | authentication, authorisation and cryptography (`auth`, `authenticate`, `authorize`, `login`, `session`, `token`, `secret`, `crypto`, `hmac`, `tls`, `jwt`, ... as a path segment, a file stem or a camelCase word, so `AuthService.ts` counts) | security at `max` |
 | migrations and schema files | security and data-integrity |
+| infrastructure and deployment: Terraform and OpenTofu (`*.tf`, `*.tfvars`, `*.hcl`), Kubernetes, Helm and Kustomize (`k8s/`, `kubernetes/`, `helm/`, `charts/`, `Chart.yaml`, `values*.yaml`, `kustomization.yaml`), Compose files, Pulumi and CloudFormation, Ansible | reliability and operability |
+| privacy-named paths (`privacy`, `gdpr`, `lgpd`, `consent`, `pii`, `personal-data` as a segment or a word) | privacy |
 | manifests and lockfiles | dependencies |
 
 The script's header has the exact patterns. The findings block lists each of those units as run in
