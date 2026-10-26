@@ -32,7 +32,13 @@
 #      own commits are checked like any other, so fetch the base first.
 #   5. no commit touches a sensitive path, even one a finding names or --allow passes: the files
 #      that run or judge the automation itself. Each belongs to a class:
-#        workflows   .github/workflows/**, .github/scripts/** (what a workflow runs)
+#        workflows   .github/workflows/**, .github/scripts/** (what a workflow runs), and CI outside
+#                    GitHub as path-floor.sh lists it: at the root .gitlab-ci.yml, .gitlab/ci/**,
+#                    .circleci/**, .buildkite/**, buildkite/** and buildkite.{yml,yaml,json},
+#                    .woodpecker(.yml|.yaml|/**), .tekton/**, .travis.yml, azure-pipelines.yml,
+#                    bitbucket-pipelines.yml, .drone.yml, cloudbuild.yaml, buildspec.yml,
+#                    appveyor.yml, codemagic.yaml (with their .yaml/.yml twins), and a Jenkinsfile
+#                    (or Jenkinsfile.<x>) in any directory
 #        actions     .github/actions/**
 #        codeowners  CODEOWNERS, .github/CODEOWNERS, docs/CODEOWNERS
 #        skills      the skills/ folder of .agents, .roo, .cline, .kiro, .devin or .junie, at any
@@ -175,8 +181,16 @@ const agentClass = (dirs) => {
   }
   return "";
 };
+// CI outside GitHub Actions, at the root, as path-floor.sh lists it; a Jenkinsfile anywhere.
+const OTHER_CI_DIRS = [".circleci/", ".buildkite/", "buildkite/", ".gitlab/ci/", ".woodpecker/", ".tekton/"];
+const OTHER_CI_FILES = [".gitlab-ci.yml", ".gitlab-ci.yaml", ".travis.yml", "azure-pipelines.yml",
+  "azure-pipelines.yaml", "bitbucket-pipelines.yml", ".drone.yml", ".drone.yaml", ".woodpecker.yml",
+  ".woodpecker.yaml", "buildkite.yml", "buildkite.yaml", "buildkite.json", "cloudbuild.yaml", "cloudbuild.yml",
+  "buildspec.yml", "buildspec.yaml", "appveyor.yml", ".appveyor.yml", "appveyor.yaml", ".appveyor.yaml", "codemagic.yaml"];
+const otherCI = (f) => { const b = f.split("/").pop();
+  return OTHER_CI_DIRS.some((d) => f.startsWith(d)) || OTHER_CI_FILES.includes(f) || b === "jenkinsfile" || b.startsWith("jenkinsfile."); };
 const fileClass = (f) =>
-  f.startsWith(".github/workflows/") || f.startsWith(".github/scripts/") ? "workflows"
+  f.startsWith(".github/workflows/") || f.startsWith(".github/scripts/") || otherCI(f) ? "workflows"
   : f.startsWith(".github/actions/") ? "actions"
   : ["codeowners", ".github/codeowners", "docs/codeowners"].includes(f) ? "codeowners"
   : agentClass(f.split("/").slice(0, -1)) || (f === ".mcp.json" ? "mcp"
@@ -185,7 +199,8 @@ const fileClass = (f) =>
 // A sensitive directory or file, or a parent of one: the classes a link there moves away.
 const PARENT = { ".github": "workflows actions codeowners instructions", ".github/workflows": "workflows",
   ".github/scripts": "workflows", ".github/actions": "actions", ".agents": "skills", ".agents/skills": "skills",
-  ".claude": "claude", "docs": "codeowners", "codeowners": "codeowners", ".github/codeowners": "codeowners",
+  ".claude": "claude", "docs": "codeowners", ".circleci": "workflows", ".buildkite": "workflows",
+  "buildkite": "workflows", ".gitlab": "workflows", ".gitlab/ci": "workflows", ".woodpecker": "workflows", ".tekton": "workflows", "codeowners": "codeowners", ".github/codeowners": "codeowners",
   "docs/codeowners": "codeowners", ".mcp.json": "mcp" };
 for (const d of INSTR_DIRS) PARENT[d.slice(0, -1)] = "instructions";
 // A directory at any depth that is, or is inside, an agent directory, or a skill parent (.roo, .agents).

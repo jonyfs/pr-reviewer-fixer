@@ -284,7 +284,7 @@ flowchart TD
    refused. The lines those commits add go through the same secret screen as a verdict, and a
    token or private key refuses the push (the fixer already screens each commit with
    `review-cycle.sh screen --staged`). A commit that touches a sensitive path (workflows and
-   `.github/scripts/**`, actions, CODEOWNERS, the skill folders `install.sh` writes
+   `.github/scripts/**`, CI files outside GitHub such as `.gitlab-ci.yml` and `Jenkinsfile`, actions, CODEOWNERS, the skill folders `install.sh` writes
    (`.agents/skills/**`, `.roo/skills/**` and the others) and `.claude/**` at any depth, `.mcp.json`,
    agent instruction files such as `AGENTS.md`, compared after a Unicode case and normalization
    fold) is refused even when a finding names it, and the finding goes to a person,

@@ -34,7 +34,7 @@ import re
 import subprocess
 import sys
 
-FIELDS = "number,headRefOid,labels,comments,state,isDraft,url,title,body"
+FIELDS = "number,headRefOid,labels,comments,state,isDraft,url,title,body,author,isCrossRepository"
 QUERY = (
     "query($owner:String!,$repo:String!,$number:Int!,$after:String){"
     "repository(owner:$owner,name:$repo){pullRequest(number:$number){"

@@ -279,6 +279,7 @@ rm -rf "$FAKE_DIR"; mkdir -p "$FAKE_DIR"; : >"$FAKE_DIR/calls.log"
 fixpr '{}'
 "$RC" fix 7 >"$W/out" 2>&1; r=$?
 check "fix: all authors are collaborators -> claimed (review:fixing)" eval '[ $r = 0 ] && has review:fixing'
+check "fix: the guard reads the author and origin from the one pull request read, no second pr view (0.17.0)" eval '[ $(calls "pr view") = 1 ]'
 fixpr '{"isCrossRepository": true}'
 "$RC" fix 7 >"$W/out" 2>&1; r=$?
 check "fix: fork refused, label untouched" eval '[ $r != 0 ] && has review:blocked && hasnt review:fixing && grep -q "fork" "$W/out"'
