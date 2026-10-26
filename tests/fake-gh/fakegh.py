@@ -213,38 +213,52 @@ if args[:2] == ["api", "graphql"]:
         print(json.dumps({"data": {"repository": {"pullRequest": {field: {
             "pageInfo": {"hasNextPage": more, "endCursor": cursor}, "nodes": chunk}}}}}))
         sys.exit(0)
-    if any(a.startswith("query=") and "timelineItems" in a for a in args):
-        # The CommentDeletedEvent query. `deleted-events` holds "<author> <deleter>" lines ("-" is a
-        # login GitHub does not name); `graphql-deleted-fail` makes this call alone exit 1, and
-        # `graphql-deleted-badshape` answers without the timelineItems field.
-        if os.path.exists(os.path.join(d, "graphql-deleted-fail")): sys.exit(1)
-        if os.path.exists(os.path.join(d, "graphql-deleted-badshape")):
-            print(json.dumps({"data": {"repository": {"pullRequest": {}}}})); sys.exit(0)
+    def deleted_page():
+        # The CommentDeletedEvent connection. `deleted-events` holds "<author> <deleter>" lines ("-"
+        # is a login GitHub does not name).
         f = os.path.join(d, "deleted-events")
         lines = [l.split() for l in open(f).read().splitlines() if l.strip()] if os.path.exists(f) else []
         nul = lambda l: None if l == "-" else l
         nodes = [{"id": "CDE_%d" % i, "createdAt": "2026-10-16T00:%02d:00Z" % i,
                   "deletedCommentAuthor": ({"login": nul(a)} if nul(a) else None), "actor": ({"login": nul(b)} if nul(b) else None)}
                  for i, (a, b) in enumerate(lines)]
-        print(json.dumps({"data": {"repository": {"pullRequest": {"timelineItems": {
-            "pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}}}}}))
+        return {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}
+
+    def comments_page(after):
+        comments = with_ids(load())["comments"]
+        size = int(open(os.path.join(d, "page-size")).read()) if os.path.exists(os.path.join(d, "page-size")) else 100
+        edited = set(open(os.path.join(d, "edited-ids")).read().split()) if os.path.exists(os.path.join(d, "edited-ids")) else set()
+        start = int(after) if after else 0
+        chunk = comments[start:start + size]
+        more = start + size < len(comments)
+        if os.path.exists(os.path.join(d, "graphql-truncate")):
+            chunk, more = chunk[:-1], False
+        # edited-by: "<id> <login>" lines naming who edited a comment; by default its author did.
+        by = dict(l.split(None, 1) for l in open(os.path.join(d, "edited-by")).read().splitlines() if l.strip()) if os.path.exists(os.path.join(d, "edited-by")) else {}
+        # A login of "-" stands for GitHub naming no editor (a deleted account): the login is null.
+        nodes = [{"id": c["id"], "lastEditedAt": ("2026-10-15T00:00:00Z" if c["id"] in edited else None),
+                  "editor": ({"login": (lambda l: None if l == "-" else l)(by.get(c["id"], ((c.get("author") or {}).get("login"))))} if c["id"] in edited else None)} for c in chunk]
+        return {"pageInfo": {"hasNextPage": more, "endCursor": str(start + size) if more else None}, "nodes": nodes}
+
+    if "query PrJsonFirst(" in q:
+        # pr-json.py's first call: the first page of comments and of deletions together. The
+        # deletion files steer it as they steer the deletion query: `graphql-deleted-fail` fails the
+        # call, `graphql-deleted-badshape` leaves timelineItems out.
+        if os.path.exists(os.path.join(d, "graphql-deleted-fail")): sys.exit(1)
+        pr = {"comments": comments_page(None)}
+        if not os.path.exists(os.path.join(d, "graphql-deleted-badshape")): pr["timelineItems"] = deleted_page()
+        print(json.dumps({"data": {"repository": {"pullRequest": pr}}}))
+        sys.exit(0)
+    if any(a.startswith("query=") and "timelineItems" in a for a in args):
+        # The CommentDeletedEvent query, for the pages after the first. `graphql-deleted-fail` makes
+        # this call alone exit 1, and `graphql-deleted-badshape` answers without the timelineItems field.
+        if os.path.exists(os.path.join(d, "graphql-deleted-fail")): sys.exit(1)
+        if os.path.exists(os.path.join(d, "graphql-deleted-badshape")):
+            print(json.dumps({"data": {"repository": {"pullRequest": {}}}})); sys.exit(0)
+        print(json.dumps({"data": {"repository": {"pullRequest": {"timelineItems": deleted_page()}}}}))
         sys.exit(0)
     after = next((a.split("=", 1)[1] for a in args if a.startswith("after=")), None)
-    comments = with_ids(load())["comments"]
-    size = int(open(os.path.join(d, "page-size")).read()) if os.path.exists(os.path.join(d, "page-size")) else 100
-    edited = set(open(os.path.join(d, "edited-ids")).read().split()) if os.path.exists(os.path.join(d, "edited-ids")) else set()
-    start = int(after) if after else 0
-    chunk = comments[start:start + size]
-    more = start + size < len(comments)
-    if os.path.exists(os.path.join(d, "graphql-truncate")):
-        chunk, more = chunk[:-1], False
-    # edited-by: "<id> <login>" lines naming who edited a comment; by default its author did.
-    by = dict(l.split(None, 1) for l in open(os.path.join(d, "edited-by")).read().splitlines() if l.strip()) if os.path.exists(os.path.join(d, "edited-by")) else {}
-    # A login of "-" stands for GitHub naming no editor (a deleted account): the login is null.
-    nodes = [{"id": c["id"], "lastEditedAt": ("2026-10-15T00:00:00Z" if c["id"] in edited else None),
-              "editor": ({"login": (lambda l: None if l == "-" else l)(by.get(c["id"], ((c.get("author") or {}).get("login"))))} if c["id"] in edited else None)} for c in chunk]
-    print(json.dumps({"data": {"repository": {"pullRequest": {"comments": {
-        "pageInfo": {"hasNextPage": more, "endCursor": str(start + size) if more else None}, "nodes": nodes}}}}}))
+    print(json.dumps({"data": {"repository": {"pullRequest": {"comments": comments_page(after)}}}}))
     sys.exit(0)
 if args[:2] == ["pr", "edit"]:
     # Real gh takes one positional (the pull request) and rejects a second before any API call:

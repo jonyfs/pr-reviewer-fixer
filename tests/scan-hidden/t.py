@@ -258,8 +258,8 @@ check("one variation selector after an emoji -> no hit (0.15.3)", rc == 0, out)
 for name, text in (("'<a' x 20000", "<a" * 20000), ("'<a style=\"x' x 20000", '<a style="x' * 20000),
                    ("'[x' x 30000 after a definition", "[d]: #y\n" + "[x" * 30000),
                    # W1 of #33: a run of escaped brackets after one '[' cost about 1000 steps per byte.
-                   ("'[' then '\\[' x 30000 after a definition", "[d]: #y\n[" + "\\[" * 30000),
-                   ("'\\[' x 30000 after a titled definition", '[d]: https://e.com "t"\n' + "\\[" * 30000)):
+                   ("'[' then '\\[' x 120000 after a definition", "[d]: #y\n[" + "\\[" * 120000),
+                   ("'\\[' x 120000 after a titled definition", '[d]: https://e.com "t"\n' + "\\[" * 120000)):
     path = write("big.md", text + "\n")
     t0 = time.monotonic()
     try:

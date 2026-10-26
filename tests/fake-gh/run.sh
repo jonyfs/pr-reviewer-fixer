@@ -10,7 +10,11 @@ RC="$SRC/review-cycle.sh"; GATE="$SRC/gate-pr-review-state.py"
 RCABS="$(cd "$SRC" && pwd)/review-cycle.sh"
 # Scratch files live in a directory per run so two runs can go at the same time (TEST_TAG names it).
 W="$T/work-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W"
-export PATH="$T/bin:$PATH"
+# A version-manager shim (pyenv, asdf) costs a few hundred ms per python3, and this suite starts
+# python3 over a thousand times. A link to the interpreter the shim resolves to goes first on PATH.
+PYDIR="$W/python"; mkdir -p "$PYDIR"
+PYEXE="$(python3 -I -c 'import sys; print(sys.executable)' 2>/dev/null)" && [ -x "$PYEXE" ] && ln -sf "$PYEXE" "$PYDIR/python3"
+export PATH="$T/bin:$PYDIR:$PATH"
 export FAKE_DIR="$W/state"
 export REVIEW_MARKER_AUTHORS=github-actions
 export XDG_STATE_HOME="$W/xdg-state"
@@ -23,9 +27,11 @@ PASS=0; FAIL=0; ROWS=()
 row() { if [ "$2" = ok ]; then PASS=$((PASS+1)); ROWS+=("PASS | $1"); else FAIL=$((FAIL+1)); ROWS+=("FAIL | $1 ($3)"); fi; }
 check() { local name="$1"; shift; if "$@"; then row "$name" ok; else row "$name" bad "assert failed"; fi; }
 reset() { rm -rf "$FAKE_DIR"; mkdir -p "$FAKE_DIR"; : >"$FAKE_DIR/calls.log"; printf '%s' "$1" >"$FAKE_DIR/pr.json"; }
-labels() { python3 -I -c 'import json,sys;print(" ".join(sorted(l["name"] for l in json.load(open(sys.argv[1]))["labels"])))' "$FAKE_DIR/pr.json"; }
-ncomments() { python3 -I -c 'import json,sys;print(len(json.load(open(sys.argv[1]))["comments"]))' "$FAKE_DIR/pr.json"; }
-sethead() { python3 -I -c 'import json,sys;p=sys.argv[1];x=json.load(open(p));x["headRefOid"]=sys.argv[2];json.dump(x,open(p,"w"))' "$FAKE_DIR/pr.json" "$1"; }
+# The helpers a check calls many times use jq: a python3 start costs several times more, and a
+# version-manager shim (pyenv, asdf) multiplies that.
+labels() { jq -r '[.labels[].name] | sort | join(" ")' "$FAKE_DIR/pr.json"; }
+ncomments() { jq '.comments | length' "$FAKE_DIR/pr.json"; }
+sethead() { jq -c --arg h "$1" '.headRefOid = $h' "$FAKE_DIR/pr.json" >"$FAKE_DIR/pr.json.new" && mv "$FAKE_DIR/pr.json.new" "$FAKE_DIR/pr.json"; }
 has() { case " $(labels) " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 hasnt() { ! has "$1"; }
 eq() { [ "$1" = "$2" ]; }
@@ -34,7 +40,7 @@ REP="$W/report.md"; printf '## findings\n- one\n' >"$REP"
 pub() { "$RC" publish 7 --report "$REP" "$@" >"$W/out" 2>&1; echo $?; }
 mk() { # number head labels(json) comments(json) state [isDraft true|false]
   printf '{"number":%s,"headRefOid":"%s","labels":%s,"comments":%s,"state":"%s","isDraft":%s,"author":{"login":"jony"},"isCrossRepository":false,"apiCommits":[{"sha":"1111111","author":{"login":"jony"}}],"permissions":{"jony":"admin"}}' "$1" "$2" "$3" "$4" "$5" "${6:-false}"; }
-isdraft() { python3 -I -c 'import json,sys;print("yes" if json.load(open(sys.argv[1])).get("isDraft") else "no")' "$FAKE_DIR/pr.json"; }
+isdraft() { jq -r 'if .isDraft then "yes" else "no" end' "$FAKE_DIR/pr.json"; }
 mc() { # login body
   python3 -I -c 'import json,sys;print(json.dumps({"body":sys.argv[2],"author":{"login":sys.argv[1]}}))' "$1" "$2"; }
 
@@ -476,6 +482,10 @@ echo 1 >"$FAKE_DIR/page-size"
 "$RC" status 7 >/dev/null 2>&1; r0=$?
 python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
 check "comments read across several GraphQL pages (status 0, gate 0)" eval '[ $r0 = 0 ] && [ $g0 = 0 ] && [ $(calls "api graphql") -ge 2 ]'
+# 0.15.4: a pull request whose comments and deletions fit in one page is read with one GraphQL call.
+reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$FORGED_OTHER,$GOOD_PASS]" OPEN)"
+python3 -I "$SRC/pr-json.py" 7 >/dev/null 2>&1; r0=$?
+check "one page of comments and deletions -> one GraphQL call (0.15.4)" eval '[ $r0 = 0 ] && [ $(calls "api graphql") = 1 ]'
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$FORGED_OTHER,$GOOD_PASS]" OPEN)"
 touch "$FAKE_DIR/graphql-truncate"
 "$RC" status 7 >/dev/null 2>&1; r0=$?

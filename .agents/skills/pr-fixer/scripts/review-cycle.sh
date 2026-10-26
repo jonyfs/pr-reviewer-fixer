@@ -463,10 +463,14 @@ marker_author_allowed() {
 # The login `gh` publishes as must be on the list before a command posts a marker as it: a marker
 # by anyone else is one every reader ignores, so `status` would owe the review forever and `budget`
 # would never see the halt. Refuses when the login cannot be resolved.
+# The login it resolved is kept in GH_LOGIN, so a later step of the same command (the audit line of
+# `publish`) does not ask gh again.
+GH_LOGIN=""
 publisher_on_list() {
   local who
   who="$(gh api user --jq .login 2>/dev/null)" || who=""
   [ -n "$who" ] || die "review-cycle: REFUSED. could not resolve the login gh publishes as (gh api user)"
+  GH_LOGIN="$who"
   marker_author_allowed "$who" \
     || die "review-cycle: REFUSED. gh is signed in as '$who', which is not on REVIEW_MARKER_AUTHORS, so every reader would ignore what this posts"
 }
@@ -1005,6 +1009,11 @@ if last and last.get("state") == "halted" and last.get("reason") == os.environ["
 # is lower than at pass 1 but did not keep falling, 0 otherwise, never more than what remains.
 cmd_budget() {
   local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read a budget from"
+  budget_of "$json"
+}
+# The budget of a pull request already read (`extend` has read it, and a second read costs gh calls).
+budget_of() {
+  local json="$1"
   # Fail closed. With no author allowlist every commenter would be trusted, and a stranger's
   # `state=granted` comment would raise the budget. Unlike `status`, which only reads a verdict, the
   # budget decides whether agents keep editing the branch, so it refuses to guess.
@@ -1148,7 +1157,7 @@ cmd_extend() {
   local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to extend"
   parse "$json"
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop to extend"
-  local b; b="$(cmd_budget "$NUMBER")" || die "review-cycle: could not read the budget on #$NUMBER"
+  local b; b="$(budget_of "$json")" || die "review-cycle: could not read the budget on #$NUMBER"
   local B_NEXT="" B_DONE="" B_REMAINING="" B_HARD=""
   eval "$b"
   [ "$B_NEXT" = "ask" ] || die "review-cycle: #$NUMBER is not waiting for an extension (budget says: $B_NEXT)"
@@ -1759,7 +1768,8 @@ audit_append() {
   local dir file who ts
   dir="${XDG_STATE_HOME:-${HOME:-}/.local/state}/pr-reviewer-fixer"
   file="$dir/audit.jsonl"
-  who="$(gh api user --jq .login 2>/dev/null)" || who=""
+  who="$GH_LOGIN"
+  [ -n "$who" ] || who="$(gh api user --jq .login 2>/dev/null)" || who=""
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   if ! { mkdir -p "$dir" && A_PR="$1" A_PASS="$2" A_SHA="$3" A_VERDICT="$4" A_CRIT="$5" A_WARN="$6" A_NOTE="$7" \
          A_MODEL="$8" A_TIER="$9" A_WHO="$who" A_TS="$ts" python3 -I -c '
