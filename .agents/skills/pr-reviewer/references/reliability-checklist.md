@@ -7,8 +7,10 @@ Tags: [#pr #review #reliability #resilience #reference]
 
 Run this unit when the change calls another service, a database, a queue or the network, runs in
 the background, or changes infrastructure or deployment files (the path floor summons it for
-those). A failure path that loses data or takes the service down for every user is CRITICAL when the
-trigger is ordinary (a slow dependency, a restart, a retry); otherwise a WARNING with its scenario.
+those). A failure path that loses data or causes a production outage of any scope (the whole service, one
+endpoint or one region) is CRITICAL when the trigger is ordinary (a slow dependency, a restart, a
+retry), as [severity-and-verdict.md](severity-and-verdict.md) defines it; otherwise a WARNING with
+its scenario.
 
 | Check | What a finding looks like |
 |---|---|

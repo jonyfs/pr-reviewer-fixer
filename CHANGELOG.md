@@ -4,6 +4,25 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.17.2
+
+Reviewer guidance only, from the reviews of #38. No script, marker, label or exit code changes.
+
+- `security-checklist.md`, A01: the CSRF check the OWASP rewrite of 0.16.0 dropped is back. A
+  state-changing request under cookie authentication needs a CSRF token or an origin check against
+  an allowlist (`Origin` or `Referer`). A state-changing `GET` is a gap even under `SameSite=Lax`,
+  `SameSite` alone does not cover a sibling subdomain or a `SameSite=None` cookie, and a request
+  with no `Origin` or `Referer` fails closed.
+- `security-checklist.md`, A02: cookie flags apply wherever the change sets a cookie, a JSON API
+  included, not only where it serves pages. Every cookie is `Secure` with a `SameSite` value chosen
+  for its purpose; a session or credential cookie is also `HttpOnly`. A CSRF token cookie that
+  script reads and echoes in a header is the one exception to `HttpOnly`, and stays `Secure` and
+  bound to the session.
+- `dimensions.md` and `reliability-checklist.md`: severity per area defers to
+  `severity-and-verdict.md`. Data loss, exposed personal data, an attacker path (crafted input
+  counts) or a production outage of any scope (one endpoint or one region counts) is CRITICAL; the
+  0.16.0 wording limited an outage to one that takes the service down for every user.
+
 ## 0.17.1
 
 Performance only. No output, marker, label, subcommand or exit code changes.
