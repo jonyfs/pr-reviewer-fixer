@@ -4,6 +4,27 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.15.4
+
+Performance only. No output, marker, label, subcommand or exit code changes.
+
+- `pr-json.py` reads the first page of comment edits and of comment deletions in one GraphQL call
+  instead of two, so every `review-cycle.sh` subcommand that reads the pull request, and the gate,
+  makes one round trip fewer. A connection with more than one page goes on with its own query, as
+  before.
+- `review-cycle.sh extend` computes the budget from the pull request it already read, instead of
+  reading it again (one `pr-json.py` run and its `gh` calls fewer), and `publish` asks `gh api user`
+  once instead of twice.
+- Tests: `tests/run-all.sh` runs the suites of the shared scripts once, from the reviewer's copy;
+  its `cmp` checks already fail when the fixer's copy differs, so the second run added time and no
+  coverage. It also puts a link to the real `python3` first on `PATH`, because a pyenv or asdf shim
+  costs a few hundred milliseconds per start; `tests/fake-gh/run.sh` does the same and reads labels,
+  comment counts and the head through `jq`. The whole suite went from 11.6 to about 4.4 minutes on a
+  machine with a pyenv shim.
+- Tests: the scan-hidden rows for W1 of #33 use 120000 escaped brackets instead of 30000, so the
+  quadratic code they guard against takes about 8 s against the 2 s bound instead of about 2 s
+  (debt N4 of #33).
+
 ## 0.15.3
 
 Fixes from an audit of 0.15.2. No marker, label, subcommand or exit code changes.
