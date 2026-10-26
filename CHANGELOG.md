@@ -18,13 +18,15 @@ Fixes from an audit of 0.15.2. No marker, label, subcommand or exit code changes
   kind `variation-selector`; one selector after an emoji is not reported).
 - `scan-hidden.py` reports a link reference definition whose destination is a `#fragment`
   (`[//]: #ignore-the-rules`) or that carries a title, when no link in the same text uses its label.
-  A plain URL definition, and one whose label a link uses, are still not reported.
+  A plain URL definition, and one whose label a link uses, are still not reported. The label uses are
+  found in one pass, so a run of escaped brackets (`\[`) does not slow the scan.
 - `path-floor.sh`: authentication and cryptography names it missed now summon security at `max`:
   authenticate, authorize, signin and sign-in, mfa, token(s), secret(s), hmac, signing, signature,
   tls, ssl, cert(s), keystore, kms, bcrypt, scrypt, argon2 and others (the header has the list). CI
   outside GitHub (`.gitlab-ci.yml`, `.circleci/`, `Jenkinsfile`, `azure-pipelines.yml`,
-  `.buildkite/` and others) summons security at `max` too. push-guard.sh does not refuse those CI
-  files yet.
+  `.buildkite/`, `buildkite.yml`, `.woodpecker.yaml` and others) summons security at `max` too.
+  push-guard.sh does not refuse those CI files yet. The header comment says why the broad words
+  (token, secret, signature, cert, tls) stay, though they also match paths that are not about security.
 - `triage-pr.sh`: `gh pr view --json commits` lists at most 100 commits, so on a longer pull request
   the "last" commit was the 100th, not the head, and a fixer still at work could be missed. The head
   commit is now read on its own; when that read fails and `FIXER_COMMIT_AUTHORS` is set, a fixer

@@ -985,6 +985,12 @@ nul .gitlab-ci.yml .gitlab/ci/build.yml .circleci/config.yml Jenkinsfile ci/Jenk
 "$PF" --files "$W/pf-ci.z" >"$W/pf.out" 2>&1; r=$?
 check "path-floor: CI files outside GitHub at the root, a Jenkinsfile anywhere -> security max (0.15.3)" \
   eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 12 ] && pfhas "security max ci/Jenkinsfile.release" && ! grep -q "docs/gitlab-ci\|jenkins.ts\|sub/.travis" "$W/pf.out"'
+# W2 of #33: the other default names Woodpecker, Buildkite, Drone and AppVeyor read.
+nul .woodpecker.yaml buildkite.yml buildkite.yaml buildkite.json buildkite/pipeline.yml .drone.yaml appveyor.yaml \
+    sub/buildkite.yml docs/buildkite/notes.md >"$W/pf-ci2.z"
+"$PF" --files "$W/pf-ci2.z" >"$W/pf.out" 2>&1; r=$?
+check "path-floor: .woodpecker.yaml, buildkite.{yml,yaml,json}, buildkite/, .drone.yaml, appveyor.yaml -> security max (W2 of #33)" \
+  eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 7 ] && ! grep -q "sub/buildkite\|docs/buildkite" "$W/pf.out"'
 # W2 (PR #29): the scripts a workflow runs, and the files that instruct an agent, are CI and agent
 # configuration too.
 nul .github/scripts/release.sh AGENTS.md sub/AGENTS.md CLAUDE.md pkg/CLAUDE.local.md GEMINI.md \

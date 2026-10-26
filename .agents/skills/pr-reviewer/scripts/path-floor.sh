@@ -32,10 +32,11 @@
 #                              (root, .github/, docs/), .mcp.json, a Dockerfile or Containerfile (also
 #                              Dockerfile.<x> and <x>.dockerfile): the files that run CI or an agent
 #   security         max       CI outside GitHub, at the root: .gitlab-ci.yml, .gitlab/ci/**,
-#                              .circleci/**, .buildkite/**, .woodpecker(.yml|/**), .tekton/**,
-#                              .travis.yml, azure-pipelines.yml, bitbucket-pipelines.yml, .drone.yml,
-#                              cloudbuild.yaml, buildspec.yml, appveyor.yml, codemagic.yaml, and a
-#                              Jenkinsfile (or Jenkinsfile.<x>) in any directory
+#                              .circleci/**, .buildkite/**, buildkite/**, buildkite.(yml|yaml|json),
+#                              .woodpecker(.yml|.yaml|/**), .tekton/**, .travis.yml, azure-pipelines.yml,
+#                              bitbucket-pipelines.yml, .drone(.yml|.yaml), cloudbuild.yaml, buildspec.yml,
+#                              (.)appveyor(.yml|.yaml), codemagic.yaml, and a Jenkinsfile (or
+#                              Jenkinsfile.<x>) in any directory
 #   security         max       agent directories at any depth: .claude/**, .codex/**, .opencode/**,
 #                              .cursor/**, .gemini/**, .windsurf/**, and the skills/ folder of .agents,
 #                              .roo, .cline, .kiro, .devin and .junie (every project skill folder
@@ -163,11 +164,12 @@ else:
 
 CI_PREFIXES = (".github/workflows/", ".github/actions/", ".github/scripts/")
 # CI outside GitHub Actions, at the root where each service reads it: what runs on every push.
-OTHER_CI_PREFIXES = (".circleci/", ".buildkite/", ".gitlab/ci/", ".woodpecker/", ".tekton/")
+OTHER_CI_PREFIXES = (".circleci/", ".buildkite/", "buildkite/", ".gitlab/ci/", ".woodpecker/", ".tekton/")
 OTHER_CI_FILES = {".gitlab-ci.yml", ".gitlab-ci.yaml", ".travis.yml", "azure-pipelines.yml",
-                  "azure-pipelines.yaml", "bitbucket-pipelines.yml", ".drone.yml", ".woodpecker.yml",
+                  "azure-pipelines.yaml", "bitbucket-pipelines.yml", ".drone.yml", ".drone.yaml",
+                  ".woodpecker.yml", ".woodpecker.yaml", "buildkite.yml", "buildkite.yaml", "buildkite.json",
                   "cloudbuild.yaml", "cloudbuild.yml", "buildspec.yml", "buildspec.yaml", "appveyor.yml",
-                  ".appveyor.yml", "codemagic.yaml"}
+                  ".appveyor.yml", "appveyor.yaml", ".appveyor.yaml", "codemagic.yaml"}
 # Agent directories, matched at any depth: a harness also reads them in a subdirectory of a monorepo
 # (a nested .cursor/rules, .claude/skills or .agents/skills). AGENT_DIRS count whole; SKILL_PARENTS
 # count through their skills/ folder, which is where install.sh puts these skills for each harness
@@ -182,6 +184,10 @@ INSTRUCTION_FILES = {".github/copilot-instructions.md", "opencode.json", "openco
                      ".windsurfrules"}
 INSTRUCTION_NAMES = {"agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md"}
 CODEOWNERS = {"codeowners", ".github/codeowners", "docs/codeowners"}
+# Auth and crypto words, matched as whole path components. The broad ones (token, secret, signature,
+# cert, tls) also catch paths that are not about security, such as src/lexer/token.rs or
+# docs/signature.md. That is on purpose: a floor that over-includes costs review effort, one that
+# misses costs safety. Do not trim a word to cut those extra hits.
 AUTH = re.compile(
     r"(?:^|[/._-])(auth|authn|authz|authentication|authorization|authorisation|oauth|oauth2|login|logout|"
     r"authenticate|authenticated|authenticator|authenticators|authorize|authorise|authorized|authorised|"
