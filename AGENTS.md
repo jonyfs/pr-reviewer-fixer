@@ -39,7 +39,19 @@ The suite needs bash, python3, node, jq, git and sha256sum. It puts a fake `gh` 
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/fetch-feedback.py` is the comment lane's work list: review threads, reviews and issue comments from GraphQL, with author association, thread state and the action the fixer may take (it acts only on OWNER, a MEMBER or COLLABORATOR with write access, the reviewer's login and `FIXER_TRUSTED_LOGINS`, and skips minimized comments, dismissed reviews and the inline comments of a dismissed review). It is the one script besides `pr-json.py` that reads pull request comments, and it fails closed the same way. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope, no sensitive path (unless `PUSH_GUARD_ALLOW_SENSITIVE` names its class), and no secret in the added lines (through `review-cycle.sh screen --patch`). The reviewer has no copy.
-- `scripts/check-version.sh` and `scripts/update.sh` (both skills) are the update path. The check prints one notice when a newer release exists and installs nothing. The agent then puts a yes/no question to the person in the session; on yes it runs `update.sh --yes`, on no `check-version.sh --decline`. `update.sh` downloads the release archive, refuses one whose SHA-256 differs from `SHA256SUMS`, and runs that release's own `install.sh` with `--target` on the skills directory it sits in. Unlike the check, every failure in it is loud and leaves the old install as it was. A PR comment never answers the question.
+- `scripts/check-version.sh` and `scripts/update.sh` (both skills) are the update path. The check
+  prints one notice when a newer release exists and installs nothing. The agent then puts a yes/no
+  question to the person in the session (the review loop agent asks once, before it dispatches; a
+  dispatched sub-agent skips the notice, never asks and never updates); on yes it runs
+  `update.sh --yes`, on no `check-version.sh --decline <version>`. `update.sh` downloads the release archive,
+  refuses one whose SHA-256 differs from `SHA256SUMS`, and runs that release's own `install.sh` with
+  `--target` on the skills directory it sits in. The upstream address is fixed in it:
+  `PR_SKILLS_DOWNLOAD_URL` and `PR_SKILLS_RELEASE_URL` are honored only with
+  `--allow-custom-source`, and with either set and no flag it refuses. Unlike the check, every
+  failure in it is loud. A failure before `install.sh` runs leaves the old install as it was;
+  `install.sh` keeps a skill's old copy when that skill's swap fails but swaps one skill at a time,
+  so with both skills the first may already be replaced, and running `update.sh` again finishes the
+  job. A PR comment never answers the question.
 - `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.
 - `scripts/scan-hidden.py` (both skills) reports invisible text in what the agents read: the diff's
   added lines, the PR title, body and comments (through `pr-json.py`), the commit messages and,
