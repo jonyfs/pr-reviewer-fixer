@@ -26,7 +26,7 @@ python3 tests/scan-hidden/t.py .agents/skills/pr-reviewer/scripts  # scan-hidden
 
 `tests/run-all.sh` runs the suites at the same time. Each run uses its own scratch directory, named by `TEST_TAG` (`work-*/` and `state-*/`, both gitignored), so set a different `TEST_TAG` when you start two runs of the same suite together. `run-all.sh` puts a `TEST_TAG` you give it in front of each suite's own tag, so two runs of `run-all.sh` with different tags do not collide either. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE` when it starts, so a value exported in your shell does not change the results. `run-all.sh` runs the suites of the shared scripts once, from the reviewer's copy (the `cmp` checks at its end compare every script found in both skills' `scripts/` folders, so a new shared script needs no new line), and, outside a virtual environment, puts a link to the real `python3` first on `PATH`, since a pyenv or asdf shim costs a few hundred milliseconds per start.
 
-The suite needs bash, python3, node, jq, git and sha256sum. It puts a fake `gh` first on `PATH` (`tests/*/bin/gh`, backed by `fakegh.py`), so nothing touches GitHub. There is no build or lint step. Workflows and templates are checked with `actionlint`, which is run by hand.
+The suite needs bash, python3, node, jq, git, curl, tar and sha256sum. It puts a fake `gh` first on `PATH` (`tests/*/bin/gh`, backed by `fakegh.py`), so nothing touches GitHub. There is no build or lint step. Workflows and templates are checked with `actionlint`, which is run by hand.
 
 ## Architecture
 
@@ -43,11 +43,14 @@ The suite needs bash, python3, node, jq, git and sha256sum. It puts a fake `gh` 
   prints one notice when a newer release exists and installs nothing. The agent then puts a yes/no
   question to the person in the session (the review loop agent asks once, before it dispatches; a
   dispatched sub-agent skips the notice, never asks and never updates); on yes it runs
-  `update.sh --yes`, on no `check-version.sh --decline <version>`. `update.sh` downloads the release archive,
+  `update.sh --yes --version <version>` (the version the question named: the script refuses when
+  the latest release is another one), on no `check-version.sh --decline <version>`. `update.sh` downloads the release archive,
   refuses one whose SHA-256 differs from `SHA256SUMS`, and runs that release's own `install.sh` with
   `--target` on the skills directory it sits in. The upstream address is fixed in it:
   `PR_SKILLS_DOWNLOAD_URL` and `PR_SKILLS_RELEASE_URL` are honored only with
-  `--allow-custom-source`, and with either set and no flag it refuses. Unlike the check, every
+  `--allow-custom-source`, and with either set and no flag it refuses. Both scripts print a custom
+  source as scheme and host only, and `update.sh` drops `curl`'s own error text: a mirror URL can
+  carry a token, and everything printed reaches the agent's transcript. Unlike the check, every
   failure in it is loud. A failure before `install.sh` runs leaves the old install as it was;
   `install.sh` keeps a skill's old copy when that skill's swap fails but swaps one skill at a time,
   so with both skills the first may already be replaced, and running `update.sh` again finishes the
@@ -136,4 +139,4 @@ Rules for doing it:
 - Third-party actions in workflows and templates are pinned to full commit SHAs. Keep them pinned.
 - Diagrams in `README.md` are sourced from `docs/diagrams/*.mmd`. Update both together.
 - Dated facts (harness paths, model names) carry a date, currently 2026-10-14. Update the date when you re-verify them.
-- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored.
+- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored. The model-key scan in `tests/run-all.sh` skips `state-*/` and `work-*/` and fails if a tracked file sits in one.
