@@ -11,29 +11,42 @@ P="${TEST_TAG:+$TEST_TAG-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 fail=0
-# No workflow, template or script may call a model or name a provider key. Review and fix run as
-# agents in a person's own harness session, never in GitHub Actions.
-# The suites' own scratch directories (state-*/ and work-*/, gitignored) hold copies of the skills
-# and of whatever a run fed them, and a run in progress or a red run leaves them behind, so the scan
-# skips them under tests/ and nowhere else. That loses nothing only while no tracked file anywhere
-# sits in a folder with such a name, which is checked first and fails closed when git cannot answer.
+# No workflow, template, action, script or test may call a model or name a provider key. Review and
+# fix run as agents in a person's own harness session, never in GitHub Actions.
+# The scan reads all of .github (workflows, scripts, actions, CODEOWNERS), the root install.sh, both
+# skills' templates and scripts, and tests/. The suites' own scratch directories (state-*/ and
+# work-*/, gitignored) hold copies of the skills and of whatever a run fed them, and a run in
+# progress or a red run leaves them behind, so the scan skips them under tests/ and nowhere else.
+# That loses nothing only while no tracked file anywhere sits in a folder with such a name, which is
+# checked first and fails closed when git cannot answer or when ROOT is not the top of its own
+# repository (then `git ls-files` would list nothing or another repository's files).
+# No file is excluded by name: the pattern below is written in pieces, so this file does not match
+# it, and a file called run-all.sh in any scanned tree is read like any other. tests/scan/run.sh
+# drives this function against planted trees.
 model_key_scan() {
-  local tracked bad=0
-  if ! tracked="$(git -C "$ROOT" ls-files 2>&1)"; then
-    echo "== git ls-files failed, so the model-key scan cannot tell tracked files from scratch ones"; bad=1
+  local tracked top bad=0
+  if ! tracked="$(git -C "$ROOT" ls-files 2>&1)" \
+     || ! top="$(git -C "$ROOT" rev-parse --show-toplevel 2>&1)"; then
+    echo "== git ls-files failed, so the model-key scan cannot tell tracked files from scratch ones"
+    bad=1
+  elif [ "$(cd "$top" 2>/dev/null && pwd -P)" != "$(cd "$ROOT" && pwd -P)" ]; then
+    echo "== $ROOT is not the top of its own git repository, so the model-key scan cannot tell"
+    echo "   which files are tracked"; bad=1
   elif printf '%s\n' "$tracked" | grep -Eq '(^|/)(state|work)-[^/]*/'; then
     echo "== a tracked file sits in a state-* or work-* folder, which the model-key scan skips under tests/"; bad=1
   fi
-  local pat='claude-code-action|codex-action|anthropic_api_key|openai_api_key|fixer_push_token|anthropics/|openai/codex' rc1 rc2
-  grep -rniE "$pat" "$ROOT/.github/workflows" "$ROOT/.github/scripts" "$ROOT"/.agents/skills/*/templates \
-       "$ROOT"/.agents/skills/*/scripts --exclude=run-all.sh >/dev/null; rc1=$?
-  grep -rniE "$pat" "$ROOT/tests" --exclude=run-all.sh --exclude-dir='state-*' --exclude-dir='work-*' >/dev/null; rc2=$?
+  local rc1 rc2 pat='claude-code-''action|codex-''action|anthropic''_api_key|openai''_api_key'
+  pat="$pat"'|fixer_push''_token|anthropic''s/|openai/''codex'
+  grep -rniE "$pat" "$ROOT/.github" "$ROOT/install.sh" "$ROOT"/.agents/skills/*/templates \
+       "$ROOT"/.agents/skills/*/scripts >/dev/null; rc1=$?
+  grep -rniE "$pat" "$ROOT/tests" --exclude-dir='state-*' --exclude-dir='work-*' >/dev/null; rc2=$?
   if [ "$rc1" -eq 0 ] || [ "$rc2" -eq 0 ]; then
-    echo "== a model action or provider key appears in a workflow, template, script or test"; bad=1
+    echo "== a model action or provider key appears in .github, install.sh, a template, a script"
+    echo "   or a test"; bad=1
   elif [ "$rc1" -ne 1 ] || [ "$rc2" -ne 1 ]; then
     echo "== the model-key scan could not read a tree (grep exit $rc1 and $rc2)"; bad=1
   elif [ "$bad" -eq 0 ]; then
-    echo "== no model action or provider key in workflows, workflow scripts, templates, scripts or tests"
+    echo "== no model action or provider key in .github, install.sh, templates, scripts or tests"
   fi
   [ "$bad" -eq 0 ] || fail=1
 }
@@ -66,6 +79,7 @@ start "scan-hidden.py"                           env TEST_TAG="${P}rev" python3 
 start "check-version.sh"                         env TEST_TAG="${P}rev" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "release.sh"                                env TEST_TAG="${P}run" bash "$HERE/release/run.sh"
 start "update.sh"                                 env TEST_TAG="${P}rev" bash "$HERE/update/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts" "$ROOT/install.sh"
+start "model-key scan"                            env TEST_TAG="${P}run" bash "$HERE/scan/run.sh"
 wait "${pids[@]}"
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]}"; tail -n 3 "$OUT/$n.log"

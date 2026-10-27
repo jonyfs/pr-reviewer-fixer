@@ -23,3 +23,4 @@ tests/eval/work-*/
 tests/eval/reports/
 tests/release/work-*/
 tests/update/state-*/
+tests/scan/work-*/

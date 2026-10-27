@@ -691,6 +691,7 @@ docs/
   designs/              design records written before larger changes
   diagrams/             the Mermaid sources used in this README
 tests/                  fake-gh and git tests: run tests/run-all.sh
+tests/scan/             rows for the model-key scan of tests/run-all.sh, on planted trees
 tests/eval/             seeded review cases and a scorer for recall and precision
 install.sh              copies the two skills into the folder a harness reads
 VERSION, CHANGELOG.md   the release version and its history
@@ -719,10 +720,13 @@ each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/`
 start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts your `TEST_TAG` in
 front of each suite's own tag. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
 when it starts, so a value exported in your shell does not change the results. It also
-fails if any workflow, workflow script, template, script or test names a model action or a provider API key.
-That scan skips the suites' `state-*/` and `work-*/` scratch folders under `tests/` only, fails if a tracked
-file sits in a folder with such a name anywhere, and fails when it cannot read the repository;
-`bash tests/run-all.sh --scan-only` runs it alone.
+fails if anything under `.github/` (workflows, scripts, actions), the root `install.sh`, a skill's
+`templates/` or `scripts/`, or `tests/` names a model action or a provider API key. It excludes no
+file by name: a file called `run-all.sh` is read like any other. It skips the suites' `state-*/` and
+`work-*/` scratch folders under `tests/` only, fails if a tracked file sits in a folder with such a
+name anywhere, and fails when it cannot read a tree or when the checkout is not the top of its own
+git repository. `bash tests/run-all.sh --scan-only` runs it alone, and `tests/scan/run.sh` drives it
+against planted trees in a scratch copy.
 
 Some `install.sh` rows run only on Linux: the `SKILL.md` and `skill.md` row needs a case-sensitive
 file system, and the bind-mount row also needs root in a container that may mount. On macOS they

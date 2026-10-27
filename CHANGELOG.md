@@ -62,13 +62,25 @@ Updating the installed skills no longer needs a manual clone and `install.sh`. A
 - `tests/run-all.sh`: the model-key scan skips the `state-*/` and `work-*/` scratch directories of
   the suites under `tests/` only, instead of relying on a green run to delete them, and fails when
   a tracked file anywhere in the repository sits in a folder with such a name, or when
-  `git ls-files` or `grep` cannot answer. `run-all.sh --scan-only` runs just that scan. The suite
+  `git ls-files` or `grep` cannot answer, or when the checkout is not the top of its own git
+  repository. It excludes no file by name (a file called `run-all.sh` was never read in any scanned
+  tree before; the scan's pattern is now written in pieces so `tests/run-all.sh` does not match
+  it) and reads all of `.github/` and the root `install.sh`, not only the workflows and workflow
+  scripts. `run-all.sh --scan-only` runs just that scan; the new `tests/scan/run.sh` plants a key in
+  each scanned tree, under an ordinary name and as `run-all.sh`, and covers the skip, a tracked
+  file in a scratch folder, no git, a copy inside another repository, a missing tree and an
+  unreadable one, all in a scratch copy. The suite
   also needs `curl` and `tar` now (README and the requirements say so).
 - Pass-3 fixes: `url_host` prints `(host not readable)` when an unencoded `/`, `?` or `#` inside
   the userinfo leaves an `@` after the cut; the failed-release message names the release source,
   not GitHub; the debt-only fixer dispatch in `harness-loop.md` carries the same skip-the-notice
   clause as the other briefs. New update and version rows: `--version` newer than the latest and
   malformed, a failed `SHA256SUMS` download after the archive, and the userinfo cases.
+- Pass-4 fixes: the model-key scan no longer skips files named `run-all.sh` (W6), `model_key_scan`
+  has rows of its own and fails closed outside its own git repository (N21), it also reads
+  `.github/actions/`, the rest of `.github/` and `install.sh` (N22), and the prompt in
+  `tests/eval/README.md` carries the skip-the-Version-Notice clause (N23, in part: the skip still
+  rests on a prose clause in the brief, declared as debt).
 - Minor version: a new script and subcommands that existing installs can ignore. An installed
   copy older than 0.19.0 has no `update.sh` and updates once the old way.
 

@@ -37,7 +37,8 @@ For each case, start a fresh-context sub-agent in your harness and give it this 
 case name filled in:
 
 ```text
-Follow .agents/skills/pr-reviewer/SKILL.md. The target is a pasted diff: read
+Follow .agents/skills/pr-reviewer/SKILL.md. You were dispatched by the review loop agent: skip
+the Version Notice. The target is a pasted diff: read
 tests/eval/cases/<case>/diff.patch, and use tests/eval/cases/<case>/description.txt as the pull
 request description. There is no pull request, so do not publish and do not call review-cycle.sh.
 Write the report to tests/eval/reports/<case>.md. It must end with the fenced findings block.
