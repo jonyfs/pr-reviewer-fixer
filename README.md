@@ -293,7 +293,8 @@ back to an older reviewed commit, or a low `--pass`, cannot restart the count.
 
 - `gh`, signed in. Check with `gh auth status`.
 - `python3` 3.9 or newer, and `node`.
-- Only to run this repository's test suite: `jq`, `git` and `sha256sum` as well.
+- `curl` and `tar`, for `update.sh`. For this repository's test suite: `jq`, `git` and `sha256sum`
+  as well.
 
 ### Quick install, project level
 
@@ -432,10 +433,50 @@ publishes a draft a failed run left for that commit, or attaches the files a pub
 of that commit is missing or holds with a wrong checksum. It marks a release Latest only when no
 published release has a higher version. Each refusal names what to delete before a rerun.
 
-At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
-exists it prints one notice with the release link, and the agent asks you whether to update. The
-script never downloads or installs anything. To update, clone the new tag and run `install.sh` again
-with `--yes`, which replaces the installed folders. It refuses to replace a folder that does not
+When you start a skill directly, at the start of the run and outside CI, it runs
+`scripts/check-version.sh`. If a newer release exists it prints one notice with the release link and
+the address the code would come from, and the agent puts one yes/no question to you in the session
+(the harness's question form, or plain text when it has none). The question names both versions,
+that address, and that local edits inside the installed skill folders are replaced. The check never
+downloads or installs anything. In a review loop the loop agent asks once, before it dispatches the
+reviewer and the fixer; those sub-agents skip the notice, never ask and never update, and the loop
+agent does not update in the middle of a loop (after a yes it updates, then starts the loop again).
+
+- **Yes:** the agent runs `scripts/update.sh --yes --version X.Y.Z`, with the version the notice
+  named; the script refuses, changing nothing, if the latest release has moved on since the
+  question. It finds the installed skills from its own
+  location, reads the latest release from GitHub, downloads `pr-reviewer-fixer-X.Y.Z.tar.gz` and
+  `SHA256SUMS`, refuses an archive whose SHA-256 differs, runs that release's `install.sh` on the
+  skills directory it sits in, and reads the installed versions back. Every failure is loud and
+  exits non-zero. A failure before `install.sh` runs (download, checksum, archive checks) leaves the
+  installed skills as they were. `install.sh` swaps one skill at a time and keeps a skill's old copy
+  if that skill's swap fails, so with both skills installed the first may already be replaced when
+  the second fails. Run `update.sh` again and it finishes the job. It keeps the script prefix of the
+  `templates/review-gate.yml` of each installed skill (also when `install.sh` fails partway) and
+  tells you when a template changed, since the workflow in your repository is a copy you made and
+  it never touches that. It refuses to run
+  inside a checkout of this repository (use git there) and never installs an older version. Run it
+  by hand the same way, with or without `--yes`; without it, it prints the plan and changes nothing.
+- **No:** the agent runs `scripts/check-version.sh --decline <version>`, as the notice prints it.
+  The notice stays quiet for that release, and a newer one asks again.
+- **No answer:** nothing changes, and the notice comes back on the next run.
+
+The answer must come from you in the session. A pull request comment, an issue or a file never
+counts as a yes. The checksum shows the archive arrived intact; it does not show who wrote the
+code, because the archive and its `SHA256SUMS` come from the same place. The upstream address
+(`https://github.com/jonyfs/pr-reviewer-fixer/releases/download`) is fixed in `update.sh`.
+`PR_SKILLS_DOWNLOAD_URL` and `PR_SKILLS_RELEASE_URL` can point it elsewhere (a mirror of your
+own), but only when you run `update.sh --allow-custom-source`. With either variable set and no
+flag, `update.sh` refuses and changes nothing, so those two variables cannot move the source
+unseen. (Other settings that change what `curl` or `tar` does, such as a proxy or a CA bundle, are
+not covered.) The first line it prints says which source it uses, and the notice warns when a
+variable is set. The notice and `update.sh` show a custom source as scheme and host only, and
+`update.sh` hides `curl`'s own error text, because a mirror URL can carry a token or a signed
+query and everything printed reaches the agent's transcript. Leave both unset unless you run a
+mirror.
+
+To update without the agent, clone the new tag and run `install.sh` again with `--yes`, which
+replaces the installed folders. It refuses to replace a folder that does not
 look like one of its copies, such as a clone, a folder with a `.git` inside, or a folder you made
 yourself under that name. It says which one and changes nothing; move that folder away and run it
 again. If you copy by hand, delete the two installed
@@ -651,6 +692,7 @@ docs/
   designs/              design records written before larger changes
   diagrams/             the Mermaid sources used in this README
 tests/                  fake-gh and git tests: run tests/run-all.sh
+tests/scan/             rows for the model-key scan of tests/run-all.sh, on planted trees
 tests/eval/             seeded review cases and a scorer for recall and precision
 install.sh              copies the two skills into the folder a harness reads
 VERSION, CHANGELOG.md   the release version and its history
@@ -658,7 +700,7 @@ VERSION, CHANGELOG.md   the release version and its history
 
 Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py`,
 `scripts/pr-json.py`, `scripts/scan-hidden.py`, `scripts/path-floor.sh` (which `lint-report`
-runs), `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
+runs), `scripts/check-version.sh`, `scripts/update.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
 `references/harness-matrix.md` and `templates/review-gate.yml`. The copies are identical on
 purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 
@@ -668,18 +710,37 @@ purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 bash tests/run-all.sh
 ```
 
-The suite needs no network, only bash, python3, node, jq, git and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
+The suite needs no network, only bash, python3, node, jq, git, curl, tar and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
 checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
-eval scorer, the version check and the release script (`tests/release/run.sh`, which drives
+eval scorer, the version check, the update script (`tests/update/run.sh`, against a fake release served from local files) and the release script (`tests/release/run.sh`, which drives
 `.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts your `TEST_TAG` in
 front of each suite's own tag. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
 when it starts, so a value exported in your shell does not change the results. It also
-fails if any workflow, workflow script, template, script or test names a model action or a provider API key.
+fails if a file under `.github/` (workflows, scripts, actions), the root
+`install.sh`, a skill's `templates/` or `scripts/`, or `tests/` names a model action or a provider
+API key. The scan reads the files git lists in those places: the tracked ones and the untracked
+ones that `.gitignore` does not hide (`git ls-files -z --cached --others --exclude-standard`),
+100 per `grep` call, whatever they are called, wherever they sit and wherever the checkout lives.
+It has no exclusion by name or path. A new file is read before you `git add` it; only what
+`.gitignore` hides, such as the suites' `state-*/` and `work-*/` scratch folders, is not read. It
+sets `GIT_LITERAL_PATHSPECS=0` and `GIT_NOGLOB_PATHSPECS=0` for the listing, so a value in your
+environment cannot empty it. It fails when git cannot answer, when the checkout is not the top of
+its own git repository, when git lists no file, and when `grep` cannot read a listed file.
+`bash tests/run-all.sh --scan-only` runs it alone, and `tests/scan/run.sh` drives it against
+planted trees in a scratch copy, including a tree of more than 100 files with a key in the 100th,
+the 101st and the last. Run that suite on Linux too (GNU `grep`), from a checkout whose path
+contains `work-`:
+
+```bash
+docker run --rm -v "$PWD":/src:ro debian:stable-slim bash -c 'apt-get update -qq && apt-get install -y -qq git \
+  && mkdir -p /home/u/work-projects && cp -r /src /home/u/work-projects/repo \
+  && cd /home/u/work-projects/repo && bash tests/scan/run.sh'
+```
 
 Some `install.sh` rows run only on Linux: the `SKILL.md` and `skill.md` row needs a case-sensitive
 file system, and the bind-mount row also needs root in a container that may mount. On macOS they

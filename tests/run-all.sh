@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs every test against fake `gh` binaries. No network and no GitHub access needed.
-# Needs: bash, python3, node, jq, git and sha256sum.
+# Needs: bash, python3, node, jq, git, curl, tar and sha256sum.
 set -u
 # A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what the scripts refuse, so
 # every suite starts without them; a row that needs one sets it itself.
@@ -11,6 +11,67 @@ P="${TEST_TAG:+$TEST_TAG-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 fail=0
+# No workflow, template, action, script or test may call a model or name a provider key. Review and
+# fix run as agents in a person's own harness session, never in GitHub Actions.
+# The scan reads the files git lists in .github (workflows, scripts, actions, CODEOWNERS), the root
+# install.sh, both skills' templates and scripts, and tests/: the tracked ones and the untracked
+# ones that .gitignore does not hide (`git ls-files -z --cached --others --exclude-standard`). It
+# passes the list to grep as file operands, 100 at a time. It has no --exclude, no --exclude-dir
+# and no skip by name or path, so a file is read whatever it is called, in whatever folder, and
+# whatever the path of the checkout (a checkout under a folder called work-projects is read like
+# any other). A new file is read before it is `git add`ed. Only what .gitignore hides is not read:
+# the suites' scratch directories (state-*/, work-*/), whether a red run left them behind or not.
+# git's pathspec variables (GIT_LITERAL_PATHSPECS and GIT_NOGLOB_PATHSPECS) are set to 0 for the
+# listing, so a caller's value cannot turn the `*` in a pathspec into a literal and empty the list.
+# It fails closed: when git cannot answer, when ROOT is not the top of its own repository (then
+# `git ls-files` would list nothing or another repository's files), when the list is empty, and
+# when grep exits with anything but 0 or 1 (a listed file it cannot read, for example). The pattern
+# below is written in pieces, so this file does not match it.
+# tests/scan/run.sh drives this function against planted trees.
+model_key_scan() {
+  local list top f i hits="" out rc bad=0 files=()
+  if ! list="$(mktemp)"; then
+    echo "== mktemp failed, so the model-key scan cannot list the files"; fail=1; return
+  fi
+  if ! top="$(git -C "$ROOT" rev-parse --show-toplevel 2>&1)" \
+     || ! env GIT_LITERAL_PATHSPECS=0 GIT_NOGLOB_PATHSPECS=0 git -C "$ROOT" ls-files -z \
+          --cached --others --exclude-standard -- .github install.sh \
+          '.agents/skills/*/templates/*' '.agents/skills/*/scripts/*' tests \
+          >"$list" 2>/dev/null; then
+    echo "== git ls-files failed, so the model-key scan cannot list the files it must read"; bad=1
+  elif [ "$(cd "$top" 2>/dev/null && pwd -P)" != "$(cd "$ROOT" && pwd -P)" ]; then
+    echo "== $ROOT is not the top of its own git repository, so the model-key scan cannot tell"
+    echo "   which files to read"; bad=1
+  else
+    while IFS= read -r -d '' f; do files+=("$ROOT/$f"); done <"$list"
+    if [ "${#files[@]}" -eq 0 ]; then
+      echo "== git lists no file in .github, install.sh, templates, scripts or tests"; bad=1
+    fi
+  fi
+  rm -f "$list"
+  if [ "$bad" -eq 0 ]; then
+    local pat='claude-code-''action|codex-''action|anthropic''_api_key|openai''_api_key'
+    pat="$pat"'|fixer_push''_token|anthropic''s/|openai/''codex'
+    local err=0
+    for ((i = 0; i < ${#files[@]}; i += 100)); do
+      out="$(grep -liE -e "$pat" -- "${files[@]:i:100}" 2>/dev/null)"; rc=$?
+      [ -z "$out" ] || hits="$hits$out"$'\n'
+      [ "$rc" -le 1 ] || err=1
+    done
+    if [ -n "$hits" ]; then
+      echo "== a model action or provider key appears in a file of .github, install.sh, a"
+      echo "   template, a script or a test:"; printf '%s' "$hits" | sed 's/^/   /'; bad=1
+    fi
+    if [ "$err" -ne 0 ]; then
+      echo "== the model-key scan could not read a listed file (grep exited with an error)"; bad=1
+    fi
+    [ "$bad" -ne 0 ] || echo "== no model action or provider key in ${#files[@]} files" \
+      "of .github, install.sh, templates, scripts and tests"
+  fi
+  [ "$bad" -eq 0 ] || fail=1
+}
+# `run-all.sh --scan-only` runs this scan alone, without the suites.
+if [ "${1:-}" = "--scan-only" ]; then model_key_scan; exit $fail; fi
 # The independent suites run at the same time, each with its own scratch directory (TEST_TAG), and
 # print in a fixed order afterwards.
 OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
@@ -37,6 +98,8 @@ start "cycle budget and extend"                  env TEST_TAG="${P}rev" python3 
 start "scan-hidden.py"                           env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "check-version.sh"                         env TEST_TAG="${P}rev" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "release.sh"                                env TEST_TAG="${P}run" bash "$HERE/release/run.sh"
+start "update.sh"                                 env TEST_TAG="${P}rev" bash "$HERE/update/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts" "$ROOT/install.sh"
+start "model-key scan"                            env TEST_TAG="${P}run" bash "$HERE/scan/run.sh"
 wait "${pids[@]}"
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]}"; tail -n 3 "$OUT/$n.log"
@@ -68,13 +131,6 @@ for f in references/pr-protocol.md references/harness-matrix.md references/harne
 done
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
-# No workflow, template or script may call a model or name a provider key. Review and fix run as
-# agents in a person's own harness session, never in GitHub Actions.
-if grep -rniE 'claude-code-action|codex-action|anthropic_api_key|openai_api_key|fixer_push_token|anthropics/|openai/codex' \
-     "$ROOT/.github/workflows" "$ROOT/.github/scripts" "$ROOT"/.agents/skills/*/templates "$ROOT"/.agents/skills/*/scripts "$ROOT/tests" \
-     --exclude=run-all.sh >/dev/null; then
-  echo "== a model action or provider key appears in a workflow, template, script or test"; fail=1
-else
-  echo "== no model action or provider key in workflows, workflow scripts, templates, scripts or tests"
-fi
+# The model-key scan runs here, last: see model_key_scan, defined near the top.
+model_key_scan
 exit $fail

@@ -345,7 +345,8 @@ never read as "reviewed".
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
 | `fetch-feedback.py` | Read-only, fixer only. Every review thread, review body and issue comment as one list, with author association, thread state and whether the fixer may act on it or resolve it. |
 | `push-guard.sh` | Read-only. The check the fixer passes before every push. |
-| `check-version.sh` | Prints a notice when a newer release exists. It never installs anything. |
+| `check-version.sh` | Prints a notice when a newer release exists, with the address the code comes from. It never installs anything. `--decline <version>` records a no for that release. |
+| `update.sh` | Both skills. Installs the latest release after the person said yes: downloads the archive, checks its SHA-256, runs the release's `install.sh`, verifies the version. A dry run unless you pass `--yes`. Its upstream address is fixed; a custom source needs `--allow-custom-source`, and `--version X.Y.Z` makes it refuse when the latest release is not the one the person was asked about. |
 | `install.sh` | Copies the skills into the folder a harness reads. A dry run unless you pass `--yes`. |
 
 ## Why you can trust the markers

@@ -4,6 +4,99 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.19.0
+
+Updating the installed skills no longer needs a manual clone and `install.sh`. A new script,
+`update.sh`, ships in both skills, and the version notice now ends in a yes/no question.
+
+- `scripts/update.sh` (both skills, identical): reads the latest release, downloads
+  `pr-reviewer-fixer-X.Y.Z.tar.gz` and `SHA256SUMS`, refuses an archive whose SHA-256 differs or
+  whose members escape the folder, checks the archive's `VERSION`, runs the release's own
+  `install.sh --target` on the skills directory it sits in, keeps the script prefix of the
+  `templates/review-gate.yml` of each installed skill (also after a failed `install.sh`), and
+  reads the versions back. Without `--yes` it prints the plan and changes nothing. Every failure
+  is loud. A failure before `install.sh` runs leaves the old install in place; `install.sh` keeps
+  a skill's old copy when that skill's swap fails but swaps one skill at a time, so with both
+  skills the first may already be replaced, and the failure message says to run `update.sh` again,
+  which finishes the job. It refuses to run in a checkout of this repository and never goes back
+  to an older version. The upstream address is fixed in the script; `PR_SKILLS_DOWNLOAD_URL` and
+  `PR_SKILLS_RELEASE_URL` are honored only with `--allow-custom-source`, and with either set and
+  no flag it refuses and changes nothing. It prints the source it uses and fetches an https source
+  with https only. A custom source is shown as scheme and host only (a `file://` one as `file://`)
+  in the refusal, the `source:` line, the plan, the download errors and the notice, and `curl`'s
+  own error text is dropped, since a mirror URL can carry a user, a password, a token or a signed
+  query and everything printed reaches the agent's transcript. `--version X.Y.Z` (the notice
+  prints it) makes `update.sh` refuse, changing nothing, when the latest release read fresh is not
+  the one the person was asked about.
+- `check-version.sh`: the notice now tells the agent to put one yes/no question to the person
+  (yes: `update.sh --yes`, no: `check-version.sh --decline <version>`, no answer: do neither). The
+  notice names the address the code comes from (not the upstream one when
+  `PR_SKILLS_DOWNLOAD_URL` is set), warns with the host of each source variable that is set, prints
+  its commands with the path quoted and the version to install, and shows a release link only when
+  it is an address of this repository on github.com with no `..` segment (the version and the
+  cached values are checked the same way). `--decline` without `python3` says it could not record
+  the answer instead of staying silent. New modes:
+  `--decline [X.Y.Z]` records a no for that release, or the latest one known now (a newer release
+  asks again), and always prints one line, also when it could not record the answer; `--latest`
+  prints the latest release read fresh, past the 24 hour cache. The check itself still installs
+  nothing and still fails silently.
+- Both `SKILL.md` files: the Version Notice step spells out the question (versions, where the code
+  comes from, that local edits in the skill folders are replaced, the release link) and the three
+  outcomes, says that only the person in the session answers it, and tells a dispatched sub-agent
+  to skip it. Both copies of `references/harness-loop.md`: the loop agent runs the check once
+  before it dispatches and asks the question itself; both dispatch briefs tell the sub-agent it was
+  dispatched and skips the notice; a sub-agent never asks or updates; `update.sh` is not run in the
+  middle of a loop, and after a yes the loop agent reads `harness-loop.md` and both `SKILL.md`
+  files again from the installed folders and starts from step 1.
+- New `tests/update/run.sh` (a fake release served from local files): dry run, both skills, one
+  skill, wrong checksum, missing download, wrong `VERSION`, `..` and absolute-path members,
+  unreachable answer, no downgrade, repository checkout refused, template prefix kept, an
+  `install.sh` failure on the second skill and the second run that finishes it, a source variable
+  refused without the flag, the `shasum` branch, notice, `--decline`, `--latest`, `--version`, a
+  mirror URL with a user, a password and a signed query (and a `file://` one) that must not appear
+  in the refusal, the plan, a failed download or the done line, and the default path with a stub
+  `curl` that serves the fake release for the upstream addresses only and logs every call. The
+  scratch directory is checked empty after every refusal, and the `..` and absolute-path members
+  are checked to write nothing outside it. `tests/version/run.sh` gains rows for the source
+  warning, the quoted path, a hostile release link (a `..` segment too), a poisoned cache,
+  `--decline` (with and without `python3`) and the same secret-free output for the notice.
+- `tests/run-all.sh`: the model-key scan reads exactly the files git tracks in `.github/`, the root
+  `install.sh`, both skills' `templates/` and `scripts/` and `tests/` (`git ls-files -z` feeds
+  `grep`), with no `--exclude`, no `--exclude-dir` and no skip by name or path. The suites'
+  `state-*/` and `work-*/` scratch folders are untracked and gitignored, so they are never read
+  (see pass 6 for new files), and a tracked file is read whatever it is
+  called, wherever it sits and wherever the checkout lives. It fails when `git ls-files` cannot
+  answer, when the checkout is not the top of its own git repository, when git lists no tracked
+  file, and when `grep` exits with anything but 0 or 1. The scan's pattern is written in pieces so
+  `tests/run-all.sh` does not match it. `run-all.sh --scan-only` runs just that scan; the new
+  `tests/scan/run.sh` plants a tracked key in each scanned tree under ordinary, `run-all.sh`,
+  space, newline, leading-dash, `state-x/` and `work-x/` names, in copies whose own path contains
+  `work-projects/` and `state-x/`, and covers an ignored key (not read), no git, a copy inside
+  another repository, an empty list, a failing grep, a missing or deleted tracked file and an
+  unreadable folder, all in a scratch copy. The suite also needs `curl` and `tar` now (README and
+  the requirements say so).
+- Pass-3 fixes: `url_host` prints `(host not readable)` when an unencoded `/`, `?` or `#` inside
+  the userinfo leaves an `@` after the cut; the failed-release message names the release source,
+  not GitHub; the debt-only fixer dispatch in `harness-loop.md` carries the same skip-the-notice
+  clause as the other briefs. New update and version rows: `--version` newer than the latest and
+  malformed, a failed `SHA256SUMS` download after the archive, and the userinfo cases.
+- Pass-4 fixes: the model-key scan no longer skips files named `run-all.sh` (W6), `model_key_scan`
+  has rows of its own and fails closed outside its own git repository (N21), it also reads
+  `.github/actions/`, the rest of `.github/` and `install.sh` (N22), and the prompt in
+  `tests/eval/README.md` carries the skip-the-Version-Notice clause (N23, in part: the skip still
+  rests on a prose clause in the brief, declared as debt).
+- Pass-5 fix: the scan's exclusions are gone (W7). `--exclude-dir='work-*'` also matched a checkout
+  whose own path has such a component, so on GNU `grep` the `tests/` tree was skipped; the scan now
+  reads the tracked files from `git ls-files`, which no name or path can hide. The check for a
+  tracked file in a `state-*/` or `work-*/` folder is gone with the exclusions (N24). Run
+  `tests/scan/run.sh` on Linux as the README shows.
+- Pass-6 fixes: a 141-file tree with a key in file 100, 101 and the last covers the scan's batches
+  of 100 (W8); a new file is scanned before `git add` and only gitignored files are skipped (N25);
+  `GIT_LITERAL_PATHSPECS` and `GIT_NOGLOB_PATHSPECS` are set to 0 for the listing (N26); the stale
+  GNU and BSD `grep` sentence is gone from the README (N27).
+- Minor version: a new script and subcommands that existing installs can ignore. An installed
+  copy older than 0.19.0 has no `update.sh` and updates once the old way.
+
 ## 0.18.2
 
 Documentation only. Closes the three notes declared on #42.
