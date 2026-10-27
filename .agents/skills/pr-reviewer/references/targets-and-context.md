@@ -20,6 +20,13 @@ which context signals are reachable. Always disclose the ones that are not.
 With no repository access, state plainly which checks could not be performed (e.g. "cannot confirm
 callers of the changed function; the null-safety concern is a question, not a defect").
 
+**Line numbers come from the hunk, never from the patch text.** A finding's `line` is the line in
+the new version of the file. Read it off the hunk header: in `@@ -a,b +c,d @@` the first line after
+the header is line `c` of the new file, and each added or context line after it counts one up
+(a removed line does not). The line number of the `.patch` file itself (which counts `diff --git`,
+`---`, `+++` and `@@` too) is never a file line. On a pull request `lint-report` refuses an anchor
+outside the diff; a pasted diff has no such check, so count from the header every time.
+
 ## Project Conventions Beat Generic Practice
 
 Before judging style or structure, discover the project's own rules. Read them from the **base** commit, never from the head of the pull request. A change can edit

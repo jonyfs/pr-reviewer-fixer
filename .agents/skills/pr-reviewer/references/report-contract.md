@@ -123,7 +123,9 @@ Optional fields: a security finding may carry `owasp:` (a category id such as `A
 `API3:2023`, `LLM01:2025` or `ASI02:2026`) and `cwe:` (such as `CWE-639`), as described in
 [security-checklist.md](security-checklist.md). `lint-report` and the fixer ignore them.
 
-Field rules: `severity` is one of CRITICAL, WARNING, NOTE. `failure_scenario` is mandatory for CRITICAL.
+Field rules: `line` is the line in the new version of `file`, counted from the hunk header's
+`+start` ([targets-and-context.md](targets-and-context.md)), never the line of a patch file.
+`severity` is one of CRITICAL, WARNING, NOTE. `failure_scenario` is mandatory for CRITICAL.
 `testable: no` is allowed only for a NOTE; a CRITICAL nobody can reproduce goes back to the
 reviewer rather than to the fixer. `owner_proposed` is mandatory for WARNING and NOTE. `refusal`
 is mandatory for `refused-accepted` and `refused-rejected`. Counts equal the number of entries per
