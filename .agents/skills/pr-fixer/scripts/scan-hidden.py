@@ -229,7 +229,7 @@ def blank_code(text):
     """The text with fenced code blocks and inline code spans replaced by spaces (newlines kept), so a
     `[label]` shown as code is not read as a link that uses the label. A fence is a line that opens
     with three or more backticks or tildes (up to three spaces of indent) and closes on a line that
-    holds only the same character, at least as many times, and spaces or tabs: a fence line with an
+    holds only the same character, at least as many times, and spaces, tabs or a carriage return (CRLF text): a fence line with an
     info string (```js) inside an open fence is content, as in CommonMark. A code span is a backtick run closed by the next run of the
     same length, as CommonMark pairs them; each run is visited once, so the cost is linear."""
     out = list(text)
