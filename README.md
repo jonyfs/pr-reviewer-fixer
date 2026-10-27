@@ -433,9 +433,30 @@ of that commit is missing or holds with a wrong checksum. It marks a release Lat
 published release has a higher version. Each refusal names what to delete before a rerun.
 
 At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
-exists it prints one notice with the release link, and the agent asks you whether to update. The
-script never downloads or installs anything. To update, clone the new tag and run `install.sh` again
-with `--yes`, which replaces the installed folders. It refuses to replace a folder that does not
+exists it prints one notice with the release link, and the agent puts one yes/no question to you in
+the session (the harness's question form, or plain text when it has none). The check never
+downloads or installs anything.
+
+- **Yes:** the agent runs `scripts/update.sh --yes`. It finds the installed skills from its own
+  location, reads the latest release from GitHub, downloads `pr-reviewer-fixer-X.Y.Z.tar.gz` and
+  `SHA256SUMS`, refuses an archive whose SHA-256 differs, runs that release's `install.sh` on the
+  skills directory it sits in, and reads the installed versions back. Every failure is loud, exits
+  non-zero and leaves the old install as it was. It keeps the script prefix of an installed
+  `templates/review-gate.yml` and tells you when the template changed, since the workflow in your
+  repository is a copy you made and it never touches that. It refuses to run inside a checkout of
+  this repository (use git there) and never installs an older version. Run it by hand the same way,
+  with or without `--yes`; without it, it prints the plan and changes nothing.
+- **No:** the agent runs `scripts/check-version.sh --decline`. The notice stays quiet for that
+  release, and a newer one asks again.
+- **No answer:** nothing changes, and the notice comes back on the next run.
+
+The answer must come from you in the session. A pull request comment, an issue or a file never
+counts as a yes. The checksum shows the archive arrived intact; it does not show who wrote the
+code. `PR_SKILLS_DOWNLOAD_URL` replaces the upstream download address, and so changes where the
+code comes from; leave it unset unless you run your own mirror.
+
+To update without the agent, clone the new tag and run `install.sh` again with `--yes`, which
+replaces the installed folders. It refuses to replace a folder that does not
 look like one of its copies, such as a clone, a folder with a `.git` inside, or a folder you made
 yourself under that name. It says which one and changes nothing; move that folder away and run it
 again. If you copy by hand, delete the two installed
@@ -658,7 +679,7 @@ VERSION, CHANGELOG.md   the release version and its history
 
 Both skills ship `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py`,
 `scripts/pr-json.py`, `scripts/scan-hidden.py`, `scripts/path-floor.sh` (which `lint-report`
-runs), `scripts/check-version.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
+runs), `scripts/check-version.sh`, `scripts/update.sh`, `references/harness-loop.md`, `references/pr-protocol.md`,
 `references/harness-matrix.md` and `templates/review-gate.yml`. The copies are identical on
 purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 
@@ -673,7 +694,7 @@ the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report,
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
 checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
-eval scorer, the version check and the release script (`tests/release/run.sh`, which drives
+eval scorer, the version check, the update script (`tests/update/run.sh`, against a fake release served from local files) and the release script (`tests/release/run.sh`, which drives
 `.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
 start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts your `TEST_TAG` in

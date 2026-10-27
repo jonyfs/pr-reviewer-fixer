@@ -19,6 +19,7 @@ docker run --rm --privileged -v "$PWD":/src:ro -w /src debian:stable-slim bash t
 bash tests/eval/selftest.sh                                        # the review eval scorer, on canned reports
 bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-version.sh
 bash tests/release/run.sh                                          # .github/scripts/release.sh, the release workflow's logic
+bash tests/update/run.sh .agents/skills/pr-reviewer/scripts install.sh   # update.sh and check-version.sh --latest/--decline
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt
 python3 tests/scan-hidden/t.py .agents/skills/pr-reviewer/scripts  # scan-hidden.py
 ```
@@ -38,6 +39,7 @@ The suite needs bash, python3, node, jq, git and sha256sum. It puts a fake `gh` 
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/fetch-feedback.py` is the comment lane's work list: review threads, reviews and issue comments from GraphQL, with author association, thread state and the action the fixer may take (it acts only on OWNER, a MEMBER or COLLABORATOR with write access, the reviewer's login and `FIXER_TRUSTED_LOGINS`, and skips minimized comments, dismissed reviews and the inline comments of a dismissed review). It is the one script besides `pr-json.py` that reads pull request comments, and it fails closed the same way. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope, no sensitive path (unless `PUSH_GUARD_ALLOW_SENSITIVE` names its class), and no secret in the added lines (through `review-cycle.sh screen --patch`). The reviewer has no copy.
+- `scripts/check-version.sh` and `scripts/update.sh` (both skills) are the update path. The check prints one notice when a newer release exists and installs nothing. The agent then puts a yes/no question to the person in the session; on yes it runs `update.sh --yes`, on no `check-version.sh --decline`. `update.sh` downloads the release archive, refuses one whose SHA-256 differs from `SHA256SUMS`, and runs that release's own `install.sh` with `--target` on the skills directory it sits in. Unlike the check, every failure in it is loud and leaves the old install as it was. A PR comment never answers the question.
 - `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.
 - `scripts/scan-hidden.py` (both skills) reports invisible text in what the agents read: the diff's
   added lines, the PR title, body and comments (through `pr-json.py`), the commit messages and,
@@ -48,7 +50,7 @@ The suite needs bash, python3, node, jq, git and sha256sum. It puts a fake `gh` 
 - `.github/scripts/release.sh` is what `.github/workflows/release.yml` runs: it creates, completes or publishes the release for `VERSION`, sets Latest only for the highest version, and refuses with a remedy when a tag or a release belongs to another commit. `tests/release/run.sh` drives it against the fake `gh`.
 - `tests/eval/` holds seeded review cases and `score.py`, which prints recall and precision for reports a person produced in a harness session. `tests/run-all.sh` runs only the scorer's own tests, never a model.
 
-**Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `scan-hidden.py`, `path-floor.sh`, `check-version.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
+**Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `scan-hidden.py`, `path-floor.sh`, `check-version.sh`, `update.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
 
 **Who runs the loop.** The review and the fix run as sub-agents of the session's own agent, never in GitHub Actions. `.agents/skills/*/references/harness-loop.md` is the procedure. The only workflows are `templates/review-gate.yml` (a status check that runs no model; `.github/workflows/review-gate.yml` is this repository's copy of it, and `tests/run-all.sh` fails if the two differ) and `.github/workflows/release.yml` (which runs `.github/scripts/release.sh`).
 
@@ -85,7 +87,7 @@ Every change to the skills, their scripts or their templates is a new semantic v
    Below 1.0.0, breaking changes bump the minor version.
 4. Run `bash tests/run-all.sh` and `actionlint .github/workflows/*.yml .agents/skills/*/templates/*.yml`.
 5. Open a pull request, then run the review loop on it before the turn ends (see "The review loop" above). The change is reviewed and corrected by the skills it changes. A person reads the verdict and merges.
-6. When `VERSION` lands on `main`, `release.yml` runs `.github/scripts/release.sh`, which tags `v<version>` and publishes the release. `check-version.sh` in installed copies compares against that release.
+6. When `VERSION` lands on `main`, `release.yml` runs `.github/scripts/release.sh`, which tags `v<version>` and publishes the release. `check-version.sh` in installed copies compares against that release, and `update.sh` installs it once the person has said yes.
 
 Do not merge, tag or publish a release without a person's go-ahead.
 

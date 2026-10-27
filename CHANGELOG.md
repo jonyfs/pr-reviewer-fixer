@@ -4,6 +4,32 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.19.0
+
+Updating the installed skills no longer needs a manual clone and `install.sh`. A new script,
+`update.sh`, ships in both skills, and the version notice now ends in a yes/no question.
+
+- `scripts/update.sh` (both skills, identical): reads the latest release, downloads
+  `pr-reviewer-fixer-X.Y.Z.tar.gz` and `SHA256SUMS`, refuses an archive whose SHA-256 differs or
+  whose members escape the folder, checks the archive's `VERSION`, runs the release's own
+  `install.sh --target` on the skills directory it sits in, keeps the script prefix of an installed
+  `templates/review-gate.yml`, and reads the versions back. Without `--yes` it prints the plan and
+  changes nothing. Every failure is loud and leaves the old install in place. It refuses to run in
+  a checkout of this repository and never goes back to an older version.
+- `check-version.sh`: the notice now tells the agent to put one yes/no question to the person
+  (yes: `update.sh --yes`, no: `check-version.sh --decline`, no answer: do neither). New modes:
+  `--decline` records a no for the release known now (a newer release asks again) and `--latest`
+  prints the latest release read fresh, past the 24 hour cache. The check itself still installs
+  nothing and still fails silently.
+- Both `SKILL.md` files: the Version Notice step spells out the question and the three outcomes,
+  and says that only the person in the session answers it.
+- New `tests/update/run.sh` (19 rows, a fake release served from local files): dry run, both
+  skills, one skill, wrong checksum, missing download, wrong `VERSION`, `..` member, unreachable
+  answer, no downgrade, repository checkout refused, template prefix kept, notice, `--decline`,
+  `--latest`.
+- Minor version: a new script and subcommands that existing installs can ignore. An installed
+  copy older than 0.19.0 has no `update.sh` and updates once the old way.
+
 ## 0.18.2
 
 Documentation only. Closes the three notes declared on #42.
