@@ -15,7 +15,7 @@ The same file ships in both skills.
 
 | Role | Who | May write |
 |---|---|---|
-| Review loop agent | The session's own agent. It owns the loop and is the only one that dispatches the other two. It reads the budget, asks the person, and never reviews or edits code itself. | Only through `review-cycle.sh` (`stale`, `start`, `budget`, `extend`, `halt`) |
+| Review loop agent | The session's own agent. It owns the loop and is the only one that dispatches the other two. It reads the budget, asks the person, and never reviews or edits code itself. | Only through `review-cycle.sh` (`stale`, `start`, `budget`, `extend`, `halt`), and `update.sh` after a yes (see "The version notice") |
 | Reviewer | A fresh-context sub-agent that follows the `pr-reviewer` skill. | Nothing in the working tree. It publishes only through `review-cycle.sh publish`. |
 | Fixer | A fresh-context sub-agent that follows the `pr-fixer` skill. | The PR branch, and the PR comments and body the skill names. |
 
@@ -90,6 +90,28 @@ clears the stop too, but it takes the comment out of the count, and with it any 
 highest pass it carried, so edit it back instead. A
 trusted comment deleted by another login stops them for good, since a deletion cannot be undone
 (see rule 2 in [pr-protocol.md](pr-protocol.md)).
+
+## The version notice, once per loop
+
+The loop agent owns the version notice, as it owns the budget question. Before step 1 of a loop
+that starts in this session, outside CI, it runs
+`.agents/skills/pr-reviewer/scripts/check-version.sh` once. If that prints a notice, the loop agent
+puts the yes/no question from the `SKILL.md` Version Notice section to the person, through the
+harness's own question tool: both versions, where the code comes from (the address the notice
+prints), that local edits inside the installed skill folders are replaced, and the release link.
+
+- **Yes:** the loop agent runs `update.sh --yes` itself (with `--allow-custom-source` only when the
+  notice named a custom source and the yes was for it), then starts the loop again from step 1, so
+  the reviewer and the fixer both load the same release.
+- **No:** `check-version.sh --decline <version>`, as the notice prints it. Go on.
+- **No answer:** do neither. Go on.
+
+`update.sh` is not run in the middle of a loop that has a review owed: not between a dispatch and
+its finish line, and not while a sub-agent is running. A dispatched reviewer or fixer skips the
+Version Notice in its own `SKILL.md`: it never runs the check, never asks the person and never
+updates, so the reviewer still writes nothing in the working tree. For a project-scope install the
+skill folders sit inside the repository's working tree, so an update there is a change to files
+outside the pull request; the person says yes to it knowingly or does not.
 
 ## The loop
 

@@ -19,18 +19,27 @@
 # Environment (all optional):
 #   PR_SKILLS_RELEASE_URL   release API URL; default is the latest release of the upstream repo.
 #                           Any URL curl understands works, which is how the tests feed a file.
+#                           It only changes which version is read. When it is set, the notice says
+#                           so, and update.sh refuses to run unless the person allowed that source
+#                           (update.sh --allow-custom-source).
 #   PR_SKILLS_CACHE_DIR     where the answer is cached for 24 hours; default
 #                           ${XDG_CACHE_HOME:-$HOME/.cache}/pr-reviewer-fixer
 #
-# Usage: check-version.sh [--installed | --latest | --decline]
+# What the notice prints from the network is checked first: the version must be X.Y.Z and the
+# release page must be one https://github.com/jonyfs/pr-reviewer-fixer/... address with no space
+# or control character, else it prints no link. The same check applies to the cache file.
+#
+# Usage: check-version.sh [--installed | --latest | --decline [X.Y.Z]]
 #   (none)        print the notice when a newer release exists, nothing otherwise
 #   --installed   print the installed version only, no network
 #   --latest      print "<version> <release page>" of the latest release, read fresh from GitHub
 #                 (the 24 hour cache is refreshed, not read); prints nothing when it cannot. Used by
 #                 update.sh. Runs even when the opt-out variable or CI would silence the notice,
 #                 since someone asked for it.
-#   --decline     remember "no" for the latest release known now: the notice stays quiet until a
-#                 newer one appears. Prints one line saying so, or that it could not record it.
+#   --decline     remember "no" for the release X.Y.Z the notice named (or, with no argument, the
+#                 latest release known now): the notice stays quiet until a newer one appears.
+#                 Prints one line either way: that it stopped asking, or that it could not
+#                 record the answer (offline with no version given, no cache directory).
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -57,6 +66,9 @@ PY
 MODE=notice
 case "${1:-}" in --installed) MODE=installed ;; --latest) MODE=latest ;; --decline) MODE=decline ;; esac
 
+VERSION_RE='^[0-9]+\.[0-9]+\.[0-9]+$'
+PAGE_RE='^https://github\.com/jonyfs/pr-reviewer-fixer(/[A-Za-z0-9._~%+/-]*)?$'
+
 if [ "$MODE" = installed ]; then
   [ -n "$installed" ] && echo "$installed"
   exit 0
@@ -70,49 +82,78 @@ if [ "$MODE" = notice ]; then
 fi
 
 URL="${PR_SKILLS_RELEASE_URL:-$UPSTREAM}"
+# curl is held to https for an https address (the redirects too); a file:// address is a test's.
+CURL_PROTO=()
+case "$URL" in https://*) CURL_PROTO=(--proto '=https' --proto-redir '=https') ;; esac
 # No HOME and no XDG_CACHE_HOME (a bare container): run without a cache instead of failing.
 if [ -n "${PR_SKILLS_CACHE_DIR:-}" ]; then CACHE_DIR="$PR_SKILLS_CACHE_DIR"
 elif [ -n "${XDG_CACHE_HOME:-}" ]; then CACHE_DIR="$XDG_CACHE_HOME/pr-reviewer-fixer"
 elif [ -n "${HOME:-}" ]; then CACHE_DIR="$HOME/.cache/pr-reviewer-fixer"
 else CACHE_DIR=""; fi
 CACHE="${CACHE_DIR:+$CACHE_DIR/latest}"
+DECLINED="${CACHE_DIR:+$CACHE_DIR/declined}"
+
+record_decline() { # <version>
+  if [ -n "$DECLINED" ] && mkdir -p "$CACHE_DIR" 2>/dev/null \
+     && printf '%s\n' "$1" >"$DECLINED" 2>/dev/null; then
+    echo "pr-skills: not asking again about version $1; a newer release asks again."
+  else
+    echo "pr-skills: could not record the answer; you will be asked again." >&2
+  fi
+}
+# The latest release could not be read: silent, except that --decline says it recorded nothing.
+no_answer() {
+  [ "$MODE" = decline ] && echo "pr-skills: could not record the answer (the latest release" \
+    "could not be read); you will be asked again." >&2
+  exit 0
+}
+# A version given to --decline is the one the notice named; no network is needed for it.
+if [ "$MODE" = decline ] && [ -n "${2:-}" ]; then
+  if [[ "$2" =~ $VERSION_RE ]]; then record_decline "$2"
+  else
+    echo "pr-skills: '$(printf '%s' "$2" | tr -cd '[:print:]')' is not a version;" \
+      "could not record the answer." >&2
+  fi
+  exit 0
+fi
 
 latest=""
 now="$(date +%s)"
 if [ "$MODE" != latest ] && [ -n "$CACHE" ] && [ -r "$CACHE" ]; then
   read -r stamp tag link <"$CACHE" 2>/dev/null || stamp=0
   case "$stamp" in ''|*[!0-9]*) stamp=0 ;; esac
-  if [ $((now - stamp)) -lt "$TTL" ] && [ -n "${tag:-}" ]; then latest="$tag"; page="${link:-}"; fi
+  if [ $((now - stamp)) -lt "$TTL" ] && [[ "${tag:-}" =~ $VERSION_RE ]]; then
+    latest="$tag"; page="${link:-}"
+  fi
 fi
 
 if [ -z "$latest" ]; then
-  command -v curl >/dev/null 2>&1 || exit 0
-  body="$(curl -fsSL --max-time 5 -H 'Accept: application/vnd.github+json' "$URL" 2>/dev/null)" || exit 0
-  parsed="$(printf '%s' "$body" | python3 -I -c '
+  command -v curl >/dev/null 2>&1 || no_answer
+  body="$(curl -fsSL ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} --max-time 5 \
+    -H 'Accept: application/vnd.github+json' "$URL" 2>/dev/null)" || no_answer
+  field() { # <name>: one field of the answer; a bad one is checked below, never printed raw
+    printf '%s' "$body" | python3 -I -c '
 import json, sys
 try:
-    d = json.load(sys.stdin)
-    print(str(d.get("tag_name", "")).lstrip("v"), d.get("html_url", ""))
+    v = json.load(sys.stdin).get(sys.argv[1], "")
+    print(v if isinstance(v, str) else "")
 except Exception:
     pass
-' 2>/dev/null)"
-  latest="${parsed%% *}"
-  page="${parsed#* }"
-  [ -n "$latest" ] || exit 0
+' "$1" 2>/dev/null
+  }
+  latest="$(field tag_name)"; latest="${latest#v}"
+  [[ "$latest" =~ $VERSION_RE ]] || no_answer
+  page="$(field html_url)"; [[ "$page" =~ $PAGE_RE ]] || page=""
   [ -n "$CACHE" ] && mkdir -p "$CACHE_DIR" 2>/dev/null && printf '%s %s %s\n' "$now" "$latest" "$page" >"$CACHE" 2>/dev/null
 fi
 
-DECLINED="${CACHE_DIR:+$CACHE_DIR/declined}"
+[[ "$page" =~ $PAGE_RE ]] || page=""
 if [ "$MODE" = latest ]; then
   echo "$latest${page:+ $page}"
   exit 0
 fi
 if [ "$MODE" = decline ]; then
-  if [ -n "$DECLINED" ] && mkdir -p "$CACHE_DIR" 2>/dev/null && printf '%s\n' "$latest" >"$DECLINED" 2>/dev/null; then
-    echo "pr-skills: not asking again about version $latest; a newer release asks again."
-  else
-    echo "pr-skills: could not record the answer; you will be asked again." >&2
-  fi
+  record_decline "$latest"
   exit 0
 fi
 if [ -n "$DECLINED" ] && [ -r "$DECLINED" ]; then
@@ -131,8 +172,16 @@ PY
 )"
 [ "$newer" = "yes" ] || exit 0
 
+qhere="$(printf '%q' "$HERE")"
+repo="https://github.com/jonyfs/pr-reviewer-fixer/releases/download/v$latest"
 echo "pr-skills: version $latest is available, installed is $installed.${page:+ Release notes: $page}"
-echo "  Updating changes the skills your agent follows, so a person decides. Ask the person one yes/no question with the harness's question form (in prose, if it has none) and wait for the answer."
-echo "  Yes: bash $HERE/update.sh --yes    No: bash $HERE/check-version.sh --decline    Not answered: do neither."
+echo "  Updating changes the skills your agent follows, so a person decides. Ask the person one yes/no question with the harness's question form (in prose, if it has none) and wait for the answer. Name in it: both versions, where the code comes from, and that local edits inside the installed skill folders are replaced."
+echo "  The code comes from $repo/pr-reviewer-fixer-$latest.tar.gz, checked against the SHA256SUMS of that release."
+for var in PR_SKILLS_RELEASE_URL PR_SKILLS_DOWNLOAD_URL; do
+  if [ -n "${!var:-}" ]; then
+    echo "  WARNING: $var is set to '$(printf '%s' "${!var}" | tr -cd '[:print:]')', so the source above may not be the one in use. update.sh refuses to run while it is set, unless it is given --allow-custom-source. Tell the person, and add that flag only if the yes was for that source."
+  fi
+done
+echo "  Yes: bash $qhere/update.sh --yes    No: bash $qhere/check-version.sh --decline $latest    Not answered: do neither."
 echo "  Silence this check with PR_SKILLS_NO_UPDATE_CHECK=1."
 exit 0

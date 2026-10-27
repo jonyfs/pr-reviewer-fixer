@@ -13,8 +13,8 @@
 #      installed versions; an installed version equal to or newer than the release changes nothing;
 #   3. downloads pr-reviewer-fixer-X.Y.Z.tar.gz and SHA256SUMS of that release and refuses an
 #      archive whose SHA-256 does not match. The sum shows the archive arrived intact; it does not
-#      show who wrote the code. The release is the upstream one unless PR_SKILLS_DOWNLOAD_URL says
-#      otherwise;
+#      show who wrote the code. The release is the upstream one, https://github.com/jonyfs/
+#      pr-reviewer-fixer, unless the person allowed another source (see --allow-custom-source);
 #   4. unpacks it in a scratch directory (members with an absolute path or `..` are refused) and
 #      checks that its VERSION is the release asked for;
 #   5. runs the release's own install.sh with --target on the skills directory, which replaces each
@@ -25,31 +25,72 @@
 #   7. reads the installed version of each skill again and fails unless it is the release.
 #
 # Unlike check-version.sh, every failure here is loud: a message on stderr and a non-zero exit. A
-# failure before step 5 leaves the installed skills as they were.
+# failure before step 5 (download, checksum, archive checks) leaves the installed skills as they
+# were. install.sh keeps a skill's old copy when that skill's swap fails, but it swaps one skill at
+# a time: with both installed, the first may already be replaced when the second fails, and
+# pr-reviewer and pr-fixer then sit at different versions. Run update.sh again: the older skill
+# still compares as older, and the run finishes the job. The same holds for a failed read-back (7).
 #
 # Refused: a checkout of this repository (update it with git), a skills directory it cannot tell
 # is an install, a folder that install.sh would not replace (see its header).
 #
-# Usage: update.sh [--yes]
+# Usage: update.sh [--yes] [--allow-custom-source]
+#   --yes                  do it; without it the plan is printed and nothing changes
+#   --allow-custom-source  honor PR_SKILLS_DOWNLOAD_URL and PR_SKILLS_RELEASE_URL (below). Give it
+#                          only when the person accepted that source: the release answer, the
+#                          archive and SHA256SUMS all come from it, and the archive's install.sh
+#                          then runs as the person.
+#
+# Where the code comes from. The upstream address is fixed in this script. With either variable
+# below set and no --allow-custom-source, the script refuses and changes nothing, so an
+# environment (a .envrc, a harness setting) cannot move the source unseen. The first line it prints
+# says which source it uses, with a custom one spelled out.
 #
 # Environment (all optional):
-#   PR_SKILLS_DOWNLOAD_URL  base URL of the releases; the file is <base>/vX.Y.Z/<name>. Default is
-#                           https://github.com/jonyfs/pr-reviewer-fixer/releases/download. Any URL
-#                           curl understands works, which is how the tests feed files.
-#   PR_SKILLS_RELEASE_URL, PR_SKILLS_CACHE_DIR   as in check-version.sh.
+#   PR_SKILLS_DOWNLOAD_URL  base URL of the releases; the file is <base>/vX.Y.Z/<name>. Honored
+#                           only with --allow-custom-source. Any URL curl understands works, which
+#                           is how the tests feed files. A https:// base is fetched with https only.
+#   PR_SKILLS_RELEASE_URL   release API URL; honored only with --allow-custom-source (otherwise
+#                           the --latest call of check-version.sh runs without it).
+#   PR_SKILLS_CACHE_DIR     as in check-version.sh.
 set -uo pipefail
 
 main() {
   die() { echo "update: $*" >&2; return 1; }
 
-  local yes=0
+  local yes=0 custom=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --yes) yes=1; shift ;;
+      --allow-custom-source) custom=1; shift ;;
       -h|--help) awk 'NR == 1 { next } /^#/ { print; next } { exit }' "$0"; return 0 ;;
       *) die "unknown argument '$1' (try --help)"; return 1 ;;
     esac
   done
+
+  # The upstream source is fixed here. A variable moves it only with the flag.
+  local upstream="https://github.com/jonyfs/pr-reviewer-fixer/releases/download" var
+  if [ "$custom" = 0 ]; then
+    for var in PR_SKILLS_DOWNLOAD_URL PR_SKILLS_RELEASE_URL; do
+      if [ -n "${!var:-}" ]; then
+        die "$var is set ($(printf '%s' "${!var}" | tr -cd '[:print:]')), which would move where" \
+            "the code comes from. Unset it, or run again with --allow-custom-source if the" \
+            "person accepts that source. Nothing changed."
+        return 1
+      fi
+    done
+  fi
+  local base="$upstream" rel_label="upstream" base_label="upstream"
+  if [ "$custom" = 1 ]; then
+    if [ -n "${PR_SKILLS_RELEASE_URL:-}" ]; then
+      rel_label="CUSTOM $(printf '%s' "$PR_SKILLS_RELEASE_URL" | tr -cd '[:print:]')"
+    fi
+    if [ -n "${PR_SKILLS_DOWNLOAD_URL:-}" ]; then
+      base="$PR_SKILLS_DOWNLOAD_URL"
+      base_label="CUSTOM $(printf '%s' "$base" | tr -cd '[:print:]')"
+    fi
+  fi
+  echo "update: source: release answer from $rel_label, code from $base_label"
 
   local here skill_dir skills_dir
   here="$(cd "$(dirname "$0")" && pwd -P)" || { die "cannot resolve where this script is"; return 1; }
@@ -80,7 +121,12 @@ main() {
   else die "sha256sum or shasum is needed to check the download; nothing changed"; return 1; fi
 
   local latest page
-  read -r latest page < <("$here/check-version.sh" --latest)
+  # --latest honors PR_SKILLS_RELEASE_URL, so without the flag it runs without it.
+  if [ "$custom" = 1 ]; then
+    read -r latest page < <("$here/check-version.sh" --latest)
+  else
+    read -r latest page < <(env -u PR_SKILLS_RELEASE_URL "$here/check-version.sh" --latest)
+  fi
   [ -n "${latest:-}" ] || { die "could not read the latest release from GitHub (offline, rate limit, or no answer); nothing changed"; return 1; }
   printf '%s' "$latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { die "the latest release is '$latest', not a version; nothing changed"; return 1; }
 
@@ -100,7 +146,6 @@ print("older" if a < b else "same" if a == b else "newer")' "$v" "$latest")"
   done
   if [ "$need" = 0 ]; then echo "update: already up to date"; return 0; fi
 
-  local base="${PR_SKILLS_DOWNLOAD_URL:-https://github.com/jonyfs/pr-reviewer-fixer/releases/download}"
   local archive="pr-reviewer-fixer-$latest.tar.gz"
   echo "update: would install $latest into $skills_dir ($sk) from $base/v$latest/$archive"
   if [ "$yes" = 0 ]; then
@@ -110,9 +155,11 @@ print("older" if a < b else "same" if a == b else "newer")' "$v" "$latest")"
 
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/pr-skills-update.XXXXXX")" || { die "cannot make a scratch directory; nothing changed"; return 1; }
   trap 'rm -rf "$tmp"' RETURN
-  curl -fsSL --max-time 300 -o "$tmp/$archive" "$base/v$latest/$archive" \
+  local curl_opts=(-fsSL)
+  case "$base" in https://*) curl_opts+=(--proto '=https' --proto-redir '=https') ;; esac
+  curl "${curl_opts[@]}" --max-time 300 -o "$tmp/$archive" "$base/v$latest/$archive" \
     || { die "could not download $base/v$latest/$archive; nothing changed"; return 1; }
-  curl -fsSL --max-time 60 -o "$tmp/SHA256SUMS" "$base/v$latest/SHA256SUMS" \
+  curl "${curl_opts[@]}" --max-time 60 -o "$tmp/SHA256SUMS" "$base/v$latest/SHA256SUMS" \
     || { die "could not download $base/v$latest/SHA256SUMS; nothing changed"; return 1; }
   local want got
   want="$(awk -v f="$archive" '$2 == f || $2 == "*" f { print $1; exit }' "$tmp/SHA256SUMS")"
@@ -140,7 +187,8 @@ print("older" if a < b else "same" if a == b else "newer")' "$v" "$latest")"
   fi
 
   bash "$r/install.sh" --target "$skills_dir" --source "$r/.agents/skills" --skill "$sk" --yes \
-    || { die "install.sh failed, see above. Its message says what it left and where."; return 1; }
+    || { die "install.sh failed, see above; its message says what it left and where. One skill" \
+             "may already be replaced, so run update.sh again to finish the job."; return 1; }
 
   local new_tpl="$skills_dir/pr-reviewer/templates/review-gate.yml" def=".agents/skills/pr-reviewer/scripts/"
   if [ "$had_tpl" = 1 ] && [ -f "$new_tpl" ] && [ -n "$old_prefix" ] && [ "$old_prefix" != "$def" ]; then
@@ -152,9 +200,10 @@ print("older" if a < b else "same" if a == b else "newer")' "$v" "$latest")"
 
   for s in "${names[@]}"; do
     v="$("$skills_dir/$s/scripts/check-version.sh" --installed 2>/dev/null)"
-    [ "$v" = "$latest" ] || { die "after the install, $s reports '${v:-none}', not $latest. Check $skills_dir/$s."; return 1; }
+    [ "$v" = "$latest" ] || { die "after the install, $s reports '${v:-none}', not $latest." \
+                                  "Check $skills_dir/$s, then run update.sh again."; return 1; }
   done
-  echo "update: done. ${names[*]} now at $latest.${page:+ Release notes: $page}"
+  echo "update: done. ${names[*]} now at $latest, from $base_label.${page:+ Release notes: $page}"
   if [ "$had_tpl" = 1 ] && ! cmp -s "$tmp/old-gate.yml" "$new_tpl"; then
     echo "update: templates/review-gate.yml changed in this release. If a repository uses a copy of it as .github/workflows/review-gate.yml, compare the two and update that copy yourself."
   fi

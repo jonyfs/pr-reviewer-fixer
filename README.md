@@ -432,28 +432,40 @@ publishes a draft a failed run left for that commit, or attaches the files a pub
 of that commit is missing or holds with a wrong checksum. It marks a release Latest only when no
 published release has a higher version. Each refusal names what to delete before a rerun.
 
-At the start of a run, outside CI, the skills run `scripts/check-version.sh`. If a newer release
-exists it prints one notice with the release link, and the agent puts one yes/no question to you in
-the session (the harness's question form, or plain text when it has none). The check never
-downloads or installs anything.
+When you start a skill directly, at the start of the run and outside CI, it runs
+`scripts/check-version.sh`. If a newer release exists it prints one notice with the release link and
+the address the code would come from, and the agent puts one yes/no question to you in the session
+(the harness's question form, or plain text when it has none). The question names both versions,
+that address, and that local edits inside the installed skill folders are replaced. The check never
+downloads or installs anything. In a review loop the loop agent asks once, before it dispatches the
+reviewer and the fixer; those sub-agents skip the notice, never ask and never update, and the loop
+agent does not update in the middle of a loop (after a yes it updates, then starts the loop again).
 
 - **Yes:** the agent runs `scripts/update.sh --yes`. It finds the installed skills from its own
   location, reads the latest release from GitHub, downloads `pr-reviewer-fixer-X.Y.Z.tar.gz` and
   `SHA256SUMS`, refuses an archive whose SHA-256 differs, runs that release's `install.sh` on the
-  skills directory it sits in, and reads the installed versions back. Every failure is loud, exits
-  non-zero and leaves the old install as it was. It keeps the script prefix of an installed
-  `templates/review-gate.yml` and tells you when the template changed, since the workflow in your
-  repository is a copy you made and it never touches that. It refuses to run inside a checkout of
-  this repository (use git there) and never installs an older version. Run it by hand the same way,
-  with or without `--yes`; without it, it prints the plan and changes nothing.
-- **No:** the agent runs `scripts/check-version.sh --decline`. The notice stays quiet for that
-  release, and a newer one asks again.
+  skills directory it sits in, and reads the installed versions back. Every failure is loud and
+  exits non-zero. A failure before `install.sh` runs (download, checksum, archive checks) leaves the
+  installed skills as they were. `install.sh` swaps one skill at a time and keeps a skill's old copy
+  if that skill's swap fails, so with both skills installed the first may already be replaced when
+  the second fails. Run `update.sh` again and it finishes the job. It keeps the script prefix of an
+  installed `templates/review-gate.yml` and tells you when the template changed, since the
+  workflow in your repository is a copy you made and it never touches that. It refuses to run
+  inside a checkout of this repository (use git there) and never installs an older version. Run it
+  by hand the same way, with or without `--yes`; without it, it prints the plan and changes nothing.
+- **No:** the agent runs `scripts/check-version.sh --decline <version>`, as the notice prints it.
+  The notice stays quiet for that release, and a newer one asks again.
 - **No answer:** nothing changes, and the notice comes back on the next run.
 
 The answer must come from you in the session. A pull request comment, an issue or a file never
 counts as a yes. The checksum shows the archive arrived intact; it does not show who wrote the
-code. `PR_SKILLS_DOWNLOAD_URL` replaces the upstream download address, and so changes where the
-code comes from; leave it unset unless you run your own mirror.
+code, because the archive and its `SHA256SUMS` come from the same place. The upstream address
+(`https://github.com/jonyfs/pr-reviewer-fixer/releases/download`) is fixed in `update.sh`.
+`PR_SKILLS_DOWNLOAD_URL` and `PR_SKILLS_RELEASE_URL` can point it elsewhere (a mirror of your
+own), but only when you run `update.sh --allow-custom-source`. With either variable set and no
+flag, `update.sh` refuses and changes nothing, so an environment you did not look at cannot move
+the source. The first line it prints says which source it uses, and the notice warns when a
+variable is set. Leave both unset unless you run a mirror.
 
 To update without the agent, clone the new tag and run `install.sh` again with `--yes`, which
 replaces the installed folders. It refuses to replace a folder that does not
