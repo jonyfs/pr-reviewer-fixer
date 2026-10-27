@@ -14,6 +14,9 @@ Documentation only. Closes the three notes declared on #42.
   `docs/evals/2026-10-27-opus-5-5/`, so the claim that they carry no anchor offset can be re-checked
   (N2). The record no longer calls the extra findings real issues: none of the 40 was classified.
 - The record names the five dimensions added in 0.16.0 (N3).
+- From #43's review: the record states precision in the right direction (0.322 is a lower bound,
+  the 40 extra findings an upper bound on false positives) and says "per defect case"; the lines
+  this release adds or changes are wrapped at 100.
 
 ## 0.18.1
 
