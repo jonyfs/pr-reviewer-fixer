@@ -69,6 +69,7 @@ infrastructure files, and `push-guard.sh` refuses more CI paths.
   again (N3); a history whose newest revision was deleted leaves the last editor unknown, read as
   foreign (N4); `dimensions.md` makes a declared invariant CRITICAL with no reach condition, as
   `severity-and-verdict.md` does (N2).
+  A closing fence may end in `\r`, so CRLF text closes its code blocks (N5).
 - Not done in code: merge order (N7 of #39) is past; v0.16.0 was never tagged, and its content
   shipped in v0.17.0.
 

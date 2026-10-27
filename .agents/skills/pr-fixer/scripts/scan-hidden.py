@@ -247,7 +247,7 @@ def blank_code(text):
             blank(pos, pos + len(line))
         elif fence is not None:
             blank(pos, pos + len(line))
-            close = re.fullmatch(r" {0,3}(`{3,}|~{3,})[ \t]*", line)
+            close = re.fullmatch(r" {0,3}(`{3,}|~{3,})[ \t\r]*", line)
             if close and close.group(1)[0] == fence[0] and len(close.group(1)) >= fence[1]:
                 fence = None
         pos += len(line) + 1

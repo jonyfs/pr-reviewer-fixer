@@ -285,6 +285,12 @@ for name, text in (("a label used only in a code span", 'see `[x]`\n\n[x]: https
                    ("a label used only in a double-backtick span", '``a ` [x] ``\n[x]: https://e.com "t"')):
     rc, out, err = scan("--file", write("cs.md", text + "\n"))
     check("%s -> the unused definition is reported (0.18.0)" % name, rc == 1 and kinds(out) == ["link-ref-comment"], (rc, out, err))
+# N5 of #41: a fence in CRLF text (a body typed in GitHub's web form) closes on its CRLF closer, so a
+# label used after it still counts.
+# `--file` reads with universal newlines, so the body goes through `--pr-json`, which keeps the \r.
+CRLF_PR = {"number": 7, "title": "t", "body": '```\r\ncode\r\n```\r\nsee [x]\r\n\r\n[x]: https://e.com "Docs"\r\n', "comments": []}
+rc, out, err = scan("--pr-json", write("crlf.json", json.dumps(CRLF_PR)))
+check("a CRLF fence closes, and a label used after it counts -> no hit (N5 of #41)", rc == 0, out)
 rc, out, err = scan("--file", write("cs.md", 'see [x] and `code`\n\n[x]: https://e.com "Docs"\n'))
 check("a label used outside code, beside a code span -> no hit (0.18.0)", rc == 0, out)
 # W1 of #41: a fence line with an info string (```js) inside an open fence is content, not a closer,
