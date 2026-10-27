@@ -17,8 +17,11 @@ OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
 # A version-manager shim (pyenv, asdf) costs a few hundred ms per python3, and the suites start it
 # thousands of times. A link to the interpreter the shim resolves to goes first on PATH; that halves
 # the run on a machine with a shim and changes nothing on one without.
+# Inside a virtual environment the link is not made: a link outside the venv's folder loses its
+# pyvenv.cfg, and with it the venv's packages. The suites use only the standard library today.
 mkdir -p "$OUT/python"
-PYEXE="$(python3 -I -c 'import sys; print(sys.executable)' 2>/dev/null)" && [ -x "$PYEXE" ] && ln -sf "$PYEXE" "$OUT/python/python3"
+PYEXE="$(python3 -I -c 'import sys; print(sys.executable if sys.prefix == sys.base_prefix else "")' 2>/dev/null)" \
+  && [ -n "$PYEXE" ] && [ -x "$PYEXE" ] && ln -sf "$PYEXE" "$OUT/python/python3"
 export PATH="$OUT/python:$PATH"
 names=(); pids=()
 start() { local n="$1"; shift; names+=("$n"); ( "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc" ) & pids+=($!); }
@@ -49,13 +52,17 @@ if [ -n "$v_root" ] && [ "$v_root" = "$v_rev" ] && [ "$v_root" = "$v_fix" ] && [
 else
   echo "== versions DIFFER: VERSION=$v_root pr-reviewer=$v_rev pr-fixer=$v_fix CHANGELOG=$v_log"; fail=1
 fi
-cmp -s "$ROOT/.agents/skills/pr-reviewer/scripts/check-version.sh" "$ROOT/.agents/skills/pr-fixer/scripts/check-version.sh" \
-  && echo "== check-version.sh identical" || { echo "== check-version.sh DIFFERS"; fail=1; }
-cmp -s "$ROOT/.agents/skills/pr-reviewer/scripts/review-cycle.sh" "$ROOT/.agents/skills/pr-fixer/scripts/review-cycle.sh" \
-  && cmp -s "$ROOT/.agents/skills/pr-reviewer/scripts/gate-pr-review-state.py" "$ROOT/.agents/skills/pr-fixer/scripts/gate-pr-review-state.py" \
-  && echo "== shared scripts identical" || { echo "== shared scripts DIFFER"; fail=1; }
+# Every script that ships in both skills must be byte-identical: the suites above run them from the
+# reviewer's copy only. The list is found, not written down, so a new shared script is covered too.
+n_shared=0
+for f in "$ROOT"/.agents/skills/pr-reviewer/scripts/*; do
+  [ -f "$f" ] || continue; b="$(basename "$f")"; g="$ROOT/.agents/skills/pr-fixer/scripts/$b"
+  [ -e "$g" ] || continue; n_shared=$((n_shared + 1))
+  cmp -s "$f" "$g" || { echo "== scripts/$b DIFFERS between the skills"; fail=1; }
+done
+[ "$n_shared" -ge 6 ] && echo "== $n_shared shared scripts checked" || { echo "== only $n_shared shared scripts found; expected at least 6"; fail=1; }
 # Shared reference files and the gate template ship in both skills and must stay identical.
-for f in scripts/pr-json.py scripts/scan-hidden.py scripts/path-floor.sh references/pr-protocol.md references/harness-matrix.md references/harness-loop.md templates/review-gate.yml; do
+for f in references/pr-protocol.md references/harness-matrix.md references/harness-loop.md templates/review-gate.yml; do
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-fixer/$f" \
     && echo "== $f identical" || { echo "== $f DIFFERS between the skills"; fail=1; }
 done

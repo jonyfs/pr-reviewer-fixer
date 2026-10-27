@@ -464,7 +464,8 @@ marker_author_allowed() {
 # by anyone else is one every reader ignores, so `status` would owe the review forever and `budget`
 # would never see the halt. Refuses when the login cannot be resolved.
 # The login it resolved is kept in GH_LOGIN, so a later step of the same command (the audit line of
-# `publish`) does not ask gh again.
+# `publish`) does not ask gh again. This reset at file scope is required: without it a GH_LOGIN
+# exported by the caller would name the login on the audit line without gh ever being asked.
 GH_LOGIN=""
 publisher_on_list() {
   local who
@@ -547,15 +548,18 @@ parse() {
       for(const c of (JSON.parse(s).comments||[])){
         const who=String((c&&c.author&&c.author.login)||"").toLowerCase(),xm=xre.exec((c&&c.body)||"");
         if(!xm||!allow.includes(who))continue;
-        const kv={};for(const p of xm[1].matchAll(/([a-z_]+)=([^ \t\n\r\f\v>]+)/g))kv[p[1]]=p[2];
+        // Keys in either case, lowercased, the later one winning, as fields() in `budget` reads them.
+        const kv={};for(const p of xm[1].matchAll(/([A-Za-z_]+)=([^ \t\n\r\f\v>]+)/g))kv[p[1].toLowerCase()]=p[2];
         // The values go out byte for byte, an absent key as an empty field, so `halt` compares
         // them the way `budget` does: no tok(), which strips Unicode spaces and maps "" to "-".
         // A value holding a separator or a NUL (which bash would drop) can equal no `--reason`,
         // so the marker is left out and `halt` posts, as the comparison would decide anyway.
         const st=kv.state===undefined?"":String(kv.state),rs=kv.reason===undefined?"":String(kv.reason);
         ext=/[\x00\x1e\x1f]/.test(st+rs)?"":[st,rs].join("\x1f");}
-    }catch(e){mk="";ext=""}
-    process.stdout.write(head+"\x1e"+mk+"\x1e"+ext)})')
+    }catch(e){head=""}
+    // A marker half that could not be read prints nothing at all, so every field comes out empty
+    // and the caller stops with "could not read", never a pull request that seems to have no marker.
+    if(head)process.stdout.write(head+"\x1e"+mk+"\x1e"+ext)})')
   # The marker fields follow a record separator, joined by the unit separator like the six above.
   local m="" ext=""
   case "$fields" in *$'\x1e'*) m="${fields#*$'\x1e'}"; fields="${fields%%$'\x1e'*}" ;; esac
@@ -1148,6 +1152,11 @@ cmd_extend() {
   case "$n" in ''|*[!0-9]*) die "review-cycle: extend needs --n <whole number>" ;; esac
   marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
   publisher_on_list
+  # The budget is read once, below, and the granted marker is posted after it. A second `extend` or
+  # a `halt` posted in that window would not be seen by this one. Only a listed login can post a
+  # marker that counts, and the loop runs one review loop agent per pull request, which asks the
+  # person once; two people granting cycles at the same moment would each see the budget before the
+  # other's marker, and `budget` then counts the newest grant.
   local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to extend"
   parse "$json"
   [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop to extend"
@@ -1892,14 +1901,49 @@ rec = {
 }
 out = os.environ["X_OUT"]
 path = os.path.join(out, "%s-%s.json" % (pr.get("number"), m.group(3)))
-# Resolved before the directory is made, so `mkdir -p` never follows a link out of the repository.
-_top0 = os.path.realpath(os.environ["X_TOP"])
-if os.path.commonpath([os.path.realpath(out), _top0]) != _top0:
-    die("%s resolves outside the repository top level %s (a symbolic link in the path, or a path outside the work tree); export into a directory inside it" % (out, _top0))
+_top = os.path.realpath(os.environ["X_TOP"])
+
+
+def inside(where):
+    """Refuse when `where` resolves outside the repository top level."""
+    if os.path.commonpath([os.path.realpath(where), _top]) != _top:
+        die("%s resolves outside the repository top level %s (a symbolic link in the path, or a path "
+            "outside the work tree); export into a directory inside it" % (where, _top))
+
+
+def mkdirs_nofollow(where):
+    """Create `where` one component at a time from the repository top, each step relative to an
+    O_NOFOLLOW directory descriptor of its parent, so a link planted in the path while it is being
+    made is refused instead of followed (os.makedirs resolves each path again by name)."""
+    rel = os.path.relpath(os.path.realpath(os.path.dirname(os.path.abspath(where)) or "."), _top)
+    parts = [] if rel == "." else rel.split(os.sep)
+    parts.append(os.path.basename(os.path.abspath(where)))
+    fd = os.open(_top, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in parts:
+            if part in ("", "."):
+                continue
+            try:
+                os.mkdir(part, 0o777, dir_fd=fd)
+            except FileExistsError:
+                pass
+            nfd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nfd
+    finally:
+        os.close(fd)
+
+
+# Resolved before the directory is made, and again after it, so the export never writes outside.
+inside(out)
+# A link at `out` itself (inside the repository) is named as one, before the walk below would refuse
+# it with ELOOP.
+if os.path.islink(out.rstrip("/") or out):
+    die("%s is a symbolic link; export into a real directory." % out)
 try:
-    os.makedirs(out, exist_ok=True)
-except OSError:
-    print("review-cycle: cannot create %s" % out, file=sys.stderr)
+    mkdirs_nofollow(out)
+except OSError as e:
+    print("review-cycle: cannot create %s (%s)" % (out, e.strerror or e), file=sys.stderr)
     sys.exit(1)
 # Neither the directory nor the record may be a symlink: a checkout can carry one that points at
 # any file of the person running the export. The temporary file is created by mkstemp (O_CREAT |
@@ -1907,10 +1951,8 @@ except OSError:
 # and os.replace renames over the final path without following it.
 if os.path.islink(out):
     die("%s is a symbolic link; export into a real directory." % out)
-# Checked again after `mkdir -p`: a link planted in the path in between is still refused.
-_top = os.path.realpath(os.environ["X_TOP"])
-if os.path.commonpath([os.path.realpath(out), _top]) != _top:
-    die("%s resolves outside the repository top level %s; export into a directory inside it." % (out, _top))
+# Checked again after the directories exist: a link planted in the path in between is still refused.
+inside(out)
 if os.path.islink(path):
     die("%s is a symbolic link, and the export does not write through one. Remove it and export again." % path)
 import tempfile
@@ -2286,10 +2328,9 @@ PY
 # Exit 0 when all six were written, 2 when any one was not: `gh` offline, no token, or a token
 # without permission to write labels. A partial run says which labels it could not write.
 cmd_ensure_labels() {
-  local failed="" spec name color desc dir i=0 names=()
-  # The six writes are independent, so they run at the same time; each records its own success in
-  # a file, and the results print in the order below.
-  dir="$(mktemp -d "${TMPDIR:-/tmp}/ensure-labels.XXXXXX")" || { echo "review-cycle: could not create a temporary directory; INCONCLUSIVE" >&2; return 2; }
+  local failed="" spec name color desc
+  # One write at a time: GitHub asks clients to make mutating REST requests serially, and concurrent
+  # ones risk its secondary rate limit. This runs once per repository, so the time does not matter.
   for spec in \
     "review:pending|fbca04|Not reviewed at this head yet" \
     "review:running|1d76db|A review pass is in flight" \
@@ -2298,17 +2339,12 @@ cmd_ensure_labels() {
     "review:passed|0e8a16|Nothing blocks at this head; the marker comment is the evidence" \
     "review:needs-human|d93f0b|The loop paused or stopped and a person has to decide; only with review:blocked"; do
     name="${spec%%|*}"; desc="${spec##*|}"; color="${spec#*|}"; color="${color%%|*}"
-    names+=("$name")
-    ( gh label create "$name" --force --color "$color" --description "$desc" >/dev/null 2>&1 && : >"$dir/$i.ok" ) &
-    i=$((i + 1))
+    if gh label create "$name" --force --color "$color" --description "$desc" >/dev/null 2>&1; then
+      echo "label $name ok"
+    else
+      failed="${failed:+$failed }$name"
+    fi
   done
-  wait
-  i=0
-  for name in "${names[@]}"; do
-    if [ -e "$dir/$i.ok" ]; then echo "label $name ok"; else failed="${failed:+$failed }$name"; fi
-    i=$((i + 1))
-  done
-  rm -rf "$dir"
   if [ -n "$failed" ]; then
     echo "review-cycle: could not create or update: $failed (gh offline, not authenticated, or no permission to write labels); INCONCLUSIVE" >&2
     return 2

@@ -175,6 +175,14 @@ n = len(comments_posted(d))
 p = run(["halt", "7", "--reason", "stop"], d)
 check("halt reads a tab-separated halted marker and posts no second one", p.returncode == 0 and len(comments_posted(d)) == n, p.stderr)
 
+# 0.18.0 (#40 N4): after `state=`, keys in either case count, lowercased, the later winning, as
+# budget reads them.
+d = setup(hist([1] * 6) + [e("2026-10-14T11:51:00Z", "<!-- pr-skill-extension: state=halted reason=stop REASON=other -->")])
+n = len(comments_posted(d))
+p = run(["halt", "7", "--reason", "stop"], d)
+check("halt takes the later of reason= and REASON=, as budget does, and posts (0.18.0)",
+      p.returncode == 0 and len(comments_posted(d)) == n + 1, p.stderr)
+
 # 0.17.1: halt reads the newest extension marker from parse(); one by a login not on the list does
 # not count, and an older halted one under a newer granted one does not either.
 d = setup(hist([1] * 6) + [e("2026-10-14T11:51:00Z", "<!-- pr-skill-extension: state=halted reason=stop -->", login="mallory")])

@@ -9,16 +9,19 @@ Run this unit when the change collects, stores, logs, sends or deletes personal 
 documents such as CPF, phone numbers, addresses, location, device or online identifiers, health or
 financial data), or touches files the path floor marks as privacy paths. The reviewer judges the
 code, not legal compliance: a finding names the data, where it goes and the rule it breaks. Personal
-data exposed to someone who must not see it is CRITICAL; a missing control with no exposure yet is
-a WARNING.
+data exposed to someone who must not see it (a third party, a log service outside the controller,
+another tenant, the public) is a security breach and CRITICAL under
+[severity-and-verdict.md](severity-and-verdict.md). Personal data written to an internal log or
+store that only the controller's own staff reads is a WARNING (minimisation and retention), and a
+missing control with no exposure yet is a WARNING too.
 
 | Check | What a finding looks like |
 |---|---|
 | **Minimisation** | A new field, log line, event or analytics call that collects more personal data than the feature needs. |
 | **Logs and errors** | Personal data or tokens in log lines, error messages, traces or crash reports. |
 | **Purpose** | Data collected for one purpose reused for another (marketing, model training) with no consent or legal basis recorded. |
-| **Sensitive data** | Health, biometric, religious, ethnic, sexual, political or children's data handled without the stricter controls both LGPD (Art. 11, 14) and GDPR (Art. 9, 8) require. |
-| **Retention and deletion** | No retention limit, or a deletion that misses copies (caches, backups, search indexes, third parties). The data subject's right to deletion must reach every store. |
+| **Sensitive data** | Health, genetic, biometric, religious, ethnic, sexual, political, trade-union or children's data handled without the stricter controls both LGPD (Art. 11, 14) and GDPR (Art. 9, 8) require. |
+| **Retention and deletion** | No retention limit, or a deletion that misses copies (caches, backups, search indexes, third parties). A deletion request must reach every store the system controls, and the third parties it shared the data with must be told (GDPR Art. 17(2) and 19, LGPD Art. 18 § 6). |
 | **Access and portability** | A new store of personal data that the export or access-request path does not read. |
 | **Transfers** | Personal data sent to a new third party or another country with no contract or safeguard named in the pull request. |
 | **Security of processing** | Personal data unencrypted at rest or in transit, or readable by roles that do not need it. |

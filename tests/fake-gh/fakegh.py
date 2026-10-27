@@ -241,6 +241,18 @@ if args[:2] == ["api", "graphql"]:
         # A login of "-" stands for GitHub naming no editor (a deleted account): the login is null.
         nodes = [{"id": c["id"], "lastEditedAt": ("2026-10-15T00:00:00Z" if c["id"] in edited else None),
                   "editor": ({"login": (lambda l: None if l == "-" else l)(by.get(c["id"], ((c.get("author") or {}).get("login"))))} if c["id"] in edited else None)} for c in chunk]
+        # edit-history: "<id> <login>,<login>,..." oldest first. The node then carries the history
+        # (first:1 answers the OLDEST entry here, the reverse of what GitHub was seen to do, and
+        # last:1 the newest), and `editor` names the FIRST editor, so a reader has to use the history.
+        hist = dict(l.split(None, 1) for l in open(os.path.join(d, "edit-history")).read().splitlines() if l.strip()) if os.path.exists(os.path.join(d, "edit-history")) else {}
+        for nd in nodes:
+            if nd["id"] in hist:
+                logins = hist[nd["id"]].strip().split(",")
+                ents = [{"editedAt": "2026-10-15T00:%02d:00Z" % i, "editor": {"login": l}} for i, l in enumerate(logins)]
+                nd["lastEditedAt"] = ents[-1]["editedAt"]; nd["editor"] = {"login": logins[0]}
+                if os.path.exists(os.path.join(d, "edit-history-lost-newest")):
+                    ents = ents[:-1] or [{"editedAt": "2026-10-14T00:00:00Z", "editor": {"login": logins[0]}}]
+                nd["ue1"] = {"nodes": ents[:1]}; nd["ue2"] = {"nodes": ents[-1:]}
         return {"pageInfo": {"hasNextPage": more, "endCursor": str(start + size) if more else None}, "nodes": nodes}
 
     if "query PrJsonFirst(" in q:
@@ -255,7 +267,9 @@ if args[:2] == ["api", "graphql"]:
     if any(a.startswith("query=") and "timelineItems" in a for a in args):
         # The CommentDeletedEvent query, for the pages after the first. `graphql-deleted-fail` makes
         # this call alone exit 1, and `graphql-deleted-badshape` answers without the timelineItems field.
+        # `graphql-deleted-fail-after` fails only a call for a later page (one that carries `after=`).
         if os.path.exists(os.path.join(d, "graphql-deleted-fail")): sys.exit(1)
+        if os.path.exists(os.path.join(d, "graphql-deleted-fail-after")) and any(a.startswith("after=") for a in args): sys.exit(1)
         if os.path.exists(os.path.join(d, "graphql-deleted-badshape")):
             print(json.dumps({"data": {"repository": {"pullRequest": {}}}})); sys.exit(0)
         after = next((a.split("=", 1)[1] for a in args if a.startswith("after=")), None)
@@ -311,5 +325,9 @@ if args[:2] == ["pr", "ready"]:
         print("could not mark ready: not permitted", file=sys.stderr); sys.exit(1)
     pr = load(); pr["isDraft"] = False; save(pr); sys.exit(0)
 if args[:2] == ["label", "create"]:
+    # label-fail: one label name per line whose create fails.
+    f = os.path.join(d, "label-fail")
+    if len(args) > 2 and os.path.exists(f) and args[2] in open(f).read().split():
+        sys.exit(1)
     sys.exit(0)
 print("fake gh: unhandled " + " ".join(args), file=sys.stderr); sys.exit(1)

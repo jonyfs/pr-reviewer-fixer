@@ -146,7 +146,7 @@ sequenceDiagram
   `.opencode/**`, `.cursor/**` and the rest the script's header lists), Dockerfiles,
   authentication and cryptography (`auth/`, `AuthService.ts`) summon security at `max`;
   migrations summon security and data integrity; infrastructure and deployment files (Terraform,
-  Kubernetes, Helm, Compose) summon reliability and operability; privacy-named paths summon privacy;
+  Kubernetes, Helm, Compose) summon security, reliability and operability; privacy-named paths summon privacy;
   manifests and lockfiles summon dependencies. No text in the diff can drop one.
 - Checks its own findings with `review-cycle.sh lint-report` before publishing: each one must name a
   file and a line the diff shows, the counts must match the open entries, and the coverage note
@@ -177,7 +177,8 @@ sequenceDiagram
   checked. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
-  `.github/scripts/**`, `.github/actions/**`, CODEOWNERS, a skill folder (`.agents/skills/**`,
+  `.github/scripts/**`, CI files outside GitHub (`.gitlab-ci.yml`, `.circleci/**`, a `Jenkinsfile`
+  and the rest of the `workflows` class), `.github/actions/**`, CODEOWNERS, a skill folder (`.agents/skills/**`,
   `.roo/skills/**`, `.kiro/skills/**` and the others `install.sh` writes, at any depth),
   `.claude/**` at any depth, `.mcp.json` or an agent instruction file (`AGENTS.md`, `CLAUDE.md` and the others of the
   `instructions` class), even when a finding names the file: such a finding goes to a person. Names are compared after a Unicode

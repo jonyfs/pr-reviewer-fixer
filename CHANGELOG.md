@@ -4,6 +4,75 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.0
+
+Closes the debt declared on #33 to #40. Minor: the path floor summons one more unit for
+infrastructure files, and `push-guard.sh` refuses more CI paths.
+
+- Path floor and push guard:
+  - CI names added to `path-floor.sh` and to push-guard's `workflows` class: `.cirrus.yml`,
+    `.cirrus.star`, `.semaphore/**`, `.drone.jsonnet`, `.drone.star`, `bitrise.yml`,
+    `.azure-pipelines/**`, `codefresh.yml` and `.codefresh/**` (N5 of #39). Both headers now say
+    that a file a CI config loads from another path (GitLab `include: local:`, a Jenkinsfile
+    `load`) is not matched by name (N4 of #36).
+  - Infrastructure and deployment files summon `security` at standard too, besides reliability and
+    operability: IAM, network and secret settings live there (N3 of #38).
+  - Privacy paths match inflected words: anonymized, pseudonymised, redacted, consented and the like
+    (N1 of #38).
+- `pr-json.py` reads the last editor of a comment from its edit history (`userContentEdits`, the
+  entry with the latest `editedAt`, from both ends of the list) instead of relying on
+  `IssueComment.editor`, whose schema does not say which edit it names. A foreign edit made after the
+  author's own edit is now caught whatever `editor` holds (N5 of #38).
+- `review-cycle.sh`:
+  - `parse()` stops with "could not read" when its marker reader throws, instead of reading the pull
+    request as having no marker (N4 of #39).
+  - `halt` reads extension marker keys in either case, lowercased, the later one winning, as
+    `budget` does (N4 of #40).
+  - `ensure-labels` writes its labels one at a time again, as GitHub asks for mutating requests
+    (N2 and N3 of #36, N6 of #39).
+  - `export-audit` checks the output path with one helper and creates its directories one
+    component at a time through `O_NOFOLLOW` directory descriptors, so a link planted while they are
+    made is refused (N1 and N3 of #40).
+  - Comments state why the `GH_LOGIN` reset must stay (N3 of #34, N2 of #37) and the window
+    between `extend`'s read and its marker (N4 of #37).
+- `scan-hidden.py`: a `[label]` inside a code span or a fenced block is no longer a use of the
+  label, so it cannot mask an unused titled definition (N2 of #33). A fence closes only on a line
+  that holds the fence run and whitespace, as in CommonMark, so a ```` ```js ```` line inside an
+  open fence no longer ends it early (W1 of #41). Indented code blocks and fences inside a
+  blockquote or a list item are not blanked; the header lists them under NOT DONE (N1 of #41).
+- `triage-pr.sh` names the `gh` version whose commit order was checked (N3 of #33).
+- Reviewer guidance:
+  - `security-checklist.md` A01: CSRF covers every credential the browser sends on its own, the
+    login form, an exact `Origin`/`Referer` allowlist that rejects `null`, a required custom header
+    with an enforced preflight, and `Sec-Fetch-Site`; a state-changing `GET` is a finding in itself
+    (N8 to N11, N14, N15 of #38).
+  - A02 says it is this project's subset of ASVS V3.3 and does not require cookie prefixes
+    (N16 of #38).
+  - `dimensions.md` and `reliability-checklist.md` use one severity wording, which includes a
+    declared project invariant (N13, N17 of #38).
+  - `privacy-checklist.md`: deletion reaches the stores the system controls and notifies third
+    parties (GDPR Art. 17(2) and 19, LGPD Art. 18 § 6); genetic and trade-union data are sensitive;
+    an internal-only log is a WARNING, an exposure outside the controller CRITICAL (N2, N12 of #38,
+    N2 of #39).
+  - The attribution no longer says the GenAI lists are used under a licence nobody checked (N5 of
+    #35). The ISO document's Agentic table says its item names come from secondary sources (N4 of
+    #35). README and the fixer's posture rule 10 list the CI files outside GitHub (N1 of #39).
+- Eval: `pii-in-logs` expects CRITICAL, in line with the privacy guidance (N7 of #38); the
+  `install-script` fixture uses a reserved `.example` domain (N7 of #35); the selftest comment
+  counts the cases right (N6 of #35).
+- Tests: `run-all.sh` compares every script found in both skills' `scripts/` folders instead of a
+  fixed list, and does not link `python3` inside a virtual environment (N4 of #34, N3 of #37, N3 of
+  #39). New rows cover a later deletion page that fails (N4 of #38), the edit-history editor, one
+  failing label in `ensure-labels`, a throwing marker reader, halt key case, code-span labels, and
+  the new floor names.
+- From #41's own review: a symlinked `--out` with a trailing slash is named as a symbolic link
+  again (N3); a history whose newest revision was deleted leaves the last editor unknown, read as
+  foreign (N4); `dimensions.md` makes a declared invariant CRITICAL with no reach condition, as
+  `severity-and-verdict.md` does (N2).
+  A closing fence may end in `\r`, so CRLF text closes its code blocks (N5).
+- Not done in code: merge order (N7 of #39) is past; v0.16.0 was never tagged, and its content
+  shipped in v0.17.0.
+
 ## 0.17.2
 
 Reviewer guidance only, from the reviews of #38. No script, marker, label or exit code changes.

@@ -7,11 +7,14 @@ one script, and a comment edited after it was created never reaches them. `gh pr
 comments` carries no edit time (only `includesCreatedEdit`); `lastEditedAt` exists on the GraphQL
 `IssueComment` object, so this asks GraphQL, a page at a time.
 
-ASSUMED, NOT VERIFIED: `IssueComment.editor` names the login of the LAST edit. GitHub's schema says
-only "the actor who edited the comment", and confirming it needs a comment edited by two logins in
-turn, which has not been done. If it names the first editor instead, an author's later edit back
-does not clear a foreign edit (fails closed), and a foreign edit made after the author's own edit
-is missed. pr-protocol.md rule 2 states the same limit.
+THE LAST EDITOR. GitHub's schema calls `IssueComment.editor` only "the actor who edited the
+comment", without saying which edit. So the last editor is read from the edit history instead: the
+first and the last entry of `userContentEdits` are both fetched, and the one with the later
+`editedAt` names the editor, whichever order GitHub lists them in. `editor` is used only when the
+history is empty. When the newest entry is older than `lastEditedAt` (the last revision was deleted
+from the history), the editor is unknown and read as someone other than the author. A live check on 2026-10-26 (three comments, each edited twice by one login) found
+`lastEditedAt` equal to the newest history entry and `editor` equal to its editor; a comment edited
+by two logins in turn was not available to check `editor` alone, which is why it is not relied on.
 
 IT FAILS CLOSED. When gh is missing or fails, when GraphQL answers something that is not the shape
 expected, when a page is truncated, or when GraphQL lists fewer comments than `gh pr view` did, it
@@ -39,7 +42,7 @@ FIELDS = "number,headRefOid,labels,comments,state,isDraft,url,title,body,author,
 QUERY = (
     "query($owner:String!,$repo:String!,$number:Int!,$after:String){"
     "repository(owner:$owner,name:$repo){pullRequest(number:$number){"
-    "comments(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt editor{login}}}}}}"
+    "comments(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt editor{login} ue1:userContentEdits(first:1){nodes{editedAt editor{login}}} ue2:userContentEdits(last:1){nodes{editedAt editor{login}}}}}}}}"
 )
 # A trusted comment can also be deleted, by its author or by anyone with write access, and a deleted
 # BLOCKED marker would drop out of the history and the pass count. The timeline keeps a
@@ -55,7 +58,7 @@ DELETED_QUERY = (
 FIRST_QUERY = (
     "query PrJsonFirst($owner:String!,$repo:String!,$number:Int!){"
     "repository(owner:$owner,name:$repo){pullRequest(number:$number){"
-    "comments(first:100){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt editor{login}}} "
+    "comments(first:100){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt editor{login} ue1:userContentEdits(first:1){nodes{editedAt editor{login}}} ue2:userContentEdits(last:1){nodes{editedAt editor{login}}}}} "
     "timelineItems(first:100,itemTypes:[COMMENT_DELETED_EVENT]){pageInfo{hasNextPage endCursor} "
     "nodes{... on CommentDeletedEvent{id createdAt actor{login} deletedCommentAuthor{login}}}}}}}"
 )
@@ -124,9 +127,18 @@ def main():
             seen.add(n["id"])
             if n.get("lastEditedAt"):
                 edited.add(n["id"])
-                # The login of the last edit. None when GitHub names no one (a deleted account),
-                # which readers take as someone other than the author.
-                editors[n["id"]] = ((n.get("editor") or {}).get("login") or None)
+                # The login of the last edit: the later of the first and last history entries, or
+                # `editor` when the history is empty. None when GitHub names no one (a deleted
+                # account), which readers take as someone other than the author.
+                hist = [e for k in ("ue1", "ue2") for e in (((n.get(k) or {}).get("nodes")) or [])
+                        if isinstance(e, dict) and isinstance(e.get("editedAt"), str)]
+                last = max(hist, key=lambda e: e["editedAt"]) if hist else n
+                login = ((last.get("editor") or {}).get("login") or None)
+                # A history whose newest entry is older than lastEditedAt lost the last edit (a
+                # revision can be deleted from it): that editor is unknown, read as foreign.
+                if hist and isinstance(n.get("lastEditedAt"), str) and n["lastEditedAt"] > last["editedAt"]:
+                    login = None
+                editors[n["id"]] = login
         if not more:
             break
         if not cursor:

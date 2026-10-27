@@ -42,6 +42,8 @@ Tags: [#pr #github #safety #reference]
    leaves it to the reviewer and a person.
 10. **Sensitive paths go to a person.** The fixer does not push a change to the files that run or
     judge the automation: `.github/workflows/**` and the scripts they run (`.github/scripts/**`),
+    CI files outside GitHub (`.gitlab-ci.yml`, `.circleci/**`, a `Jenkinsfile` and the rest of the
+    `workflows` class in `push-guard.sh`),
     `.github/actions/**`, CODEOWNERS (at the root, in `.github/` or in `docs/`), the skill folders
     `install.sh` writes (`.agents/skills/**`, `.roo/skills/**`, `.cline/skills/**`, `.kiro/skills/**`,
     `.devin/skills/**`, `.junie/skills/**`, class `skills`, at any depth), `.claude/**` at any depth,

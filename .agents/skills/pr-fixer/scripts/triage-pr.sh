@@ -89,8 +89,9 @@ if node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"
     --jq '.[] | select(.event == "labeled") | "\(.label.name)\t\(.created_at)"' > "$TMP/events.tsv" 2>/dev/null || EVENTS_OK=0
 fi
 
-# `gh pr view --json commits` stops at the first 100 commits, so on a longer pull request its last
-# entry is not the head. Then the head commit is read on its own; a failed read leaves the head's
+# `gh pr view --json commits` stops at the first 100 commits, oldest first (gh 2.103.0, checked
+# 2026-10-26: its query is `commits(first: 100)`), so on a longer pull request its last entry is not
+# the head. The check below does not rely on that order: it compares the last entry with headRefOid. Then the head commit is read on its own; a failed read leaves the head's
 # author unknown, and an unknown author with FIXER_COMMIT_AUTHORS set counts as a fixer at work.
 HEAD_STATE=listed
 if node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const c=p.commits||[];process.exit(c.length>=100&&(c[c.length-1]||{}).oid!==p.headRefOid?0:1)' "$TMP/pr.json"; then
