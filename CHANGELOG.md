@@ -4,6 +4,18 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.1
+
+Reviewer guidance and a record. No script, marker, label or exit code changes.
+
+- `targets-and-context.md` and `report-contract.md`: a finding's `line` is the line in the new
+  version of the file, counted from the hunk header's `+start`, never a line of the patch text. With
+  a pasted diff nothing checks the anchor against git, so the rule has to be read at the point of
+  writing it.
+- `docs/evals/2026-10-27-opus-5-5.md`: the first two runs of `tests/eval/` with a model. Run 2
+  detects 19 of 19 seeded defects; precision is 0.32. Run 1 is kept as scored (recall 0.63), with
+  the anchor problem described. Limits are stated in the record.
+
 ## 0.18.0
 
 Closes the debt declared on #33 to #40. Minor: the path floor summons one more unit for
