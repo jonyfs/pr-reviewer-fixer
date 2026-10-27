@@ -36,7 +36,10 @@ infrastructure files, and `push-guard.sh` refuses more CI paths.
   - Comments state why the `GH_LOGIN` reset must stay (N3 of #34, N2 of #37) and the window
     between `extend`'s read and its marker (N4 of #37).
 - `scan-hidden.py`: a `[label]` inside a code span or a fenced block is no longer a use of the
-  label, so it cannot mask an unused titled definition (N2 of #33).
+  label, so it cannot mask an unused titled definition (N2 of #33). A fence closes only on a line
+  that holds the fence run and whitespace, as in CommonMark, so a ```` ```js ```` line inside an
+  open fence no longer ends it early (W1 of #41). Indented code blocks and fences inside a
+  blockquote or a list item are not blanked; the header lists them under NOT DONE (N1 of #41).
 - `triage-pr.sh` names the `gh` version whose commit order was checked (N3 of #33).
 - Reviewer guidance:
   - `security-checklist.md` A01: CSRF covers every credential the browser sends on its own, the

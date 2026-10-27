@@ -53,6 +53,12 @@ WHAT IT REPORTS (`kind`):
                   use. Each added line of a diff is scanned alone, so there a titled definition is
                   reported even when another line uses it.
 
+NOT DONE: code that is not a fence or a code span. An indented code block (four spaces after a
+blank line) and a fence inside a blockquote or a list item are not blanked, so a `[label]` shown as
+code there still counts as a use and an unused titled definition beside it goes unreported. Telling
+an indented code block from a list item's continuation needs the container structure a full
+Markdown parser builds; this scan does not build it.
+
 NOT DONE: homoglyphs (a Cyrillic `a` in an identifier). Telling a homoglyph from an ordinary
 non-Latin word needs a confusables table and per-language context, and without one the hits on
 names, prose and test data would bury the real ones. It is left out, and said so here.
@@ -222,8 +228,9 @@ def label_uses(text):
 def blank_code(text):
     """The text with fenced code blocks and inline code spans replaced by spaces (newlines kept), so a
     `[label]` shown as code is not read as a link that uses the label. A fence is a line that opens
-    with three or more backticks or tildes (up to three spaces of indent) and closes with the same
-    character, at least as many times. A code span is a backtick run closed by the next run of the
+    with three or more backticks or tildes (up to three spaces of indent) and closes on a line that
+    holds only the same character, at least as many times, and spaces or tabs: a fence line with an
+    info string (```js) inside an open fence is content, as in CommonMark. A code span is a backtick run closed by the next run of the
     same length, as CommonMark pairs them; each run is visited once, so the cost is linear."""
     out = list(text)
 
@@ -240,7 +247,8 @@ def blank_code(text):
             blank(pos, pos + len(line))
         elif fence is not None:
             blank(pos, pos + len(line))
-            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1]:
+            close = re.fullmatch(r" {0,3}(`{3,}|~{3,})[ \t]*", line)
+            if close and close.group(1)[0] == fence[0] and len(close.group(1)) >= fence[1]:
                 fence = None
         pos += len(line) + 1
     flat = "".join(out)
