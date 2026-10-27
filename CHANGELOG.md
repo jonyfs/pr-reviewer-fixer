@@ -4,6 +4,20 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.18.2
+
+Documentation only. Closes the three notes declared on #42.
+
+- `tests/eval/README.md` and the eval record no longer call the suite "three cases": it is 20
+  cases with 19 seeded defects, six from before 0.16.0 and fourteen added in it (N1).
+- The run-2 reports (one file per case) and the scorer's output are committed under
+  `docs/evals/2026-10-27-opus-5-5/`, so the claim that they carry no anchor offset can be re-checked
+  (N2). The record no longer calls the extra findings real issues: none of the 40 was classified.
+- The record names the five dimensions added in 0.16.0 (N3).
+- From #43's review: the record states precision in the right direction (0.322 is a lower bound,
+  the 40 extra findings an upper bound on false positives) and says "per defect case"; the lines
+  this release adds or changes are wrapped at 100.
+
 ## 0.18.1
 
 Reviewer guidance and a record. No script, marker, label or exit code changes.
