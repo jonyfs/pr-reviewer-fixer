@@ -72,7 +72,12 @@ main() {
     case "$u" in *://*) ;; *) echo "(not a URL)"; return 0 ;; esac
     scheme="$(printf '%s' "${u%%://*}" | tr 'A-Z' 'a-z')"
     [[ "$scheme" =~ ^[a-z][a-z0-9+.-]*$ ]] || { echo "(not a URL)"; return 0; }
-    rest="${u#*://}"; auth="${rest%%[/?#]*}"; auth="${auth##*@}"
+    rest="${u#*://}"; auth="${rest%%[/?#]*}"
+    # An unencoded / ? or # inside the userinfo cuts the authority early, and the rest of the
+    # credential then sits after the cut. When an @ follows the cut the shape is ambiguous: print
+    # nothing of it.
+    case "${rest#"$auth"}" in *@*) echo "$scheme://(host not readable)"; return 0 ;; esac
+    auth="${auth##*@}"
     if [ "$scheme" = file ] && [ -z "$auth" ]; then echo "file://"; return 0; fi
     if [[ "$auth" =~ ^([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?$ ]]; then
       echo "$scheme://$auth"
@@ -154,7 +159,7 @@ main() {
   else
     read -r latest page < <(env -u PR_SKILLS_RELEASE_URL "$here/check-version.sh" --latest)
   fi
-  [ -n "${latest:-}" ] || { die "could not read the latest release from GitHub (offline, rate limit, or no answer); nothing changed"; return 1; }
+  [ -n "${latest:-}" ] || { die "could not read the latest release from the release source ($rel_label; offline, rate limit, or no answer); nothing changed"; return 1; }
   printf '%s' "$latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { die "the latest release is '$latest', not a version; nothing changed"; return 1; }
 
   if [ -n "$asked" ] && [ "$asked" != "$latest" ]; then

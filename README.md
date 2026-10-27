@@ -720,6 +720,9 @@ start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts 
 front of each suite's own tag. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
 when it starts, so a value exported in your shell does not change the results. It also
 fails if any workflow, workflow script, template, script or test names a model action or a provider API key.
+That scan skips the suites' `state-*/` and `work-*/` scratch folders under `tests/` only, fails if a tracked
+file sits in a folder with such a name anywhere, and fails when it cannot read the repository;
+`bash tests/run-all.sh --scan-only` runs it alone.
 
 Some `install.sh` rows run only on Linux: the `SKILL.md` and `skill.md` row needs a case-sensitive
 file system, and the bind-mount row also needs root in a container that may mount. On macOS they

@@ -136,6 +136,17 @@ check "a value that is not a URL: shown as such, no secret printed" eval \
 out="$(run PR_SKILLS_DOWNLOAD_URL='https://u:p?ss@mirror.test/x' 2>&1)"
 check "a malformed authority: host not readable, no part of the user and password printed" eval \
   'printf %s "$out" | grep -q "host not readable" && ! printf %s "$out" | grep -q "u:p"'
+# An unencoded / ? or # inside the userinfo cuts the authority early: what follows the cut is part of
+# the credential, so the shape is ambiguous and nothing of it may be printed.
+for u in 'https://usr9x:123/456@mirror.test/x' 'https://usr9x:123#456@mirror.test/x' \
+         'https://usr9x:12?3@mirror.test/x' 'https://us/r9x:7@mirror.test/x'; do
+  out="$(run PR_SKILLS_DOWNLOAD_URL="$u" 2>&1)"
+  check "an unencoded delimiter in the userinfo ($u): host not readable, no part of the userinfo printed" eval \
+    'printf %s "$out" | grep -q "PR_SKILLS_DOWNLOAD_URL is set (host https://(host not readable))" && ! printf %s "$out" | grep -Eq "usr9x|us/r9x|123|456|:12|:7"'
+done
+out="$(run PR_SKILLS_DOWNLOAD_URL='https://usr9x:pw@mirror.test:8443/x' 2>&1)"
+check "userinfo before a plain authority: only scheme, host and port printed" eval \
+  'printf %s "$out" | grep -q "PR_SKILLS_DOWNLOAD_URL is set (host https://mirror.test:8443)" && ! printf %s "$out" | grep -q "usr9x"'
 
 # A release link may not step out of the repository, also percent-encoded.
 for bad in "$REPO/../../evil/x" "$REPO/releases/%2e%2E/%2e%2e/x" "$REPO/releases/tag/.."; do

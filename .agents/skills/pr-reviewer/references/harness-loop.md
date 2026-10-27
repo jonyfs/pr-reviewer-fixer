@@ -112,7 +112,9 @@ prints), that local edits inside the installed skill folders are replaced, and t
 `update.sh` is not run in the middle of a loop that has a review owed: not between a dispatch and
 its finish line, and not while a sub-agent is running. A dispatched reviewer or fixer skips the
 Version Notice in its own `SKILL.md`: it never runs the check, never asks the person and never
-updates, so the reviewer still writes nothing in the working tree. For a project-scope install the
+updates, so the reviewer still writes nothing in the working tree. Every dispatch brief says so in
+one clause, "You were dispatched by the review loop agent: skip the Version Notice.", the
+debt-only one in step 6 included. For a project-scope install the
 skill folders sit inside the repository's working tree, so an update there is a change to files
 outside the pull request; the person says yes to it knowingly or does not.
 
@@ -205,7 +207,9 @@ outside the pull request; the person says yes to it knowingly or does not.
 
 6. **PASSED.** `review-cycle.sh publish` has already marked a draft pull request ready for review,
    so there is nothing to do for the draft flag. With warnings or notes, dispatch the fixer in
-   debt-only mode once, so each item gets an owner in the `pr-debt` block. Then stop. Merging is the
+   debt-only mode once, so each item gets an owner in the `pr-debt` block: "Follow
+   `.agents/skills/pr-fixer/SKILL.md` on pull request #N in debt-only mode. You were dispatched by
+   the review loop agent: skip the Version Notice." Then stop. Merging is the
    person's decision. With `REVIEW_BLOCK_AT=warning` a WARNING is not debt: it blocks, `budget` says
    `fix`, and the fixer works it like a CRITICAL. Only notes reach this step.
 

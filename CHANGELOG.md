@@ -60,8 +60,15 @@ Updating the installed skills no longer needs a manual clone and `install.sh`. A
   warning, the quoted path, a hostile release link (a `..` segment too), a poisoned cache,
   `--decline` (with and without `python3`) and the same secret-free output for the notice.
 - `tests/run-all.sh`: the model-key scan skips the `state-*/` and `work-*/` scratch directories of
-  the suites instead of relying on a green run to delete them, and fails when a tracked file sits
-  in one. The suite also needs `curl` and `tar` now (README and the requirements say so).
+  the suites under `tests/` only, instead of relying on a green run to delete them, and fails when
+  a tracked file anywhere in the repository sits in a folder with such a name, or when
+  `git ls-files` or `grep` cannot answer. `run-all.sh --scan-only` runs just that scan. The suite
+  also needs `curl` and `tar` now (README and the requirements say so).
+- Pass-3 fixes: `url_host` prints `(host not readable)` when an unencoded `/`, `?` or `#` inside
+  the userinfo leaves an `@` after the cut; the failed-release message names the release source,
+  not GitHub; the debt-only fixer dispatch in `harness-loop.md` carries the same skip-the-notice
+  clause as the other briefs. New update and version rows: `--version` newer than the latest and
+  malformed, a failed `SHA256SUMS` download after the archive, and the userinfo cases.
 - Minor version: a new script and subcommands that existing installs can ignore. An installed
   copy older than 0.19.0 has no `update.sh` and updates once the old way.
 

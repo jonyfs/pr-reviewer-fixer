@@ -91,8 +91,8 @@ check "wrong SHA-256: refused, exit 1, install untouched, no scratch left" eval 
 # 5. A missing archive.
 rm -f "$BAD/v$NEW/pr-reviewer-fixer-$NEW.tar.gz"
 out="$(runu "$C" cache3 "$BAD" --yes)"; rc=$?
-check "download fails: exit 1, names the URL, install untouched, no scratch left" eval \
-  '[ $rc = 1 ] && printf %s "$out" | grep -q "could not download" && [ "$(ver "$C/pr-reviewer")" = "$OLD" ] && nothing_left'
+check "download fails: exit 1, names the archive, the source and the curl exit, install untouched, no scratch left" eval \
+  '[ $rc = 1 ] && printf %s "$out" | grep -q "could not download pr-reviewer-fixer-$NEW.tar.gz from CUSTOM file://" && printf %s "$out" | grep -Eq "curl exit [0-9]+" && [ "$(ver "$C/pr-reviewer")" = "$OLD" ] && nothing_left'
 
 # 6. The archive's VERSION is not the release asked for.
 D="$W/d"; mkinstall "$D"; mkrelease "$NEW" "$W/vrel"
@@ -276,6 +276,15 @@ check "https mirror with user, password and query, no flag: refused, host shown,
 check "file:// source with the secret in its path, no flag: refused, no secret printed" eval \
   '[ $rc2 = 1 ] && printf %s "$out2" | grep -q "host file://" && ! leaks "$out2" && [ "$before" = "$after" ]'
 
+# An unencoded / ? or # inside the userinfo: nothing of the userinfo may reach the output.
+for u in 'https://usr9x:123/456@mirror.test/x' 'https://usr9x:123#456@mirror.test/x' \
+         'https://usr9x:12?3@mirror.test/x' 'https://us/r9x:7@mirror.test/x'; do
+  out="$(env -i PATH="$PATH" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
+    PR_SKILLS_DOWNLOAD_URL="$u" bash "$M/pr-reviewer/scripts/update.sh" --yes 2>&1)"; rc=$?
+  check "refusal with an unencoded delimiter in the userinfo ($u): host not readable, no part of the userinfo printed" eval \
+    '[ $rc = 1 ] && printf %s "$out" | grep -q "host https://(host not readable)" && ! printf %s "$out" | grep -Eq "usr9x|us/r9x|123|456|:12|:7"'
+done
+
 # The plan (a dry run) with the flag: a https download base and a file:// release answer.
 out="$(env -i PATH="$MB:$PATH" REAL_CURL="$REAL_CURL" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
   PR_SKILLS_RELEASE_URL="file://$SEC/release-$NEW.json" PR_SKILLS_DOWNLOAD_URL="$SECRET_URL" \
@@ -289,11 +298,31 @@ out="$(env -i PATH="$MB:$PATH" REAL_CURL="$REAL_CURL" HOME="$W/home" TMPDIR="$W/
 after="$(cd "$M" && find . -type f | sort | xargs sha256sum | sha256sum)"
 check "download from a https mirror fails: loud, host and curl exit shown, no secret, nothing changed" eval \
   '[ $rc = 1 ] && printf %s "$out" | grep -q "could not download" && printf %s "$out" | grep -q "https://mirror.test" && printf %s "$out" | grep -q "curl exit 6" && ! leaks "$out" && [ "$before" = "$after" ] && nothing_left'
+# A mirror that serves the archive and fails only SHA256SUMS, echoing the full URL on stderr: the
+# only row that reaches the second curl call, so dropping its stderr redirect shows here.
+SB2="$W/sumsbin"; mkdir -p "$SB2"
+cat >"$SB2/curl" <<'STUB'
+#!/usr/bin/env bash
+out=""; url=""; prev=""
+for a in "$@"; do [ "$prev" = -o ] && out="$a"; prev="$a"; url="$a"; done
+case "$url" in
+  *.tar.gz) cp "$STUB_REL/v$STUB_VER/${url##*/}" "$out" ;;
+  *SHA256SUMS) echo "curl: (22) The requested URL returned error while fetching $url" >&2; exit 22 ;;
+  *) exec "$REAL_CURL" "$@" ;;
+esac
+STUB
+chmod +x "$SB2/curl"
+out="$(env -i PATH="$SB2:$PATH" REAL_CURL="$REAL_CURL" STUB_REL="$REL" STUB_VER="$NEW" HOME="$W/home" TMPDIR="$W/tmp" \
+  PR_SKILLS_CACHE_DIR="$W/cache13" PR_SKILLS_RELEASE_URL="file://$SEC/release-$NEW.json" PR_SKILLS_DOWNLOAD_URL="$SECRET_URL" \
+  bash "$M/pr-reviewer/scripts/update.sh" --allow-custom-source --yes 2>&1)"; rc=$?
+after="$(cd "$M" && find . -type f | sort | xargs sha256sum | sha256sum)"
+check "SHA256SUMS download fails after the archive: loud, host and curl exit 22 shown, no secret, nothing changed" eval \
+  '[ $rc = 1 ] && printf %s "$out" | grep -q "could not download SHA256SUMS from CUSTOM https://mirror.test" && printf %s "$out" | grep -q "curl exit 22" && ! leaks "$out" && [ "$before" = "$after" ] && nothing_left'
 # The release answer from a https mirror that fails.
 out="$(env -i PATH="$MB:$PATH" REAL_CURL="$REAL_CURL" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
   PR_SKILLS_RELEASE_URL="$SECRET_URL" bash "$M/pr-reviewer/scripts/update.sh" --allow-custom-source --yes 2>&1)"; rc=$?
 check "release answer from a https mirror fails: loud, no secret printed" eval \
-  '[ $rc = 1 ] && printf %s "$out" | grep -q "could not read the latest release" && printf %s "$out" | grep -q "CUSTOM https://mirror.test" && ! leaks "$out"'
+  '[ $rc = 1 ] && printf %s "$out" | grep -q "could not read the latest release from the release source (CUSTOM https://mirror.test;" && ! printf %s "$out" | grep -q "from GitHub" && ! leaks "$out"'
 # A file:// source whose path holds the secret installs, and nothing it prints carries the path.
 out="$(env -i PATH="$PATH" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
   PR_SKILLS_RELEASE_URL="file://$SEC/release-$NEW.json" PR_SKILLS_DOWNLOAD_URL="file://$SEC" \
@@ -308,6 +337,16 @@ out="$(runu "$V" cache14 "$REL" --yes --version 99.0.9)"; rc=$?
 after="$(cd "$V" && find . -type f | sort | xargs sha256sum | sha256sum)"
 check "--version differs from the latest release: refused, says both, nothing changed" eval \
   '[ $rc = 1 ] && printf %s "$out" | grep -q "asked about 99.0.9, but the latest release is $NEW" && [ "$before" = "$after" ] && nothing_left'
+out="$(runu "$V" cache14 "$REL" --yes --version 99.9.9)"; rc=$?
+after="$(cd "$V" && find . -type f | sort | xargs sha256sum | sha256sum)"
+check "--version newer than the latest release: refused, says both, nothing changed" eval \
+  '[ $rc = 1 ] && printf %s "$out" | grep -q "asked about 99.9.9, but the latest release is $NEW" && [ "$before" = "$after" ] && nothing_left'
+for bad in 1.2 1.2.3-rc1 v1.2.3 1.2.3.4; do
+  out="$(runu "$V" cache14 "$REL" --yes --version "$bad")"; rc=$?
+  after="$(cd "$V" && find . -type f | sort | xargs sha256sum | sha256sum)"
+  check "--version $bad (malformed): refused, nothing changed" eval \
+    '[ $rc = 1 ] && printf %s "$out" | grep -q "needs a version" && [ "$before" = "$after" ] && nothing_left'
+done
 out="$(runu "$V" cache14 "$REL" --yes --version latest)"; rc=$?
 check "--version with a non-version: refused" eval '[ $rc = 1 ] && printf %s "$out" | grep -q "needs a version"'
 out="$(runu "$V" cache14 "$REL" --yes --version)"; rc=$?

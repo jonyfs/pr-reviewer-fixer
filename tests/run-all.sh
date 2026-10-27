@@ -11,6 +11,34 @@ P="${TEST_TAG:+$TEST_TAG-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 fail=0
+# No workflow, template or script may call a model or name a provider key. Review and fix run as
+# agents in a person's own harness session, never in GitHub Actions.
+# The suites' own scratch directories (state-*/ and work-*/, gitignored) hold copies of the skills
+# and of whatever a run fed them, and a run in progress or a red run leaves them behind, so the scan
+# skips them under tests/ and nowhere else. That loses nothing only while no tracked file anywhere
+# sits in a folder with such a name, which is checked first and fails closed when git cannot answer.
+model_key_scan() {
+  local tracked bad=0
+  if ! tracked="$(git -C "$ROOT" ls-files 2>&1)"; then
+    echo "== git ls-files failed, so the model-key scan cannot tell tracked files from scratch ones"; bad=1
+  elif printf '%s\n' "$tracked" | grep -Eq '(^|/)(state|work)-[^/]*/'; then
+    echo "== a tracked file sits in a state-* or work-* folder, which the model-key scan skips under tests/"; bad=1
+  fi
+  local pat='claude-code-action|codex-action|anthropic_api_key|openai_api_key|fixer_push_token|anthropics/|openai/codex' rc1 rc2
+  grep -rniE "$pat" "$ROOT/.github/workflows" "$ROOT/.github/scripts" "$ROOT"/.agents/skills/*/templates \
+       "$ROOT"/.agents/skills/*/scripts --exclude=run-all.sh >/dev/null; rc1=$?
+  grep -rniE "$pat" "$ROOT/tests" --exclude=run-all.sh --exclude-dir='state-*' --exclude-dir='work-*' >/dev/null; rc2=$?
+  if [ "$rc1" -eq 0 ] || [ "$rc2" -eq 0 ]; then
+    echo "== a model action or provider key appears in a workflow, template, script or test"; bad=1
+  elif [ "$rc1" -ne 1 ] || [ "$rc2" -ne 1 ]; then
+    echo "== the model-key scan could not read a tree (grep exit $rc1 and $rc2)"; bad=1
+  elif [ "$bad" -eq 0 ]; then
+    echo "== no model action or provider key in workflows, workflow scripts, templates, scripts or tests"
+  fi
+  [ "$bad" -eq 0 ] || fail=1
+}
+# `run-all.sh --scan-only` runs this scan alone, without the suites.
+if [ "${1:-}" = "--scan-only" ]; then model_key_scan; exit $fail; fi
 # The independent suites run at the same time, each with its own scratch directory (TEST_TAG), and
 # print in a fixed order afterwards.
 OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
@@ -69,19 +97,6 @@ for f in references/pr-protocol.md references/harness-matrix.md references/harne
 done
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
-# No workflow, template or script may call a model or name a provider key. Review and fix run as
-# agents in a person's own harness session, never in GitHub Actions.
-# The suites' own scratch directories (state-*/ and work-*/, gitignored) hold copies of the skills
-# and of whatever a run fed them, and a run in progress or a red run leaves them behind, so the scan
-# skips them. That loses nothing only while no tracked file sits in one, which is checked next.
-if git -C "$ROOT" ls-files tests 2>/dev/null | grep -Eq '(^|/)(state|work)-[^/]*/'; then
-  echo "== a tracked file sits in a state-* or work-* scratch directory, which the model-key scan skips"; fail=1
-fi
-if grep -rniE 'claude-code-action|codex-action|anthropic_api_key|openai_api_key|fixer_push_token|anthropics/|openai/codex' \
-     "$ROOT/.github/workflows" "$ROOT/.github/scripts" "$ROOT"/.agents/skills/*/templates "$ROOT"/.agents/skills/*/scripts "$ROOT/tests" \
-     --exclude=run-all.sh --exclude-dir='state-*' --exclude-dir='work-*' >/dev/null; then
-  echo "== a model action or provider key appears in a workflow, template, script or test"; fail=1
-else
-  echo "== no model action or provider key in workflows, workflow scripts, templates, scripts or tests"
-fi
+# The model-key scan runs here, last: see model_key_scan, defined near the top.
+model_key_scan
 exit $fail
