@@ -59,7 +59,9 @@ A finding is a hit when it names the same file, lies within `tolerance` lines of
 at least the defect's `min_severity`. Notes are not counted. A CRITICAL or WARNING that hits no
 defect lowers precision, and one that lands on a decoy is also listed under `decoy hits`.
 
-Three cases are a smoke test, not a benchmark. Add a case for each defect class you care about
-before you trust a number, and run the same cases again after a change to the skill prose or a
+The 20 cases are six from before 0.16.0 (`sql-injection`, `off-by-one`, `clean-rename`, which has no
+defect, and three real bugs this repository had) and fourteen added in 0.16.0 (one per OWASP Top
+10:2025 category that had none, one per new dimension). That is 19 defects, one per case: a small
+sample, not a benchmark. Add a case for each defect class you care about before you trust a number, and run the same cases again after a change to the skill prose or a
 change of model. To keep a result, commit the printed table with the model id and the date under
 `docs/evals/`.
