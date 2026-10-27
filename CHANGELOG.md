@@ -63,14 +63,14 @@ Updating the installed skills no longer needs a manual clone and `install.sh`. A
   `install.sh`, both skills' `templates/` and `scripts/` and `tests/` (`git ls-files -z` feeds
   `grep`), with no `--exclude`, no `--exclude-dir` and no skip by name or path. The suites'
   `state-*/` and `work-*/` scratch folders are untracked and gitignored, so they are never read
-  (an untracked file is not scanned until it is added), and a tracked file is read whatever it is
+  (see pass 6 for new files), and a tracked file is read whatever it is
   called, wherever it sits and wherever the checkout lives. It fails when `git ls-files` cannot
   answer, when the checkout is not the top of its own git repository, when git lists no tracked
   file, and when `grep` exits with anything but 0 or 1. The scan's pattern is written in pieces so
   `tests/run-all.sh` does not match it. `run-all.sh --scan-only` runs just that scan; the new
   `tests/scan/run.sh` plants a tracked key in each scanned tree under ordinary, `run-all.sh`,
   space, newline, leading-dash, `state-x/` and `work-x/` names, in copies whose own path contains
-  `work-projects/` and `state-x/`, and covers an untracked key (not read), no git, a copy inside
+  `work-projects/` and `state-x/`, and covers an ignored key (not read), no git, a copy inside
   another repository, an empty list, a failing grep, a missing or deleted tracked file and an
   unreadable folder, all in a scratch copy. The suite also needs `curl` and `tar` now (README and
   the requirements say so).
@@ -89,6 +89,10 @@ Updating the installed skills no longer needs a manual clone and `install.sh`. A
   reads the tracked files from `git ls-files`, which no name or path can hide. The check for a
   tracked file in a `state-*/` or `work-*/` folder is gone with the exclusions (N24). Run
   `tests/scan/run.sh` on Linux as the README shows.
+- Pass-6 fixes: a 141-file tree with a key in file 100, 101 and the last covers the scan's batches
+  of 100 (W8); a new file is scanned before `git add` and only gitignored files are skipped (N25);
+  `GIT_LITERAL_PATHSPECS` and `GIT_NOGLOB_PATHSPECS` are set to 0 for the listing (N26); the stale
+  GNU and BSD `grep` sentence is gone from the README (N27).
 - Minor version: a new script and subcommands that existing installs can ignore. An installed
   copy older than 0.19.0 has no `update.sh` and updates once the old way.
 

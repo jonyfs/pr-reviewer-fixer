@@ -2,7 +2,8 @@
 # Drives the model-key scan of tests/run-all.sh (`run-all.sh --scan-only`) against planted trees.
 # Every planted file lives in a scratch copy under tests/scan/work-*/ (gitignored), never in the
 # work tree, and the scratch copy is its own git repository because the scan asks git which files
-# are tracked. The keys are built from pieces at run time, so this file does not match the scan.
+# to read (the tracked ones and the untracked ones .gitignore does not hide). The keys are built
+# from pieces at run time, so this file does not match the scan.
 # Usage: run.sh   (no arguments; TEST_TAG names the scratch directory)
 set -u
 unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
@@ -24,6 +25,7 @@ mkfix() {
   local d="$1" t; mkdir -p "$d"
   for t in "${trees[@]}"; do mkdir -p "$d/$t"; echo "echo clean" >"$d/$t/ok.sh"; done
   echo "echo clean" >"$d/install.sh"; echo "* @owner" >"$d/.github/CODEOWNERS"
+  printf 'state-*/\nwork-*/\n' >"$d/.gitignore"
   cp "$ROOT/tests/run-all.sh" "$d/tests/run-all.sh"
   ( cd "$d" && git init -q && git add -A ) >/dev/null 2>&1
 }
@@ -77,15 +79,22 @@ done
 scan "$F"
 check "after the planted files are removed the tree is clean again" eval '[ $r = 0 ]'
 
-# Scratch is never read: a file git does not track is not scanned, whatever its name or place.
+# What .gitignore hides is not read (scratch in work-*/ and state-*/); a new file that is not
+# ignored is read before it is `git add`ed.
 mkdir -p "$F/tests/foo/work-1" "$F/.agents/skills/pr-fixer/scripts/state-1"
 printf '%s\n' "$KEY" >"$F/tests/foo/work-1/f"
 printf '%s\n' "$KEY" >"$F/.agents/skills/pr-fixer/scripts/state-1/f"
-printf '%s\n' "$KEY" >"$F/tests/foo/untracked.yml"
 scan "$F"
-check "an untracked key (scratch, in work-*, state-* or an ordinary place): not read, exit 0" eval '[ $r = 0 ]'
+check "an ignored key (scratch in work-* and state-*): not read, exit 0" eval '[ $r = 0 ]'
 check "it still prints the pass line" has "no model action or provider key"
-rm -rf "$F/tests/foo/work-1" "$F/.agents/skills/pr-fixer/scripts/state-1" "$F/tests/foo/untracked.yml"
+printf '%s\n' "$KEY" >"$F/tests/foo/untracked.yml"; scan "$F"
+check "an untracked key in an ordinary place, not yet git added: exit 1 and named" found
+rm -f "$F/tests/foo/untracked.yml"
+mkdir -p "$F/.github/workflows/new dir"; printf '%s\n' "$KEY" >"$F/.github/workflows/new dir/n.yml"
+scan "$F"
+check "an untracked key in a new folder under .github: exit 1 and named" found
+rm -rf "$F/tests/foo/work-1" "$F/.agents/skills/pr-fixer/scripts/state-1" \
+  "$F/.github/workflows/new dir"
 # A tracked clean file in a folder with such a name is simply read (no refusal).
 plant tests/foo/work-1/f "echo clean"; plant .github/state-notes/n.md "notes"; scan "$F"
 check "a tracked clean file in work-*/ and state-*/ folders: exit 0" eval '[ $r = 0 ]'
@@ -101,6 +110,42 @@ for d in "$W/work-projects/repo" "$W/state-x/repo" "$W/plain/repo"; do
   done
 done
 
+# git's pathspec variables must not change what is listed (a literal `*` would list nothing).
+plant .agents/skills/pr-reviewer/templates/p.yml; scan "$F" GIT_LITERAL_PATHSPECS=1
+check "GIT_LITERAL_PATHSPECS=1 exported: the glob pathspecs still list the templates, exit 1" found
+scan "$F" GIT_NOGLOB_PATHSPECS=1
+check "GIT_NOGLOB_PATHSPECS=1 exported: the same, exit 1" found
+unplant .agents/skills/pr-reviewer/templates/p.yml
+scan "$F" GIT_LITERAL_PATHSPECS=1
+check "GIT_LITERAL_PATHSPECS=1 on a clean tree: exit 0 and the pass line" \
+  eval '[ $r = 0 ] && has "no model action or provider key"'
+
+# The scan hands grep 100 files at a time. A tree of more than 100 files, with a key in the 100th
+# file, the 101st (the first of the second batch) and the last, so a batch that is skipped, cut
+# short or stepped over would miss one. The positions come from the same listing the scan uses.
+B="$W/big"; mkfix "$B"; mkdir -p "$B/tests/foo/many"
+for ((n = 1; n <= 130; n++)); do
+  echo "echo clean $n" >"$B/tests/foo/many/f$(printf %03d $n).sh"
+done
+git -C "$B" add -A >/dev/null 2>&1
+LIST=()
+while IFS= read -r -d '' f; do LIST+=("$f"); done < <(git -C "$B" ls-files -z --cached --others \
+  --exclude-standard -- .github install.sh '.agents/skills/*/templates/*' \
+  '.agents/skills/*/scripts/*' tests)
+scan "$B"
+check "a clean tree of more than 100 files (${#LIST[@]}): exit 0 and the count in the pass line" \
+  eval '[ ${#LIST[@]} -gt 101 ] && [ $r = 0 ] && has "in ${#LIST[@]} files"'
+for pos in 1 99 100 101 102 200 "${#LIST[@]}"; do
+  [ "$pos" -le "${#LIST[@]}" ] || continue
+  f="${LIST[$((pos - 1))]}"; cp "$B/$f" "$W/big.bak"
+  printf '# %s\n' "$KEY" >>"$B/$f"; scan "$B"
+  check "a key in file $pos of ${#LIST[@]} ($f): exit 1 and named" \
+    eval 'found && has "$f"'
+  cp "$W/big.bak" "$B/$f"
+done
+scan "$B"
+check "the big tree is clean again: exit 0" eval '[ $r = 0 ]'
+
 # Fail closed.
 mkfix "$W/nogit"; rm -rf "$W/nogit/.git"; scan "$W/nogit" GIT_CEILING_DIRECTORIES="$W"
 check "no git repository at all: exit 1, cannot tell tracked files" eval '[ $r = 1 ] && has "git ls-files failed"'
@@ -110,23 +155,31 @@ check "a copy inside another repository: exit 1, not the top of its own" eval '[
 mkdir -p "$W/fakebin"; printf '#!/bin/sh\nexit 1\n' >"$W/fakebin/git"; chmod +x "$W/fakebin/git"
 scan "$F" PATH="$W/fakebin:$PATH"
 check "git failing: exit 1 even on a clean tree" eval '[ $r = 1 ] && has "git ls-files failed"'
-mkfix "$W/empty"; git -C "$W/empty" rm -rqf --cached .github .agents install.sh tests >/dev/null 2>&1; scan "$W/empty"
-check "git lists no tracked file in the trees: exit 1" eval '[ $r = 1 ] && has "lists no tracked file"'
+mkfix "$W/empty"; echo "tests/run-all.sh" >>"$W/empty/.gitignore"
+git -C "$W/empty" rm -rqf --cached .github .agents install.sh tests >/dev/null 2>&1
+rm -rf "$W/empty/.github" "$W/empty/.agents" "$W/empty/install.sh" "$W/empty/tests/foo"
+scan "$W/empty"
+check "git lists no file in the trees: exit 1" eval '[ $r = 1 ] && has "lists no file"'
 mkdir -p "$W/badgrep"; printf '#!/bin/sh\nexit 2\n' >"$W/badgrep/grep"; chmod +x "$W/badgrep/grep"
 scan "$F" PATH="$W/badgrep:$PATH"
-check "grep exiting 2: exit 1 even on a clean tree" eval '[ $r = 1 ] && has "could not read a tracked file"'
+check "grep exiting 2: exit 1 even on a clean tree" \
+  eval '[ $r = 1 ] && has "could not read a listed file"'
 printf '#!/bin/sh\nexit 3\n' >"$W/badgrep/grep"
 scan "$F" PATH="$W/badgrep:$PATH"
-check "grep exiting 3: exit 1 even on a clean tree" eval '[ $r = 1 ] && has "could not read a tracked file"'
+check "grep exiting 3: exit 1 even on a clean tree" \
+  eval '[ $r = 1 ] && has "could not read a listed file"'
 mv "$F/.github" "$W/dot-github"; scan "$F"
-check "a tracked tree missing from the work tree: exit 1, the scan could not read it" eval '[ $r = 1 ] && has "could not read a tracked file"'
+check "a tracked tree missing from the work tree: exit 1, the scan could not read it" \
+  eval '[ $r = 1 ] && has "could not read a listed file"'
 mv "$W/dot-github" "$F/.github"
 plant tests/foo/gone.sh "echo clean"; rm -f "$F/tests/foo/gone.sh"; scan "$F"
-check "a tracked file deleted from the work tree: exit 1, the scan could not read it" eval '[ $r = 1 ] && has "could not read a tracked file"'
+check "a tracked file deleted from the work tree: exit 1, the scan could not read it" \
+  eval '[ $r = 1 ] && has "could not read a listed file"'
 unplant tests/foo/gone.sh
 if [ "$(id -u)" != 0 ]; then
   chmod 000 "$F/tests/foo"; scan "$F"; chmod 755 "$F/tests/foo"
-  check "an unreadable folder: exit 1, the scan could not read it" eval '[ $r = 1 ] && has "could not read a tracked file"'
+  check "an unreadable folder: exit 1, the scan could not read it" \
+    eval '[ $r = 1 ] && has "could not read a listed file"'
 fi
 scan "$F"
 check "the fixture is clean again at the end" eval '[ $r = 0 ]'

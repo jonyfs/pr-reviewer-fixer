@@ -13,34 +13,39 @@ ROOT="$(cd "$HERE/.." && pwd)"
 fail=0
 # No workflow, template, action, script or test may call a model or name a provider key. Review and
 # fix run as agents in a person's own harness session, never in GitHub Actions.
-# The scan reads exactly the files git tracks in .github (workflows, scripts, actions, CODEOWNERS),
-# the root install.sh, both skills' templates and scripts, and tests/. It takes the list from
-# `git ls-files -z` and passes it to grep as file operands. It has no --exclude, no --exclude-dir
-# and no skip by name or path, so a tracked file is read whatever it is called, in whatever folder,
-# and whatever the path of the checkout (a checkout under a folder called work-projects is read
-# like any other). The suites' scratch directories (state-*/, work-*/) are untracked and gitignored,
-# so they are never read, whether a red run left them behind or not; a new file is read once it is
-# added to the index (`git add`). It fails closed: when git cannot answer, when ROOT is not the top
-# of its own repository (then `git ls-files` would list nothing or another repository's files),
-# when the list is empty, and when grep exits with anything but 0 or 1 (a tracked file it cannot
-# read, for example). The pattern below is written in pieces, so this file does not match it.
+# The scan reads the files git lists in .github (workflows, scripts, actions, CODEOWNERS), the root
+# install.sh, both skills' templates and scripts, and tests/: the tracked ones and the untracked
+# ones that .gitignore does not hide (`git ls-files -z --cached --others --exclude-standard`). It
+# passes the list to grep as file operands, 100 at a time. It has no --exclude, no --exclude-dir
+# and no skip by name or path, so a file is read whatever it is called, in whatever folder, and
+# whatever the path of the checkout (a checkout under a folder called work-projects is read like
+# any other). A new file is read before it is `git add`ed. Only what .gitignore hides is not read:
+# the suites' scratch directories (state-*/, work-*/), whether a red run left them behind or not.
+# git's pathspec variables (GIT_LITERAL_PATHSPECS and GIT_NOGLOB_PATHSPECS) are set to 0 for the
+# listing, so a caller's value cannot turn the `*` in a pathspec into a literal and empty the list.
+# It fails closed: when git cannot answer, when ROOT is not the top of its own repository (then
+# `git ls-files` would list nothing or another repository's files), when the list is empty, and
+# when grep exits with anything but 0 or 1 (a listed file it cannot read, for example). The pattern
+# below is written in pieces, so this file does not match it.
 # tests/scan/run.sh drives this function against planted trees.
 model_key_scan() {
   local list top f i hits="" out rc bad=0 files=()
   if ! list="$(mktemp)"; then
-    echo "== mktemp failed, so the model-key scan cannot list the tracked files"; fail=1; return
+    echo "== mktemp failed, so the model-key scan cannot list the files"; fail=1; return
   fi
   if ! top="$(git -C "$ROOT" rev-parse --show-toplevel 2>&1)" \
-     || ! git -C "$ROOT" ls-files -z -- .github install.sh '.agents/skills/*/templates/*' \
-          '.agents/skills/*/scripts/*' tests >"$list" 2>/dev/null; then
-    echo "== git ls-files failed, so the model-key scan cannot tell which files are tracked"; bad=1
+     || ! env GIT_LITERAL_PATHSPECS=0 GIT_NOGLOB_PATHSPECS=0 git -C "$ROOT" ls-files -z \
+          --cached --others --exclude-standard -- .github install.sh \
+          '.agents/skills/*/templates/*' '.agents/skills/*/scripts/*' tests \
+          >"$list" 2>/dev/null; then
+    echo "== git ls-files failed, so the model-key scan cannot list the files it must read"; bad=1
   elif [ "$(cd "$top" 2>/dev/null && pwd -P)" != "$(cd "$ROOT" && pwd -P)" ]; then
     echo "== $ROOT is not the top of its own git repository, so the model-key scan cannot tell"
-    echo "   which files are tracked"; bad=1
+    echo "   which files to read"; bad=1
   else
     while IFS= read -r -d '' f; do files+=("$ROOT/$f"); done <"$list"
     if [ "${#files[@]}" -eq 0 ]; then
-      echo "== git lists no tracked file in .github, install.sh, templates, scripts or tests"; bad=1
+      echo "== git lists no file in .github, install.sh, templates, scripts or tests"; bad=1
     fi
   fi
   rm -f "$list"
@@ -54,13 +59,13 @@ model_key_scan() {
       [ "$rc" -le 1 ] || err=1
     done
     if [ -n "$hits" ]; then
-      echo "== a model action or provider key appears in a tracked file of .github, install.sh, a"
+      echo "== a model action or provider key appears in a file of .github, install.sh, a"
       echo "   template, a script or a test:"; printf '%s' "$hits" | sed 's/^/   /'; bad=1
     fi
     if [ "$err" -ne 0 ]; then
-      echo "== the model-key scan could not read a tracked file (grep exited with an error)"; bad=1
+      echo "== the model-key scan could not read a listed file (grep exited with an error)"; bad=1
     fi
-    [ "$bad" -ne 0 ] || echo "== no model action or provider key in ${#files[@]} tracked files" \
+    [ "$bad" -ne 0 ] || echo "== no model action or provider key in ${#files[@]} files" \
       "of .github, install.sh, templates, scripts and tests"
   fi
   [ "$bad" -eq 0 ] || fail=1

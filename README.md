@@ -720,16 +720,20 @@ each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/`
 start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts your `TEST_TAG` in
 front of each suite's own tag. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
 when it starts, so a value exported in your shell does not change the results. It also
-fails if a file that git tracks under `.github/` (workflows, scripts, actions), the root
+fails if a file under `.github/` (workflows, scripts, actions), the root
 `install.sh`, a skill's `templates/` or `scripts/`, or `tests/` names a model action or a provider
-API key. The scan reads exactly the tracked files (`git ls-files -z` feeds `grep`), whatever they
-are called, wherever they sit and wherever the checkout lives. It has no exclusion by name or path,
-so untracked scratch (the suites' `state-*/` and `work-*/` folders, which are gitignored) is never
-read, and a new file is read once you `git add` it. It fails when git cannot answer, when the
-checkout is not the top of its own git repository, when git lists no tracked file, and when `grep`
-cannot read one. `bash tests/run-all.sh --scan-only` runs it alone, and `tests/scan/run.sh` drives
-it against planted trees in a scratch copy. GNU `grep` and BSD `grep` treat directory excludes
-differently, so run that suite on Linux too, from a checkout whose path contains `work-`:
+API key. The scan reads the files git lists in those places: the tracked ones and the untracked
+ones that `.gitignore` does not hide (`git ls-files -z --cached --others --exclude-standard`),
+100 per `grep` call, whatever they are called, wherever they sit and wherever the checkout lives.
+It has no exclusion by name or path. A new file is read before you `git add` it; only what
+`.gitignore` hides, such as the suites' `state-*/` and `work-*/` scratch folders, is not read. It
+sets `GIT_LITERAL_PATHSPECS=0` and `GIT_NOGLOB_PATHSPECS=0` for the listing, so a value in your
+environment cannot empty it. It fails when git cannot answer, when the checkout is not the top of
+its own git repository, when git lists no file, and when `grep` cannot read a listed file.
+`bash tests/run-all.sh --scan-only` runs it alone, and `tests/scan/run.sh` drives it against
+planted trees in a scratch copy, including a tree of more than 100 files with a key in the 100th,
+the 101st and the last. Run that suite on Linux too (GNU `grep`), from a checkout whose path
+contains `work-`:
 
 ```bash
 docker run --rm -v "$PWD":/src:ro debian:stable-slim bash -c 'apt-get update -qq && apt-get install -y -qq git \
