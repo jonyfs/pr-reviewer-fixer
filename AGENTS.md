@@ -139,4 +139,4 @@ Rules for doing it:
 - Third-party actions in workflows and templates are pinned to full commit SHAs. Keep them pinned.
 - Diagrams in `README.md` are sourced from `docs/diagrams/*.mmd`. Update both together.
 - Dated facts (harness paths, model names) carry a date, currently 2026-10-14. Update the date when you re-verify them.
-- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored. The model-key scan in `tests/run-all.sh` skips `state-*/` and `work-*/` and fails if a tracked file sits in one.
+- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored. The model-key scan in `tests/run-all.sh` skips `state-*/` and `work-*/` under `tests/` only, fails if a tracked file anywhere in the repository sits in a folder with such a name, and fails when `git ls-files` or `grep` cannot answer. `bash tests/run-all.sh --scan-only` runs just that scan.
