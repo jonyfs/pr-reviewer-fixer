@@ -21,6 +21,9 @@ bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-versi
 bash tests/release/run.sh                                          # .github/scripts/release.sh, the release workflow's logic
 bash tests/update/run.sh .agents/skills/pr-reviewer/scripts install.sh   # update.sh and check-version.sh --latest/--decline
 bash tests/scan/run.sh                                             # the model-key scan of run-all.sh, on planted trees
+docker run --rm -v "$PWD":/src:ro debian:stable-slim bash -c 'apt-get update -qq && apt-get install -y -qq git \
+  && mkdir -p /home/u/work-projects && cp -r /src /home/u/work-projects/repo \
+  && cd /home/u/work-projects/repo && bash tests/scan/run.sh'   # the same scan suite on GNU grep, under a work-* path
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt
 python3 tests/scan-hidden/t.py .agents/skills/pr-reviewer/scripts  # scan-hidden.py
 ```
@@ -140,4 +143,4 @@ Rules for doing it:
 - Third-party actions in workflows and templates are pinned to full commit SHAs. Keep them pinned.
 - Diagrams in `README.md` are sourced from `docs/diagrams/*.mmd`. Update both together.
 - Dated facts (harness paths, model names) carry a date, currently 2026-10-14. Update the date when you re-verify them.
-- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored. The model-key scan in `tests/run-all.sh` excludes no file by name, skips `state-*/` and `work-*/` under `tests/` only, fails if a tracked file anywhere in the repository sits in a folder with such a name, and fails when `git ls-files` or `grep` cannot answer, when a tree cannot be read, or when the checkout is not the top of its own git repository. `bash tests/run-all.sh --scan-only` runs just that scan, and `tests/scan/run.sh` drives it against planted trees in a scratch copy.
+- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored. The model-key scan in `tests/run-all.sh` reads exactly the files git tracks in `.github/`, `install.sh`, both skills' `templates/` and `scripts/` and `tests/` (`git ls-files -z` feeds `grep`), with no exclusion by name or path, so untracked scratch such as `state-*/` and `work-*/` is never read and a new file is read once it is added to the index. It fails when `git ls-files` cannot answer, when the checkout is not the top of its own git repository, when git lists no tracked file, and when `grep` exits with anything but 0 or 1. `bash tests/run-all.sh --scan-only` runs just that scan, and `tests/scan/run.sh` drives it against planted trees in a scratch copy.
