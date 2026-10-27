@@ -12,21 +12,22 @@ Updating the installed skills no longer needs a manual clone and `install.sh`. A
 - `scripts/update.sh` (both skills, identical): reads the latest release, downloads
   `pr-reviewer-fixer-X.Y.Z.tar.gz` and `SHA256SUMS`, refuses an archive whose SHA-256 differs or
   whose members escape the folder, checks the archive's `VERSION`, runs the release's own
-  `install.sh --target` on the skills directory it sits in, keeps the script prefix of an installed
-  `templates/review-gate.yml`, and reads the versions back. Without `--yes` it prints the plan and
-  changes nothing. Every failure is loud. A failure before `install.sh` runs leaves the old install
-  in place; `install.sh` keeps a skill's old copy when that skill's swap fails but swaps one skill
-  at a time, so with both skills the first may already be replaced, and the failure message says to
-  run `update.sh` again, which finishes the job. It refuses to run in a checkout of this repository
-  and never goes back to an older version. The upstream address is fixed in the script;
-  `PR_SKILLS_DOWNLOAD_URL` and `PR_SKILLS_RELEASE_URL` are honored only with
-  `--allow-custom-source`, and with either set and no flag it refuses and changes nothing. It
-  prints the source it uses and fetches an https source with https only. A custom source is shown
-  as scheme and host only (a `file://` one as `file://`) in the refusal, the `source:` line, the
-  plan, the download errors and the notice, and `curl`'s own error text is dropped, since a mirror
-  URL can carry a user, a password, a token or a signed query and everything printed reaches the
-  agent's transcript. `--version X.Y.Z` (the notice prints it) makes `update.sh` refuse, changing
-  nothing, when the latest release read fresh is not the one the person was asked about.
+  `install.sh --target` on the skills directory it sits in, keeps the script prefix of the
+  `templates/review-gate.yml` of each installed skill (also after a failed `install.sh`), and
+  reads the versions back. Without `--yes` it prints the plan and changes nothing. Every failure
+  is loud. A failure before `install.sh` runs leaves the old install in place; `install.sh` keeps
+  a skill's old copy when that skill's swap fails but swaps one skill at a time, so with both
+  skills the first may already be replaced, and the failure message says to run `update.sh` again,
+  which finishes the job. It refuses to run in a checkout of this repository and never goes back
+  to an older version. The upstream address is fixed in the script; `PR_SKILLS_DOWNLOAD_URL` and
+  `PR_SKILLS_RELEASE_URL` are honored only with `--allow-custom-source`, and with either set and
+  no flag it refuses and changes nothing. It prints the source it uses and fetches an https source
+  with https only. A custom source is shown as scheme and host only (a `file://` one as `file://`)
+  in the refusal, the `source:` line, the plan, the download errors and the notice, and `curl`'s
+  own error text is dropped, since a mirror URL can carry a user, a password, a token or a signed
+  query and everything printed reaches the agent's transcript. `--version X.Y.Z` (the notice
+  prints it) makes `update.sh` refuse, changing nothing, when the latest release read fresh is not
+  the one the person was asked about.
 - `check-version.sh`: the notice now tells the agent to put one yes/no question to the person
   (yes: `update.sh --yes`, no: `check-version.sh --decline <version>`, no answer: do neither). The
   notice names the address the code comes from (not the upstream one when

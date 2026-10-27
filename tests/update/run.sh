@@ -154,13 +154,28 @@ check "run from the repository checkout: refused, exit 1" eval \
 out="$(bash "$A/pr-reviewer/scripts/update.sh" --force 2>&1)"; rc=$?
 check "unknown argument: exit 1" eval '[ $rc = 1 ] && printf %s "$out" | grep -q "unknown argument"'
 
-# 12. The review-gate template keeps its prefix when the install is not under .agents/skills.
-H="$W/h/.claude/skills"; rm -rf "$W/h"; mkdir -p "$H"
-(cd "$W/h" && bash "$INSTALL" --harness claude-code --source "$ROOT/.agents/skills" --yes >/dev/null 2>&1)
-grep -q "\.claude/skills/pr-reviewer/scripts/" "$H/pr-reviewer/templates/review-gate.yml"; had=$?
+# 12. The review-gate template of each installed skill keeps its prefix when the install is not
+# under .agents/skills. Both skills ship a copy, and install.sh --target rewrites neither.
+gate() { printf '%s/%s/templates/review-gate.yml' "$1" "$2"; }
+keeps_prefix() { # <skills dir> <skill>: the copy reads .claude/skills and no .agents/skills
+  grep -q "\.claude/skills/pr-reviewer/scripts/" "$(gate "$1" "$2")" \
+    && ! grep -q "\.agents/skills/pr-reviewer/scripts/" "$(gate "$1" "$2")"
+}
+mkclaude() { # <project dir>: both skills installed with --harness claude-code
+  rm -rf "$1"; mkdir -p "$1/.claude/skills"
+  (cd "$1" && bash "$INSTALL" --harness claude-code --source "$ROOT/.agents/skills" --yes \
+    >/dev/null 2>&1)
+}
+H="$W/h/.claude/skills"; mkclaude "$W/h"
+grep -q "\.claude/skills/pr-reviewer/scripts/" "$(gate "$H" pr-reviewer)" \
+  && grep -q "\.claude/skills/pr-reviewer/scripts/" "$(gate "$H" pr-fixer)"; had=$?
 out="$(runu "$H" cache9 "$REL" --yes)"; rc=$?
-check "template prefix of a .claude/skills install survives the update" eval \
-  '[ $had = 0 ] && [ $rc = 0 ] && grep -q "\.claude/skills/pr-reviewer/scripts/" "$H/pr-reviewer/templates/review-gate.yml" && ! grep -q "\.agents/skills/pr-reviewer/scripts/" "$H/pr-reviewer/templates/review-gate.yml"'
+check "pr-reviewer template prefix in a .claude/skills install survives the update" eval \
+  '[ $had = 0 ] && [ $rc = 0 ] && keeps_prefix "$H" pr-reviewer'
+check "template prefix of the pr-fixer copy in a .claude/skills install survives the update" eval \
+  '[ $had = 0 ] && [ $rc = 0 ] && keeps_prefix "$H" pr-fixer'
+check "an unchanged template is not announced as changed" eval \
+  '! printf %s "$out" | grep -q "review-gate.yml changed in this release"'
 
 # 14. install.sh fails on the second skill. The archive's install.sh is a stub that replaces
 # pr-reviewer through the real one, then fails the way a pr-fixer swap would.
@@ -186,6 +201,34 @@ check "that failure leaves a mixed install: pr-reviewer replaced, pr-fixer as it
 out="$(runu "$J" cache10 "$REL" --yes)"; rc=$?
 check "a second run, once the cause is gone, finishes the job" eval \
   '[ $rc = 0 ] && [ "$(ver "$J/pr-reviewer")" = "$NEW" ] && [ "$(ver "$J/pr-fixer")" = "$NEW" ] && nothing_left'
+
+# 14b. The same failure in a .claude/skills install: the copy of the skill that was replaced
+# loses nothing, and neither does the one that was not.
+H2="$W/h2/.claude/skills"; mkclaude "$W/h2"
+out="$(runu "$H2" cache10b "$W/frel" --yes)"; rc=$?
+check "install.sh fails on the second skill: both templates keep their .claude/skills prefix" eval \
+  '[ $rc = 1 ] && [ "$(ver "$H2/pr-reviewer")" = "$NEW" ] && [ "$(ver "$H2/pr-fixer")" = "$OLD" ] \
+    && keeps_prefix "$H2" pr-reviewer && keeps_prefix "$H2" pr-fixer'
+out="$(runu "$H2" cache10b "$REL" --yes)"; rc=$?
+check "the next run finishes the job and both templates still keep the prefix" eval \
+  '[ $rc = 0 ] && [ "$(ver "$H2/pr-fixer")" = "$NEW" ] \
+    && keeps_prefix "$H2" pr-reviewer && keeps_prefix "$H2" pr-fixer'
+
+# 14c. A release that changes only the pr-fixer copy of the template is announced, and the new
+# content arrives with the old prefix.
+mkrelease "$NEW" "$W/grel"
+(cd "$W/grel/v$NEW" && mkdir -p z && tar -xzf "pr-reviewer-fixer-$NEW.tar.gz" -C z \
+  && echo "# gate marker of $NEW" \
+    >>"z/pr-reviewer-fixer-$NEW/.agents/skills/pr-fixer/templates/review-gate.yml" \
+  && tar -czf "pr-reviewer-fixer-$NEW.tar.gz" -C z "pr-reviewer-fixer-$NEW" \
+  && sha256sum "pr-reviewer-fixer-$NEW.tar.gz" >SHA256SUMS && rm -rf z)
+H3="$W/h3/.claude/skills"; mkclaude "$W/h3"
+out="$(runu "$H3" cache10c "$W/grel" --yes)"; rc=$?
+check "only the pr-fixer template changed: announced, naming pr-fixer only" eval \
+  '[ $rc = 0 ] && printf %s "$out" | grep -q "review-gate.yml changed in this release (pr-fixer)"'
+check "only the pr-fixer template changed: its new content is in place under the old prefix" eval \
+  'grep -q "gate marker of $NEW" "$(gate "$H3" pr-fixer)" && keeps_prefix "$H3" pr-fixer \
+    && keeps_prefix "$H3" pr-reviewer'
 
 # 15. A source variable moves nothing without --allow-custom-source.
 K="$W/k"; mkinstall "$K"

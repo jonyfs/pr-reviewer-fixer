@@ -19,9 +19,10 @@
 #      checks that its VERSION is the release asked for;
 #   5. runs the release's own install.sh with --target on the skills directory, which replaces each
 #      installed skill folder by a staged copy and puts the old one back if the swap fails;
-#   6. puts back the script prefix of an installed templates/review-gate.yml that was installed
-#      outside .agents/skills, and says when the template changed (the workflow in a repository is
-#      a copy a person made, and is never touched);
+#   6. puts back the script prefix of the templates/review-gate.yml of each installed skill that
+#      was installed outside .agents/skills (also when install.sh failed, for the skills it had
+#      already replaced), and says when a template changed (the workflow in a repository is a copy
+#      a person made, and is never touched);
 #   7. reads the installed version of each skill again and fails unless it is the release.
 #
 # Unlike check-version.sh, every failure here is loud: a message on stderr and a non-zero exit. A
@@ -224,23 +225,46 @@ print("older" if a < b else "same" if a == b else "newer")' "$v" "$latest")"
   [ "$rv" = "$latest" ] || { die "the archive holds version '${rv:-none}', not $latest; refusing it. Nothing changed."; return 1; }
   [ -f "$r/install.sh" ] && [ -d "$r/.agents/skills" ] || { die "the archive has no install.sh or .agents/skills; nothing changed"; return 1; }
 
-  local tpl="$skills_dir/pr-reviewer/templates/review-gate.yml" old_prefix="" had_tpl=0
-  if [ -f "$tpl" ]; then
-    had_tpl=1; cp "$tpl" "$tmp/old-gate.yml"
-    old_prefix="$(grep -Eo '[^[:space:]"=]*pr-reviewer/scripts/' "$tpl" | head -1)"
-  fi
+  # Each installed skill ships its own copy of templates/review-gate.yml, and install.sh --target
+  # rewrites no prefix in it. Read every copy's prefix and keep the old file before install.sh runs.
+  local j t old_prefix=() had_tpl=()
+  for j in "${!names[@]}"; do
+    t="$skills_dir/${names[$j]}/templates/review-gate.yml"
+    had_tpl[$j]=0; old_prefix[$j]=""
+    if [ -f "$t" ]; then
+      had_tpl[$j]=1; cp "$t" "$tmp/old-gate-${names[$j]}.yml"
+      old_prefix[$j]="$(grep -Eo '[^[:space:]"=]*pr-reviewer/scripts/' "$t" | head -1)"
+    fi
+  done
 
+  # Puts each replaced copy's script prefix back. A copy that is byte for byte the old one was not
+  # replaced and is left alone. It runs also when install.sh fails, so a skill that was already
+  # replaced does not lose its prefix.
+  restore_prefixes() {
+    local k s new p def=".agents/skills/pr-reviewer/scripts/"
+    for k in "${!names[@]}"; do
+      s="${names[$k]}"; new="$skills_dir/$s/templates/review-gate.yml"; p="${old_prefix[$k]}"
+      if [ "${had_tpl[$k]}" = 1 ] && [ -f "$new" ] && [ -n "$p" ] && [ "$p" != "$def" ] \
+         && ! cmp -s "$tmp/old-gate-$s.yml" "$new"; then
+        case "$p" in
+          *'|'*|*'&'*|*'\'*)
+            echo "update: the script prefix '$p' in the installed $s/templates/review-gate.yml" \
+                 "has a character this script will not put back; re-apply it by hand" >&2 ;;
+          *) sed "s|$def|$p|g" "$new" >"$new.tmp" && mv "$new.tmp" "$new" \
+               || { rm -f "$new.tmp"; echo "update: could not put back the script prefix in" \
+                    "$s/templates/review-gate.yml; re-apply '$p' by hand" >&2; } ;;
+        esac
+      fi
+    done
+  }
+
+  local irc=0
   bash "$r/install.sh" --target "$skills_dir" --source "$r/.agents/skills" --skill "$sk" --yes \
+    || irc=$?
+  restore_prefixes
+  [ "$irc" = 0 ] \
     || { die "install.sh failed, see above; its message says what it left and where. One skill" \
              "may already be replaced, so run update.sh again to finish the job."; return 1; }
-
-  local new_tpl="$skills_dir/pr-reviewer/templates/review-gate.yml" def=".agents/skills/pr-reviewer/scripts/"
-  if [ "$had_tpl" = 1 ] && [ -f "$new_tpl" ] && [ -n "$old_prefix" ] && [ "$old_prefix" != "$def" ]; then
-    case "$old_prefix" in
-      *'|'*|*'&'*|*'\'*) echo "update: the script prefix '$old_prefix' in the installed review-gate.yml has a character this script will not put back; re-apply it by hand" >&2 ;;
-      *) sed "s|$def|$old_prefix|g" "$new_tpl" >"$new_tpl.tmp" && mv "$new_tpl.tmp" "$new_tpl" ;;
-    esac
-  fi
 
   for s in "${names[@]}"; do
     v="$("$skills_dir/$s/scripts/check-version.sh" --installed 2>/dev/null)"
@@ -248,8 +272,17 @@ print("older" if a < b else "same" if a == b else "newer")' "$v" "$latest")"
                                   "Check $skills_dir/$s, then run update.sh again."; return 1; }
   done
   echo "update: done. ${names[*]} now at $latest, from $base_label.${page:+ Release notes: $page}"
-  if [ "$had_tpl" = 1 ] && ! cmp -s "$tmp/old-gate.yml" "$new_tpl"; then
-    echo "update: templates/review-gate.yml changed in this release. If a repository uses a copy of it as .github/workflows/review-gate.yml, compare the two and update that copy yourself."
+  local changed=""
+  for j in "${!names[@]}"; do
+    if [ "${had_tpl[$j]}" = 1 ] && ! cmp -s "$tmp/old-gate-${names[$j]}.yml" \
+         "$skills_dir/${names[$j]}/templates/review-gate.yml"; then
+      changed="${changed:+$changed }${names[$j]}"
+    fi
+  done
+  if [ -n "$changed" ]; then
+    echo "update: templates/review-gate.yml changed in this release ($changed). If a repository" \
+         "uses a copy of it as .github/workflows/review-gate.yml, compare the two and update" \
+         "that copy yourself."
   fi
   return 0
 }

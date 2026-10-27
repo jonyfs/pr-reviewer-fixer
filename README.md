@@ -451,9 +451,10 @@ agent does not update in the middle of a loop (after a yes it updates, then star
   exits non-zero. A failure before `install.sh` runs (download, checksum, archive checks) leaves the
   installed skills as they were. `install.sh` swaps one skill at a time and keeps a skill's old copy
   if that skill's swap fails, so with both skills installed the first may already be replaced when
-  the second fails. Run `update.sh` again and it finishes the job. It keeps the script prefix of an
-  installed `templates/review-gate.yml` and tells you when the template changed, since the
-  workflow in your repository is a copy you made and it never touches that. It refuses to run
+  the second fails. Run `update.sh` again and it finishes the job. It keeps the script prefix of the
+  `templates/review-gate.yml` of each installed skill (also when `install.sh` fails partway) and
+  tells you when a template changed, since the workflow in your repository is a copy you made and
+  it never touches that. It refuses to run
   inside a checkout of this repository (use git there) and never installs an older version. Run it
   by hand the same way, with or without `--yes`; without it, it prints the plan and changes nothing.
 - **No:** the agent runs `scripts/check-version.sh --decline <version>`, as the notice prints it.
