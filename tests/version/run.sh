@@ -77,8 +77,10 @@ check "RELEASE_URL set: the notice warns and names the flag" eval \
   'printf %s "$out" | grep -q "WARNING: PR_SKILLS_RELEASE_URL is set" && printf %s "$out" | grep -q -- "--allow-custom-source"'
 out="$(run PR_SKILLS_DOWNLOAD_URL=https://mirror.test/dl)"
 check "DOWNLOAD_URL set: the notice warns and names it" eval \
-  'printf %s "$out" | grep -q "WARNING: PR_SKILLS_DOWNLOAD_URL is set to .https://mirror.test/dl"'
+  'printf %s "$out" | grep -q "WARNING: PR_SKILLS_DOWNLOAD_URL is set (host https://mirror.test)"'
 check "the notice prints the decline command with the version" eval 'printf %s "$out" | grep -q "check-version.sh --decline 99.0.0"'
+check "the notice prints the update command with the version it asks about" eval 'printf %s "$out" | grep -q "update.sh --yes --version 99.0.0"'
+check "DOWNLOAD_URL set: the upstream 'code comes from' line is not printed" eval '! printf %s "$out" | grep -q "The code comes from"'
 SP="$W/sp ace"; rm -rf "$SP"; mkdir -p "$SP"; cp -R "$(dirname "$SRC")" "$SP/pr-reviewer"
 out="$(env -i PATH="$PATH" HOME="$W/home" PR_SKILLS_CACHE_DIR="$W/cache" PR_SKILLS_RELEASE_URL="file://$W/release.json" bash "$SP/pr-reviewer/scripts/check-version.sh")"
 check "a path with a space is quoted in the printed commands" eval \
@@ -104,6 +106,51 @@ printf 'not json' >"$W/release.json"
 out="$(run)"
 check "a poisoned cache version is ignored" eval '[ -z "$out" ]'
 
+# A mirror URL with a user, a password and a signed query is shown as scheme and host only. The
+# fake curl serves the release answer for that address; nothing else about it reaches the output.
+SECRET_URL='https://ci:s3cr3tTOKEN@mirror.test/rel?sig=abc123'
+leaks() { printf %s "$1" | grep -Eq 's3cr3tTOKEN|abc123'; }
+mkdir -p "$W/stub"
+cat >"$W/stub/curl" <<'STUB'
+#!/usr/bin/env bash
+url=""; for a in "$@"; do url="$a"; done
+case "$url" in
+  https://ci:*) cat "$STUB_JSON" ;;
+  *) exec "$REAL_CURL" "$@" ;;
+esac
+STUB
+chmod +x "$W/stub/curl"
+rel "v99.0.0"; fresh
+out="$(run PATH="$W/stub:$PATH" REAL_CURL="$(command -v curl)" STUB_JSON="$W/release.json" \
+  PR_SKILLS_RELEASE_URL="$SECRET_URL" PR_SKILLS_DOWNLOAD_URL="$SECRET_URL" 2>&1)"
+check "notice with a https mirror in both variables: warns with the host, no secret printed" eval \
+  'printf %s "$out" | grep -q "99.0.0 is available" && printf %s "$out" | grep -q "WARNING: PR_SKILLS_RELEASE_URL is set (host https://mirror.test)" && printf %s "$out" | grep -q "WARNING: PR_SKILLS_DOWNLOAD_URL is set (host https://mirror.test)" && ! leaks "$out"'
+SEC="$W/s3cr3tTOKEN/abc123"; mkdir -p "$SEC"; cp "$W/release.json" "$SEC/release.json"; fresh
+out="$(run PR_SKILLS_RELEASE_URL="file://$SEC/release.json" PR_SKILLS_DOWNLOAD_URL="file://$SEC" 2>&1)"
+check "notice with file:// sources whose path holds the secret: warns with file://, no secret printed" eval \
+  'printf %s "$out" | grep -q "99.0.0 is available" && printf %s "$out" | grep -q "WARNING: PR_SKILLS_DOWNLOAD_URL is set (host file://)" && ! leaks "$out"'
+fresh
+out="$(run PR_SKILLS_DOWNLOAD_URL='ci:s3cr3tTOKEN@mirror.test/rel?sig=abc123' 2>&1)"
+check "a value that is not a URL: shown as such, no secret printed" eval \
+  'printf %s "$out" | grep -q "PR_SKILLS_DOWNLOAD_URL is set (host (not a URL))" && ! leaks "$out"'
+out="$(run PR_SKILLS_DOWNLOAD_URL='https://u:p?ss@mirror.test/x' 2>&1)"
+check "a malformed authority: host not readable, no part of the user and password printed" eval \
+  'printf %s "$out" | grep -q "host not readable" && ! printf %s "$out" | grep -q "u:p"'
+
+# A release link may not step out of the repository, also percent-encoded.
+for bad in "$REPO/../../evil/x" "$REPO/releases/%2e%2E/%2e%2e/x" "$REPO/releases/tag/.."; do
+  printf '{"tag_name":"v99.0.0","html_url":"%s"}' "$bad" >"$W/release.json"; fresh
+  out="$(run)"
+  check "html_url with a '..' segment ($bad): no link, notice still printed" eval \
+    'printf %s "$out" | grep -q "99.0.0 is available" && ! printf %s "$out" | grep -q "Release notes"'
+done
+printf '{"tag_name":"v99.0.0","html_url":"%s/releases/tag/v99.0.0..1"}' "$REPO" >"$W/release.json"; fresh
+out="$(run)"
+check "html_url with dots inside a segment (v99.0.0..1) is still a link" eval 'printf %s "$out" | grep -q "Release notes"'
+fresh; mkdir -p "$W/cache"; printf '%s 99.0.0 %s/../x\n' "$(date +%s)" "$REPO" >"$W/cache/latest"; printf 'not json' >"$W/release.json"
+out="$(run)"
+check "a cached link with '..' is dropped" eval 'printf %s "$out" | grep -q "99.0.0 is available" && ! printf %s "$out" | grep -q "Release notes"'
+
 # --decline prints one line either way.
 fresh; rm -rf "$W/cache"; printf 'not json' >"$W/release.json"
 out="$(env -i PATH="$PATH" HOME="$W/home" PR_SKILLS_CACHE_DIR="$W/cache" \
@@ -117,8 +164,16 @@ out="$(env -i PATH="$PATH" HOME="$W/home" PR_SKILLS_CACHE_DIR="$W/cache" bash "$
 check "--decline with a non-version: refused with one line, exit 0" eval \
   '[ $rc = 0 ] && printf %s "$out" | grep -q "is not a version" && [ "$(cat "$W/cache/declined")" = 99.0.0 ]'
 
+# Without python3 the notice is silent, but --decline still says it recorded nothing.
+NP="$W/nopy"; rm -rf "$NP"; mkdir -p "$NP"; ln -s "$(command -v dirname)" "$NP/dirname"
+out="$(env -i PATH="$NP" PR_SKILLS_CACHE_DIR="$W/cache-nopy" "$(command -v bash)" "$S" --decline 99.0.0 2>&1)"; rc=$?
+check "--decline without python3: says it could not record, exit 0, records nothing" eval \
+  '[ $rc = 0 ] && printf %s "$out" | grep -q "could not record the answer" && [ ! -e "$W/cache-nopy/declined" ]'
+out="$(env -i PATH="$NP" PR_SKILLS_CACHE_DIR="$W/cache-nopy" "$(command -v bash)" "$S" 2>&1)"; rc=$?
+check "the notice without python3: still silent, exit 0" eval '[ $rc = 0 ] && [ -z "$out" ]'
+
 echo "TOTAL: $PASS passed, $FAIL failed"
-# The scratch holds copies of the skills; run-all.sh scans tests/ for model actions and keys, so a
-# green run removes it. A red run keeps it to look at.
+# The scratch holds copies of the skills. A green run removes it; a red run keeps it to look at.
+# run-all.sh skips state-*/ and work-*/ when it scans tests/ for model actions and keys.
 [ "$FAIL" = 0 ] && rm -rf "$W"
 [ "$FAIL" = 0 ]

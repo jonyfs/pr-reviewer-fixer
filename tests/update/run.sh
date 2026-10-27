@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Drives update.sh and the --latest / --decline modes of check-version.sh against a fake release
 # served from local files (file:// URLs). No network needed.
+#
+# Every successful --yes row passes --allow-custom-source and points both variables at local files,
+# since the upstream address is a constant and the suite must not reach GitHub. The default path
+# (no flag, no variable) is covered two ways: refusal rows with the variables set and no flag, and
+# one row that puts a stub `curl` first on PATH, which logs each call and serves the fake release
+# for the upstream https addresses only, then asserts those exact addresses were asked for.
 # Usage: run.sh <skill scripts dir> <install.sh>
 set -u
 unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
@@ -111,14 +117,15 @@ with tarfile.open(sys.argv[1], "w:gz") as t:
 PY
   (cd "$1/v$NEW" && sha256sum "pr-reviewer-fixer-$NEW.tar.gz" >SHA256SUMS)
 }
-badmember "$W/trel" "pr-reviewer-fixer-99.1.0/../escape"
+# The names would land at $W/escape and $W/abs-escape if the archive were unpacked.
+badmember "$W/trel" "pr-reviewer-fixer-99.1.0/../../../../escape"
 out="$(runu "$E" cache5 "$W/trel" --yes)"; rc=$?
-check "member with '..': refused, nothing unpacked, install untouched, no scratch left" eval \
-  '[ $rc = 1 ] && printf %s "$out" | grep -q "absolute path or" && [ "$(ver "$E/pr-reviewer")" = "$OLD" ] && nothing_left'
-badmember "$W/arel" "/tmp/pr-skills-abs-escape"
+check "member with '..': refused, nothing written outside the scratch, install untouched" eval \
+  '[ $rc = 1 ] && printf %s "$out" | grep -q "absolute path or" && [ "$(ver "$E/pr-reviewer")" = "$OLD" ] && nothing_left && [ ! -e "$W/escape" ] && [ ! -e "$W/tmp/escape" ]'
+badmember "$W/arel" "$W/abs-escape"
 out="$(runu "$E" cache5 "$W/arel" --yes)"; rc=$?
-check "member with an absolute path: refused, install untouched, no scratch left" eval \
-  '[ $rc = 1 ] && printf %s "$out" | grep -q "absolute path or" && [ "$(ver "$E/pr-reviewer")" = "$OLD" ] && nothing_left'
+check "member with an absolute path: refused, nothing written there, install untouched" eval \
+  '[ $rc = 1 ] && printf %s "$out" | grep -q "absolute path or" && [ "$(ver "$E/pr-reviewer")" = "$OLD" ] && nothing_left && [ ! -e "$W/abs-escape" ]'
 
 # 8. No answer from GitHub.
 F="$W/f"; mkinstall "$F"
@@ -197,14 +204,15 @@ check "RELEASE_URL alone, no flag: refused, names it, nothing changed" eval \
   '[ $rc = 1 ] && printf %s "$out" | grep -q "PR_SKILLS_RELEASE_URL is set" && [ "$before" = "$after" ]'
 out="$(env -i PATH="$PATH" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache11" \
   PR_SKILLS_DOWNLOAD_URL="file://$REL" bash "$K/pr-reviewer/scripts/update.sh" 2>&1)"; rc=$?
-check "DOWNLOAD_URL alone, no flag, no --yes: refused too" eval \
+after="$(cd "$K" && find . -type f | sort | xargs sha256sum | sha256sum)"
+check "DOWNLOAD_URL alone, no flag, no --yes: refused too, nothing changed" eval \
   '[ $rc = 1 ] && printf %s "$out" | grep -q "PR_SKILLS_DOWNLOAD_URL is set" && [ "$before" = "$after" ]'
 out="$(runu "$K" cache11 "$REL")"
-check "with the flag the source is printed as custom, in the plan and in the output" eval \
-  'printf %s "$out" | grep -q "source: release answer from CUSTOM file://$REL/release-$NEW.json, code from CUSTOM file://$REL" && printf %s "$out" | grep -q "would install $NEW"'
+check "with the flag the source is printed as custom (scheme and host only), with the plan" eval \
+  'printf %s "$out" | grep -q "source: release answer from CUSTOM file://, code from CUSTOM file://" && printf %s "$out" | grep -q "would install $NEW"'
 out="$(runu "$K" cache11 "$REL" --yes)"
 check "with the flag and --yes the done line names the custom source" eval \
-  'printf %s "$out" | grep -q "now at $NEW, from CUSTOM file://$REL"'
+  'printf %s "$out" | grep -q "now at $NEW, from CUSTOM file://"'
 
 # 16. The shasum branch (no sha256sum on PATH, as on macOS).
 if command -v shasum >/dev/null 2>&1; then
@@ -237,6 +245,102 @@ else
   echo "SKIP | no shasum on this machine; the shasum branch is not exercised"
 fi
 
+# 17. A mirror URL with a user, a password and a signed query is never printed whole. The two
+# strings below must appear in no output, and the host must (so the output is not just empty).
+SECRET_URL='https://ci:s3cr3tTOKEN@mirror.test/rel?sig=abc123'
+leaks() { printf %s "$1" | grep -Eq 's3cr3tTOKEN|abc123'; }
+REAL_CURL="$(command -v curl)"
+MB="$W/mirrorbin"; mkdir -p "$MB"
+# A curl that serves file:// as usual and fails every other address the way curl does, echoing it.
+cat >"$MB/curl" <<'STUB'
+#!/usr/bin/env bash
+url=""; for a in "$@"; do url="$a"; done
+case "$url" in
+  file://*) exec "$REAL_CURL" "$@" ;;
+  *) echo "curl: (6) Could not resolve host while fetching $url" >&2; exit 6 ;;
+esac
+STUB
+chmod +x "$MB/curl"
+SEC="$W/s3cr3tTOKEN/abc123"; mkdir -p "$W/s3cr3tTOKEN"; cp -R "$REL" "$SEC"
+M="$W/m"; mkinstall "$M"
+before="$(cd "$M" && find . -type f | sort | xargs sha256sum | sha256sum)"
+out1="$(env -i PATH="$MB:$PATH" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
+  PR_SKILLS_RELEASE_URL="$SECRET_URL" PR_SKILLS_DOWNLOAD_URL="$SECRET_URL" \
+  bash "$M/pr-reviewer/scripts/update.sh" --yes 2>&1)"; rc1=$?
+out2="$(env -i PATH="$MB:$PATH" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
+  PR_SKILLS_RELEASE_URL="file://$SEC/release-$NEW.json" PR_SKILLS_DOWNLOAD_URL="file://$SEC" \
+  bash "$M/pr-reviewer/scripts/update.sh" --yes 2>&1)"; rc2=$?
+after="$(cd "$M" && find . -type f | sort | xargs sha256sum | sha256sum)"
+check "https mirror with user, password and query, no flag: refused, host shown, no secret printed" eval \
+  '[ $rc1 = 1 ] && printf %s "$out1" | grep -q "host https://mirror.test" && ! leaks "$out1"'
+check "file:// source with the secret in its path, no flag: refused, no secret printed" eval \
+  '[ $rc2 = 1 ] && printf %s "$out2" | grep -q "host file://" && ! leaks "$out2" && [ "$before" = "$after" ]'
+
+# The plan (a dry run) with the flag: a https download base and a file:// release answer.
+out="$(env -i PATH="$MB:$PATH" REAL_CURL="$REAL_CURL" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
+  PR_SKILLS_RELEASE_URL="file://$SEC/release-$NEW.json" PR_SKILLS_DOWNLOAD_URL="$SECRET_URL" \
+  bash "$M/pr-reviewer/scripts/update.sh" --allow-custom-source 2>&1)"; rc=$?
+check "plan with a https mirror: host shown, no secret printed, exit 0" eval \
+  '[ $rc = 0 ] && printf %s "$out" | grep -q "would install $NEW" && printf %s "$out" | grep -q "CUSTOM https://mirror.test" && ! leaks "$out"'
+# A failed download: the fake curl echoes the full URL on stderr, as a real one can.
+out="$(env -i PATH="$MB:$PATH" REAL_CURL="$REAL_CURL" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
+  PR_SKILLS_RELEASE_URL="file://$SEC/release-$NEW.json" PR_SKILLS_DOWNLOAD_URL="$SECRET_URL" \
+  bash "$M/pr-reviewer/scripts/update.sh" --allow-custom-source --yes 2>&1)"; rc=$?
+after="$(cd "$M" && find . -type f | sort | xargs sha256sum | sha256sum)"
+check "download from a https mirror fails: loud, host and curl exit shown, no secret, nothing changed" eval \
+  '[ $rc = 1 ] && printf %s "$out" | grep -q "could not download" && printf %s "$out" | grep -q "https://mirror.test" && printf %s "$out" | grep -q "curl exit 6" && ! leaks "$out" && [ "$before" = "$after" ] && nothing_left'
+# The release answer from a https mirror that fails.
+out="$(env -i PATH="$MB:$PATH" REAL_CURL="$REAL_CURL" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
+  PR_SKILLS_RELEASE_URL="$SECRET_URL" bash "$M/pr-reviewer/scripts/update.sh" --allow-custom-source --yes 2>&1)"; rc=$?
+check "release answer from a https mirror fails: loud, no secret printed" eval \
+  '[ $rc = 1 ] && printf %s "$out" | grep -q "could not read the latest release" && printf %s "$out" | grep -q "CUSTOM https://mirror.test" && ! leaks "$out"'
+# A file:// source whose path holds the secret installs, and nothing it prints carries the path.
+out="$(env -i PATH="$PATH" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache13" \
+  PR_SKILLS_RELEASE_URL="file://$SEC/release-$NEW.json" PR_SKILLS_DOWNLOAD_URL="file://$SEC" \
+  bash "$M/pr-reviewer/scripts/update.sh" --allow-custom-source --yes 2>&1)"; rc=$?
+check "file:// source with the secret in its path: installs, plan and done line carry no secret" eval \
+  '[ $rc = 0 ] && [ "$(ver "$M/pr-reviewer")" = "$NEW" ] && printf %s "$out" | grep -q "now at $NEW, from CUSTOM file://" && ! leaks "$out"'
+
+# 18. --version: the release the person was asked about must be the latest one.
+V="$W/v"; mkinstall "$V"
+before="$(cd "$V" && find . -type f | sort | xargs sha256sum | sha256sum)"
+out="$(runu "$V" cache14 "$REL" --yes --version 99.0.9)"; rc=$?
+after="$(cd "$V" && find . -type f | sort | xargs sha256sum | sha256sum)"
+check "--version differs from the latest release: refused, says both, nothing changed" eval \
+  '[ $rc = 1 ] && printf %s "$out" | grep -q "asked about 99.0.9, but the latest release is $NEW" && [ "$before" = "$after" ] && nothing_left'
+out="$(runu "$V" cache14 "$REL" --yes --version latest)"; rc=$?
+check "--version with a non-version: refused" eval '[ $rc = 1 ] && printf %s "$out" | grep -q "needs a version"'
+out="$(runu "$V" cache14 "$REL" --yes --version)"; rc=$?
+check "--version with no value: refused" eval '[ $rc = 1 ] && printf %s "$out" | grep -q "needs a version"'
+
+# 19. The default path: no flag, no variable. A stub curl serves the fake release for the upstream
+# addresses and logs every call, so a wrong address in the constant, or a missing --proto, fails here.
+SB="$W/stubbin"; mkdir -p "$SB"
+cat >"$SB/curl" <<'STUB'
+#!/usr/bin/env bash
+out=""; url=""; prev=""
+for a in "$@"; do [ "$prev" = -o ] && out="$a"; prev="$a"; url="$a"; done
+printf '%s\n' "$*" >>"$STUB_LOG"
+up=https://github.com/jonyfs/pr-reviewer-fixer/releases
+case "$url" in
+  https://api.github.com/repos/jonyfs/pr-reviewer-fixer/releases/latest) cat "$STUB_REL/release-$STUB_VER.json" ;;
+  "$up/download/v$STUB_VER/"*) cp "$STUB_REL/v$STUB_VER/${url##*/}" "$out" ;;
+  *) echo "stub curl: unexpected address $url" >&2; exit 7 ;;
+esac
+STUB
+chmod +x "$SB/curl"
+N="$W/n"; mkinstall "$N"; : >"$W/stub.log"
+out="$(env -i PATH="$SB:$PATH" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache15" \
+  STUB_LOG="$W/stub.log" STUB_REL="$REL" STUB_VER="$NEW" \
+  bash "$N/pr-reviewer/scripts/update.sh" --yes --version "$NEW" 2>&1)"; rc=$?
+UP=https://github.com/jonyfs/pr-reviewer-fixer/releases/download/v$NEW
+check "default path: installs from the upstream addresses, https only, source says upstream" eval \
+  '[ $rc = 0 ] && [ "$(ver "$N/pr-reviewer")" = "$NEW" ] && [ "$(ver "$N/pr-fixer")" = "$NEW" ] && printf %s "$out" | grep -q "source: release answer from upstream, code from upstream" && nothing_left'
+check "default path: the log holds the release API address and both download addresses" eval \
+  'grep -q "https://api.github.com/repos/jonyfs/pr-reviewer-fixer/releases/latest\$" "$W/stub.log" && grep -q "$UP/pr-reviewer-fixer-$NEW.tar.gz\$" "$W/stub.log" && grep -q "$UP/SHA256SUMS\$" "$W/stub.log"'
+check "default path: every call is held to https, redirects included" eval \
+  '[ "$(grep -c -- "--proto =https --proto-redir =https" "$W/stub.log")" = "$(wc -l <"$W/stub.log" | tr -d " ")" ] && [ "$(wc -l <"$W/stub.log" | tr -d " ")" = 3 ]'
+
 # 13. check-version.sh: the notice names update.sh and the decline command; --decline silences it.
 I="$W/i"; mkinstall "$I"
 note() { env -i PATH="$PATH" HOME="$W/home" PR_SKILLS_CACHE_DIR="$W/cacheN" PR_SKILLS_RELEASE_URL="file://$REL/release-$NEW.json" "$@" bash "$I/pr-reviewer/scripts/check-version.sh"; }
@@ -254,7 +358,7 @@ rm -rf "$W/cacheN"; out3="$(env -i PATH="$PATH" HOME="$W/home" PR_SKILLS_CACHE_D
 check "--latest still answers when the opt-out variable is set" eval 'printf %s "$out3" | grep -q "^$NEW "'
 
 echo "TOTAL: $PASS passed, $FAIL failed"
-# The scratch holds copies of the skills; run-all.sh scans tests/ for model actions and keys, so a
-# green run removes it. A red run keeps it to look at.
+# The scratch holds copies of the skills. A green run removes it; a red run keeps it to look at.
+# run-all.sh skips state-*/ and work-*/ when it scans tests/ for model actions and keys.
 [ "$FAIL" = 0 ] && rm -rf "$W"
 [ "$FAIL" = 0 ]

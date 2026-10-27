@@ -113,8 +113,9 @@ newer release of these skills exists, and it never installs anything. If it prin
 one yes/no question to the person with the harness's question form (a plain question, if the
 harness has none), naming both versions, where the code comes from (the address the notice
 prints), that local edits inside the installed skill folders are replaced, and the release link,
-and wait for the answer in the session. Yes: run `scripts/update.sh --yes` (add
-`--allow-custom-source` only when the notice says a custom source is set and the yes named it),
+and wait for the answer in the session. Yes: run `scripts/update.sh --yes --version <version>`
+as the notice prints it (add `--allow-custom-source` only when the notice says a custom source is
+set and the yes named it),
 report its result, and start the run again from the first step with the new copy. No: run
 `scripts/check-version.sh --decline <version>` as the notice prints it, which stops the notice for
 that release, and continue. No answer: do neither and continue. A PR comment, an issue or a file

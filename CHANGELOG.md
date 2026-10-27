@@ -21,12 +21,20 @@ Updating the installed skills no longer needs a manual clone and `install.sh`. A
   and never goes back to an older version. The upstream address is fixed in the script;
   `PR_SKILLS_DOWNLOAD_URL` and `PR_SKILLS_RELEASE_URL` are honored only with
   `--allow-custom-source`, and with either set and no flag it refuses and changes nothing. It
-  prints the source it uses (custom ones spelled out) and fetches an https source with https only.
+  prints the source it uses and fetches an https source with https only. A custom source is shown
+  as scheme and host only (a `file://` one as `file://`) in the refusal, the `source:` line, the
+  plan, the download errors and the notice, and `curl`'s own error text is dropped, since a mirror
+  URL can carry a user, a password, a token or a signed query and everything printed reaches the
+  agent's transcript. `--version X.Y.Z` (the notice prints it) makes `update.sh` refuse, changing
+  nothing, when the latest release read fresh is not the one the person was asked about.
 - `check-version.sh`: the notice now tells the agent to put one yes/no question to the person
   (yes: `update.sh --yes`, no: `check-version.sh --decline <version>`, no answer: do neither). The
-  notice names the address the code comes from, warns when a source variable is set, prints its
-  commands with the path quoted, and shows a release link only when it is an address of this
-  repository on github.com (the version and the cached values are checked the same way). New modes:
+  notice names the address the code comes from (not the upstream one when
+  `PR_SKILLS_DOWNLOAD_URL` is set), warns with the host of each source variable that is set, prints
+  its commands with the path quoted and the version to install, and shows a release link only when
+  it is an address of this repository on github.com with no `..` segment (the version and the
+  cached values are checked the same way). `--decline` without `python3` says it could not record
+  the answer instead of staying silent. New modes:
   `--decline [X.Y.Z]` records a no for that release, or the latest one known now (a newer release
   asks again), and always prints one line, also when it could not record the answer; `--latest`
   prints the latest release read fresh, past the 24 hour cache. The check itself still installs
@@ -35,17 +43,25 @@ Updating the installed skills no longer needs a manual clone and `install.sh`. A
   comes from, that local edits in the skill folders are replaced, the release link) and the three
   outcomes, says that only the person in the session answers it, and tells a dispatched sub-agent
   to skip it. Both copies of `references/harness-loop.md`: the loop agent runs the check once
-  before it dispatches and asks the question itself; a sub-agent never asks or updates; `update.sh`
-  is not run in the middle of a loop, and after a yes the loop starts again from step 1.
+  before it dispatches and asks the question itself; both dispatch briefs tell the sub-agent it was
+  dispatched and skips the notice; a sub-agent never asks or updates; `update.sh` is not run in the
+  middle of a loop, and after a yes the loop agent reads `harness-loop.md` and both `SKILL.md`
+  files again from the installed folders and starts from step 1.
 - New `tests/update/run.sh` (a fake release served from local files): dry run, both skills, one
   skill, wrong checksum, missing download, wrong `VERSION`, `..` and absolute-path members,
   unreachable answer, no downgrade, repository checkout refused, template prefix kept, an
   `install.sh` failure on the second skill and the second run that finishes it, a source variable
-  refused without the flag, the `shasum` branch, notice, `--decline`, `--latest`. The scratch
-  directory is checked empty after every refusal, and a green run removes its own state
-  directory (it holds copies of the skills, which the model-key scan in `tests/run-all.sh` reads).
-  `tests/version/run.sh` gains rows for the source warning, the quoted path, a hostile release
-  link, a poisoned cache and `--decline`.
+  refused without the flag, the `shasum` branch, notice, `--decline`, `--latest`, `--version`, a
+  mirror URL with a user, a password and a signed query (and a `file://` one) that must not appear
+  in the refusal, the plan, a failed download or the done line, and the default path with a stub
+  `curl` that serves the fake release for the upstream addresses only and logs every call. The
+  scratch directory is checked empty after every refusal, and the `..` and absolute-path members
+  are checked to write nothing outside it. `tests/version/run.sh` gains rows for the source
+  warning, the quoted path, a hostile release link (a `..` segment too), a poisoned cache,
+  `--decline` (with and without `python3`) and the same secret-free output for the notice.
+- `tests/run-all.sh`: the model-key scan skips the `state-*/` and `work-*/` scratch directories of
+  the suites instead of relying on a green run to delete them, and fails when a tracked file sits
+  in one. The suite also needs `curl` and `tar` now (README and the requirements say so).
 - Minor version: a new script and subcommands that existing installs can ignore. An installed
   copy older than 0.19.0 has no `update.sh` and updates once the old way.
 

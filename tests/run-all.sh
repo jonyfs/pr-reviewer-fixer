@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs every test against fake `gh` binaries. No network and no GitHub access needed.
-# Needs: bash, python3, node, jq, git and sha256sum.
+# Needs: bash, python3, node, jq, git, curl, tar and sha256sum.
 set -u
 # A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what the scripts refuse, so
 # every suite starts without them; a row that needs one sets it itself.
@@ -71,9 +71,15 @@ cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.gith
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
 # No workflow, template or script may call a model or name a provider key. Review and fix run as
 # agents in a person's own harness session, never in GitHub Actions.
+# The suites' own scratch directories (state-*/ and work-*/, gitignored) hold copies of the skills
+# and of whatever a run fed them, and a run in progress or a red run leaves them behind, so the scan
+# skips them. That loses nothing only while no tracked file sits in one, which is checked next.
+if git -C "$ROOT" ls-files tests 2>/dev/null | grep -Eq '(^|/)(state|work)-[^/]*/'; then
+  echo "== a tracked file sits in a state-* or work-* scratch directory, which the model-key scan skips"; fail=1
+fi
 if grep -rniE 'claude-code-action|codex-action|anthropic_api_key|openai_api_key|fixer_push_token|anthropics/|openai/codex' \
      "$ROOT/.github/workflows" "$ROOT/.github/scripts" "$ROOT"/.agents/skills/*/templates "$ROOT"/.agents/skills/*/scripts "$ROOT/tests" \
-     --exclude=run-all.sh >/dev/null; then
+     --exclude=run-all.sh --exclude-dir='state-*' --exclude-dir='work-*' >/dev/null; then
   echo "== a model action or provider key appears in a workflow, template, script or test"; fail=1
 else
   echo "== no model action or provider key in workflows, workflow scripts, templates, scripts or tests"

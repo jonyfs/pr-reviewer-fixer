@@ -293,7 +293,8 @@ back to an older reviewed commit, or a low `--pass`, cannot restart the count.
 
 - `gh`, signed in. Check with `gh auth status`.
 - `python3` 3.9 or newer, and `node`.
-- Only to run this repository's test suite: `jq`, `git` and `sha256sum` as well.
+- `curl` and `tar`, for `update.sh`. For this repository's test suite: `jq`, `git` and `sha256sum`
+  as well.
 
 ### Quick install, project level
 
@@ -441,7 +442,9 @@ downloads or installs anything. In a review loop the loop agent asks once, befor
 reviewer and the fixer; those sub-agents skip the notice, never ask and never update, and the loop
 agent does not update in the middle of a loop (after a yes it updates, then starts the loop again).
 
-- **Yes:** the agent runs `scripts/update.sh --yes`. It finds the installed skills from its own
+- **Yes:** the agent runs `scripts/update.sh --yes --version X.Y.Z`, with the version the notice
+  named; the script refuses, changing nothing, if the latest release has moved on since the
+  question. It finds the installed skills from its own
   location, reads the latest release from GitHub, downloads `pr-reviewer-fixer-X.Y.Z.tar.gz` and
   `SHA256SUMS`, refuses an archive whose SHA-256 differs, runs that release's `install.sh` on the
   skills directory it sits in, and reads the installed versions back. Every failure is loud and
@@ -463,9 +466,13 @@ code, because the archive and its `SHA256SUMS` come from the same place. The ups
 (`https://github.com/jonyfs/pr-reviewer-fixer/releases/download`) is fixed in `update.sh`.
 `PR_SKILLS_DOWNLOAD_URL` and `PR_SKILLS_RELEASE_URL` can point it elsewhere (a mirror of your
 own), but only when you run `update.sh --allow-custom-source`. With either variable set and no
-flag, `update.sh` refuses and changes nothing, so an environment you did not look at cannot move
-the source. The first line it prints says which source it uses, and the notice warns when a
-variable is set. Leave both unset unless you run a mirror.
+flag, `update.sh` refuses and changes nothing, so those two variables cannot move the source
+unseen. (Other settings that change what `curl` or `tar` does, such as a proxy or a CA bundle, are
+not covered.) The first line it prints says which source it uses, and the notice warns when a
+variable is set. The notice and `update.sh` show a custom source as scheme and host only, and
+`update.sh` hides `curl`'s own error text, because a mirror URL can carry a token or a signed
+query and everything printed reaches the agent's transcript. Leave both unset unless you run a
+mirror.
 
 To update without the agent, clone the new tag and run `install.sh` again with `--yes`, which
 replaces the installed folders. It refuses to replace a folder that does not
@@ -701,7 +708,7 @@ purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 bash tests/run-all.sh
 ```
 
-The suite needs no network, only bash, python3, node, jq, git and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
+The suite needs no network, only bash, python3, node, jq, git, curl, tar and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist

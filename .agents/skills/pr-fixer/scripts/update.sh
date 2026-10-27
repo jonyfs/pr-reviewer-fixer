@@ -34,8 +34,12 @@
 # Refused: a checkout of this repository (update it with git), a skills directory it cannot tell
 # is an install, a folder that install.sh would not replace (see its header).
 #
-# Usage: update.sh [--yes] [--allow-custom-source]
+# Usage: update.sh [--yes] [--version X.Y.Z] [--allow-custom-source]
 #   --yes                  do it; without it the plan is printed and nothing changes
+#   --version X.Y.Z        the release the person was asked about (the notice prints it). The script
+#                          reads the latest release fresh and refuses, changing nothing, when that
+#                          is not X.Y.Z, so a release published after the question is never
+#                          installed under a yes for an older one.
 #   --allow-custom-source  honor PR_SKILLS_DOWNLOAD_URL and PR_SKILLS_RELEASE_URL (below). Give it
 #                          only when the person accepted that source: the release answer, the
 #                          archive and SHA256SUMS all come from it, and the archive's install.sh
@@ -44,7 +48,10 @@
 # Where the code comes from. The upstream address is fixed in this script. With either variable
 # below set and no --allow-custom-source, the script refuses and changes nothing, so an
 # environment (a .envrc, a harness setting) cannot move the source unseen. The first line it prints
-# says which source it uses, with a custom one spelled out.
+# says which source it uses, with a custom one spelled out. A custom source is shown as scheme and
+# host only (a file:// one as `file://`): the user, password, path, query and fragment of a mirror
+# URL can hold a token or a signature, and everything printed here reaches the agent's transcript.
+# curl's own error text is not passed through either, since it can echo the URL.
 #
 # Environment (all optional):
 #   PR_SKILLS_DOWNLOAD_URL  base URL of the releases; the file is <base>/vX.Y.Z/<name>. Honored
@@ -58,10 +65,30 @@ set -uo pipefail
 main() {
   die() { echo "update: $*" >&2; return 1; }
 
-  local yes=0 custom=0
+  # <scheme>://<host[:port]> of a URL and nothing else, safe to print.
+  url_host() {
+    local u scheme rest auth
+    u="$(printf '%s' "$1" | tr -cd '[:print:]')"
+    case "$u" in *://*) ;; *) echo "(not a URL)"; return 0 ;; esac
+    scheme="$(printf '%s' "${u%%://*}" | tr 'A-Z' 'a-z')"
+    [[ "$scheme" =~ ^[a-z][a-z0-9+.-]*$ ]] || { echo "(not a URL)"; return 0; }
+    rest="${u#*://}"; auth="${rest%%[/?#]*}"; auth="${auth##*@}"
+    if [ "$scheme" = file ] && [ -z "$auth" ]; then echo "file://"; return 0; fi
+    if [[ "$auth" =~ ^([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?$ ]]; then
+      echo "$scheme://$auth"
+    else
+      echo "$scheme://(host not readable)"
+    fi
+  }
+
+  local yes=0 custom=0 asked=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --yes) yes=1; shift ;;
+      --version)
+        [[ "${2:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+          || { die "--version needs a version like 1.2.3"; return 1; }
+        asked="$2"; shift 2 ;;
       --allow-custom-source) custom=1; shift ;;
       -h|--help) awk 'NR == 1 { next } /^#/ { print; next } { exit }' "$0"; return 0 ;;
       *) die "unknown argument '$1' (try --help)"; return 1 ;;
@@ -73,9 +100,9 @@ main() {
   if [ "$custom" = 0 ]; then
     for var in PR_SKILLS_DOWNLOAD_URL PR_SKILLS_RELEASE_URL; do
       if [ -n "${!var:-}" ]; then
-        die "$var is set ($(printf '%s' "${!var}" | tr -cd '[:print:]')), which would move where" \
-            "the code comes from. Unset it, or run again with --allow-custom-source if the" \
-            "person accepts that source. Nothing changed."
+        die "$var is set (host $(url_host "${!var}"); the full value stays in the variable)," \
+            "which would move where the code comes from. Unset it, or run again with" \
+            "--allow-custom-source if the person accepts that source. Nothing changed."
         return 1
       fi
     done
@@ -83,11 +110,11 @@ main() {
   local base="$upstream" rel_label="upstream" base_label="upstream"
   if [ "$custom" = 1 ]; then
     if [ -n "${PR_SKILLS_RELEASE_URL:-}" ]; then
-      rel_label="CUSTOM $(printf '%s' "$PR_SKILLS_RELEASE_URL" | tr -cd '[:print:]')"
+      rel_label="CUSTOM $(url_host "$PR_SKILLS_RELEASE_URL")"
     fi
     if [ -n "${PR_SKILLS_DOWNLOAD_URL:-}" ]; then
       base="$PR_SKILLS_DOWNLOAD_URL"
-      base_label="CUSTOM $(printf '%s' "$base" | tr -cd '[:print:]')"
+      base_label="CUSTOM $(url_host "$base")"
     fi
   fi
   echo "update: source: release answer from $rel_label, code from $base_label"
@@ -130,6 +157,12 @@ main() {
   [ -n "${latest:-}" ] || { die "could not read the latest release from GitHub (offline, rate limit, or no answer); nothing changed"; return 1; }
   printf '%s' "$latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { die "the latest release is '$latest', not a version; nothing changed"; return 1; }
 
+  if [ -n "$asked" ] && [ "$asked" != "$latest" ]; then
+    die "the person was asked about $asked, but the latest release is $latest. Nothing changed." \
+        "Run check-version.sh again and ask about $latest."
+    return 1
+  fi
+
   local need=0 v cmp
   for s in "${names[@]}"; do
     v="$("$skills_dir/$s/scripts/check-version.sh" --installed 2>/dev/null)"
@@ -147,7 +180,7 @@ print("older" if a < b else "same" if a == b else "newer")' "$v" "$latest")"
   if [ "$need" = 0 ]; then echo "update: already up to date"; return 0; fi
 
   local archive="pr-reviewer-fixer-$latest.tar.gz"
-  echo "update: would install $latest into $skills_dir ($sk) from $base/v$latest/$archive"
+  echo "update: would install $latest into $skills_dir ($sk), archive $archive from $base_label"
   if [ "$yes" = 0 ]; then
     echo "update: nothing changed. Run again with --yes to install it."
     return 0
@@ -155,12 +188,18 @@ print("older" if a < b else "same" if a == b else "newer")' "$v" "$latest")"
 
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/pr-skills-update.XXXXXX")" || { die "cannot make a scratch directory; nothing changed"; return 1; }
   trap 'rm -rf "$tmp"' RETURN
-  local curl_opts=(-fsSL)
+  local curl_opts=(-fsL)
   case "$base" in https://*) curl_opts+=(--proto '=https' --proto-redir '=https') ;; esac
-  curl "${curl_opts[@]}" --max-time 300 -o "$tmp/$archive" "$base/v$latest/$archive" \
-    || { die "could not download $base/v$latest/$archive; nothing changed"; return 1; }
+  # curl's stderr is dropped: its messages can carry the URL, and with it a token. The exit code
+  # (see `man curl`) and the source label say what failed.
+  local crc
+  curl "${curl_opts[@]}" --max-time 300 -o "$tmp/$archive" "$base/v$latest/$archive" 2>/dev/null \
+    || { crc=$?; die "could not download $archive from $base_label (curl exit $crc);" \
+                     "nothing changed"; return 1; }
   curl "${curl_opts[@]}" --max-time 60 -o "$tmp/SHA256SUMS" "$base/v$latest/SHA256SUMS" \
-    || { die "could not download $base/v$latest/SHA256SUMS; nothing changed"; return 1; }
+    2>/dev/null \
+    || { crc=$?; die "could not download SHA256SUMS from $base_label (curl exit $crc);" \
+                     "nothing changed"; return 1; }
   local want got
   want="$(awk -v f="$archive" '$2 == f || $2 == "*" f { print $1; exit }' "$tmp/SHA256SUMS")"
   [ -n "$want" ] || { die "SHA256SUMS has no line for $archive; nothing changed"; return 1; }

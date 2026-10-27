@@ -6,8 +6,9 @@
 # folder, asks GitHub for the latest release, and prints one notice when the release is newer. It
 # never downloads or installs anything: updating skills changes controlled configuration, so a
 # person decides. The notice tells the agent to put one yes/no question to the person; on yes the
-# agent runs `update.sh --yes` (next to this script), on no it runs `check-version.sh --decline`,
-# which stops the notice for that release only. A newer release asks again.
+# agent runs `update.sh --yes --version X.Y.Z` (next to this script), on no it runs
+# `check-version.sh --decline`, which stops the notice for that release only. A newer release asks
+# again.
 #
 # It must never get in the way of a review, so every failure path is silent and exits 0:
 # offline, no python3, a 404, a rate limit, an unreadable version, a malformed answer.
@@ -22,12 +23,16 @@
 #                           It only changes which version is read. When it is set, the notice says
 #                           so, and update.sh refuses to run unless the person allowed that source
 #                           (update.sh --allow-custom-source).
+#   PR_SKILLS_DOWNLOAD_URL  only read here to warn that it is set (update.sh uses it).
 #   PR_SKILLS_CACHE_DIR     where the answer is cached for 24 hours; default
 #                           ${XDG_CACHE_HOME:-$HOME/.cache}/pr-reviewer-fixer
 #
 # What the notice prints from the network is checked first: the version must be X.Y.Z and the
-# release page must be one https://github.com/jonyfs/pr-reviewer-fixer/... address with no space
-# or control character, else it prints no link. The same check applies to the cache file.
+# release page must be one https://github.com/jonyfs/pr-reviewer-fixer/... address with no space,
+# control character or `..` segment, else it prints no link. The same check applies to the cache
+# file. A source variable is shown as scheme and host only (a file:// one as `file://`), never with
+# its user, password, path, query or fragment: a mirror URL can hold a token or a signature, and
+# the notice goes to the agent's transcript.
 #
 # Usage: check-version.sh [--installed | --latest | --decline [X.Y.Z]]
 #   (none)        print the notice when a newer release exists, nothing otherwise
@@ -47,7 +52,14 @@ SKILL_MD="$HERE/../SKILL.md"
 UPSTREAM="https://api.github.com/repos/jonyfs/pr-reviewer-fixer/releases/latest"
 TTL=86400
 
-command -v python3 >/dev/null 2>&1 || exit 0
+MODE=notice
+case "${1:-}" in --installed) MODE=installed ;; --latest) MODE=latest ;; --decline) MODE=decline ;; esac
+
+if ! command -v python3 >/dev/null 2>&1; then
+  [ "$MODE" = decline ] && echo "pr-skills: could not record the answer" \
+    "(python3 is not installed); you will be asked again." >&2
+  exit 0
+fi
 
 installed="$(python3 -I - "$SKILL_MD" <<'PY' 2>/dev/null
 import re, sys
@@ -63,11 +75,26 @@ if m:
 PY
 )"
 
-MODE=notice
-case "${1:-}" in --installed) MODE=installed ;; --latest) MODE=latest ;; --decline) MODE=decline ;; esac
-
 VERSION_RE='^[0-9]+\.[0-9]+\.[0-9]+$'
 PAGE_RE='^https://github\.com/jonyfs/pr-reviewer-fixer(/[A-Za-z0-9._~%+/-]*)?$'
+DOTS_RE='(^|/)(\.|%2[eE]){2}(/|$)'   # a `..` segment, also percent-encoded
+page_ok() { [[ "$1" =~ $PAGE_RE ]] && ! [[ "$1" =~ $DOTS_RE ]]; }
+
+# <scheme>://<host[:port]> of a URL and nothing else, safe to print.
+url_host() {
+  local u scheme rest auth
+  u="$(printf '%s' "$1" | tr -cd '[:print:]')"
+  case "$u" in *://*) ;; *) echo "(not a URL)"; return 0 ;; esac
+  scheme="$(printf '%s' "${u%%://*}" | tr 'A-Z' 'a-z')"
+  [[ "$scheme" =~ ^[a-z][a-z0-9+.-]*$ ]] || { echo "(not a URL)"; return 0; }
+  rest="${u#*://}"; auth="${rest%%[/?#]*}"; auth="${auth##*@}"
+  if [ "$scheme" = file ] && [ -z "$auth" ]; then echo "file://"; return 0; fi
+  if [[ "$auth" =~ ^([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?$ ]]; then
+    echo "$scheme://$auth"
+  else
+    echo "$scheme://(host not readable)"
+  fi
+}
 
 if [ "$MODE" = installed ]; then
   [ -n "$installed" ] && echo "$installed"
@@ -143,11 +170,11 @@ except Exception:
   }
   latest="$(field tag_name)"; latest="${latest#v}"
   [[ "$latest" =~ $VERSION_RE ]] || no_answer
-  page="$(field html_url)"; [[ "$page" =~ $PAGE_RE ]] || page=""
+  page="$(field html_url)"; page_ok "$page" || page=""
   [ -n "$CACHE" ] && mkdir -p "$CACHE_DIR" 2>/dev/null && printf '%s %s %s\n' "$now" "$latest" "$page" >"$CACHE" 2>/dev/null
 fi
 
-[[ "$page" =~ $PAGE_RE ]] || page=""
+page_ok "$page" || page=""
 if [ "$MODE" = latest ]; then
   echo "$latest${page:+ $page}"
   exit 0
@@ -176,12 +203,25 @@ qhere="$(printf '%q' "$HERE")"
 repo="https://github.com/jonyfs/pr-reviewer-fixer/releases/download/v$latest"
 echo "pr-skills: version $latest is available, installed is $installed.${page:+ Release notes: $page}"
 echo "  Updating changes the skills your agent follows, so a person decides. Ask the person one yes/no question with the harness's question form (in prose, if it has none) and wait for the answer. Name in it: both versions, where the code comes from, and that local edits inside the installed skill folders are replaced."
-echo "  The code comes from $repo/pr-reviewer-fixer-$latest.tar.gz, checked against the SHA256SUMS of that release."
-for var in PR_SKILLS_RELEASE_URL PR_SKILLS_DOWNLOAD_URL; do
-  if [ -n "${!var:-}" ]; then
-    echo "  WARNING: $var is set to '$(printf '%s' "${!var}" | tr -cd '[:print:]')', so the source above may not be the one in use. update.sh refuses to run while it is set, unless it is given --allow-custom-source. Tell the person, and add that flag only if the yes was for that source."
-  fi
-done
-echo "  Yes: bash $qhere/update.sh --yes    No: bash $qhere/check-version.sh --decline $latest    Not answered: do neither."
+if [ -z "${PR_SKILLS_DOWNLOAD_URL:-}" ]; then
+  echo "  The code comes from $repo/pr-reviewer-fixer-$latest.tar.gz," \
+    "checked against the SHA256SUMS of that release."
+else
+  echo "  The code does not come from the upstream release: see the WARNING below for its source."
+fi
+if [ -n "${PR_SKILLS_RELEASE_URL:-}" ]; then
+  echo "  WARNING: PR_SKILLS_RELEASE_URL is set (host $(url_host "$PR_SKILLS_RELEASE_URL"))," \
+    "so the version above was read from there, not from the upstream release answer. update.sh" \
+    "refuses to run while it is set, unless it is given --allow-custom-source. Tell the person," \
+    "and add that flag only if the yes was for that source."
+fi
+if [ -n "${PR_SKILLS_DOWNLOAD_URL:-}" ]; then
+  echo "  WARNING: PR_SKILLS_DOWNLOAD_URL is set (host $(url_host "$PR_SKILLS_DOWNLOAD_URL"))," \
+    "so the archive and its SHA256SUMS would come from there, both from the same place." \
+    "update.sh refuses to run while it is set, unless it is given --allow-custom-source. Tell" \
+    "the person, and add that flag only if the yes was for that source."
+fi
+echo "  Yes: bash $qhere/update.sh --yes --version $latest" \
+  "   No: bash $qhere/check-version.sh --decline $latest    Not answered: do neither."
 echo "  Silence this check with PR_SKILLS_NO_UPDATE_CHECK=1."
 exit 0
