@@ -13,40 +13,55 @@ ROOT="$(cd "$HERE/.." && pwd)"
 fail=0
 # No workflow, template, action, script or test may call a model or name a provider key. Review and
 # fix run as agents in a person's own harness session, never in GitHub Actions.
-# The scan reads all of .github (workflows, scripts, actions, CODEOWNERS), the root install.sh, both
-# skills' templates and scripts, and tests/. The suites' own scratch directories (state-*/ and
-# work-*/, gitignored) hold copies of the skills and of whatever a run fed them, and a run in
-# progress or a red run leaves them behind, so the scan skips them under tests/ and nowhere else.
-# That loses nothing only while no tracked file anywhere sits in a folder with such a name, which is
-# checked first and fails closed when git cannot answer or when ROOT is not the top of its own
-# repository (then `git ls-files` would list nothing or another repository's files).
-# No file is excluded by name: the pattern below is written in pieces, so this file does not match
-# it, and a file called run-all.sh in any scanned tree is read like any other. tests/scan/run.sh
-# drives this function against planted trees.
+# The scan reads exactly the files git tracks in .github (workflows, scripts, actions, CODEOWNERS),
+# the root install.sh, both skills' templates and scripts, and tests/. It takes the list from
+# `git ls-files -z` and passes it to grep as file operands. It has no --exclude, no --exclude-dir
+# and no skip by name or path, so a tracked file is read whatever it is called, in whatever folder,
+# and whatever the path of the checkout (a checkout under a folder called work-projects is read
+# like any other). The suites' scratch directories (state-*/, work-*/) are untracked and gitignored,
+# so they are never read, whether a red run left them behind or not; a new file is read once it is
+# added to the index (`git add`). It fails closed: when git cannot answer, when ROOT is not the top
+# of its own repository (then `git ls-files` would list nothing or another repository's files),
+# when the list is empty, and when grep exits with anything but 0 or 1 (a tracked file it cannot
+# read, for example). The pattern below is written in pieces, so this file does not match it.
+# tests/scan/run.sh drives this function against planted trees.
 model_key_scan() {
-  local tracked top bad=0
-  if ! tracked="$(git -C "$ROOT" ls-files 2>&1)" \
-     || ! top="$(git -C "$ROOT" rev-parse --show-toplevel 2>&1)"; then
-    echo "== git ls-files failed, so the model-key scan cannot tell tracked files from scratch ones"
-    bad=1
+  local list top f i hits="" out rc bad=0 files=()
+  if ! list="$(mktemp)"; then
+    echo "== mktemp failed, so the model-key scan cannot list the tracked files"; fail=1; return
+  fi
+  if ! top="$(git -C "$ROOT" rev-parse --show-toplevel 2>&1)" \
+     || ! git -C "$ROOT" ls-files -z -- .github install.sh '.agents/skills/*/templates/*' \
+          '.agents/skills/*/scripts/*' tests >"$list" 2>/dev/null; then
+    echo "== git ls-files failed, so the model-key scan cannot tell which files are tracked"; bad=1
   elif [ "$(cd "$top" 2>/dev/null && pwd -P)" != "$(cd "$ROOT" && pwd -P)" ]; then
     echo "== $ROOT is not the top of its own git repository, so the model-key scan cannot tell"
     echo "   which files are tracked"; bad=1
-  elif printf '%s\n' "$tracked" | grep -Eq '(^|/)(state|work)-[^/]*/'; then
-    echo "== a tracked file sits in a state-* or work-* folder, which the model-key scan skips under tests/"; bad=1
+  else
+    while IFS= read -r -d '' f; do files+=("$ROOT/$f"); done <"$list"
+    if [ "${#files[@]}" -eq 0 ]; then
+      echo "== git lists no tracked file in .github, install.sh, templates, scripts or tests"; bad=1
+    fi
   fi
-  local rc1 rc2 pat='claude-code-''action|codex-''action|anthropic''_api_key|openai''_api_key'
-  pat="$pat"'|fixer_push''_token|anthropic''s/|openai/''codex'
-  grep -rniE "$pat" "$ROOT/.github" "$ROOT/install.sh" "$ROOT"/.agents/skills/*/templates \
-       "$ROOT"/.agents/skills/*/scripts >/dev/null; rc1=$?
-  grep -rniE "$pat" "$ROOT/tests" --exclude-dir='state-*' --exclude-dir='work-*' >/dev/null; rc2=$?
-  if [ "$rc1" -eq 0 ] || [ "$rc2" -eq 0 ]; then
-    echo "== a model action or provider key appears in .github, install.sh, a template, a script"
-    echo "   or a test"; bad=1
-  elif [ "$rc1" -ne 1 ] || [ "$rc2" -ne 1 ]; then
-    echo "== the model-key scan could not read a tree (grep exit $rc1 and $rc2)"; bad=1
-  elif [ "$bad" -eq 0 ]; then
-    echo "== no model action or provider key in .github, install.sh, templates, scripts or tests"
+  rm -f "$list"
+  if [ "$bad" -eq 0 ]; then
+    local pat='claude-code-''action|codex-''action|anthropic''_api_key|openai''_api_key'
+    pat="$pat"'|fixer_push''_token|anthropic''s/|openai/''codex'
+    local err=0
+    for ((i = 0; i < ${#files[@]}; i += 100)); do
+      out="$(grep -liE -e "$pat" -- "${files[@]:i:100}" 2>/dev/null)"; rc=$?
+      [ -z "$out" ] || hits="$hits$out"$'\n'
+      [ "$rc" -le 1 ] || err=1
+    done
+    if [ -n "$hits" ]; then
+      echo "== a model action or provider key appears in a tracked file of .github, install.sh, a"
+      echo "   template, a script or a test:"; printf '%s' "$hits" | sed 's/^/   /'; bad=1
+    fi
+    if [ "$err" -ne 0 ]; then
+      echo "== the model-key scan could not read a tracked file (grep exited with an error)"; bad=1
+    fi
+    [ "$bad" -ne 0 ] || echo "== no model action or provider key in ${#files[@]} tracked files" \
+      "of .github, install.sh, templates, scripts and tests"
   fi
   [ "$bad" -eq 0 ] || fail=1
 }

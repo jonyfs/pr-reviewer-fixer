@@ -398,6 +398,6 @@ check "--latest still answers when the opt-out variable is set" eval 'printf %s 
 
 echo "TOTAL: $PASS passed, $FAIL failed"
 # The scratch holds copies of the skills. A green run removes it; a red run keeps it to look at.
-# run-all.sh skips state-*/ and work-*/ when it scans tests/ for model actions and keys.
+# The model-key scan of run-all.sh reads tracked files only, so a scratch folder left behind is not read.
 [ "$FAIL" = 0 ] && rm -rf "$W"
 [ "$FAIL" = 0 ]

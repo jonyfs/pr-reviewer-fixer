@@ -37,45 +37,69 @@ scan "$F"
 check "a clean tree: exit 0 and the pass line" eval '[ $r = 0 ] && has "no model action or provider key"'
 check "the real work tree is clean too" eval 'bash "$ROOT/tests/run-all.sh" --scan-only >"$W/out" 2>&1'
 
-# The key in each scanned tree, under an ordinary name and under the name run-all.sh, which the
-# scan once skipped at any depth.
+# plant <path> [content]: write a file in the fixture and add it to the index, the way a change
+# reaches the scan. unplant <path>: take it out of the index and the work tree again.
+plant() { mkdir -p "$(dirname "$F/$1")"; printf '%s\n' "${2:-$KEY}" >"$F/$1"; git -C "$F" add -f -- "$1" >/dev/null 2>&1; }
+unplant() { git -C "$F" rm -qf --cached -- "$1" >/dev/null 2>&1; rm -f "$F/$1"; }
+found() { [ $r = 1 ] && has "a model action or provider key appears"; }
+
+# A tracked key in each scanned tree is found whatever the file or the folder is called: an ordinary
+# name, run-all.sh (the scan once skipped it), a name with a space, a newline or a leading dash, and
+# folders called state-x and work-x (the scan once skipped those under tests/).
 for t in "${trees[@]}"; do
-  for n in x.yml run-all.sh; do
-    printf '%s\n' "$KEY" >"$F/$t/$n"; scan "$F"
-    check "$KEY in $t/$n: exit 1 and named" eval '[ $r = 1 ] && has "a model action or provider key appears"'
-    rm -f "$F/$t/$n"
+  for n in x.yml run-all.sh "a b.yml" $'a\nb.yml' -r.yml state-x/x.yml work-x/x.yml work-x/run-all.sh; do
+    plant "$t/$n"; scan "$F"
+    check "tracked key in $t/$(printf %q "$n"): exit 1 and named" found
+    unplant "$t/$n"; rmdir "$F/$t/state-x" "$F/$t/work-x" 2>/dev/null
   done
 done
-printf '%s\n' "$KEY" >>"$F/install.sh"; scan "$F"
-check "the key in the root install.sh: exit 1" eval '[ $r = 1 ] && has "a model action or provider key appears"'
-echo "echo clean" >"$F/install.sh"
-printf '%s\n' "$KEY" >"$F/.github/CODEOWNERS"; scan "$F"
-check "the key in .github/CODEOWNERS: exit 1" eval '[ $r = 1 ]'
-echo "* @owner" >"$F/.github/CODEOWNERS"
+plant install.sh "$KEY"; scan "$F"
+check "the key in the root install.sh: exit 1" found
+plant install.sh "echo clean"
+plant .github/CODEOWNERS "$KEY"; scan "$F"
+check "the key in .github/CODEOWNERS: exit 1" found
+plant .github/CODEOWNERS "* @owner"
 # tests/run-all.sh is scanned like any other file: its pattern is written in pieces.
 cp "$F/tests/run-all.sh" "$W/run-all.bak"; printf '# %s\n' "$KEY" >>"$F/tests/run-all.sh"; scan "$F"
-check "the key in tests/run-all.sh itself: exit 1" eval '[ $r = 1 ] && has "a model action or provider key appears"'
+check "the key in tests/run-all.sh itself: exit 1" found
 cp "$W/run-all.bak" "$F/tests/run-all.sh"
+# A tracked file whose content was changed after it was added is read from the work tree.
+plant tests/foo/late.sh "echo clean"; printf '%s\n' "$KEY" >"$F/tests/foo/late.sh"; scan "$F"
+check "a tracked file edited after git add: the work tree copy is read, exit 1" found
+unplant tests/foo/late.sh
 
 # The other patterns, in a file with an ordinary name.
 for k in "codex-""action@v1" "ANTHROPIC""_API_KEY" "OPENAI""_API_KEY" "FIXER_PUSH""_TOKEN" "openai/""codex"; do
-  printf 'x: %s\n' "$k" >"$F/.github/workflows/y.yml"; scan "$F"
-  check "$k in a workflow: exit 1" eval '[ $r = 1 ]'
-  rm -f "$F/.github/workflows/y.yml"
+  plant .github/workflows/y.yml "x: $k"; scan "$F"
+  check "$k in a workflow: exit 1" found
+  unplant .github/workflows/y.yml
 done
 scan "$F"
 check "after the planted files are removed the tree is clean again" eval '[ $r = 0 ]'
 
-# The state-*/work-* skip: tests/ only, and only for untracked scratch.
+# Scratch is never read: a file git does not track is not scanned, whatever its name or place.
 mkdir -p "$F/tests/foo/work-1" "$F/.agents/skills/pr-fixer/scripts/state-1"
-printf '%s\n' "$KEY" >"$F/tests/foo/work-1/f"; scan "$F"
-check "an untracked key under tests/*/work-*: skipped, exit 0" eval '[ $r = 0 ]'
-printf '%s\n' "$KEY" >"$F/.agents/skills/pr-fixer/scripts/state-1/f"; scan "$F"
-check "a key under scripts/state-*: not skipped, exit 1" eval '[ $r = 1 ] && has "a model action or provider key appears"'
-rm -rf "$F/.agents/skills/pr-fixer/scripts/state-1"
-git -C "$F" add -f tests/foo/work-1/f >/dev/null 2>&1; scan "$F"
-check "a tracked file in a work-* folder: exit 1 and named" eval '[ $r = 1 ] && has "a tracked file sits in a state-* or work-* folder"'
-git -C "$F" rm -qf --cached tests/foo/work-1/f >/dev/null 2>&1; rm -rf "$F/tests/foo/work-1"
+printf '%s\n' "$KEY" >"$F/tests/foo/work-1/f"
+printf '%s\n' "$KEY" >"$F/.agents/skills/pr-fixer/scripts/state-1/f"
+printf '%s\n' "$KEY" >"$F/tests/foo/untracked.yml"
+scan "$F"
+check "an untracked key (scratch, in work-*, state-* or an ordinary place): not read, exit 0" eval '[ $r = 0 ]'
+check "it still prints the pass line" has "no model action or provider key"
+rm -rf "$F/tests/foo/work-1" "$F/.agents/skills/pr-fixer/scripts/state-1" "$F/tests/foo/untracked.yml"
+# A tracked clean file in a folder with such a name is simply read (no refusal).
+plant tests/foo/work-1/f "echo clean"; plant .github/state-notes/n.md "notes"; scan "$F"
+check "a tracked clean file in work-*/ and state-*/ folders: exit 0" eval '[ $r = 0 ]'
+unplant tests/foo/work-1/f; unplant .github/state-notes/n.md; rmdir "$F/tests/foo/work-1" "$F/.github/state-notes" 2>/dev/null
+
+# The checkout's own path does not matter: a copy under work-projects/ and one under state-x/.
+for d in "$W/work-projects/repo" "$W/state-x/repo" "$W/plain/repo"; do
+  mkfix "$d"; scan "$d"
+  check "a clean copy at ${d#"$W"/}: exit 0" eval '[ $r = 0 ]'
+  for t in tests/foo .github/workflows; do
+    printf '%s\n' "$KEY" >"$d/$t/k.yml"; git -C "$d" add -f "$t/k.yml" >/dev/null 2>&1; scan "$d"
+    check "a tracked key in ${d#"$W"/}/$t: exit 1 and named" found
+  done
+done
 
 # Fail closed.
 mkfix "$W/nogit"; rm -rf "$W/nogit/.git"; scan "$W/nogit" GIT_CEILING_DIRECTORIES="$W"
@@ -86,12 +110,23 @@ check "a copy inside another repository: exit 1, not the top of its own" eval '[
 mkdir -p "$W/fakebin"; printf '#!/bin/sh\nexit 1\n' >"$W/fakebin/git"; chmod +x "$W/fakebin/git"
 scan "$F" PATH="$W/fakebin:$PATH"
 check "git failing: exit 1 even on a clean tree" eval '[ $r = 1 ] && has "git ls-files failed"'
+mkfix "$W/empty"; git -C "$W/empty" rm -rqf --cached .github .agents install.sh tests >/dev/null 2>&1; scan "$W/empty"
+check "git lists no tracked file in the trees: exit 1" eval '[ $r = 1 ] && has "lists no tracked file"'
+mkdir -p "$W/badgrep"; printf '#!/bin/sh\nexit 2\n' >"$W/badgrep/grep"; chmod +x "$W/badgrep/grep"
+scan "$F" PATH="$W/badgrep:$PATH"
+check "grep exiting 2: exit 1 even on a clean tree" eval '[ $r = 1 ] && has "could not read a tracked file"'
+printf '#!/bin/sh\nexit 3\n' >"$W/badgrep/grep"
+scan "$F" PATH="$W/badgrep:$PATH"
+check "grep exiting 3: exit 1 even on a clean tree" eval '[ $r = 1 ] && has "could not read a tracked file"'
 mv "$F/.github" "$W/dot-github"; scan "$F"
-check "a missing tree: exit 1, the scan could not read it" eval '[ $r = 1 ] && has "could not read a tree"'
+check "a tracked tree missing from the work tree: exit 1, the scan could not read it" eval '[ $r = 1 ] && has "could not read a tracked file"'
 mv "$W/dot-github" "$F/.github"
+plant tests/foo/gone.sh "echo clean"; rm -f "$F/tests/foo/gone.sh"; scan "$F"
+check "a tracked file deleted from the work tree: exit 1, the scan could not read it" eval '[ $r = 1 ] && has "could not read a tracked file"'
+unplant tests/foo/gone.sh
 if [ "$(id -u)" != 0 ]; then
   chmod 000 "$F/tests/foo"; scan "$F"; chmod 755 "$F/tests/foo"
-  check "an unreadable folder: exit 1, the scan could not read it" eval '[ $r = 1 ] && has "could not read a tree"'
+  check "an unreadable folder: exit 1, the scan could not read it" eval '[ $r = 1 ] && has "could not read a tracked file"'
 fi
 scan "$F"
 check "the fixture is clean again at the end" eval '[ $r = 0 ]'

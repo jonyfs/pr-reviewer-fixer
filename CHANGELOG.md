@@ -59,18 +59,21 @@ Updating the installed skills no longer needs a manual clone and `install.sh`. A
   are checked to write nothing outside it. `tests/version/run.sh` gains rows for the source
   warning, the quoted path, a hostile release link (a `..` segment too), a poisoned cache,
   `--decline` (with and without `python3`) and the same secret-free output for the notice.
-- `tests/run-all.sh`: the model-key scan skips the `state-*/` and `work-*/` scratch directories of
-  the suites under `tests/` only, instead of relying on a green run to delete them, and fails when
-  a tracked file anywhere in the repository sits in a folder with such a name, or when
-  `git ls-files` or `grep` cannot answer, or when the checkout is not the top of its own git
-  repository. It excludes no file by name (a file called `run-all.sh` was never read in any scanned
-  tree before; the scan's pattern is now written in pieces so `tests/run-all.sh` does not match
-  it) and reads all of `.github/` and the root `install.sh`, not only the workflows and workflow
-  scripts. `run-all.sh --scan-only` runs just that scan; the new `tests/scan/run.sh` plants a key in
-  each scanned tree, under an ordinary name and as `run-all.sh`, and covers the skip, a tracked
-  file in a scratch folder, no git, a copy inside another repository, a missing tree and an
-  unreadable one, all in a scratch copy. The suite
-  also needs `curl` and `tar` now (README and the requirements say so).
+- `tests/run-all.sh`: the model-key scan reads exactly the files git tracks in `.github/`, the root
+  `install.sh`, both skills' `templates/` and `scripts/` and `tests/` (`git ls-files -z` feeds
+  `grep`), with no `--exclude`, no `--exclude-dir` and no skip by name or path. The suites'
+  `state-*/` and `work-*/` scratch folders are untracked and gitignored, so they are never read
+  (an untracked file is not scanned until it is added), and a tracked file is read whatever it is
+  called, wherever it sits and wherever the checkout lives. It fails when `git ls-files` cannot
+  answer, when the checkout is not the top of its own git repository, when git lists no tracked
+  file, and when `grep` exits with anything but 0 or 1. The scan's pattern is written in pieces so
+  `tests/run-all.sh` does not match it. `run-all.sh --scan-only` runs just that scan; the new
+  `tests/scan/run.sh` plants a tracked key in each scanned tree under ordinary, `run-all.sh`,
+  space, newline, leading-dash, `state-x/` and `work-x/` names, in copies whose own path contains
+  `work-projects/` and `state-x/`, and covers an untracked key (not read), no git, a copy inside
+  another repository, an empty list, a failing grep, a missing or deleted tracked file and an
+  unreadable folder, all in a scratch copy. The suite also needs `curl` and `tar` now (README and
+  the requirements say so).
 - Pass-3 fixes: `url_host` prints `(host not readable)` when an unencoded `/`, `?` or `#` inside
   the userinfo leaves an `@` after the cut; the failed-release message names the release source,
   not GitHub; the debt-only fixer dispatch in `harness-loop.md` carries the same skip-the-notice
@@ -81,6 +84,11 @@ Updating the installed skills no longer needs a manual clone and `install.sh`. A
   `.github/actions/`, the rest of `.github/` and `install.sh` (N22), and the prompt in
   `tests/eval/README.md` carries the skip-the-Version-Notice clause (N23, in part: the skip still
   rests on a prose clause in the brief, declared as debt).
+- Pass-5 fix: the scan's exclusions are gone (W7). `--exclude-dir='work-*'` also matched a checkout
+  whose own path has such a component, so on GNU `grep` the `tests/` tree was skipped; the scan now
+  reads the tracked files from `git ls-files`, which no name or path can hide. The check for a
+  tracked file in a `state-*/` or `work-*/` folder is gone with the exclusions (N24). Run
+  `tests/scan/run.sh` on Linux as the README shows.
 - Minor version: a new script and subcommands that existing installs can ignore. An installed
   copy older than 0.19.0 has no `update.sh` and updates once the old way.
 

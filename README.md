@@ -720,13 +720,22 @@ each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/`
 start two runs of one suite with different `TEST_TAG` values. `run-all.sh` puts your `TEST_TAG` in
 front of each suite's own tag. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE`
 when it starts, so a value exported in your shell does not change the results. It also
-fails if anything under `.github/` (workflows, scripts, actions), the root `install.sh`, a skill's
-`templates/` or `scripts/`, or `tests/` names a model action or a provider API key. It excludes no
-file by name: a file called `run-all.sh` is read like any other. It skips the suites' `state-*/` and
-`work-*/` scratch folders under `tests/` only, fails if a tracked file sits in a folder with such a
-name anywhere, and fails when it cannot read a tree or when the checkout is not the top of its own
-git repository. `bash tests/run-all.sh --scan-only` runs it alone, and `tests/scan/run.sh` drives it
-against planted trees in a scratch copy.
+fails if a file that git tracks under `.github/` (workflows, scripts, actions), the root
+`install.sh`, a skill's `templates/` or `scripts/`, or `tests/` names a model action or a provider
+API key. The scan reads exactly the tracked files (`git ls-files -z` feeds `grep`), whatever they
+are called, wherever they sit and wherever the checkout lives. It has no exclusion by name or path,
+so untracked scratch (the suites' `state-*/` and `work-*/` folders, which are gitignored) is never
+read, and a new file is read once you `git add` it. It fails when git cannot answer, when the
+checkout is not the top of its own git repository, when git lists no tracked file, and when `grep`
+cannot read one. `bash tests/run-all.sh --scan-only` runs it alone, and `tests/scan/run.sh` drives
+it against planted trees in a scratch copy. GNU `grep` and BSD `grep` treat directory excludes
+differently, so run that suite on Linux too, from a checkout whose path contains `work-`:
+
+```bash
+docker run --rm -v "$PWD":/src:ro debian:stable-slim bash -c 'apt-get update -qq && apt-get install -y -qq git \
+  && mkdir -p /home/u/work-projects && cp -r /src /home/u/work-projects/repo \
+  && cd /home/u/work-projects/repo && bash tests/scan/run.sh'
+```
 
 Some `install.sh` rows run only on Linux: the `SKILL.md` and `skill.md` row needs a case-sensitive
 file system, and the bind-mount row also needs root in a container that may mount. On macOS they
