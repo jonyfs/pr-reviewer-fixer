@@ -65,6 +65,10 @@ infrastructure files, and `push-guard.sh` refuses more CI paths.
   #39). New rows cover a later deletion page that fails (N4 of #38), the edit-history editor, one
   failing label in `ensure-labels`, a throwing marker reader, halt key case, code-span labels, and
   the new floor names.
+- From #41's own review: a symlinked `--out` with a trailing slash is named as a symbolic link
+  again (N3); a history whose newest revision was deleted leaves the last editor unknown, read as
+  foreign (N4); `dimensions.md` makes a declared invariant CRITICAL with no reach condition, as
+  `severity-and-verdict.md` does (N2).
 - Not done in code: merge order (N7 of #39) is past; v0.16.0 was never tagged, and its content
   shipped in v0.17.0.
 

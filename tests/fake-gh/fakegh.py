@@ -250,6 +250,8 @@ if args[:2] == ["api", "graphql"]:
                 logins = hist[nd["id"]].strip().split(",")
                 ents = [{"editedAt": "2026-10-15T00:%02d:00Z" % i, "editor": {"login": l}} for i, l in enumerate(logins)]
                 nd["lastEditedAt"] = ents[-1]["editedAt"]; nd["editor"] = {"login": logins[0]}
+                if os.path.exists(os.path.join(d, "edit-history-lost-newest")):
+                    ents = ents[:-1] or [{"editedAt": "2026-10-14T00:00:00Z", "editor": {"login": logins[0]}}]
                 nd["ue1"] = {"nodes": ents[:1]}; nd["ue2"] = {"nodes": ents[-1:]}
         return {"pageInfo": {"hasNextPage": more, "endCursor": str(start + size) if more else None}, "nodes": nodes}
 

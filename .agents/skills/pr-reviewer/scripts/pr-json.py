@@ -11,7 +11,8 @@ THE LAST EDITOR. GitHub's schema calls `IssueComment.editor` only "the actor who
 comment", without saying which edit. So the last editor is read from the edit history instead: the
 first and the last entry of `userContentEdits` are both fetched, and the one with the later
 `editedAt` names the editor, whichever order GitHub lists them in. `editor` is used only when the
-history is empty. A live check on 2026-10-26 (three comments, each edited twice by one login) found
+history is empty. When the newest entry is older than `lastEditedAt` (the last revision was deleted
+from the history), the editor is unknown and read as someone other than the author. A live check on 2026-10-26 (three comments, each edited twice by one login) found
 `lastEditedAt` equal to the newest history entry and `editor` equal to its editor; a comment edited
 by two logins in turn was not available to check `editor` alone, which is why it is not relied on.
 
@@ -132,7 +133,12 @@ def main():
                 hist = [e for k in ("ue1", "ue2") for e in (((n.get(k) or {}).get("nodes")) or [])
                         if isinstance(e, dict) and isinstance(e.get("editedAt"), str)]
                 last = max(hist, key=lambda e: e["editedAt"]) if hist else n
-                editors[n["id"]] = ((last.get("editor") or {}).get("login") or None)
+                login = ((last.get("editor") or {}).get("login") or None)
+                # A history whose newest entry is older than lastEditedAt lost the last edit (a
+                # revision can be deleted from it): that editor is unknown, read as foreign.
+                if hist and isinstance(n.get("lastEditedAt"), str) and n["lastEditedAt"] > last["editedAt"]:
+                    login = None
+                editors[n["id"]] = login
         if not more:
             break
         if not cursor:

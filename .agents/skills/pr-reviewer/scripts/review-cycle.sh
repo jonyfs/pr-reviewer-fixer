@@ -1936,6 +1936,10 @@ def mkdirs_nofollow(where):
 
 # Resolved before the directory is made, and again after it, so the export never writes outside.
 inside(out)
+# A link at `out` itself (inside the repository) is named as one, before the walk below would refuse
+# it with ELOOP.
+if os.path.islink(out.rstrip("/") or out):
+    die("%s is a symbolic link; export into a real directory." % out)
 try:
     mkdirs_nofollow(out)
 except OSError as e:

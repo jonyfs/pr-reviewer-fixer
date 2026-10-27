@@ -169,6 +169,9 @@ rm -rf "$EXPORT" "$W/real-out"; mkdir -p "$W/real-out"; ln -s "$W/real-out" "$EX
 "$RC" export-audit 7 --out "$EXPORT" >/dev/null 2>"$W/err"; r=$?
 check "export-audit: the output directory is a symlink -> refused, nothing written (S9)" \
   eval '[ $r != 0 ] && grep -q "symbolic link" "$W/err" && [ -z "$(ls -A "$W/real-out")" ]'
+"$RC" export-audit 7 --out "$EXPORT/" >/dev/null 2>"$W/err"; r=$?
+check "export-audit: --out <symlink>/ with a trailing slash -> named as a symbolic link, not a create error (N3 of #41)" \
+  eval '[ $r != 0 ] && grep -q "is a symbolic link; export into a real directory" "$W/err" && ! grep -q "cannot create" "$W/err" && [ -z "$(ls -A "$W/real-out")" ]'
 rm -f "$EXPORT"
 # N3 of #26: the whole --out path is resolved, symbolic links followed, and must stay inside the
 # repository top level. The last-component check above misses a link earlier in the path.
@@ -240,7 +243,13 @@ python3 -I "$GATE" 7 >/dev/null 2>&1; g0=$?
 python3 -I "$SRC/pr-json.py" 7 >"$W/pjh" 2>/dev/null
 check "gate: another login's edit then the author's -> the last editor is the author, it passes (0.18.0)" \
   eval '[ $g0 = 0 ] && [ "$(jq -r ".editedComments[0].editor.login" "$W/pjh")" = github-actions ]'
-rm -f "$FAKE_DIR/edit-history"
+# N4 of #41: the newest revision deleted from the history -> the last editor is unknown, BLOCKED history.
+echo "IC_0 github-actions,github-actions" >"$FAKE_DIR/edit-history"; touch "$FAKE_DIR/edit-history-lost-newest"
+python3 -I "$GATE" 7 >/dev/null 2>&1; g1=$?
+python3 -I "$SRC/pr-json.py" 7 >"$W/pjh" 2>/dev/null
+check "gate: a history missing its newest revision -> the editor is unknown, BLOCKED history (N4 of #41)" \
+  eval '[ $g1 != 0 ] && [ "$(jq -r ".editedComments[0].editor.login" "$W/pjh")" = null ]'
+rm -f "$FAKE_DIR/edit-history" "$FAKE_DIR/edit-history-lost-newest"
 # W1 of #25: the same, with the edit breaking the marker shape. It is still BLOCKED history.
 PS1X="$(mc github-actions "<!-- adversarial_review: sha=$B verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"
 reset "$(mk 7 $D '[{"name":"review:passed"}]' "[$PS1X,$PH1]" OPEN)"; echo IC_0 >"$FAKE_DIR/edited-ids"
