@@ -20,6 +20,7 @@ bash tests/eval/selftest.sh                                        # the review 
 bash tests/version/run.sh .agents/skills/pr-reviewer/scripts       # check-version.sh
 bash tests/release/run.sh                                          # .github/scripts/release.sh, the release workflow's logic
 bash tests/update/run.sh .agents/skills/pr-reviewer/scripts install.sh   # update.sh and check-version.sh --latest/--decline
+bash tests/scan/run.sh                                             # the model-key scan of run-all.sh, on planted trees
 python3 tests/budget/t.py .agents/skills/pr-reviewer/scripts       # budget, extend, halt
 python3 tests/scan-hidden/t.py .agents/skills/pr-reviewer/scripts  # scan-hidden.py
 ```
@@ -86,7 +87,7 @@ Review and correction are done by agents in the harness session you are running 
   `PUSH_GUARD_ALLOW_SENSITIVE=skills`, set by the person who owns the session (export it with
   `REVIEW_MARKER_AUTHORS`). It names `skills` only: workflows, actions, CODEOWNERS, `.claude/` and
   `.mcp.json` stay refused, and a finding on them goes to the person.
-- **Never use, request, store or print a provider API key** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or any other), here, in a script, a hook or a workflow. Authentication belongs to the harness. Never add a workflow, template or action that runs a model. `tests/run-all.sh` fails if one appears.
+- **Never use, request, store or print a provider API key** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or any other), here, in a script, a hook or a workflow. Authentication belongs to the harness. Never add a workflow, template or action that runs a model. `tests/run-all.sh` fails if a model action or a provider key appears under `.github/`, in the root `install.sh`, in a skill's `templates/` or `scripts/`, or under `tests/`, in a file of any name.
 - If the harness cannot start a fresh-context sub-agent, say that the review was not independent.
 
 ## Releases
@@ -139,4 +140,4 @@ Rules for doing it:
 - Third-party actions in workflows and templates are pinned to full commit SHAs. Keep them pinned.
 - Diagrams in `README.md` are sourced from `docs/diagrams/*.mmd`. Update both together.
 - Dated facts (harness paths, model names) carry a date, currently 2026-10-14. Update the date when you re-verify them.
-- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored. The model-key scan in `tests/run-all.sh` skips `state-*/` and `work-*/` under `tests/` only, fails if a tracked file anywhere in the repository sits in a folder with such a name, and fails when `git ls-files` or `grep` cannot answer. `bash tests/run-all.sh --scan-only` runs just that scan.
+- Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored. The model-key scan in `tests/run-all.sh` excludes no file by name, skips `state-*/` and `work-*/` under `tests/` only, fails if a tracked file anywhere in the repository sits in a folder with such a name, and fails when `git ls-files` or `grep` cannot answer, when a tree cannot be read, or when the checkout is not the top of its own git repository. `bash tests/run-all.sh --scan-only` runs just that scan, and `tests/scan/run.sh` drives it against planted trees in a scratch copy.
