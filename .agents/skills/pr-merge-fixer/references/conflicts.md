@@ -64,5 +64,5 @@ file is allowed only for the classes that say so (generated, vendored).
 - A sensitive file (class 🔐), or any file that `push-guard.sh` refuses as a sensitive path.
 - More than `max_conflict_files` conflicted files.
 
-Escalation means `git merge --abort`, no push, and a closure comment with `⛔ escalated` rows that
-name each file, its class and the one decision a person must make.
+Escalation means `git merge --abort`, no push, and a closure comment in plain words: an
+`escalated` line for each file with its class, and one `Decision for a person:` line.
