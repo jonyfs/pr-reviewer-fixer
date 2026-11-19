@@ -125,11 +125,16 @@ for f in "$ROOT"/.agents/skills/pr-reviewer/scripts/*; do
   cmp -s "$f" "$g" || { echo "== scripts/$b DIFFERS between the skills"; fail=1; }
 done
 [ "$n_shared" -ge 6 ] && echo "== $n_shared shared scripts checked" || { echo "== only $n_shared shared scripts found; expected at least 6"; fail=1; }
-# The merge fixer's copies of the shared scripts are compared with the reviewer's, file by file.
+# The merge fixer's copies of the shared scripts are compared, file by file, with the reviewer's copy,
+# or with pr-fixer's when the reviewer does not ship it (push-guard.sh). A script no other skill ships
+# fails: every script in the merge fixer is a copy.
 for f in "$ROOT"/.agents/skills/pr-merge-fixer/scripts/*; do
-  [ -f "$f" ] || continue; b="$(basename "$f")"; g="$ROOT/.agents/skills/pr-reviewer/scripts/$b"
-  [ -e "$g" ] || continue
-  cmp -s "$f" "$g" || { echo "== scripts/$b DIFFERS between pr-merge-fixer and pr-reviewer"; fail=1; }
+  [ -f "$f" ] || continue; b="$(basename "$f")"; g=""
+  for s in pr-reviewer pr-fixer; do
+    [ -e "$ROOT/.agents/skills/$s/scripts/$b" ] && { g="$ROOT/.agents/skills/$s/scripts/$b"; break; }
+  done
+  [ -n "$g" ] || { echo "== scripts/$b in pr-merge-fixer has no copy in another skill"; fail=1; continue; }
+  cmp -s "$f" "$g" || { echo "== scripts/$b DIFFERS between pr-merge-fixer and $(basename "$(dirname "$(dirname "$g")")")"; fail=1; }
 done
 # Shared reference files ship in all three skills and must stay identical. The gate template ships in
 # the two skills that run the gate; pr-merge-fixer has none.
