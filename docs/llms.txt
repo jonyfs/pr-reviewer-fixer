@@ -1,6 +1,6 @@
 # pr-reviewer-fixer
 
-> Three open Agent Skills for GitHub pull requests. pr-reviewer reads the diff with read-only agents and publishes one verdict (PASSED or BLOCKED) tied to a commit. pr-fixer reproduces each finding, writes a test that fails first, fixes it and posts a checklist of evidence. pr-merge-fixer merges the base branch into a conflicting branch, classifies each conflicted file and escalates only what the code does not decide. A person makes the merge decision.
+> Three Agent Skills for GitHub pull requests. pr-reviewer reads the diff with read-only agents and publishes one verdict (PASSED or BLOCKED) tied to a commit. pr-fixer reproduces each finding, writes a test that fails first, fixes it and posts a checklist of evidence. pr-merge-fixer merges the base branch into a conflicting branch, classifies each conflicted file and escalates only what the code does not decide. A person makes the merge decision.
 
 Repository: https://github.com/jonyfs/pr-reviewer-fixer
 Site: https://jonyfs.github.io/pr-reviewer-fixer/
