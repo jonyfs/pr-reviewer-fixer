@@ -62,7 +62,7 @@ Notifications carry no secrets, no log excerpts and no finding bodies.
 | Marker at head is `PASSED` with debt | Debt-only mode in the automatic run: owners into the `pr-debt` block, one closure comment, no code edits. By hand, a WARNING may be fixed when that is cheaper than recording it |
 | No marker at head | Wait or ask for the review; do not fix against a report for another commit |
 | Only comments, no report | Comment lane only; no cycle count against the review budget |
-| Conflict present | Conflict lane first, alone; announce that other lanes are waiting. Playbook: [conflicts.md](conflicts.md) |
+| Conflict present | Stop before any write and report `conflict owed to pr-merge-fixer`; the loop agent dispatches the merge fixer. Handoff: [conflicts.md](conflicts.md) |
 | Dispatched with nobody naming the PR and `triage-pr.sh` returns lanes with no `skip_reason` | Announce the start line, then work the lanes it named. `skip_reason` set: do nothing and say why in the session |
 | Head not writable (fork, no edit access) | Produce a patch and replies, say no push will happen |
 | Failing check looks transient | Re-run once, announce it, then classify. Playbook: [ci-failures.md](ci-failures.md) |

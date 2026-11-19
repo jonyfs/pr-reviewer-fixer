@@ -92,7 +92,7 @@ prefix, and any other wording comes back on the next cycle as a comment to act o
 `gh api` is not in the automatic run's allowlist. There, the closure comment carries the same lines
 and the replies wait for a run that has `gh api`.
 
-## Conflict / Check Lanes
+## Finding / Comment / Check Lanes
 
 ```bash
 gh pr checkout <n>                 # local checkout to fix or trace
@@ -105,8 +105,8 @@ git rev-parse "origin/$HEAD_REF"   # must equal the SHA you planned against
 git push                           # to the PR head branch only, never the protected base
 ```
 
-Never `git push --force`, `--force-with-lease` or `--force-if-includes`. A conflict is resolved by
-merging the base into the head, which pushes as a fast-forward. A rebase of a pushed branch is
+Never `git push --force`, `--force-with-lease` or `--force-if-includes`. A conflict is not resolved
+here: `pr-merge-fixer` merges the base into the head, which pushes as a fast-forward. A rebase of a pushed branch is
 never pushed: if the project requires linear history, hand the rebase to a person.
 
 ## Head Writability & Check Re-Runs

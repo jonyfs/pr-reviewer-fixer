@@ -2,10 +2,10 @@
 name: pr-fixer
 description: >
   Use when a pull request has outstanding work and must be driven to a mergeable state: a
-  pr-reviewer report with findings, unresolved review or bot comments, merge conflicts, failing
-  checks. Triggers: "fix the findings", "close the review", "#X has comments", "#X failed",
-  "#X has conflicts", "merge #X", a BLOCKED marker at the current head, or when the review loop agent dispatches it after a
-  failed CI run or a conflict. Falsifies each finding, proves each fix with a
+  pr-reviewer report with findings, unresolved review or bot comments, failing checks. Triggers:
+  "fix the findings", "close the review", "#X has comments", "#X failed", a BLOCKED marker at the
+  current head, or when the review loop agent dispatches it after a failed CI run. Merge conflicts
+  belong to pr-merge-fixer. Falsifies each finding, proves each fix with a
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
@@ -14,7 +14,7 @@ metadata:
 
 # PR Fixer
 
-Takes a pull request from "has findings, comments, conflicts, failing checks" to **ready for a
+Takes a pull request from "has findings, comments, failing checks" to **ready for a
 second review pass**, **armed for automerge** (only when opted in), or **escalated**. It is the
 corrective half of `pr-reviewer`: that skill finds, this one closes. A correction with no
 independent report is the author reviewing themselves, which is what the pair exists to prevent.
@@ -23,10 +23,10 @@ independent report is the author reviewing themselves, which is what the pair ex
 
 - A `pr-reviewer` report is on the pull request, or the marker at the head says `BLOCKED`, or says
   `PASSED` with warnings or notes (debt-only mode).
-- The user names a PR with a status verb: "#X has comments", "#X failed", "#X has conflicts".
+- The user names a PR with a status verb: "#X has comments", "#X failed".
 - A watch or notification says a PR changed and it sits with stale checks or unresolved comments.
 - The review loop agent dispatches it (see [references/harness-loop.md](references/harness-loop.md)),
-  or a session scan found a failed CI run or a conflict on an open same-repository PR with nobody
+  or a session scan found a failed CI run on an open same-repository PR with nobody
   naming it, and `scripts/triage-pr.sh <n>` returned lanes and no `skip_reason`.
 
 **Not for**: reviewing the diff (`pr-reviewer`); resolving merge conflicts (`pr-merge-fixer`, which
@@ -127,7 +127,7 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
    **blocking** (every CRITICAL, and every WARNING when `REVIEW_BLOCK_AT=warning`) and **declared debt**
    (every other WARNING and NOTE). If the marker carries `block_at=warning`, run with
    `REVIEW_BLOCK_AT=warning`; the scripts refuse to judge it under another setting. Classify the PR
-   into lanes: finding, comment, conflict, check, approval.
+   into lanes: finding, comment, check, approval (a conflict is not a lane here; see step 5).
    [references/lanes.md](references/lanes.md)
 5. **Resolve lanes.** Writing lanes run one at a time, in the order findings, comments, checks. Read-only
    lanes (triage, classification) may run beside them. A conflict is not a lane of this skill: when the

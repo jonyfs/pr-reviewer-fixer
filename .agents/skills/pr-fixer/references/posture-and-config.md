@@ -101,7 +101,7 @@ user or read project settings when unset, and fall back to the safe default.
 | `max_review_cycles` | Automatic review-fix-review cycles. When they are spent with a blocking finding still open, the loop agent asks the person in the session instead of starting the next cycle (environment variable `MAX_REVIEW_CYCLES`) | `5` |
 | `block_at` | What blocks a merge: `critical` (only a CRITICAL) or `warning` (a WARNING too, each with a `scenario:`). Read by `publish`, `budget`, `status` and the gate (environment variable and repository variable `REVIEW_BLOCK_AT`) | `critical` |
 | `max_review_cycles_hard` | Absolute ceiling on cycles. No answer can pass it; reaching it halts with `reason=ceiling` (`MAX_REVIEW_CYCLES_HARD`, clamped to 10) | `10` |
-| `max_conflict_files` | Conflicted files above which the conflict lane escalates instead of resolving ([conflicts.md](conflicts.md); `MAX_CONFLICT_FILES`, read by the agent, not by a script) | `15` |
+| `max_conflict_files` | Conflicted files above which `pr-merge-fixer` escalates instead of resolving; this skill hands conflicts to it ([conflicts.md](conflicts.md); `MAX_CONFLICT_FILES`, read by the agent, not by a script) | `15` |
 | `max_wall_time` | Total pass duration before halting | `60 min` |
 | `max_attempts_per_concern` | Correction attempts for one concern | `2` |
 | `flaky_rerun_limit` | Check re-runs before treating a failure as genuine | `1` |
@@ -110,6 +110,6 @@ user or read project settings when unset, and fall back to the safe default.
 | `PUSH_GUARD_ALLOW_SENSITIVE` | Comma-separated sensitive-path classes `push-guard.sh` lets the fixer push: `workflows`, `actions`, `codeowners`, `skills`, `claude`, `mcp`, `instructions`. A person sets it in the session environment, for a repository whose fixer is meant to edit that class (a skills repository sets `skills`). An unknown name refuses, and so does any character other than a lower-case letter, a comma, a space or a tab. The file must still be in scope | unset (every sensitive path refused) |
 | `REVIEW_MARKER_AUTHORS` | Comma-separated GitHub logins, as GraphQL prints them (a bot is its bare name, never `<name>[bot]` or `app/<name>`), whose comments may supply a verdict, closure or extension marker (env var, read by `review-cycle.sh` and applied by the agent when it reads comments) | Set it to the login `gh` publishes as (`gh api user --jq .login`). Unset, empty or login-less makes the scripts and the gate refuse, since anyone who can comment could forge a verdict |
 
-**Regeneration example**: if a conflict lands in a configured generated path (e.g.
-`generated/**`), run its configured regeneration command and re-stage the regenerated files instead
-of hand-merging. If no `regen_paths` entry matches, treat it as an ordinary conflict.
+**Regeneration example**: `regen_paths` is read by `pr-merge-fixer`, which this skill hands
+conflicts to. A conflict in a configured generated path (e.g. `generated/**`) is regenerated with
+its configured command, never hand-merged.
