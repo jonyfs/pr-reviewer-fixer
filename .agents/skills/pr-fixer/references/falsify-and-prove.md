@@ -92,7 +92,7 @@ banner, then a checkpoint list in which every ticked box carries its evidence. T
 <!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->
 🔧 **Written by pr-fixer** · cycle <c> · ran at <UTC time> · head `<sha7>`
 
-✅ **Closed 2 · 🔴 refused with evidence 1 · 🟡 debt declared 1.** Next: 🔁 reviewer pass <c+1>.
+✅ **Closed 1, refused 1, debt 3**
 
 | | |
 |---|---|
@@ -101,6 +101,7 @@ banner, then a checkpoint list in which every ticked box carries its evidence. T
 | **Refused, pending the reviewer** | `C2` |
 | **Declared debt** | 3 items, owners in the table below |
 | **Counts claimed for pass <c+1>** | 🔴 0 · 🟡 1 · 🔵 1 (the reviewer decides) |
+| **Next** | 🔁 reviewer pass <c+1> on `<sha7>` |
 
 ### 🔴 C1: expired token accepted when the skew header is present
 
@@ -135,8 +136,9 @@ banner, then a checkpoint list in which every ticked box carries its evidence. T
 
 Rules for the closure comment:
 
-- **Summary first, same shape as the reviewer's**: a title line with an emoji and the result in five
-  words or fewer, one two-column table (closed, refused, debt, next), then the checkpoints. The
+- **Summary first, same shape as the reviewer's**: a title line with an emoji and the result in six
+  words or fewer, one two-column table (findings received, blocking closed, refused, declared debt,
+  counts claimed, next), then the checkpoints. The
   reader gets the answer in ten seconds and the proof below it.
 
 - The checkpoint list is the proof: each `[x]` line carries the output or the commit that shows it. A

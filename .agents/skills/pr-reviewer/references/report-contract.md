@@ -138,10 +138,11 @@ fixer parses for its work list, so prose and block must agree on every id and co
 
 The summary is what a person reads first, so it follows one template, in this order:
 
-1. **Title line**: an emoji for the verdict, then the verdict and the reason in five words or fewer.
+1. **Title line**: an emoji for the verdict, then the verdict and the reason in six words or fewer.
 2. **Verdict table**: verdict, counts, head, and the next action. Two columns, no prose inside cells.
+   The next action is the table's last row, **Next**, starting with the actor (`🔧 pr-fixer`,
+   `👤 A person`); there is no separate next-step line.
 3. **Reading guide**: at most three bullets: what changed, what blocks, what to check first.
-4. **Next step**: one line, starting with the actor (`🔧 pr-fixer`, `👤 A person`).
 
 ```markdown
 ## ⛔ BLOCKED: one critical finding stops the merge

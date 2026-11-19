@@ -127,15 +127,22 @@ flowchart TD
 
 ## Closure comment
 
-Same summary shape as the other two skills: a title line with an emoji and the result in five words
-or fewer, one short table (resolved, escalated, review owed), then the per-file table. The reader
+Same summary shape as the other two skills: a title line with an emoji and the result in six words
+or fewer, one short two-column table (resolved, escalated, verification, next), then the per-file table. The reader
 gets the outcome first and the file-by-file detail below it.
 
 ```markdown
 <!-- pr-merge-fixer-closure: head=<sha12> resolved=<r> escalated=<e> -->
 🔀 **Written by pr-merge-fixer** · ran at <UTC time> · base `<base>` merged into the head.
 
-**Result:** ✅ resolved 4 files · 🟡 escalated 0 · 🔁 review pass 4 owed
+✅ **Resolved 4 files, review owed**
+
+| | |
+|---|---|
+| **Resolved** | ✅ 4 files |
+| **Escalated** | 🟡 0 |
+| **Verification** | `npm test` 214 passed, 0 failed · build ✅ |
+| **Next** | 🔁 reviewer pass 4 on `<sha7>` |
 
 | File | Class | Tier | Resolution | Evidence |
 |---|---|---|---|---|
@@ -143,9 +150,8 @@ gets the outcome first and the file-by-file detail below it.
 | `src/api/orders.ts` | 🔀 textual | fast | kept both new cases | hunks 1 and 2 disjoint |
 | `src/pricing/tax.ts` | 🧠 semantic | deep | base default `0.2` kept, head's branch kept | base commit `a1b2c3d` changed the default on purpose |
 
-**Verification:** `npm test` 214 passed, 0 failed · build ✅
-**Hunks for the reviewer's focus:** `src/pricing/tax.ts:40-58`
-**Next:** `pr-reviewer` pass 4 on `<sha7>`. The reviewer reads the whole diff; the hunks above are where it should look first.
+**Hunks for the reviewer's focus:** `src/pricing/tax.ts:40-58`. The reviewer reads the whole diff;
+these hunks are where it should look first.
 ```
 
 Escalation uses the same table with an `⛔ escalated` row and one line that says the decision a person
