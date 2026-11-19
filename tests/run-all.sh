@@ -284,6 +284,15 @@ if printf %s "$fix_row" | grep -qE 'reports `conflict owed to pr-merge-fixer`[^|
 else
   echo "== the loop's fix row does not return to step 0 when the fixer reports conflict owed"; fail=1
 fi
+# Without pr-merge-fixer installed, step 0 skips itself, so a fix row that sent a conflict there
+# would circle with no dispatch, no cycle spent and no stop. The row stops and names the install
+# command instead. This guards the wording only, not the path the loop agent takes.
+if printf %s "$fix_row" | grep -qE 'pr-merge-fixer/SKILL.md` is not installed, do not go to step 0[^|]*stop, and tell the person' \
+   && printf %s "$fix_row" | grep -qF 'install.sh --harness <name> --skill pr-merge-fixer --yes'; then
+  echo "== the loop's fix row stops on a conflict when pr-merge-fixer is not installed"
+else
+  echo "== the loop's fix row has no stop for a conflict when pr-merge-fixer is not installed"; fail=1
+fi
 # The merge fixer reads the PR text and commit messages for intent, so step 0 scans them for hidden
 # text and passes the hits in its brief, and the merge fixer never takes flagged text as evidence.
 step0="$(awk '/^0\. \*\*Conflicts first/{on=1} on&&/^1\. \*\*Read the state/{exit} on{print}' \

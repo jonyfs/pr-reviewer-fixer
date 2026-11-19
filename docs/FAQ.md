@@ -55,7 +55,7 @@ no automatic fixes.
 
 `update.sh` updates the skills you already have. A skill a release adds is installed once, with
 `install.sh --harness <name> --skill pr-merge-fixer --yes`. Until you do, the loop skips the conflict step
-and says so.
+before a review and says so. When a fixer cycle meets a conflict, it stops and asks you to install it.
 
 ### Does it work on GitLab or Bitbucket?
 
