@@ -191,6 +191,31 @@ else
   echo "== review-cycle.sh fix without a pull request number ($n_fix mentions found, at least 10 expected):"
   printf '%s\n' "$fix_bad"; fail=1
 fi
+# The loop setup reads the REVIEW_BLOCK_AT repository variable. gh prints a 404 body on stdout and
+# exits 1, so the setup must take a value only on exit 0, read a 404 as unset (critical), and stop on
+# any other failure. The setup lines are taken from harness-loop.md and run against a stub gh.
+rba_src="$(awk '/^rba_err=/{on=1} on{print} on&&/^rm -f "\$rba_err"/{exit}' \
+  "$ROOT/.agents/skills/pr-reviewer/references/harness-loop.md")"
+mkdir -p "$OUT/rba-bin"
+cat >"$OUT/rba-bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$RBA_MODE" in
+  set) echo warning ;;
+  404) echo '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
+  403) echo '{"message":"Resource not accessible by integration","status":"403"}'
+       echo 'gh: Resource not accessible by integration (HTTP 403)' >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$OUT/rba-bin/gh"
+rba_run() { RBA_MODE="$1" PATH="$OUT/rba-bin:$PATH" bash -c "$rba_src"$'\n''printf "%s" "$REVIEW_BLOCK_AT"' 2>&1; }
+if [ "$(printf '%s\n' "$rba_src" | wc -l)" -ge 5 ] && [ "$(rba_run set)" = warning ] \
+   && [ "$(rba_run 404)" = critical ] \
+   && rba_403="$(rba_run 403)" && printf %s "$rba_403" | grep -q '^setup stopped: .*HTTP 403' \
+   && [ "${rba_403##*$'\n'}" = unreadable ]; then
+  echo "== loop setup reads REVIEW_BLOCK_AT: set, 404 as critical, 403 stops"
+else
+  echo "== loop setup misreads REVIEW_BLOCK_AT (set: '$(rba_run set)', 404: '$(rba_run 404)', 403: '$(rba_run 403)')"; fail=1
+fi
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
 # The model-key scan runs here, last: see model_key_scan, defined near the top.

@@ -62,13 +62,27 @@ review is owed. It is a convenience. The rule above is the portable trigger.
 ```bash
 export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"
 # Read the repository variable the gate uses, so the verdict is published under the same setting.
-# An unset variable means the gate's default, critical. Publishing under another value makes the
-# gate reject a PASSED that carries a warning, so do not hard-code it.
-export REVIEW_BLOCK_AT="$(gh api "repos/{owner}/{repo}/actions/variables/REVIEW_BLOCK_AT" --jq .value 2>/dev/null || echo critical)"
-.agents/skills/pr-reviewer/scripts/review-cycle.sh ensure-labels
+# Publishing under another value makes the gate reject a PASSED that carries a warning, so do not
+# hard-code it. gh prints the error body on stdout, so the value is taken only on exit 0. A 404 means
+# the variable is unset: the gate's default, critical. Any other failure (a 403, no network) stops
+# the setup: the value becomes one every script refuses, and ensure-labels does not run.
+rba_err="$(mktemp)"
+if rba="$(gh api "repos/{owner}/{repo}/actions/variables/REVIEW_BLOCK_AT" --jq .value 2>"$rba_err")"; then
+  export REVIEW_BLOCK_AT="$rba"
+elif grep -q '(HTTP 404)' "$rba_err"; then
+  export REVIEW_BLOCK_AT=critical
+else
+  export REVIEW_BLOCK_AT=unreadable
+  echo "setup stopped: cannot read the REVIEW_BLOCK_AT variable: $(head -n 1 "$rba_err")" >&2
+fi
+rm -f "$rba_err"
+[ "$REVIEW_BLOCK_AT" = unreadable ] || .agents/skills/pr-reviewer/scripts/review-cycle.sh ensure-labels
 # Only where the fixer is meant to edit the skills themselves (a repository of skills), set by the person:
 # export PUSH_GUARD_ALLOW_SENSITIVE=skills
 ```
+
+When the setup prints `setup stopped`, stop and tell the person what it printed: the loop does not
+guess the setting, and every `review-cycle.sh` call refuses `unreadable` until the setup succeeds.
 
 `push-guard.sh` refuses any fixer commit that touches the files that run or judge the automation
 (workflows and `.github/scripts/**`, CI files outside GitHub such as `.gitlab-ci.yml` and `Jenkinsfile`, actions, CODEOWNERS, the skill folders `install.sh` writes
