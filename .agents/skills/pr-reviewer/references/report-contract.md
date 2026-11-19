@@ -134,6 +134,36 @@ findings:
 The banner, the summary table and the chart are for people. The findings block is the only part the
 fixer parses for its work list, so prose and block must agree on every id and count.
 
+## Summary standard
+
+The summary is what a person reads first, so it follows one template, in this order:
+
+1. **Title line**: an emoji for the verdict, then the verdict and the reason in five words or fewer.
+2. **Verdict table**: verdict, counts, head, and the next action. Two columns, no prose inside cells.
+3. **Reading guide**: at most three bullets: what changed, what blocks, what to check first.
+4. **Next step**: one line, starting with the actor (`🔧 pr-fixer`, `👤 A person`).
+
+```markdown
+## ⛔ BLOCKED: one critical finding stops the merge
+
+| | |
+|---|---|
+| **Verdict** | ⛔ BLOCKED |
+| **Counts** | 🔴 1 · 🟡 6 · 🔵 11 |
+| **Head** | `c3d204a` |
+| **Next** | 🔧 pr-fixer, cycle 1 |
+
+- **Changed:** the merge fixer's conflict step (see `C1`).
+- **Blocks:** `C1` only. Warnings and notes are debt with an owner.
+- **Check first:** `SKILL.md:102`.
+```
+
+Rules that keep the summary short without losing detail:
+
+- Details move down into the tables, never into the summary. The summary has no more than one table.
+- Every number in the summary equals the number in the marker and in the findings block.
+- Use the legend from [pr-protocol.md](pr-protocol.md) and nothing else.
+
 ## Rules for the person-facing part
 
 - Every table has a header row. A table cell holds one short value, never a paragraph.

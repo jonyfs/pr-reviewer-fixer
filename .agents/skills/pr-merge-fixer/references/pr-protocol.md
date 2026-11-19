@@ -46,6 +46,10 @@ Formatting that the scripts and the scanner reject, so never write it into an ag
 variation selector (`⚠️`, `✔️`, `ℹ️`, `➡️`). `scan-hidden.py` flags each one as a candidate finding.
 Mermaid is allowed where it adds a picture; it goes before the findings block, never after.
 
+Summary shape, the same in all three skills: a title line with an emoji and the outcome in five words
+or fewer, one short table, then the detail. The reviewer's template is in its `report-contract.md`
+("Summary standard"); the fixer's and the merge fixer's are in their closure sections.
+
 ## Labels: who writes which state
 
 | State | Written by | Meaning |

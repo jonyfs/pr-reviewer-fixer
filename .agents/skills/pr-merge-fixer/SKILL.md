@@ -123,6 +123,10 @@ flowchart TD
 
 ## Closure comment
 
+Same summary shape as the other two skills: a title line with an emoji and the result in five words
+or fewer, one short table (resolved, escalated, review owed), then the per-file table. The reader
+gets the outcome first and the file-by-file detail below it.
+
 ```markdown
 <!-- pr-merge-fixer-closure: head=<sha12> resolved=<r> escalated=<e> -->
 🔀 **Written by pr-merge-fixer** · ran at <UTC time> · base `<base>` merged into the head.

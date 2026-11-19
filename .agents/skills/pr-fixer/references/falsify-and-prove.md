@@ -135,6 +135,10 @@ banner, then a checkpoint list in which every ticked box carries its evidence. T
 
 Rules for the closure comment:
 
+- **Summary first, same shape as the reviewer's**: a title line with an emoji and the result in five
+  words or fewer, one two-column table (closed, refused, debt, next), then the checkpoints. The
+  reader gets the answer in ten seconds and the proof below it.
+
 - The checkpoint list is the proof: each `[x]` line carries the output or the commit that shows it. A
   box with no evidence stays `[ ]` and says why.
 - A test name, an output line or a commit sha is copied from the run, never retyped from memory.

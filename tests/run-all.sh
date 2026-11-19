@@ -105,6 +105,17 @@ for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]}"; tail -n 3 "$OUT/$n.log"
   [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -eq 0 ] || fail=1
 done
+# Every skill states the summary shape, so the three reports read the same way to a person: the
+# reviewer's template, the fixer's closure rule, the merge fixer's closure rule and the shared protocol.
+for pair in \
+  "pr-reviewer/references/report-contract.md|## Summary standard" \
+  "pr-fixer/references/falsify-and-prove.md|Summary first, same shape" \
+  "pr-merge-fixer/SKILL.md|Same summary shape as the other two skills" \
+  "pr-reviewer/references/pr-protocol.md|Summary shape, the same in all three skills"; do
+  rel="${pair%%|*}"; phrase="${pair#*|}"
+  grep -qF "$phrase" "$ROOT/.agents/skills/$rel" \
+    && echo "== summary standard in $rel" || { echo "== summary standard MISSING from $rel"; fail=1; }
+done
 # One version for both skills: VERSION, each SKILL.md metadata.version and the newest CHANGELOG entry.
 v_root="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 v_rev="$("$ROOT/.agents/skills/pr-reviewer/scripts/check-version.sh" --installed)"
