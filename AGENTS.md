@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## What this repository is
 
-Two Agent Skills, `pr-reviewer` and `pr-fixer`, plus the scripts that enforce their protocol. The skills live in `.agents/skills/` and nowhere else. Do not add copies or symlinks under `.claude/skills/`. Almost everything is prose (`SKILL.md` and `references/*.md`) read by a model at run time. The only executable code is a few shell and Python scripts, one gate workflow and one release workflow (whose logic is `.github/scripts/release.sh`). `README.md` has the full explanation, install table and caveats.
+Three Agent Skills, `pr-reviewer`, `pr-fixer` and `pr-merge-fixer` (the last one resolves merge conflicts with the base), plus the scripts that enforce their protocol. The skills live in `.agents/skills/` and nowhere else. Do not add copies or symlinks under `.claude/skills/`. Almost everything is prose (`SKILL.md` and `references/*.md`) read by a model at run time. The only executable code is a few shell and Python scripts, one gate workflow and one release workflow (whose logic is `.github/scripts/release.sh`). `README.md` has the full explanation, install table and caveats.
 
 ## Commands
 
@@ -34,7 +34,7 @@ The suite needs bash, python3, node, jq, git, curl, tar and sha256sum. It puts a
 
 ## Architecture
 
-**The two skills never call each other.** They communicate only through the pull request: `review:*` labels, a verdict comment carrying `<!-- adversarial-review: sha=... verdict=... pass=... -->`, a fixer closure comment, a `pr-debt` block in the PR body, and extension answer comments. The artifact table in `README.md` lists each one, and `.agents/skills/pr-reviewer/references/pr-protocol.md` has the exact `gh` command to find it. Changing a marker or label format means updating both skills and the scripts.
+**The three skills never call each other.** They communicate only through the pull request: `review:*` labels, a verdict comment carrying `<!-- adversarial-review: sha=... verdict=... pass=... -->`, a fixer closure comment, a merge closure comment (`<!-- pr-merge-fixer-closure: ... -->`), a `pr-debt` block in the PR body, and extension answer comments. The review loop agent dispatches the merge fixer before a review, when the branch conflicts. The artifact table in `README.md` lists each one, and `.agents/skills/pr-reviewer/references/pr-protocol.md` has the exact `gh` command to find it. Changing a marker or label format means updating both skills and the scripts.
 
 **Mechanism lives in scripts, judgement lives in prose.**
 - `scripts/review-cycle.sh` is the state machine: it owns labels, prints a report's findings block as JSON (`findings-block`, the one parser `lint-report` and `push-guard.sh` share), publishes the verdict bound to the head SHA (it re-reads the head from GitHub and refuses a stale `--sha`), refuses inconsistent verdict arithmetic (a `BLOCKED` with no CRITICAL, a `PASSED` with one), computes the cycle budget (`budget`, `extend`, `halt`), refuses to start a correction on code from a fork or a non-collaborator (`fix`), and exports audit records (`export-audit`).
@@ -69,7 +69,7 @@ The suite needs bash, python3, node, jq, git, curl, tar and sha256sum. It puts a
 - `.github/scripts/release.sh` is what `.github/workflows/release.yml` runs: it creates, completes or publishes the release for `VERSION`, sets Latest only for the highest version, and refuses with a remedy when a tag or a release belongs to another commit. `tests/release/run.sh` drives it against the fake `gh`.
 - `tests/eval/` holds seeded review cases and `score.py`, which prints recall and precision for reports a person produced in a harness session. `tests/run-all.sh` runs only the scorer's own tests, never a model.
 
-**Shared files are duplicated on purpose.** `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `scan-hidden.py`, `path-floor.sh`, `check-version.sh`, `update.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
+**Shared files are duplicated on purpose, in all three skills where they apply.** `pr-protocol.md`, `harness-matrix.md` and `harness-loop.md` and the shared scripts (`review-cycle.sh`, `pr-json.py`, `scan-hidden.py`, `path-floor.sh`, `check-version.sh`, `update.sh`, `gate-pr-review-state.py`, and `push-guard.sh` in the fixer and the merge fixer) are copied into each skill that uses them. `pr-merge-fixer` has no `templates/`, so it installs no gate. `review-cycle.sh`, `gate-pr-review-state.py`, `pr-json.py`, `scan-hidden.py`, `path-floor.sh`, `check-version.sh`, `update.sh`, `templates/review-gate.yml`, `references/pr-protocol.md`, `references/harness-matrix.md` and `references/harness-loop.md` exist in both skill folders so each skill installs alone. Edit one copy and mirror it to the other. `tests/run-all.sh` fails if any of them differ. Other same-named references (`execution-profiles.md`, `operating-principles.md`, and so on) differ by design, one per skill.
 
 **Who runs the loop.** The review and the fix run as sub-agents of the session's own agent, never in GitHub Actions. `.agents/skills/*/references/harness-loop.md` is the procedure. The only workflows are `templates/review-gate.yml` (a status check that runs no model; `.github/workflows/review-gate.yml` is this repository's copy of it, and `tests/run-all.sh` fails if the two differ) and `.github/workflows/release.yml` (which runs `.github/scripts/release.sh`).
 
@@ -113,6 +113,8 @@ Do not merge, tag or publish a release without a person's go-ahead.
 ## Documentation
 
 Documentation is part of the change. A pull request that changes behavior, layout, labels, commands or paths also updates every document that describes them, in the same pull request. A change that leaves a document stating something false is not finished.
+
+The GitHub Pages site (`docs/index.html`, `docs/llms.txt`, `docs/sitemap.xml`) is part of that documentation. Each release that changes what a person sees or installs updates the site and its `llms.txt` in the same pull request, and the version it shows matches `VERSION`. `docs/REFERENCE.md` is the full previous README: keep it accurate, and move new reference material to `docs/SKILLS-REFERENCE.md`.
 
 Decide what to update from what the change touches:
 

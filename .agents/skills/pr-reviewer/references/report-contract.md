@@ -1,83 +1,111 @@
 ---
-Summary: Layout of the pr-reviewer report and the machine-readable findings block that pr-fixer consumes.
+Summary: Layout of the pr-reviewer report for people and the machine-readable findings block that pr-fixer and pr-merge-fixer consume.
 Tags: [#pr #review #contract #reference]
 ---
 
 # Report Contract
 
+The report is one GitHub comment. Two readers use it: a person who opens the pull request after the
+agent, and `pr-fixer`, which reads only the `findings` block. The layout below serves the person
+first, and the block serves the fixer. Neither may contradict the other: the counts, the ids and the
+statuses must match.
+
 ## Layout
 
-```markdown
-## Review: <what was reviewed>
-
-**Scope:** <files, lines changed, change type>
-**Pass:** N
-**Verdict:** BLOCKED | PASSED
-**Counts:** critical=N warning=N note=N
-**Head:** <sha12>
-
-### Acceptance conditions
-<Pass 1: numbered list, written before findings.
- Pass 2+: the same list, each item marked closed or open, never rewritten.>
-
-### Critical findings
-<These always block the merge. Each: id, location, dimension, stance, impact, failure scenario, fix.>
-
-### Warnings (declared debt)
-<Real and recorded. Each carries a proposed owner. Not blocking by default; under
- REVIEW_BLOCK_AT=warning each one blocks and carries a `scenario:`.>
-
-### Notes (declared debt)
-
-### Coverage note
-<Large changes: depth map. Dimensions not applicable. Checks unavailable for this target.
- Agents dispatched with tier, and any substitution in force.
- Declined to judge: files or regions the review did not assess, each with the reason (too large,
- generated, binary, context missing, tool unavailable). Write `Declined to judge: none` when it
- read everything. Never leave the line out.
- Unit floor: see the findings block's `mandatory_units` field. They go in the `findings` block as
- the `mandatory_units:` field (see [Findings block](#findings-block)). `lint-report` reads only
- that field: a prose line with this name is ignored and counts as no field. Every unit
- `scripts/path-floor.sh` printed for this diff must be listed there with `effort` and
- `status: run`; `lint-report` refuses a report that leaves one out, lists one twice, writes the
- field twice, or lists a unit the floor prints with any status but `run`.
-
-
-### Prior findings
-<Re-review only. Each earlier finding with one status: verified (closed, red and green re-run by
- the reviewer), open, refused-accepted (withdrawn, with the reason), refused-rejected (still
- counted, with what the evidence missed), or not-applicable (the region is gone). Cite the closure
- comment for the cycle (`pr-fixer-closure: cycle=<c>`).>
-
-### Summary
-<Two or three sentences: the risk profile and the single most important thing to fix.>
-```
-
-## Findings block
-
-The report ends with one fenced block tagged `findings`. `pr-fixer` reads this block and nothing
-else for the work list, so prose and block must agree. The report must contain exactly one line that
-is exactly ```` ```findings ````, and that fence must be the last block in the report. `lint-report`
-refuses a report with a second such line, even one quoted inside another fence, so examples elsewhere
-in the report must not use that exact opener (the example below is in this contract, not in a report).
+The verdict comment is, in order: the marker, the banner, the summary, the detail, and the findings
+block last. `review-cycle.sh publish` writes the marker and posts the report as it is.
 
 ````markdown
+<!-- adversarial-review: sha=<40hex> verdict=BLOCKED pass=2 critical=1 warning=2 note=3 -->
+🤖 **Written by pr-reviewer** · pass 2 · head `9f2c1ab4e0d3` · 2026-11-19 14:02 UTC
+
+## ⛔ BLOCKED: 1 critical finding stops the merge
+
+| | |
+|---|---|
+| **Verdict** | ⛔ BLOCKED |
+| **Counts** | 🔴 critical 1 · 🟡 warning 2 · 🔵 note 3 |
+| **Scope** | 6 files, 214 lines, change type: feature |
+| **Head** | `9f2c1ab4e0d3` |
+| **Next** | 🔧 `pr-fixer` cycle 2 closes `C1` first |
+
+**How to read this review**
+
+- **What changed:** session expiry now trusts a client clock header (see `C1`).
+- **What blocks:** only `C1`. Warnings and notes are declared debt with an owner.
+- **Check first:** `src/auth/session.ts:47`, then the test list for the refresh path.
+
+### Acceptance conditions
+
+- [x] Expired tokens are rejected on every route
+- [ ] Refresh tokens are revoked on logout
+
+### 🔴 Critical findings (always block)
+
+| id | Location | Dimension | Claim |
+|---|---|---|---|
+| `C1` | `src/auth/session.ts:47` | security | Expired token accepted when the clock-skew header is present |
+
+**C1 failure scenario:** a request with a `Date` header two hours ahead and an expired token returns 200.
+**C1 suggested fix:** compare against server time and ignore the client header.
+
+### 🟡 Warnings (declared debt)
+
+| id | Location | Claim | Proposed owner |
+|---|---|---|---|
+| `W1` | `src/auth/session.ts:80` | No test for the refresh path | the author |
+
+### 🔵 Notes (declared debt)
+
+| id | Location | Claim | Proposed owner |
+|---|---|---|---|
+| `N1` | `README.md:12` | Setup line refers to the old flag | the author |
+
+### Coverage
+
+| Unit | Effort | Status |
+|---|---|---|
+| security | max | ✅ run |
+| dependencies | standard | ✅ run |
+| privacy | not applicable | (no privacy path in the diff) |
+
+Declined to judge: none
+
+### Prior findings
+
+_Pass 2 and later only. One row per earlier blocking finding, from the closure comment of the cycle._
+
+| id | Status | Evidence |
+|---|---|---|
+
+### Summary
+
+The session change reopens expired tokens through a client header. Fix `C1` first; the rest can
+follow in a later pass as declared debt.
+
+```mermaid
+flowchart LR
+    P1["Pass 1: BLOCKED, 1 critical"] --> F1["fixer cycle 1: closed 1"]
+    F1 --> P2["Pass 2: BLOCKED, 1 critical"]
+```
+
 ```findings
 version: 1
 pr: 123
 head: 9f2c1ab4e0d3
-pass: 1
+pass: 2
 verdict: BLOCKED
-counts: {critical: 1, warning: 2, note: 3}
+counts: {critical: 1, warning: 1, note: 1}
 mandatory_units:
   - {unit: security, effort: max, status: run}
   - {unit: dependencies, effort: standard, status: run}
 acceptance:
-  - {id: A1, text: "Login rejects expired tokens", status: open}
+  - {id: A1, text: "Expired tokens are rejected on every route", status: verified}
+  - {id: A2, text: "Refresh tokens are revoked on logout", status: open}
 findings:
-  # A WARNING also carries `scenario:` (a concrete failing input) when REVIEW_BLOCK_AT=warning.
   - id: C1
     severity: CRITICAL
+    status: open
     file: src/auth/session.ts
     line: 47
     dimension: security
@@ -90,6 +118,7 @@ findings:
     also_seen_by: [saboteur]
   - id: W1
     severity: WARNING
+    status: open
     file: src/auth/session.ts
     line: 80
     dimension: testing
@@ -101,6 +130,30 @@ findings:
     confidence: 0.8
 ```
 ````
+
+The banner, the summary table and the chart are for people. The findings block is the only part the
+fixer parses for its work list, so prose and block must agree on every id and count.
+
+## Rules for the person-facing part
+
+- Every table has a header row. A table cell holds one short value, never a paragraph.
+- The header table states the verdict, the counts, the head and the next action in one place.
+- Counts in the table equal the counts in the marker and in the findings block.
+- Use the legend from [pr-protocol.md](pr-protocol.md) (`🔴` `🟡` `🔵` `✅` `⛔` `🔁`). Do not add other
+  emoji. Do not use an emoji with a variation selector.
+- A checkbox states a condition, not a task. The fixer's checkpoints are a different list.
+- Mermaid appears only where it shows a sequence the tables cannot: the pass history. Keep it to
+  under ten nodes.
+- Three bullets, at most, under "How to read this review".
+
+## Findings block
+
+The report ends with one fenced block tagged `findings`. `pr-fixer` and `pr-merge-fixer` read this
+block and nothing else for the work list, so prose and block must agree. The report must contain
+exactly one line that is exactly ```` ```findings ````, and that fence must be the last block in the
+report. `lint-report` refuses a report with a second such line, even one quoted inside another fence, so
+examples elsewhere in the report must not use that exact opener (the example above is in this
+contract, not in a report).
 
 On pass 2 and later every entry also carries `status`. For a blocking entry (every CRITICAL, and every
 WARNING when `REVIEW_BLOCK_AT=warning`) it is one of `open`, `verified`, `refused-accepted`,
@@ -188,7 +241,7 @@ plus report over 60000 bytes. Check the size before publishing and trim to fit:
 
 1. The marker and the `findings` block always stay in the verdict comment. They are what the fixer,
    the escalation step and the gate read.
-2. Keep the header, acceptance conditions and CRITICAL findings in full.
+2. Keep the banner, the summary, the acceptance conditions and CRITICAL findings in full.
 3. Shorten WARNING and NOTE prose to one line each; the findings block already carries their fields.
 4. Move long prose, per-file depth maps and the coverage note to a second comment or to a file
    attached elsewhere, and link it from the verdict comment. That second comment carries no marker.

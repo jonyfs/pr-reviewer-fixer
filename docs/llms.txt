@@ -1,0 +1,28 @@
+# pr-reviewer-fixer
+
+> Three open Agent Skills for GitHub pull requests. pr-reviewer reads the diff with read-only agents and publishes one verdict (PASSED or BLOCKED) tied to a commit. pr-fixer reproduces each finding, writes a test that fails first, fixes it and posts a checklist of evidence. pr-merge-fixer merges the base branch into a conflicting branch, classifies each conflicted file and escalates only what the code does not decide. A person makes the merge decision.
+
+Repository: https://github.com/jonyfs/pr-reviewer-fixer
+Site: https://jonyfs.github.io/pr-reviewer-fixer/
+
+## Start here
+- [Quick start](https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/QUICKSTART.md): install, prepare the repository, open a draft pull request
+- [How it works](https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/HOW-IT-WORKS.md): the loop, the rules and the reasons behind them
+
+## Reference
+- [Skills reference](https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/SKILLS-REFERENCE.md): commands, labels, markers, settings, install paths per harness
+- [FAQ](https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/FAQ.md)
+- [Full previous README](https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/REFERENCE.md): install details, limits, security model
+- [Changelog](https://github.com/jonyfs/pr-reviewer-fixer/blob/main/CHANGELOG.md)
+
+## Skills
+- pr-reviewer: .agents/skills/pr-reviewer/SKILL.md
+- pr-fixer: .agents/skills/pr-fixer/SKILL.md
+- pr-merge-fixer: .agents/skills/pr-merge-fixer/SKILL.md
+
+## Facts that are easy to get wrong
+- No GitHub Actions workflow calls a model. No provider API key is used.
+- The automatic reviewer never approves or requests changes on GitHub. Its verdict is a comment and a label.
+- Only a CRITICAL finding blocks by default. REVIEW_BLOCK_AT=warning makes warnings block too.
+- After five automatic fix cycles the agent asks a person in the session. The default hard ceiling is ten.
+- The skills never merge, approve, tag or release.

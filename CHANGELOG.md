@@ -4,6 +4,49 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.0
+
+The reports read as documents for the person who opens the pull request after the agents. A new
+skill, `pr-merge-fixer`, resolves merge conflicts with the base before a review, and after a PASSED
+verdict when the base moved, so the person no longer resolves them by hand.
+
+Design and the list of improvements: [docs/designs/communication-0.20.0.md](docs/designs/communication-0.20.0.md).
+
+- **New skill `pr-merge-fixer`** (`.agents/skills/pr-merge-fixer/`). Merges the base into the head
+  (no force, no rebase), classifies each conflicted file (lockfile or generated, rename, textual,
+  semantic, vendored, sensitive), runs one sub-agent per unit at the tier its class needs, verifies,
+  and pushes through `push-guard.sh`. Sensitive and semantic conflicts it cannot decide are escalated.
+  It posts a closure comment with a per-file table and the hunks the reviewer should read first.
+- **Review loop**: `harness-loop.md` checks `mergeStateStatus` before each review and after PASSED.
+  A merge push always owes a new review pass, which reads the whole diff.
+- **`pr-fixer` conflict lane** is a handoff: the playbook moved to `pr-merge-fixer`, so one copy
+  exists.
+- **Reports**: every agent comment opens with a banner that names its author (`🤖 Written by
+  pr-reviewer`, `🔧 Written by pr-fixer`, `🔀 Written by pr-merge-fixer`). The verdict has a summary
+  table, a "how to read this review" block, acceptance conditions as checkboxes, and one table per
+  severity. The fixer's closure has a checkpoint list per finding, with the evidence next to each box,
+  and a commit table.
+- **Formatting rules** (`pr-protocol.md`): one comment order, one emoji legend, and no `<details>`
+  blocks or emoji with a variation selector, which `scan-hidden.py` reports as hidden text.
+- **Status comment**: a short table of the run's steps, edited in place at finish.
+- **Install**: `install.sh --skill` takes `all` (the default, the three skills), `both` (the 0.19
+  pair) or a comma-separated list. `update.sh` updates the skills already installed; a skill the
+  release adds is installed with `install.sh --skill <name> --yes`.
+- **Documentation**: a shorter README with one diagram per idea, a quick start
+  (`docs/QUICKSTART.md`), a skills reference with install paths, labels, markers and settings
+  (`docs/SKILLS-REFERENCE.md`), a FAQ (`docs/FAQ.md`), and the previous full README kept as
+  `docs/REFERENCE.md`. A GitHub Pages site is served from `docs/` (`index.html`, `llms.txt`,
+  `sitemap.xml`, `robots.txt`).
+- **Tests**: the install suite covers the skill list; `run-all.sh` checks the merge fixer's shared
+  scripts and references against the reviewer's, and the three versions.
+
+Upgrading from 0.19.0: `update.sh --yes` updates the two skills installed; add the merge fixer once
+with `install.sh --harness <name> --skill pr-merge-fixer --yes`. Until it is installed, the review loop
+skips the conflict step and says so.
+
+Compatibility: no marker, label or subcommand changes meaning, so this is a minor version under the
+rules in `AGENTS.md`.
+
 ## 0.19.0
 
 Updating the installed skills no longer needs a manual clone and `install.sh`. A new script,

@@ -18,10 +18,11 @@ The same file ships in both skills.
 | Review loop agent | The session's own agent. It owns the loop and is the only one that dispatches the other two. It reads the budget, asks the person, and never reviews or edits code itself. | Only through `review-cycle.sh` (`stale`, `start`, `budget`, `extend`, `halt`), and `update.sh` after a yes (see "The version notice") |
 | Reviewer | A fresh-context sub-agent that follows the `pr-reviewer` skill. | Nothing in the working tree. It publishes only through `review-cycle.sh publish`. |
 | Fixer | A fresh-context sub-agent that follows the `pr-fixer` skill. | The PR branch, and the PR comments and body the skill names. |
+| Merge fixer | A fresh-context sub-agent that follows the `pr-merge-fixer` skill. | The PR branch, by merge commits only, and its closure comment. |
 
-The reviewer and the fixer never call each other and never share a context. They communicate only
-through the pull request, as described in [pr-protocol.md](pr-protocol.md). The review loop agent
-passes each of them the PR number and nothing else about the other's reasoning.
+The three skills never call each other and never share a context. They communicate only through the
+pull request, as described in [pr-protocol.md](pr-protocol.md). The review loop agent passes each of
+them the PR number and nothing else about the others' reasoning.
 
 If the harness cannot start a fresh-context sub-agent, the loop agent runs the reviewer in a new
 session or says that the review was not independent. A review by the agent that wrote the change
@@ -120,6 +121,17 @@ outside the pull request; the person says yes to it knowingly or does not.
 
 ## The loop
 
+0. **Conflicts first.** Before a review is owed, read `mergeStateStatus` with
+   `gh pr view <pr> --json mergeStateStatus --jq .mergeStateStatus`. When it is `DIRTY` or
+   `CONFLICTING`, dispatch the merge fixer, then start again at step 1, because its push moved the head:
+   "Follow `.agents/skills/pr-merge-fixer/SKILL.md` on pull request #N. You were dispatched by the
+   review loop agent: skip the Version Notice. Escalate what you cannot decide; never push a
+   force." Wait for its closure comment. A merge that escalates stops the loop: tell the person the
+   decision it names, and go no further on this pull request until it is made.
+   When `.agents/skills/pr-merge-fixer/SKILL.md` is not installed, say so once in the session and skip
+   this step; the review still runs. The same check runs after a PASSED verdict (step 6): a base that moved underneath an approved head
+   is merged the same way, and the new head is reviewed again. A merge push always owes a review pass,
+   and that pass reads the whole diff, not only the resolved hunks.
 1. **Read the state.** `review-cycle.sh stale <pr>` first, every time (see Trigger). It is
    idempotent and moves a label only when the head has left the marker. Then
    `review-cycle.sh status <pr>`. Exit 0 means nothing is owed, so stop. Exit 2 means it could not
@@ -206,7 +218,8 @@ outside the pull request; the person says yes to it knowingly or does not.
    | `ceiling` | `review-cycle.sh halt <pr> --reason ceiling`. Tell the person. Stop. |
 
 6. **PASSED.** `review-cycle.sh publish` has already marked a draft pull request ready for review,
-   so there is nothing to do for the draft flag. With warnings or notes, dispatch the fixer in
+   so there is nothing to do for the draft flag. If `mergeStateStatus` is now `DIRTY` (the base moved),
+   go to step 0 instead of stopping. With warnings or notes, dispatch the fixer in
    debt-only mode once, so each item gets an owner in the `pr-debt` block: "Follow
    `.agents/skills/pr-fixer/SKILL.md` on pull request #N in debt-only mode. You were dispatched by
    the review loop agent: skip the Version Notice." Then stop. Merging is the

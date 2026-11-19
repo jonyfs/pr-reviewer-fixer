@@ -109,11 +109,12 @@ done
 v_root="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 v_rev="$("$ROOT/.agents/skills/pr-reviewer/scripts/check-version.sh" --installed)"
 v_fix="$("$ROOT/.agents/skills/pr-fixer/scripts/check-version.sh" --installed)"
+v_mrg="$("$ROOT/.agents/skills/pr-merge-fixer/scripts/check-version.sh" --installed)"
 v_log="$(grep -m1 -E '^## \[?[0-9]+\.[0-9]+\.[0-9]+' "$ROOT/CHANGELOG.md" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')"
-if [ -n "$v_root" ] && [ "$v_root" = "$v_rev" ] && [ "$v_root" = "$v_fix" ] && [ "$v_root" = "$v_log" ]; then
+if [ -n "$v_root" ] && [ "$v_root" = "$v_rev" ] && [ "$v_root" = "$v_fix" ] && [ "$v_root" = "$v_mrg" ] && [ "$v_root" = "$v_log" ]; then
   echo "== versions agree ($v_root)"
 else
-  echo "== versions DIFFER: VERSION=$v_root pr-reviewer=$v_rev pr-fixer=$v_fix CHANGELOG=$v_log"; fail=1
+  echo "== versions DIFFER: VERSION=$v_root pr-reviewer=$v_rev pr-fixer=$v_fix pr-merge-fixer=$v_mrg CHANGELOG=$v_log"; fail=1
 fi
 # Every script that ships in both skills must be byte-identical: the suites above run them from the
 # reviewer's copy only. The list is found, not written down, so a new shared script is covered too.
@@ -124,10 +125,21 @@ for f in "$ROOT"/.agents/skills/pr-reviewer/scripts/*; do
   cmp -s "$f" "$g" || { echo "== scripts/$b DIFFERS between the skills"; fail=1; }
 done
 [ "$n_shared" -ge 6 ] && echo "== $n_shared shared scripts checked" || { echo "== only $n_shared shared scripts found; expected at least 6"; fail=1; }
-# Shared reference files and the gate template ship in both skills and must stay identical.
+# The merge fixer's copies of the shared scripts are compared with the reviewer's, file by file.
+for f in "$ROOT"/.agents/skills/pr-merge-fixer/scripts/*; do
+  [ -f "$f" ] || continue; b="$(basename "$f")"; g="$ROOT/.agents/skills/pr-reviewer/scripts/$b"
+  [ -e "$g" ] || continue
+  cmp -s "$f" "$g" || { echo "== scripts/$b DIFFERS between pr-merge-fixer and pr-reviewer"; fail=1; }
+done
+# Shared reference files ship in all three skills and must stay identical. The gate template ships in
+# the two skills that run the gate; pr-merge-fixer has none.
 for f in references/pr-protocol.md references/harness-matrix.md references/harness-loop.md templates/review-gate.yml; do
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-fixer/$f" \
     && echo "== $f identical" || { echo "== $f DIFFERS between the skills"; fail=1; }
+done
+for f in references/pr-protocol.md references/harness-matrix.md references/harness-loop.md; do
+  cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-merge-fixer/$f" \
+    && echo "== $f identical in pr-merge-fixer" || { echo "== $f DIFFERS in pr-merge-fixer"; fail=1; }
 done
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }

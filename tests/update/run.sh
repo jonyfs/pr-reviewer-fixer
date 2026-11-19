@@ -25,7 +25,7 @@ mkrelease() { # <version> <dir>: archive, SHA256SUMS and release.json in <dir>/v
   rm -rf "$pk"; mkdir -p "$pk/pr-reviewer-fixer-$v" "$d/v$v"
   cp -R "$ROOT/.agents" "$ROOT/install.sh" "$pk/pr-reviewer-fixer-$v/"
   echo "$v" >"$pk/pr-reviewer-fixer-$v/VERSION"
-  for s in pr-reviewer pr-fixer; do
+  for s in pr-reviewer pr-fixer pr-merge-fixer; do
     sed -E "s/version: \"[0-9.]+\"/version: \"$v\"/" "$pk/pr-reviewer-fixer-$v/.agents/skills/$s/SKILL.md" >"$pk/x" \
       && mv "$pk/x" "$pk/pr-reviewer-fixer-$v/.agents/skills/$s/SKILL.md"
   done
@@ -186,7 +186,7 @@ FP="$W/frel/v$NEW"
   && cat >"z/pr-reviewer-fixer-$NEW/install.sh" <<'STUB'
 #!/usr/bin/env bash
 d="$(cd "$(dirname "$0")" && pwd)"; args=()
-for a in "$@"; do [ "$a" = both ] && a=pr-reviewer; args+=("$a"); done
+for a in "$@"; do case "$a" in both|*,*) a=pr-reviewer ;; esac; args+=("$a"); done
 bash "$d/install-real.sh" "${args[@]}" || exit 1
 echo "install: simulated failure while replacing pr-fixer" >&2
 exit 1

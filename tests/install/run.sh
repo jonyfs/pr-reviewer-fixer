@@ -85,7 +85,7 @@ done
 mkdir -p "$W/sc/skills" "$W/proj2/.claude"; cp -R "$SRC/pr-reviewer" "$SRC/pr-fixer" "$W/sc/skills/"
 SC_TPL="$(cksum <"$W/sc/skills/pr-reviewer/templates/review-gate.yml")"
 ln -s "$W/sc/skills" "$W/proj2/.claude/skills"
-r=$( (cd "$W/proj2" && HOME="$W/home" bash "$IN" --harness claude-code --source "$W/sc/skills" --yes) >"$W/out" 2>&1; echo $?)
+r=$( (cd "$W/proj2" && HOME="$W/home" bash "$IN" --harness claude-code --source "$W/sc/skills" --skill both --yes) >"$W/out" 2>&1; echo $?)
 check "destination root linked to the source -> refused as the same folder, source untouched" \
   eval '[ $r = 1 ] && grep -q "same folder" "$W/out" && [ "$(cksum <"$W/sc/skills/pr-reviewer/templates/review-gate.yml")" = "$SC_TPL" ]'
 mkdir -p "$W/sl"; ln -s "$W/sc/skills/pr-reviewer" "$W/sl/pr-reviewer"
@@ -171,7 +171,7 @@ if [ "$CI_FS" = 1 ]; then
   check "clone stored as skills/Pr-Reviewer -> refused, clone unchanged" \
     eval '[ $r = 1 ] && grep -q "inside the destination skill folder" "$W/out" && [ "$(tree_sum "$W/c2b/.claude/skills/Pr-Reviewer")" = "$C2B_SUM" ] && [ "$(ls -A "$W/c2b/.claude/skills")" = Pr-Reviewer ]'
   mkdir -p "$W/c2c/skills"; cp -R "$SRC/pr-reviewer" "$SRC/pr-fixer" "$W/c2c/skills/"; C2C_SUM="$(tree_sum "$W/c2c")"
-  r=$(ins --source "$W/c2c/SKILLS" --target "$W/c2c/skills" --yes)
+  r=$(ins --source "$W/c2c/SKILLS" --target "$W/c2c/skills" --skill both --yes)
   check "--source and --target one folder in two letter cases -> refused as the same folder" \
     eval '[ $r = 1 ] && grep -q "same folder" "$W/out" && [ "$(tree_sum "$W/c2c")" = "$C2C_SUM" ]'
   mkdir -p "$W/c2d"; cp -R "$SRC/pr-reviewer" "$SRC/pr-fixer" "$W/c2d/"; C2D_SUM="$(tree_sum "$W/c2d")"
@@ -335,6 +335,14 @@ fi
 SOI="$(awk '/^same_or_inside\(\)/,/^}/' "$IN")"
 r=$(perl -e 'alarm shift; exec @ARGV' 3 bash -c "$SOI"'; same_or_inside rel/path /; echo "rc=$?"' 2>&1); rc=$?
 check "same_or_inside on a relative path -> returns false at once" eval '[ $rc = 0 ] && [ "$r" = "rc=1" ]'
+
+# Skill selection (0.20.0): the default is all three skills; a comma list picks any of them; a name
+# given twice or an unknown name is refused before anything is written.
+r=$(ins --target "$W/sel-all" --yes); check "default installs all three skills" eval '[ $r = 0 ] && [ -f "$W/sel-all/pr-reviewer/SKILL.md" ] && [ -f "$W/sel-all/pr-fixer/SKILL.md" ] && [ -f "$W/sel-all/pr-merge-fixer/SKILL.md" ]'
+r=$(ins --target "$W/sel-list" --skill pr-reviewer,pr-merge-fixer --yes); check "comma list installs exactly the named skills" eval '[ $r = 0 ] && [ -f "$W/sel-list/pr-merge-fixer/SKILL.md" ] && [ ! -e "$W/sel-list/pr-fixer" ]'
+r=$(ins --target "$W/sel-both" --skill both --yes); check "both keeps the 0.19 pair, without the merge fixer" eval '[ $r = 0 ] && [ -f "$W/sel-both/pr-fixer/SKILL.md" ] && [ ! -e "$W/sel-both/pr-merge-fixer" ]'
+r=$(ins --target "$W/sel-bad" --skill pr-reviewer,nope); check "unknown name in the list -> refused, nothing written" eval '[ $r = 1 ] && grep -q "got .nope." "$W/out" && [ ! -e "$W/sel-bad" ]'
+r=$(ins --target "$W/sel-dup" --skill pr-fixer,pr-fixer); check "a name given twice -> refused, nothing written" eval '[ $r = 1 ] && grep -q "twice" "$W/out" && [ ! -e "$W/sel-dup" ]'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

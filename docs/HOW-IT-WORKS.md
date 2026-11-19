@@ -1,6 +1,6 @@
 # How pr-reviewer and pr-fixer work
 
-This page explains what the two skills do, in order, with the reasons behind each rule. The
+This page explains what the three skills do, in order, with the reasons behind each rule. The
 [README](../README.md) covers installation and the quick tour. This page covers how the skills behave once
 they are installed.
 
@@ -8,8 +8,24 @@ they are installed.
 
 `pr-reviewer` reads a pull request and says whether anything in it should stop the merge. `pr-fixer`
 takes what the reviewer found, proves each problem is real, fixes it, and hands the pull request
-back. A third role, the review loop agent, is the coding agent you are already talking to. It starts
-the other two and keeps count.
+back. `pr-merge-fixer` (0.20.0) runs first when the branch conflicts with its base, so the review reads
+a branch that can merge. A fourth role, the review loop agent, is the coding agent you are already
+talking to. It starts the other three and keeps count.
+
+### Conflicts with the base, handled before the review
+
+When a pull request conflicts, `pr-merge-fixer` merges the base into the branch (never a force push,
+never a rebase). It classifies each conflicted file and gives each one a sub-agent at the tier its
+class needs: a lockfile is regenerated with no model, a rename or a disjoint textual overlap goes to
+the fast tier, a semantic overlap goes to the deep tier, and a sensitive file (authentication,
+secrets, CI, the skills themselves) is never resolved by the agent. If the code and both intents do
+not decide a conflict, the skill stops, leaves the branch untouched, and names the one decision a
+person must make.
+
+After any push of a merge, the reviewer runs again on the new head and reads the whole diff. The
+merge closure comment lists the hunks the reviewer should read first. The rules are in
+[`pr-merge-fixer/SKILL.md`](../.agents/skills/pr-merge-fixer/SKILL.md) and
+[`orchestration.md`](../.agents/skills/pr-merge-fixer/references/orchestration.md).
 
 Three rules shape everything:
 

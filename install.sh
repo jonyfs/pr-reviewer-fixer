@@ -2,13 +2,17 @@
 #
 # install.sh: copy pr-reviewer and pr-fixer into the folder a harness reads skills from.
 #
-# Usage: install.sh --harness <name> [--scope project|user] [--skill pr-reviewer|pr-fixer|both]
+# Usage: install.sh --harness <name> [--scope project|user] [--skill <list>]
 #                   [--target <dir>] [--source <dir>] [--yes]
+#
+# --skill    all (default: the three skills), both (pr-reviewer and pr-fixer, the 0.19 set), or a
+#            comma-separated list of pr-reviewer, pr-fixer and pr-merge-fixer, such as
+#            pr-reviewer,pr-merge-fixer.
 #
 # Without --yes it only prints what it would do and changes nothing. With --yes it replaces each
 # installed skill folder: the new copy is made next to the old one and swapped in, so a failed copy
 # leaves that skill's old install in place and a file the new release dropped does not stay behind.
-# With --skill both the swap is per skill. Only the two folders named pr-reviewer and pr-fixer are
+# With several skills the swap is per skill. Only the folders named pr-reviewer, pr-fixer and pr-merge-fixer are
 # ever replaced, and only inside the skills directory it resolved.
 #
 # --harness  claude-code | codex | copilot | gemini | cursor | opencode | amp | roo | cline |
@@ -62,7 +66,7 @@ set -uo pipefail
 
 die() { echo "install: $*" >&2; exit 1; }
 
-HARNESS="" SCOPE=project SKILL=both TARGET="" SOURCE="" YES=0
+HARNESS="" SCOPE=project SKILL=all TARGET="" SOURCE="" YES=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --harness|--scope|--skill|--target|--source)
@@ -81,7 +85,22 @@ while [ $# -gt 0 ]; do
 done
 
 case "$SCOPE" in project|user) ;; *) die "--scope must be project or user" ;; esac
-case "$SKILL" in pr-reviewer|pr-fixer|both) ;; *) die "--skill must be pr-reviewer, pr-fixer or both" ;; esac
+# Expands --skill into the list of skill folders, one name per entry. Each name is checked.
+expand_skills() {
+  local v="$1" tok out=()
+  case "$v" in all) v="pr-reviewer,pr-fixer,pr-merge-fixer" ;; both) v="pr-reviewer,pr-fixer" ;; esac
+  IFS=, read -r -a parts <<<"$v"
+  for tok in "${parts[@]}"; do
+    case "$tok" in
+      pr-reviewer|pr-fixer|pr-merge-fixer) ;;
+      *) die "--skill must be all, both, or a list of pr-reviewer, pr-fixer and pr-merge-fixer (got '$tok')" ;;
+    esac
+    case " ${out[*]:-} " in *" $tok "*) die "--skill names '$tok' twice" ;; esac
+    out+=("$tok")
+  done
+  SKILLS=("${out[@]}")
+}
+SKILLS=(); expand_skills "$SKILL"
 
 # project path | user path, per harness. Dated 2026-10-14 in README.md; confirm against vendor docs.
 paths_for() {
@@ -216,7 +235,6 @@ SRC_P="$(physical "$SOURCE")" || die "cannot resolve the source $SOURCE to a phy
 SOURCE="$SRC_P"
 DEST_P="$(physical "$DEST_ROOT")" || die "cannot resolve the destination $DEST_ROOT to a physical path (a '..' after a folder that does not exist, a file in the way, or a folder it cannot enter)"
 [ "$DEST_P" != "/" ] || die "refusing an empty or root destination"
-SKILLS=(); case "$SKILL" in both) SKILLS=(pr-reviewer pr-fixer) ;; *) SKILLS=("$SKILL") ;; esac
 for s in "${SKILLS[@]}"; do
   [ -f "$SRC_P/$s/SKILL.md" ] || die "$SOURCE/$s/SKILL.md not found; --source must hold the skill folders"
   # `cp -R` copies a link as a link, at any depth, so the install would point into the source and
@@ -249,7 +267,7 @@ done
 # folder.
 for s in "${SKILLS[@]}"; do
   dest="$DEST_P/$s"
-  case "$dest" in */pr-reviewer|*/pr-fixer) ;; *) die "refusing to replace '$dest'" ;; esac
+  case "$dest" in */pr-reviewer|*/pr-fixer|*/pr-merge-fixer) ;; *) die "refusing to replace '$dest'" ;; esac
   if [ -L "$dest" ]; then die "$DEST_ROOT/$s is a symbolic link; remove it yourself first"; fi
   [ -e "$dest" ] || continue
   looks_like_install "$dest" "$s" || die "$DEST_ROOT/$s $WHY, so it is never replaced; ${HINT:-move it away yourself first (and clone outside the skills folder)}"

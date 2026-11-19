@@ -1,0 +1,2377 @@
+#!/usr/bin/env bash
+#
+# review-cycle.sh: the mechanical half of the adversarial review cycle.
+#
+# WHY IT EXISTS. The cycle requires a reviewer, a fixer and a second pass, and a pull request can
+# still reach merge with no review marker at its head. Nothing was misconfigured in the reviewer:
+# there was simply no TRIGGER. A skill that scores the user's prompt only suggests; a CI check
+# that validates the FORM of the label lets `review:pending` pass forever, so a never-reviewed
+# pull request stays green in the one place anybody looks. The cycle had a rule, a skill and a
+# check, and no clock.
+#
+# WHAT THIS SCRIPT IS, AND IS NOT. It does not review anything and it has no opinion about a diff.
+# It answers one question, has THIS head been reviewed, and it performs the two writes the answer
+# implies. The judgement stays in `/pr-reviewer`; the corrections stay in `/pr-fixer`. This is
+# the part that must never be done from memory, because remembering is what failed.
+#
+# THE ANTI-FABRICATION PROPERTY, MOVED FROM POLICY INTO MECHANISM. An earlier version kept the
+# marker honest by refusing to be invoked by a model at all. That makes fabrication awkward, not
+# impossible, and it also makes the cycle unable to finish without a person, which is the thing
+# being fixed here. So the property is now enforced where it can actually be checked: `publish`
+# re-reads the head from GitHub at the moment it writes, and REFUSES when the caller's `--sha` is not
+# that head. A marker can only ever name a commit that was really at the head when the review ran.
+# It still cannot tell a truthful report from an invented one (nothing can) but it can guarantee
+# that a pass is bound to a specific commit and evaporates the moment anyone pushes over it.
+#
+# THE MARKER, AND WHY IT CARRIES ARITHMETIC NOW. At first the marker said only which head was
+# read, what the verdict was, and which pass it came from:
+#
+#     <!-- adversarial-review: sha=<40hex> verdict=PASSED|BLOCKED pass=<n> -->
+#
+# It now also says what the reviewer counted:
+#
+#     <!-- adversarial-review: sha=<40hex> verdict=PASSED pass=2 critical=0 warning=3 note=7 -->
+#
+# The reason is a measured impasse. On a prior review cycle, many passes over several pull
+# requests produced dozens of findings and zero approvals; none of them was CRITICAL by the
+# reviewer's own severity table, because the changes touched nothing the project declares
+# non-negotiable, and every verdict came back BLOCKED. The skill said `BLOCK = 1+ CRITICAL`; the
+# practice said `BLOCK = 1+ finding`; and there was nothing mechanical between the two sentences,
+# so the looser one won every time. Writing the counts into the marker is what puts the two in the
+# same place, where they can be compared: `publish` refuses a BLOCKED that counts no CRITICAL, and
+# refuses a PASSED that counts one.
+#
+# `verdict=PASSED` therefore means **nothing blocks**, never "perfect". That is Google's "favour
+# approving once the change definitely improves overall code health, even if it is not perfect", and
+# the warnings and notes beside it are declared debt rather than an unlisted objection.
+#
+# BOTH FORMS ARE READ, and this is not a courtesy. Every marker published before the counts existed
+# has three fields. A reader that only understands six declares those markers ABSENT, and in this
+# cycle absence reads as *not reviewed*, so the fix for a stuck cycle would have started by
+# invalidating every review it had already done. The three counts are one optional group,
+# all-or-nothing: `critical=` without its two siblings is not a marker carrying partial
+# information, it is not a marker.
+#
+# SUBCOMMANDS:
+#
+#     status [pr]          what the cycle owes, and the next command (exit codes below)
+#     debt [pr]            the same answer as an exit code only, for hooks and CI
+#     start [pr]           review:running, and review:needs-human withdrawn. Refused when
+#                          REVIEW_MARKER_AUTHORS names no login, on a halted pull request whose
+#                          BLOCKED verdict is still at the head, and while a trusted comment
+#                          stands edited or deleted by another login
+#     fix [pr]             review:fixing, and review:needs-human withdrawn. Refused first when the
+#                          pull request is from a fork or any author is not a collaborator with
+#                          write access (FIXER_TRUSTED_LOGINS names bots allowed without a lookup;
+#                          `app/<name>` and `<name>[bot]` are one bot, either form matches both)
+#     halt [pr] [--reason R]
+#                          review:needs-human added to a review:blocked pull request: the loop
+#                          paused or stopped and a person has to decide. With --reason, also posts
+#                          the `state=halted` extension marker.
+#     budget [pr]          the cycle budget read from the trusted markers: what the loop does
+#                          next (fix, ask, ceiling or none) as B_<KEY>='<value>' lines. With
+#                          REVIEW_MARKER_AUTHORS unset it answers none and trusts nothing.
+#     extend [pr] --n <n>  records that a person granted n more cycles (`state=granted` marker)
+#                          and withdraws review:needs-human
+#     export-audit [pr] [--out <dir>]
+#                          writes <dir>/<pr>-<pass>.json (default docs/compliance-records) from
+#                          the trusted marker and the PR timeline; refuses when the head moved,
+#                          and when <dir> resolves (symbolic links followed) outside the
+#                          repository top level
+#     stale [pr]           a marker-backed state whose head moved goes back to review:pending.
+#                          Refuses (exit 2) when REVIEW_MARKER_AUTHORS names no login.
+#     marker [file] [--author <login>]
+#                          reads one marker from a file or stdin
+#     REVIEW_BLOCK_AT=critical|warning (default critical) decides which findings block: `publish`
+#     refuses a PASSED that counts a blocking finding and a BLOCKED that counts none, `budget` tracks
+#     blocking findings per pass, and `status`, `budget` and the gate refuse any other value.
+#     Under `warning`, `publish` also writes `block_at=warning` into the marker, and while that
+#     marker is at the head a reader whose own setting differs (`status`, `budget`, the gate)
+#     answers inconclusive instead of judging it.
+#     publish [pr] --verdict PASSED|BLOCKED --pass <n> --sha <40hex> --report <file>
+#             --critical <n> --warning <n> --note <n> [--model <id> --tier fast|standard|deep]
+#                          posts the marker comment, then moves the label. `--pass` must be one
+#                          more than the highest trusted `pass=` (budget's B_NEXT_PASS). On PASSED, a draft
+#                          pull request is marked ready for review (`gh pr ready`). Refuses a
+#                          report that holds a token or private key (never printed), and a gh
+#                          login that is not on REVIEW_MARKER_AUTHORS. It does not rewrite the
+#                          report: write a login as `@login` in backticks so it notifies nobody.
+#     lint-report [pr] --report <file> [--diff <file>] [--files <file> | --base <sha> --head <sha>]
+#                          checks that every finding names a file and a line the diff shows, and
+#                          that the `counts:` line matches the open entries, and that the coverage note says what was
+#                          declined, and fails a report that holds a token or private key. When
+#                          path-floor.sh (beside this script) finds mandatory units in the changed
+#                          paths, the `findings` block's `mandatory_units` field must list each with
+#                          `status: run`, `effort: max` where the floor says max. The floor comes
+#                          from a structured file list only: the PR's API file list with a number,
+#                          else --files (NUL-separated) or --base/--head; --diff alone is exit 2.
+#                          The anchors read `gh pr diff --color=never`, or --diff. Run before
+#                          publish; posts nothing. Exit 1 on a problem, 2 when it could not read an
+#                          input or compute the floor.
+#     findings-block --report <file>
+#                          prints the report's `findings` block as JSON: the one reader lint-report
+#                          and push-guard.sh share. The block is the last thing in the report, from
+#                          the one line that is exactly ```findings to a last non-blank line that is
+#                          exactly ```. Exit 1 when the report has no such block, 2 when unreadable.
+#     screen --file <file> runs the secret screen `publish` and `lint-report` use over any text an
+#                          agent is about to post (closure comment, `pr-debt` body, overflow
+#                          comment). Exit 0 clean, 1 when it holds a token, a private key or a
+#                          password assignment (the kind is named, never the value), 2 when the
+#                          file cannot be read, the screen itself fails, or the usage is wrong
+#                          (1 always means a hit). Posts nothing.
+#     screen --staged      the same screen over the added lines of `git diff --cached` (the fixer
+#                          runs it before each commit); prints `path:line kind` per hit
+#     screen --patch <file>
+#                          the same over the added lines of a unified diff (push-guard.sh hands it
+#                          the commits it is about to push)
+#     screen --diff <base> <head>
+#                          the same over the added lines of `git diff <base>...<head>` (the loop
+#                          runs it on the pull request before dispatching the reviewer)
+#     ensure-labels        creates or updates the six review:* labels in the current repository
+#                          (gh resolves the repository from the working directory or GH_REPO)
+#
+# ENVIRONMENT:
+#
+#     REVIEW_MARKER_AUTHORS   Required comma-separated allowlist of GitHub logins, as `gh pr view
+#                             --json comments` prints them in `author.login`. Set it to the
+#                             login the harness session publishes as (`gh api user --jq .login`).
+#                             An entry counts only if, with ASCII spaces, tabs, CR and LF trimmed,
+#                             it is ASCII letters, digits, hyphens and underscores, starting with a letter or digit; anything else (a BOM, a
+#                             no-break space) drops the entry whole. When this variable holds
+#                             anything other than ASCII whitespace, a comment supplies a marker
+#                             only if its author is a kept entry (compared case-insensitively),
+#                             in every reader: `parse()` here, `marker --author`, and
+#                             gate-pr-review-state.py. Without it, anyone who can comment on the
+#                             pull request can post an invisible PASSED marker, because the marker
+#                             is an HTML comment and every comment is scanned. The list must name
+#                             at least one login: unset, empty, whitespace, a lone comma and only
+#                             invisible characters all make `status`, `stale`, `start`, `publish`,
+#                             `budget`, `extend`, `halt`, `export-audit` refuse. `publish`, `extend` and
+#                             `halt --reason` also refuse when `gh api user` is not on the list
+#                             or cannot be resolved; `halt` without `--reason` posts nothing and
+#                             does not check it.
+#                             Only the bare `marker` subcommand still reads with the list unset.
+#                             A comment edited after it was created is never read as a verdict
+#                             (pr-json.py); its `pass=` still counts toward the highest pass. A
+#                             comment by a trusted login edited or deleted by another login
+#                             (whether or not it still reads as a marker) stops `publish` and
+#                             `start` (refused), `budget` (none) and `status` (exit 2); `stale`
+#                             does not check it.
+#     MAX_REVIEW_CYCLES       Automatic review-fix-review cycles before the loop asks a person.
+#                             Default 5. Read by `budget` and `extend`.
+#     MAX_REVIEW_CYCLES_HARD  Absolute ceiling no answer passes. Default 10, clamped to 1..10.
+#     REVIEW_GATE_TIMEOUT_S   Seconds the gate has to answer inside `status` on a merged pull
+#                             request. Default 15; see the comment above `GATE_TIMEOUT_S`.
+#
+# Exit codes: 0 = nothing owed · 1 = review owed · 2 = anything that is not either of those, and it
+# is never the same as approved.
+#
+# **The 2 of `cmd_status` carries eight meanings, and saying so is what keeps it harmless.** The
+# subject is the FUNCTION and not the file, and the difference is not pedantry: the count a test
+# checks against this sentence is `return 2` inside `cmd_status`, while the file also exits 2 in
+# several places outside it, counted by their own sentence further down, which is where they belong.
+# A sentence whose subject is wider than what it counts reads as a total and is not one.
+#
+# The gate this function calls was split precisely because one integer meant two things; the same
+# conflation lives on here, one layer up. Addressed by NAME, because the previous version of this
+# paragraph addressed them by line number and every one of the four had rotted by the next commit,
+# one of them landing in a node one-liner inside `parse()`. `cmd_status` returns 2 for:
+#
+#   · no pull request for this branch, or `gh` offline: the `[ -n "$json" ]` guard at its top;
+#   · the gate not being READABLE, not COMPILING, not proving it decided (the `--emit-token`
+#     comparison), not RETURNING AT ALL within `GATE_TIMEOUT_S`, and the gate having PROVED it
+#     decided while answering a code that is not a reading: the `*)` arm of the `case`.
+#     That is five sentences that all end in "only that nobody looked";
+#   · the gate having READ a MERGED pull request and recorded that it carries no valid
+#     `review:passed`: the sentence ending in "this is recorded, not owed";
+#   · an OPEN pull request read in full, where a trusted comment was edited or deleted by another
+#     login (`MARKER_FOREIGN_EDIT`): read, not blind, and a person has to decide.
+#
+# **The `*)` arm was missing from this list at first, and it is the one that is different.**
+# The other four blind sentences never get a decision out of the gate, and they split in two: the
+# unreadable gate and the gate that does not compile never ran at all, while the gate killed by
+# `GATE_TIMEOUT_S` and the gate that exited with no matching `--emit-token` line DID run and left
+# nothing behind to read. Calling all of them "never ran" was wrong about the timeout in
+# particular, which is a gate that ran and was killed mid-answer. The `*)` arm is a third thing
+# again: the gate ran, PROVED it ran, and what it decided was that it could not read a label:
+# precisely the distinction the `--emit-token` contract exists to make, absent from the paragraph
+# whose whole job is to declare the distinctions.
+#
+# It was found by counting, and BOTH numbers of this paragraph count the same thing: the lines of
+# `cmd_status` ending in `only that nobody looked`: the first counting all of them, the second that
+# same count minus the `*)` arm it sets apart. Counting anything else (cases in a suite, items in a
+# list) gave a different number every time, which is how this paragraph once said `five` in one
+# sentence and `three` two lines below it, about the same set of branches. Whoever edits either
+# sentence counts those lines again.
+#
+# Four more 2s live outside `cmd_status` and belong in the same list: the `command -v gh` check
+# at the top of the file exits 2 when `gh` is not installed, `parse()` exits 2 when the payload
+# holds no readable pull request number (so every subcommand that parses, `stale` included, ends
+# there on an unreadable payload), `cmd_stale` returns 2 when there is no pull request to read
+# or when REVIEW_MARKER_AUTHORS names no login, and `cmd_ensure_labels` returns 2 when `gh` could
+# not create a label (offline, no token, no permission). None of them is a decision about a review either.
+#
+# Today nothing branches on the difference: the callers speak only at rc=1 and treat every
+# 2 as silence, so the conflation is inert. It stays inert by being declared, not by luck: the
+# next caller that wants to tell "nobody looked" from "read and recorded" has to split this the way
+# the gate was split, and this comment is what tells them the split has not happened yet.
+set -uo pipefail
+
+PATH="${PATH:+$PATH:}/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+export PATH
+
+# **A declared copy of `run_with_timeout`, and the reason for not sourcing a shared helper is
+# measured, not aesthetic.** This file is COPIED alone into a temporary directory by its own
+# suite (that is how the cases swap the gate for a stub without touching the repository), and
+# no sibling helper directory exists there. A time limit that only exists when the whole tree is
+# mounted is a limit that is missing exactly where the test exercises it: sourcing a helper from
+# outside this directory leaves the limit missing in every case run from a temporary directory.
+#
+# The duplication becomes a drift risk, so the drift should be MEASURED: run every copy of the
+# wall against the same child that hangs, in both branches, and require the same 124 **and** the
+# same silence in `ps` from all four passes, because 124 alone does not tell killing the child
+# from leaving it orphaned, which was a defect every copy once carried together.
+#
+# The body follows the usual pattern, and so does its reason: stock macOS ships neither `timeout`
+# nor `gtimeout` (both are coreutils, not base utilities), and falling back to "no limit at all"
+# when they are missing means having no limit on exactly the machine that needs one most.
+#
+# **The two declared limitations of this wall, each measured, apply here**: a child that calls
+# `setsid()` leaves the group and survives the group `kill`, **only on the pure-bash fallback**,
+# and not because killing by group is inherently like that: GNU `timeout` signals the monitored
+# pid IN ADDITION to the group, so it has no such hole; what this wall monitors is the subshell
+# wrapping the command, never the command, and that layer is the difference. And the `timeout`
+# branch does not escalate to `KILL`, so it hangs forever on a child that ignores `TERM`. No
+# command this file passes to the wall does either.
+run_with_timeout() {
+  local secs="$1"; shift
+  # `</dev/null` ON EVERY BRANCH, and it is a contract, not a tidy-up: the child NEVER reads the
+  # caller's stdin. Hooks that call this script are handed a JSON payload on stdin by the
+  # harness, and a child that consumes that payload leaves the hook nothing to read, with no way
+  # to tell theft from an empty stdin. A test should pipe a payload through the wall in both
+  # branches and require the child to print none of it.
+  if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@" </dev/null; return $?
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@" </dev/null; return $?
+  fi
+  local out; out="$(mktemp 2>/dev/null)" || { "$@" </dev/null; return $?; }
+  # `set -m` makes the background subshell a PROCESS GROUP LEADER, and that is the whole reason it
+  # is here. Without it `$!` names the SUBSHELL and the command the subshell launched is a
+  # grandchild: `kill "$pid"` reaped the subshell, returned 124, and left the command running,
+  # reparented to init. A limit that reports and does not limit, on exactly the stock machine this
+  # fallback was written for.
+  #
+  # WHAT `set -m` DOES NOT CONTAIN, and the `set +m` below cannot undo. Two effects land at the FORK,
+  # not at the option, so restoring the caller's job control afterwards restores nothing about them:
+  #
+  #   1. Without job control bash points an asynchronous command's stdin at `/dev/null` on its own.
+  #      With job control on at the fork it does not, and the child inherits the caller's stdin.
+  #      That is why the `</dev/null` above is written out here instead of being left to bash.
+  #   2. The child is in a BACKGROUND process group. A child that then tries to read a terminal takes
+  #      `SIGTTIN` and STOPS, and `kill -0` answers yes for a stopped process, so the poll below
+  #      would wait out the whole budget instead of answering when the command did. `</dev/null`
+  #      closes this one too: there is no terminal left to read.
+  #
+  # The option itself is restored to whatever the caller had, never left on.
+  local jobcontrol=0; case "$-" in *m*) jobcontrol=1 ;; esac
+  set -m
+  ( "$@" </dev/null >"$out" 2>&1; echo $? >"$out.rc" ) &
+  local pid=$!
+  [ "$jobcontrol" = 1 ] || set +m
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$waited" -ge "$secs" ]; then
+      # The GROUP first, `-$pid`, so the grandchild goes with the subshell. The plain `$pid` is
+      # the fallback for a shell that refused job control: killing only the subshell is worse than
+      # the group and better than nothing, and it is what this line did before.
+      #
+      # THE GUARANTEE IS `set -m` **AND** `-$pid`, CONJOINTLY, never either one on its own. Read as
+      # "`set -m` is what carries it", this `-$pid` looks like decoration a future editor may drop.
+      # Measured with `set -m` in place and both lines aiming at the bare `$pid`:
+      #
+      #     $ perl -i -pe 's{kill -(TERM|KILL) -"\$pid" .* \|\| kill -\1 "\$pid" .*}{kill -$1 "\$pid"}'
+      #     the child launched by the wall survives (a surviving pid is reported)
+      #
+      # The orphan is back with the option still on. `set -m` is necessary and not sufficient: it
+      # only makes a group exist, and `-$pid` is what aims at it.
+      #
+      # WHAT A TEST SUITE KILLS, SAID WITHOUT AMBIGUITY. Mutating the two `kill` lines one at a
+      # time, only the `KILL` line is individually necessary. Run one mutation per run of the whole
+      # suite, in every copy of the wall, and write down the VERDICT of each, never how many cases
+      # moved. A kill ratio is only checkable by running the mutation in the tree you are standing
+      # in, so the number is the reader's to obtain and the command above is what does not rot:
+      #
+      #     mutation                               result
+      #     both lines aimed at the bare `$pid`    red
+      #     only the `KILL` line at `$pid`         red
+      #     only the `TERM` line at `$pid`         green
+      #     `set -m` deleted                       red
+      #
+      # The two mutations a suite kills separately are the `perl` above and the deletion of
+      # `set -m`, which is the conjunction this paragraph is about. The `TERM` line aimed at the
+      # bare `$pid` survives, and that survival is a declared gap in the measurement.
+      kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
+      sleep 1
+      kill -KILL -"$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null
+      wait "$pid" 2>/dev/null
+      cat "$out" 2>/dev/null; rm -f "$out" "$out.rc"
+      return 124
+    fi
+    sleep 1; waited=$((waited+1))
+  done
+  wait "$pid" 2>/dev/null
+  local rc=0; [ -f "$out.rc" ] && rc="$(cat "$out.rc")"
+  cat "$out" 2>/dev/null; rm -f "$out" "$out.rc"
+  return "$rc"
+}
+
+# How long the gate has to answer. Configurable because the suite needs a short budget, and
+# fixed at 15 in real use: less than the 25 with which a caller may wrap this whole call,
+# so the inner limit fires before the outer one and the sentence says WHICH gate hung.
+#
+# **THERE IS A THIRD LIMIT, it is the LARGEST of the three, and it sits INSIDE what this one kills.** The gate
+# calls `gh` with `subprocess.run(..., timeout=60)`. The 15 was justified only against the outer 25;
+# nobody had compared it with the inner 60. The order that results is 15 < 25 < 60, and the consequence
+# is that the gate's `timeout=60` is DEAD on this path: a hung `gh` makes this `timeout`
+# kill the gate at 15s, and what describes the event is the sentence here, "the gate did not return
+# within 15s", never the gate's own sentence about `gh`. That is the desired behavior (the outer sentence
+# names the gate, which is what the reader needs to know), and it remains declared debt: the 60 is
+# unreachable for this caller and reachable for any other that invokes the gate directly.
+#
+# **And 15 is not tight.** Measured with the real gate against a real pull request:
+#
+#     $ for i in 1 2 3; do /usr/bin/time -p python3 gate-pr-review-state.py <pr>; done
+#     real 1.21 · real 1.29 · real 1.21
+#
+# That is ~12× of headroom against the 15. A `gh` that takes longer than that is not slow, it is hung,
+# which is exactly the case the limit exists for.
+GATE_TIMEOUT_S="${REVIEW_GATE_TIMEOUT_S:-15}"
+
+# **The five states, declared once and read from here.** At first this line had no caller at
+# all: `parse()` carried its own copy of the same alternation inside a JavaScript literal, so the
+# "declaration" was a comment that happened to be a variable, and the two lists agreed only until
+# somebody edited one. `parse()` now builds its filter from THIS string, which is what makes adding
+# a state a one-line change instead of a two-place ritual with a silent failure mode: a state
+# missing from the copy is not read as unknown, it is read as ABSENCE, and absence in this cycle
+# means *not reviewed*.
+#
+# The order is the cycle read left to right (pending, running, fixing, blocked, passed) and it
+# is an order of READING, never of precedence: exactly one of them holds at a time, and two at once is
+# refused by the CI check rather than resolved by rank.
+STATES_RE='review:(pending|running|fixing|blocked|passed)'
+# The shell reader. It had no caller at first, a third reader of the marker format that read
+# nothing, which is why no test could ever see it drift from the other two. `marker` is its
+# caller now, and a test can drive both forms through it.
+# Whitespace inside a marker is the six ASCII characters space, tab, LF, CR, FF and VT, spelled out,
+# in every reader: here, the node regex in `parse()` and the Python readers (whose `\s` under
+# re.ASCII is the same six). `[[:space:]]` and an unflagged `\s` take a no-break space or an
+# ideographic space in some locales and engines and not in others, and a marker one reader accepts
+# and another refuses is how `status` and the gate came to disagree.
+MARKER_WS=$' \t\n\r\f\v'
+MARKER_RE="<!--[$MARKER_WS]*adversarial-review:[$MARKER_WS]*sha=([0-9a-f]{7,40})[$MARKER_WS]+verdict=(PASSED|BLOCKED)[$MARKER_WS]+pass=([0-9]+)([$MARKER_WS]+critical=([0-9]+)[$MARKER_WS]+warning=([0-9]+)[$MARKER_WS]+note=([0-9]+))?([$MARKER_WS]+model=([A-Za-z0-9._:-]+)[$MARKER_WS]+tier=(fast|standard|deep))?([$MARKER_WS]+block_at=(critical|warning))?[$MARKER_WS]*-->"
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+# **Digits AND a magnitude the shell can compare, because "digits" was never the property.**
+# `[ 99999999999999999999 -gt 0 ]` is not false: it is an ERROR, status 2, and under `set -uo
+# pipefail` without `-e` the `&&` chain around it short-circuits past `die`. A twenty-digit
+# `--critical` therefore walked through the guard that keeps a CRITICAL out of a PASSED and got
+# published, exit 0, with the error printed to a stderr nobody reads, and `debt` discards stderr
+# entirely. This is the same class already fixed for `--pass`; the counts arrived afterwards without
+# the lesson, which is what a rule written in one place and not the other looks like.
+#
+# Nine digits is past any count a review can produce and inside every 64-bit shell, so the bound
+# refuses only values that were going to break the comparison anyway.
+numero() {
+  case "$2" in ''|*[!0-9]*) die "review-cycle: $1 must be digits (^[0-9]+\$), got '$2'" ;; esac
+  [ "${#2}" -le 9 ] || die "review-cycle: $1 has ${#2} digits, and a number this large is not compared, it is an ERROR the guards short-circuit past — got '$2'"
+}
+
+# "More than zero" decided by SHAPE, never by numeric comparison, because the readers take whatever a
+# marker carries, including one posted by hand or by an older script, which `numero` never saw. A
+# count is positive when it is digits and not all zeros. This is what stopped `status` from printing
+# "Nothing owed." at exit 0 over the very marker the CI check refuses by name.
+positivo() { case "${1:-}" in ''|-|*[!0-9]*) return 1 ;; *[!0]*) return 0 ;; *) return 1 ;; esac; }
+
+# The marker author allowlist, the shell half. One rule, applied the same way by the node reader in
+# `parse()`, the Python readers below and gate-pr-review-state.py: split on commas, trim ASCII
+# spaces, tabs, CR and LF from each entry, and keep the entry only if what is left is a GitHub login
+# (ASCII letters, digits, hyphens and underscores, starting with a letter or digit, nothing else). An entry with any other character, a BOM, a
+# no-break space or a zero-width space included, is dropped whole and never repaired, because
+# "whitespace" means something different in every language and locale and an invisible character
+# once made a list that names nobody look like a list. The compare ignores case.
+# `marker_authors` prints the kept logins, lowercased and comma-joined, and nothing when none is kept.
+marker_authors() {
+  printf '%s' "${REVIEW_MARKER_AUTHORS:-}" | LC_ALL=C awk 'BEGIN { RS = ","; n = 0 } {
+    gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "")
+    if ($0 ~ /^[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz][0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-]*$/) {
+      printf "%s%s", (n++ ? "," : ""), tolower($0) } }'
+}
+# ACTIVE means the variable holds anything at all other than ASCII whitespace. An active list that
+# keeps no login trusts nobody.
+marker_authors_active() { case "${REVIEW_MARKER_AUTHORS:-}" in *[!\ $'\t\r\n']*) return 0 ;; *) return 1 ;; esac; }
+# READY is stricter than active: at least one login must be kept. Unset, empty, whitespace, a lone
+# comma and a list of invisible characters are all not ready, and every command that decides from
+# markers (`status`, `stale`, `start`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuses to guess then.
+marker_authors_ready() { [ -n "$(marker_authors)" ]; }
+NOT_READY_MSG='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. Set it to the login the harness publishes as: gh api user --jq .login'
+# One `--remove-label <name>` per review state on the pull request except `$1`. `$LABEL` holds every
+# state `parse()` found, joined by spaces. Passed as one `--remove-label` value, that space-joined
+# string would be split by the shell into a label name and a stray positional argument, which `gh pr
+# edit` refuses; one flag per state leaves the pull request with exactly the one the caller asked for.
+#
+# The callers expand `$(remove_states_except ...)` unquoted on purpose: word splitting is what turns
+# the output into separate arguments. That is safe only because every word in `$LABEL` matched
+# `$STATES_RE` in parse(), which admits the five literal `review:<state>` names and nothing else: no
+# space, no glob character (`*`, `?`, `[`) and no quote can reach the expansion. Widen STATES_RE and
+# this stops being true.
+remove_states_except() {
+  local l
+  for l in $LABEL; do [ "$l" = "$1" ] || printf -- '--remove-label %s ' "$l"; done
+  return 0
+}
+# **What blocks is a setting, not a constant.** `REVIEW_BLOCK_AT=critical` (the default) means only a
+# CRITICAL blocks, as before. `REVIEW_BLOCK_AT=warning` means a WARNING blocks too, so a verdict
+# with `warning>0` is BLOCKED and the fixer runs on it instead of the finding being declared as
+# debt. The marker carries the same three counts either way; only the arithmetic over them moves,
+# and every reader (this script, the gate) applies the same one. Any other value is refused rather
+# than guessed, because guessing "critical" would quietly turn the stricter setting off.
+block_at_ready() { case "${REVIEW_BLOCK_AT:-critical}" in critical|warning) return 0 ;; *) return 1 ;; esac; }
+BLOCK_AT_MSG='REVIEW_BLOCK_AT must be critical or warning'
+# A marker published under `warning` says so (`block_at=warning`). Read under `critical` it would
+# look like a BLOCKED with nothing blocking, and a fixer in that shell would find no work, so a
+# reader whose setting differs refuses to judge it. block_at_mismatch only compares the settings;
+# `status` applies it to a marker at the head and nothing else, and `budget` and the gate make the
+# same comparison in Python, also only at the head. A marker on an older commit is stale under
+# either setting: `status` owes the review, the gate fails, and `budget` says `none` (no verdict
+# at the head). A marker naming no setting is judged by the reader's own, as before: it was
+# published under `critical`, or before the field existed.
+block_at_mismatch() { [ -n "${1:-}" ] && [ "$1" != - ] && [ "$1" != "${REVIEW_BLOCK_AT:-critical}" ]; }
+# critical warning -> how many findings block under the current setting ("-" counts as 0).
+blocking_count() {
+  local c="${1:-0}" w="${2:-0}"
+  case "$c" in ''|-|*[!0-9]*) c=0 ;; esac
+  case "$w" in ''|-|*[!0-9]*) w=0 ;; esac
+  if [ "${REVIEW_BLOCK_AT:-critical}" = warning ]; then echo $((c + w)); else echo "$c"; fi
+}
+blocker_word() { if [ "${REVIEW_BLOCK_AT:-critical}" = warning ]; then echo "CRITICAL or WARNING"; else echo "CRITICAL"; fi; }
+marker_author_allowed() {
+  local want
+  want="$(printf '%s' "${1:-}" | LC_ALL=C tr 'A-Z' 'a-z')"
+  case "$want" in ''|*,*) return 1 ;; esac
+  case ",$(marker_authors)," in *",$want,"*) return 0 ;; *) return 1 ;; esac
+}
+# The login `gh` publishes as must be on the list before a command posts a marker as it: a marker
+# by anyone else is one every reader ignores, so `status` would owe the review forever and `budget`
+# would never see the halt. Refuses when the login cannot be resolved.
+# The login it resolved is kept in GH_LOGIN, so a later step of the same command (the audit line of
+# `publish`) does not ask gh again. This reset at file scope is required: without it a GH_LOGIN
+# exported by the caller would name the login on the audit line without gh ever being asked.
+GH_LOGIN=""
+publisher_on_list() {
+  local who
+  who="$(gh api user --jq .login 2>/dev/null)" || who=""
+  [ -n "$who" ] || die "review-cycle: REFUSED. could not resolve the login gh publishes as (gh api user)"
+  GH_LOGIN="$who"
+  marker_author_allowed "$who" \
+    || die "review-cycle: REFUSED. gh is signed in as '$who', which is not on REVIEW_MARKER_AUTHORS, so every reader would ignore what this posts"
+}
+command -v gh >/dev/null 2>&1 || { echo "review-cycle: gh is not installed — INCONCLUSIVE" >&2; exit 2; }
+
+# Reads the pull request once. $1 is an optional explicit number; without it, the branch's own.
+pr_json() {
+  local n="${1:-}"
+  # Read through pr-json.py, which drops every comment edited after it was created and fails closed
+  # when edits cannot be checked. Nothing here reads comments from `gh pr view` directly. Its own
+  # refusals ("pr-json: ...", a pull request argument that is not one number, say) reach stderr,
+  # so the caller's generic "could not read" is not the only reason printed; gh's own errors are
+  # captured inside it and never printed.
+  python3 -I "$(dirname "$0")/pr-json.py" ${n:+"$n"}
+}
+
+# Parses the payload into NUMBER / HEAD / LABEL / MARKER_SHA / MARKER_VERDICT / MARKER_PASS, and
+# MARKER_EXT_STATE / MARKER_EXT_REASON from the newest trusted extension marker (read by `halt`).
+parse() {
+  local json="$1"
+  # One node process reads the six simple fields (a fork per field was the cost of every call).
+  # The unit separator keeps an empty field empty. `$STATES_RE` comes through the environment,
+  # never retyped here: a second copy of the vocabulary is a second thing to forget, and an unlisted
+  # state leaves `$LABEL` empty, which every caller reads as "nobody reviewed this".
+  local fields
+  fields=$(printf '%s' "$json" | STATES_RE="$STATES_RE" P_ACTIVE="$(marker_authors_active && echo yes)" P_ALLOW="$(marker_authors)" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let head="",mk="",ext="";try{
+    const p=JSON.parse(s),re=new RegExp("^"+process.env.STATES_RE+"$"),L=(p.labels||[]).map(x=>x.name);
+    const a=[String(p.number||""),String(p.headRefOid||"").toLowerCase(),String(p.state||""),
+      p.isDraft===true?"yes":"",L.filter(n=>re.test(n)).join(" "),L.includes("review:needs-human")?"yes":""];
+    // A field holding the separator would shift every field after it. Print nothing instead: every
+    // variable comes out empty, which callers read as "could not read the pull request".
+    if(!a.some(x=>/[\x1e\x1f]/.test(x)))head=a.join("\x1f")}catch(e){}
+    if(!head)return;
+    try{
+    const re=/^[ \t\n\r\f\v]*<!--[ \t\n\r\f\v]*adversarial-review:[ \t\n\r\f\v]*sha=([0-9a-f]{7,40})[ \t\n\r\f\v]+verdict=(PASSED|BLOCKED)[ \t\n\r\f\v]+pass=(\d+)(?:[ \t\n\r\f\v]+critical=(\d+)[ \t\n\r\f\v]+warning=(\d+)[ \t\n\r\f\v]+note=(\d+))?(?:[ \t\n\r\f\v]+model=([A-Za-z0-9._:-]+)[ \t\n\r\f\v]+tier=(fast|standard|deep))?(?:[ \t\n\r\f\v]+block_at=(critical|warning))?[ \t\n\r\f\v]*-->/i;
+    const active=process.env.P_ACTIVE==="yes",allow=(process.env.P_ALLOW||"").split(",").filter(Boolean);
+    let last=null,blocked="no",maxp=0,foreign="-",fkind="-",fauthor="-",fwhere="-";
+    // A field of the space-joined answer cannot hold a space.
+    const tok=v=>String(v||"").replace(/[\s\x1e\x1f]/g,"")||"-";
+    for(const c of (JSON.parse(s).comments||[])){
+      if(active){const who=String((c&&c.author&&c.author.login)||"").toLowerCase();if(!who||!allow.includes(who))continue;}
+      const mm=re.exec(c.body||"");
+      if(mm){last=mm;maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    for(const c of (JSON.parse(s).editedComments||[])){
+      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
+      if(active&&(!who||!allow.includes(who)))continue;
+      const mm=re.exec(c.body||"");
+      // Anyone with write access can edit another login'"'"'s comment, so a trusted comment edited by
+      // someone else may carry a number or verdict its author never wrote. It is reported (and
+      // counted as BLOCKED history, which only tightens), and `publish` and `budget` refuse on it.
+      // Whether the body still reads as a marker does not matter: an edit that breaks the marker
+      // would otherwise drop it from the count unseen, so any foreign edit counts (fails closed).
+      const ed=String((c&&c.editor&&c.editor.login)||"").toLowerCase();
+      if(ed!==who){foreign=tok(ed||"unknown");fkind="edit";fauthor=tok(who);fwhere=tok(c&&c.url);blocked="yes";}
+      // An edited marker is never the verdict, but its pass still counts: an edit that keeps the
+      // number cannot lower the highest pass or hand `publish` a pass number already used. Only the
+      // body after the edit is kept, so an edit that rewrites the number counts as the new one.
+      if(mm){maxp=Math.max(maxp,Number(mm[3]));if(mm[2].toUpperCase()==="BLOCKED")blocked="yes";}}
+    // A trusted comment deleted by someone other than its author may have been a verdict marker
+    // (BLOCKED, or the highest pass), and its body is gone, so it counts the way a foreign edit does:
+    // BLOCKED history, and a stop. A deletion by the author itself is the documented limit.
+    for(const c of (JSON.parse(s).deletedComments||[])){
+      const who=String((c&&c.author&&c.author.login)||"").toLowerCase();
+      if(!who||(active&&!allow.includes(who)))continue;
+      const by=String((c&&c.actor&&c.actor.login)||"").toLowerCase();
+      if(by!==who){foreign=tok(by||"unknown");fkind="delete";fauthor=tok(who);fwhere=tok(c&&c.createdAt);blocked="yes";}}
+    mk=(last?[last[1].toLowerCase(),last[2].toUpperCase(),last[3],
+      last[4]||"-",last[5]||"-",last[6]||"-",blocked,last[7]||"-",last[8]||"-",(last[9]||"-").toLowerCase(),maxp,foreign,fkind,fauthor,fwhere].join("\x1f"):
+      // No readable marker, but an edited one was seen: keep its BLOCKED history and its pass.
+      (blocked==="yes"||maxp>0?["","","","-","-","-",blocked,"-","-","-",maxp,foreign,fkind,fauthor,fwhere].join("\x1f"):""))
+      // The newest extension marker by a listed login (`halt` skips posting a halted marker that
+      // is already the newest one with its reason), as `budget` reads it: at the start of the body.
+      const xre=/^<!-- pr-skill-extension: (state=[^>]*)-->/;
+      for(const c of (JSON.parse(s).comments||[])){
+        const who=String((c&&c.author&&c.author.login)||"").toLowerCase(),xm=xre.exec((c&&c.body)||"");
+        if(!xm||!allow.includes(who))continue;
+        // Keys in either case, lowercased, the later one winning, as fields() in `budget` reads them.
+        const kv={};for(const p of xm[1].matchAll(/([A-Za-z_]+)=([^ \t\n\r\f\v>]+)/g))kv[p[1].toLowerCase()]=p[2];
+        // The values go out byte for byte, an absent key as an empty field, so `halt` compares
+        // them the way `budget` does: no tok(), which strips Unicode spaces and maps "" to "-".
+        // A value holding a separator or a NUL (which bash would drop) can equal no `--reason`,
+        // so the marker is left out and `halt` posts, as the comparison would decide anyway.
+        const st=kv.state===undefined?"":String(kv.state),rs=kv.reason===undefined?"":String(kv.reason);
+        ext=/[\x00\x1e\x1f]/.test(st+rs)?"":[st,rs].join("\x1f");}
+    }catch(e){head=""}
+    // A marker half that could not be read prints nothing at all, so every field comes out empty
+    // and the caller stops with "could not read", never a pull request that seems to have no marker.
+    if(head)process.stdout.write(head+"\x1e"+mk+"\x1e"+ext)})')
+  # The marker fields follow a record separator, joined by the unit separator like the six above.
+  local m="" ext=""
+  case "$fields" in *$'\x1e'*) m="${fields#*$'\x1e'}"; fields="${fields%%$'\x1e'*}" ;; esac
+  case "$m" in *$'\x1e'*) ext="${m#*$'\x1e'}"; m="${m%%$'\x1e'*}" ;; esac
+  # The newest trusted extension marker's state and reason, byte for byte; a field it names none
+  # of, or no marker at all, reads as empty.
+  IFS=$'\x1f' read -r MARKER_EXT_STATE MARKER_EXT_REASON <<<"$ext"
+  IFS=$'\x1f' read -r NUMBER HEAD STATE IS_DRAFT LABEL HALTED <<<"$fields"
+  # No number means the payload was unreadable (or held the separator). Every caller treats the
+  # variables as facts, so stop here, with the code `status` uses for "could not read".
+  [ -n "$NUMBER" ] || { echo "review-cycle: could not read the pull request fields — INCONCLUSIVE" >&2; exit 2; }
+  # `review:needs-human` is a SIXTH label and deliberately not one of the five states: the states
+  # are a cycle position (exactly one at a time) and this one is a modifier of `review:blocked`
+  # that says the loop paused or stopped and a person has to decide. Keeping it out of $LABEL is what lets
+  # both live on the pull request without the CI check reading them as "two review states at once".
+
+  # The marker is whatever OPENS a comment, never the last thing that happens to match inside one.
+  # `publish` always writes `<!-- marker -->\n\n<report>`, so a genuine marker sits at position 0
+  # of its comment. A report body routinely QUOTES the marker format, to show what a passing one
+  # will look like once the findings close, and that quotation used to win here, because the old
+  # regex scanned the whole body and kept the LAST match, wherever it fell. Anchoring at comment
+  # start makes a quotation invisible to this parser without asking anyone to stop writing reports
+  # that explain themselves. Among comments that DO open with a marker, the last one (chronological
+  # order, oldest first) is still the current verdict.
+  #
+  # The three counts are an OPTIONAL group, so this reader takes both the three-field marker the
+  # older passes posted and the six-field one the newer passes post. A `-` in a count
+  # means the marker predates them, which is deliberately not the same value as `0`: one says nobody
+  # counted, the other says somebody counted nothing.
+  #
+  # The author filter. With `REVIEW_MARKER_AUTHORS` active (see the header), a comment whose
+  # `author.login` is not on the list is skipped before the regex runs, so it can supply neither
+  # the current verdict nor the BLOCKED history below. Both answers come out of this one loop,
+  # which is why the filter lives here and not in a second pass. Callers that decide
+  # (`status`, `stale`, `start`, `publish`, `budget`, `extend`, `halt`, `export-audit`) refuse an unset or login-less list
+  # before they get here. Only a list that is not active (unset, empty or ASCII whitespace) skips
+  # nothing; an active list that keeps no login (a lone comma, invisible characters) skips every
+  # comment, since `allow` is then empty.
+  IFS=$'\x1f' read -r MARKER_SHA MARKER_VERDICT MARKER_PASS MARKER_CRITICAL MARKER_WARNING MARKER_NOTE MARKER_BLOCKED_SEEN MARKER_MODEL MARKER_TIER MARKER_BLOCK_AT MARKER_MAX_PASS MARKER_FOREIGN_EDIT MARKER_FOREIGN_KIND MARKER_FOREIGN_AUTHOR MARKER_FOREIGN_WHERE <<<"$m"
+  # **Whether the pull request was EVER blocked, which is a different question from what the newest
+  # marker says.** It is what makes `pass>=2` mean the thing it was written to mean: the second pass
+  # exists to review a CORRECTION, so the bar applies where a correction was demanded and nowhere
+  # else. Reading only the last marker cannot answer it: a BLOCKED at pass 1 is precisely the
+  # marker a later PASSED overwrites as "current".
+  # Self-attested by the publishing session, never verified. `-` when the marker carries none.
+  # The REVIEW_BLOCK_AT the marker was published under, `-` when it names none (critical, or older).
+  # A BLOCKED marker that counts no CRITICAL but a WARNING, and names no setting, was published
+  # under `warning` before `block_at=` existed (0.7.x): `publish` never writes one under `critical`.
+  # It is read as `warning`, so a reader under `critical` answers inconclusive instead of reading
+  # BLOCKED with nothing blocking. `budget` makes the same inference.
+  if [ "$MARKER_BLOCK_AT" = - ] && [ "$MARKER_VERDICT" = BLOCKED ] && [ "$MARKER_CRITICAL" = 0 ] \
+     && positivo "$MARKER_WARNING"; then MARKER_BLOCK_AT=warning; fi
+  # The highest `pass=` among the trusted markers, whatever commit they name, edited ones included,
+  # 0 when there is none.
+  # `publish` takes only the next one, and `budget` counts cycles from it, so a head that returns to
+  # an older commit, or a low `--pass`, cannot restart the count.
+  case "$MARKER_MAX_PASS" in ''|*[!0-9]*) MARKER_MAX_PASS=0 ;; esac
+  # The login that edited or deleted a trusted comment it did not write (`unknown` when GitHub names
+  # none), `-` when there is none. Such an edit can rewrite `pass=` or break the marker so it no longer counts,
+  # so the count is not trusted while it stands.
+  [ -n "$MARKER_FOREIGN_EDIT" ] || MARKER_FOREIGN_EDIT=-
+  # Which comment it was, so a refusal can name it: the kind (`edit` or `delete`), the login that
+  # wrote it, and its url for an edit or the time of the deletion (`-` when GitHub gave none).
+}
+
+# One line, no newline, naming the comment a foreign edit touched and the way to clear it. For an
+# edit, deleting the comment also clears it, and the message warns what that loses instead of
+# offering it.
+# `publish`, `start`, `status` and `budget` all print this, so they cannot give different remedies.
+foreign_msg() {
+  local who="${MARKER_FOREIGN_AUTHOR:--}" where="${MARKER_FOREIGN_WHERE:--}"
+  [ "$who" != - ] || who="its author"
+  if [ "${MARKER_FOREIGN_KIND:-}" = delete ]; then
+    printf 'a comment by %s was deleted by %s at %s, not by its author, so the pass numbers and verdicts cannot be trusted (it may have been a verdict marker). A deletion cannot be undone and a new comment does not clear this: the automatic loop stops on this pull request. The way out is a person'"'"'s: read the timeline to see what was deleted, then close this pull request and open a new one from the same branch, where the review starts again at pass 1 with no history to doubt' \
+      "$who" "$MARKER_FOREIGN_EDIT" "$where"
+    return 0
+  fi
+  [ "$where" != - ] || where="(GitHub gave no url)"
+  printf 'the comment %s by %s was edited by %s, not by its author, so the pass numbers and verdicts cannot be trusted (the edit may have rewritten or broken a verdict marker). A person reads its edit history on GitHub, then %s edits it back to what it said; a new comment does not clear this. Deleting it would clear the stop too, but it takes the comment out of the count: if it was a BLOCKED marker or held the highest pass, that BLOCKED history or that pass number is lost with it, so edit it back instead (signing the markers would close this gap, and it is on the backlog)' \
+    "$where" "$who" "$MARKER_FOREIGN_EDIT" "$who"
+}
+
+# Reads ONE marker, through `MARKER_RE`, from a file or from stdin, and prints
+# `sha verdict pass critical warning note`, with `-` in each count that the marker does not carry.
+# Exit 1 when there is no marker to read, which includes a marker QUOTED inside a body rather than
+# opening it: the anchor is the same rule the other two readers apply, and it is applied here rather
+# than described here for the same reason.
+#
+# `--author <login>` names who wrote the text. It matters only when `REVIEW_MARKER_AUTHORS` is
+# active: then a text with no `--author`, or with one that is not on the list, has no marker, the
+# same answer `parse()` and the gate give for a comment by somebody off the list. A bare text
+# carries no author of its own, so the caller has to say it, and not saying it is not trusted.
+# Unset, `--author` is accepted and ignored.
+cmd_marker() {
+  # The C locale, so `nocasematch` below folds ASCII letters only. Under some locales bash folds a
+  # dotless i or a long s onto `i` and `s`, which no other reader does.
+  local LC_ALL=C
+  local body file="" author=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --author) [ $# -ge 2 ] || die "review-cycle: --author needs a value (a login)"; author="$2"; shift 2 ;;
+      *)        [ -z "$file" ] || die "review-cycle: marker takes one file, got '$file' and '$1'"
+                file="$1"; shift ;;
+    esac
+  done
+  if [ -n "$file" ]; then
+    [ -r "$file" ] || die "review-cycle: cannot read '$file'"
+    body="$(cat -- "$file")"
+  else
+    body="$(cat)"
+  fi
+  if marker_authors_active && ! marker_author_allowed "$author"; then
+    echo "review-cycle: REVIEW_MARKER_AUTHORS is set and the author '${author:-<none given>}' is not on it, so this text supplies no marker" >&2
+    return 1
+  fi
+  # **The whole text, and case-insensitively, because the other two readers are both.** This reader
+  # exists so the shell stops deriving the marker format from JavaScript and Python; it shipped still
+  # deriving it, only stricter, which is a third answer wearing a fail-safe coat. Cutting to the
+  # first line lost a marker preceded by a blank line and the two-line marker that
+  # `gate-pr-review-state.py` displays as THE format in its own docstring; `[[ =~ ]]` being case
+  # sensitive lost `verdict=passed` and an uppercase SHA, which `/i` takes on both siblings.
+  #
+  # The anchor is untouched and does the same work on the whole body as it did on one line:
+  # `[$MARKER_WS]` spans newlines, so only whitespace may precede a marker and a quoted one is still
+  # not one.
+  local restaura; restaura="$(shopt -p nocasematch)"
+  shopt -s nocasematch
+  if [[ "$body" =~ ^[$MARKER_WS]*$MARKER_RE ]]; then
+    printf '%s %s %s %s %s %s' \
+      "$(printf '%s' "${BASH_REMATCH[1]}" | tr 'A-Z' 'a-z')" \
+      "$(printf '%s' "${BASH_REMATCH[2]}" | tr 'a-z' 'A-Z')" \
+      "${BASH_REMATCH[3]}" \
+      "${BASH_REMATCH[5]:--}" "${BASH_REMATCH[6]:--}" "${BASH_REMATCH[7]:--}"
+    # A seventh field only when the marker names the setting it was published under, so the six
+    # fields an older marker prints stay exactly what they were.
+    [ -n "${BASH_REMATCH[12]:-}" ] && printf ' %s' "$(printf '%s' "${BASH_REMATCH[12]}" | tr 'A-Z' 'a-z')"
+    echo
+    eval "$restaura"
+    return 0
+  fi
+  eval "$restaura"
+  echo "review-cycle: no marker opens this text — a quotation of the format is not a marker" >&2
+  return 1
+}
+
+# Says, in one line, what the cycle owes, and the exact next command, never a description of one.
+cmd_status() {
+  marker_authors_ready || { echo "review-cycle: $NOT_READY_MSG — INCONCLUSIVE"; return 2; }
+  local json; json="$(pr_json "${1:-}")"
+  [ -n "$json" ] || { echo "review-cycle: no open pull request for this branch, gh is offline, or comment edits could not be checked — INCONCLUSIVE"; return 2; }
+  parse "$json"
+  # CLOSED without merge shipped nothing. MERGED shipped, and the first version of this line treated the
+  # two the same, so **merging switched off the Stop hook**, which is the half the gate had already
+  # fixed and this one had not. Found by an adversarial review: the gate said exit 1 on a merged pull
+  # request without `review:passed` and this script said 0 on the same one, about the same fact.
+  if [ "$STATE" = "CLOSED" ]; then echo "review-cycle: #$NUMBER was closed without merging — nothing shipped"; return 0; fi
+  if [ "$STATE" = "MERGED" ]; then
+    # **DELEGATES to the gate instead of reimplementing the question.** The first version matched
+    # `*review:passed*` against the raw label list and did not look at the marker, so it accepted a merged pull
+    # request whose label said `review:passed` with no evidence behind it, while the
+    # gate refused the SAME pull request for "the claim standing alone". Two implementations of the
+    # same question disagree; it is the same disease that made the `publish` guard bypassable.
+    # EXISTENCE is checked BEFORE the call, and not by the exit code afterwards. `python3` returns
+    # **2** both for "file does not exist" and for the gate's own INCONCLUSIVE, so
+    # telling them apart by code is impossible: the first version of this guard tried and said "merged
+    # without review:passed" about a pull request it never got to read.
+    # `local`, and the reason is the usual one in this file: a value that survives the function is a value
+    # someone reads later without knowing where it came from. Measured: `_rc` and `_portao` reached the
+    # caller intact. Inert today; the way to stay inert is the declaration, not luck.
+    local _portao _rc _saida _token
+    _portao="$(dirname "$0")/gate-pr-review-state.py"
+    if [ ! -r "$_portao" ]; then
+      echo "review-cycle: #$NUMBER is MERGED and the gate is not readable at $_portao — this says nothing about the review, only that nobody looked"
+      return 2
+    fi
+    # **`[ -r ]` answers "is it there"; it does not answer "does it run".** A gate that exists and
+    # does not compile is the fourth blind path, and it was the loudest: `python3` answers a
+    # `SyntaxError` with exit **1**, before the first line of the gate executes, and before any
+    # `try/except` inside it exists to catch anything, and 1 is the branch below that means "read
+    # it and refused". So a gate that never ran produced the sentence that ASSERTS a pull request
+    # merged without `review:passed`, with nobody having examined a label. Same class as the
+    # version bail: an exit code borrowed from the interpreter, read as if the program had chosen
+    # it.
+    #
+    # `compile()` and not `python3 -m py_compile`: the module writes a `__pycache__` next to the
+    # gate, and a readiness check that leaves files behind next to it is a check with a
+    # side effect. This one reads and throws away.
+    if ! python3 -c 'import sys; compile(open(sys.argv[1]).read(), sys.argv[1], "exec")' "$_portao" >/dev/null 2>&1; then
+      echo "review-cycle: #$NUMBER is MERGED and the gate at $_portao does not compile — a gate that cannot run has not run; this says nothing about the review, only that nobody looked"
+      return 2
+    fi
+    # **The two guards above are REDUNDANT since the token exists, and stay because they are
+    # diagnostic.** The guarantee is the line right below: an absent gate, one that does not compile and one
+    # that blows up before deciding all land in the same place by producing no token. What the
+    # two guards add is NAMING the cause ("not there", "does not compile") for whoever is
+    # debugging, instead of returning the same generic sentence for three different defects.
+    # Declared redundancy; if it ever becomes a nuisance, the line below stands alone.
+    #
+    # **The gate PROVES that it decided, and that is not inferred from the exit code.** A Python process's
+    # exit code comes from the interpreter as much as from the program: an empty file exits 0, an
+    # `import` that does not resolve exits 1, a `SyntaxError` exits 1. Measured with the real gate
+    # replaced by a zero-byte file: `[ -r ]` passed, `compile("")` passed, `python3` exited 0,
+    # and this `case` read 0 as "I read it; the claim holds", the sentence `#<n> merged with a valid
+    # review:passed` about a pull request nobody read. Fabrication committed by the mechanism
+    # meant to prevent it.
+    #
+    # `--emit-token` makes the gate print `gate-pr-review-state: rc=<n>` as the LAST line of
+    # stdout, from the same value it passes to `sys.exit`. Requiring the line PRESENT and with the
+    # number EQUAL to the exit code closes the four fake gates a test can stage:
+    # empty file, `import` that does not resolve, output with no token
+    # at all, and a token that disagrees with the code the process exits with. None of them manages to print
+    # the matching line, and a gate that printed a stale line would be caught by the divergence.
+    #
+    # **The gate that does not return is the FIFTH way of not deciding, and it was the only one with no limit.**
+    # The previous four are the gate answering something: absent, not compiling, with no matching token,
+    # and with a code that is not a reading. This one is it not answering: `python3` without
+    # `timeout` hangs `cmd_status` indefinitely. Measured with a stub that sleeps and an external
+    # wall: `timeout 10 review-cycle.sh status <pr>` returned 124 in 10s, with no output line;
+    # without the wall, forever. A caller that wraps this call in its own limit survives that, and
+    # one that wraps nothing does not.
+    #
+    # **This number was once counted more than one way within the same paragraph, and the counts
+    # did not agree with each other.** The sentence counted suite cases, the enumeration beside it
+    # counted prose items, and the code has the branches, and each way gave a different result. One
+    # thing is counted now, and it is code: the lines of `cmd_status` that end in "only that
+    # nobody looked", the first sentence counting all of them, the second that count minus the form it
+    # sets aside. Whoever edits either of the two counts those lines again.
+    #
+    # On the pure-bash fallback of `run_with_timeout` the child's stderr is folded into stdout, so the
+    # outer `2>/dev/null` does not reach it. The comparison below looks at the LAST line, and the token is
+    # the last thing the gate prints, so a traceback ahead of it does not change the answer.
+    _saida="$(run_with_timeout "$GATE_TIMEOUT_S" python3 "$_portao" "$NUMBER" --emit-token 2>/dev/null)"
+    _rc=$?
+    if [ "$_rc" -eq 124 ]; then
+      # Own branch, and not the generic sentence for a missing token. "It did not prove it decided" would be
+      # true and would send the person looking for a broken gate, and the gate is intact, it just did not
+      # return. Saying which limit it was is what makes the sentence actionable.
+      echo "review-cycle: #$NUMBER is MERGED and the gate did not return within ${GATE_TIMEOUT_S}s — it was killed, so it decided nothing; this says nothing about the review, only that nobody looked"
+      return 2
+    fi
+    _token="$(printf '%s\n' "$_saida" | tail -n 1)"
+    if [ "$_token" != "gate-pr-review-state: rc=$_rc" ]; then
+      echo "review-cycle: #$NUMBER is MERGED and the gate exited $_rc without proving it decided — no rc token matching that exit; this says nothing about the review, only that nobody looked"
+      return 2
+    fi
+    case "$_rc" in
+      0) echo "review-cycle: #$NUMBER merged with a valid review:passed"; return 0 ;;
+      # **1 and 3 are the gate having READ; 2, 4 and the rest are the gate not having read.** It is the only
+      # question this branch decides, and it only became answerable when the gate gained
+      # five codes instead of three: before, the SAME 2 meant "I could not read" in two
+      # places and "I read, decided, and do not block because the merge already happened" in a third, and the SAME
+      # event came out 1 or 2 depending on the mode. 4 is "I could not read what exists", and for THIS reader
+      # it is as blind as 2: nobody opened a label, so the sentence cannot assert anything.
+      #
+      # The two earlier versions were wrong, each in a different direction. The first joined `1|2` and
+      # let three paths that read nothing reach the sentence that ASSERTS. The second sent all of 2
+      # to `*)`, and since the gate's real case (merged without `review:passed`) came out
+      # exactly 2, it started being answered with "only that nobody looked" about a pull request
+      # read in full, while the historical sentence became unreachable. Measured on two real pull requests.
+      #
+      # What closes the blind paths is not this `case`: it is the gate returning 2 or 4 on them. The
+      # Python version bail, the payload with no head, the undecipherable JSON and the unhandled exception came out
+      # 1 or 2 depending on the mode and now come out 4 in both, which a test of the gate proves.
+      # This branch trusts the contract, and a test of this script checks the other end with a stub
+      # per code, including 4.
+      1|3) ;;
+      # **"without deciding" was false HERE, and true three guards above.** This branch is only
+      # reached after the token matches, that is, after the gate proved it ran and that the
+      # number it exits with is the one it chose itself. What did not happen was a LABEL READ
+      # (1 and 3 are the only two codes that mean that). Sending whoever is debugging to look for a
+      # gate that did not decide is sending them to look for a defect that does not exist.
+      *) echo "review-cycle: #$NUMBER is MERGED and the gate proved it ran and answered $_rc — not one of the two codes that mean it read a label; this says nothing about the review, only that nobody looked"; return 2 ;;
+    esac
+    # Exit 2 and not 1: the Stop hook only speaks at rc=1, and with 1 here EVERY branch whose pull request
+    # merged without `review:passed` would block the Stop forever (dozens of them, measured) over
+    # a historical fact that no new work undoes. And the way out the hook offers in that state
+    # is `publish --verdict PASSED`, that is: the harness pushing the FABRICATION that the cycle
+    # exists to prevent. The fact is still printed, and the gate still reports it.
+    echo "review-cycle: #$NUMBER MERGED without a valid review:passed — the loop closed after the merge, or not at all; this is recorded, not owed"
+    return 2
+  fi
+
+  local short="${HEAD:0:12}"
+  # A trusted comment edited or deleted by another login: the pass count and the verdicts may have
+  # been rewritten, so nothing here can say whether a review is owed. `publish` would refuse the
+  # review this would otherwise ask for, so `status` stops first and says why (exit 2, read and
+  # inconclusive: a person has to decide).
+  if [ "${MARKER_FOREIGN_EDIT:--}" != - ]; then
+    echo "#$NUMBER head $short — $(foreign_msg). INCONCLUSIVE."
+    echo "  next: a person decides; the loop does not review or fix this pull request while this stands"
+    return 2
+  fi
+  if [ -z "$LABEL" ]; then
+    echo "#$NUMBER head $short — NO review:* label. Absence reads as not reviewed."
+    echo "  next: /pr-reviewer over this diff, then review-cycle.sh publish ..."
+    return 1
+  fi
+  case "$LABEL" in
+    *" "*) echo "#$NUMBER carries several review states at once ($LABEL) — the projection has to project one thing"
+           echo "  next: review-cycle.sh start $NUMBER (it clears every other state), then /pr-reviewer"; return 1 ;;
+  esac
+
+  # A PASSED marker that counts a CRITICAL is the reviewer contradicting its own arithmetic, and it
+  # is refused BEFORE the nothing-owed branch below. `PASSED` means nothing blocks, and a CRITICAL is
+  # the only thing that blocks; the two statements cannot both be on the same line. Old markers carry
+  # `-` here and skip the check entirely: they were written before anybody counted.
+  if ! block_at_ready; then
+    echo "#$NUMBER head $short — $BLOCK_AT_MSG, got '$REVIEW_BLOCK_AT'. INCONCLUSIVE."
+    return 2
+  fi
+  # Only a marker at the head is judged. One left behind by a push is history, and the review it
+  # calls for is owed (exit 1 below) whatever setting it was published under.
+  if block_at_mismatch "${MARKER_BLOCK_AT:--}" && [ -n "$MARKER_SHA" ] \
+     && [ "${HEAD:0:${#MARKER_SHA}}" = "$MARKER_SHA" ]; then
+    echo "#$NUMBER head $short — the newest marker was published under REVIEW_BLOCK_AT=$MARKER_BLOCK_AT and this shell has ${REVIEW_BLOCK_AT:-critical}. INCONCLUSIVE."
+    echo "  next: export REVIEW_BLOCK_AT=$MARKER_BLOCK_AT (and the repository variable of that name), then run status again"
+    return 2
+  fi
+  if [ "$LABEL" = "review:passed" ] && [ "$MARKER_VERDICT" = "PASSED" ] \
+     && positivo "$(blocking_count "${MARKER_CRITICAL:-}" "${MARKER_WARNING:-}")"; then
+    echo "#$NUMBER head $short — the marker says PASSED and counts critical=$MARKER_CRITICAL warning=$MARKER_WARNING. With REVIEW_BLOCK_AT=${REVIEW_BLOCK_AT:-critical} a $(blocker_word) blocks, so a passing verdict cannot carry one."
+    echo "  next: /pr-fixer on the blocking findings, then /pr-reviewer again"
+    return 1
+  fi
+
+  # The read side applies the write side's rule, or the two disagree about the same marker: a pass 1
+  # `publish` accepts is a pass 1 `status` has to accept, otherwise the Stop hook keeps demanding a
+  # review that already happened and the impasse just moves one command downstream.
+  _pass_suficiente=no
+  if [ "${MARKER_PASS:-0}" -ge 2 ] 2>/dev/null; then _pass_suficiente=yes
+  elif [ "${MARKER_PASS:-0}" = 1 ] && [ "${MARKER_BLOCKED_SEEN:-no}" != "yes" ]; then _pass_suficiente=yes; fi
+
+  if [ "$LABEL" = "review:passed" ] && [ -n "$MARKER_SHA" ] \
+     && [ "${HEAD:0:${#MARKER_SHA}}" = "$MARKER_SHA" ] && [ "$MARKER_VERDICT" = "PASSED" ] \
+     && [ "$_pass_suficiente" = yes ]; then
+    echo "#$NUMBER head $short — reviewed, pass $MARKER_PASS, marker matches head. Nothing owed."
+    # The debt is PRINTED, not owed. That distinction is the point: a warning and a note leave
+    # the reviewer's hands as recorded debt with an owner, and a reader of this line sees what was
+    # accepted rather than an approval that pretends there was nothing to accept.
+    if positivo "${MARKER_WARNING:-}" || positivo "${MARKER_NOTE:-}"; then
+      echo "  declared debt at this head: $MARKER_WARNING warning, $MARKER_NOTE note — recorded, not blocking"
+    fi
+    return 0
+  fi
+
+  case "$LABEL" in
+    review:pending)
+      echo "#$NUMBER head $short — never reviewed at this head."
+      echo "  next: review-cycle.sh start $NUMBER  →  /pr-reviewer" ;;
+    review:running)
+      echo "#$NUMBER head $short — a pass is in flight. If it stays here, the pass died; that is information."
+      echo "  next: finish the pass and publish, or re-run /pr-reviewer" ;;
+    # The corrector's own state, symmetric to `review:running`. What it says that no other state can
+    # is that the pull request is being CHANGED right now, so nothing about the current head is a
+    # conclusion. If it stays here, the correction died, and that is information in the same way a
+    # dead pass is.
+    review:fixing)
+      echo "#$NUMBER head $short — a correction is in flight. The head is about to move, so nothing here concludes anything."
+      echo "  next: land the corrections, then /pr-reviewer again over the corrected diff (pass 2+)" ;;
+    review:blocked)
+      if [ -n "${HALTED:-}" ]; then
+        echo "#$NUMBER head $short — findings open and the loop is halted; a person has to decide."
+        echo "  next: a person pushes a correction, or grants cycles in the session (review-cycle.sh budget $NUMBER, then extend) unless the hard ceiling was reached, where only a push helps; start refuses until one happens"
+      else
+        echo "#$NUMBER head $short — findings open."
+        echo "  next: /pr-fixer, then /pr-reviewer again over the corrected diff (pass 2+)"
+      fi ;;
+    review:passed)
+      if [ -z "$MARKER_SHA" ]; then
+        echo "#$NUMBER head $short — labelled passed with NO marker. A claim standing alone."
+      elif [ "${HEAD:0:${#MARKER_SHA}}" != "$MARKER_SHA" ]; then
+        echo "#$NUMBER head $short — the pass names ${MARKER_SHA:0:12}, which is no longer the head. A push invalidated it."
+      elif [ "${MARKER_BLOCKED_SEEN:-no}" = "yes" ]; then
+        echo "#$NUMBER head $short — passed at pass ${MARKER_PASS:-1}, and this pull request was BLOCKED once; the pass that approves a correction is the one that read it."
+      else
+        # The only other way to land here is a `pass=` this reader cannot compare: a marker posted
+        # by hand or by an older script, carrying a number `numero` never saw. Saying "BLOCKED once"
+        # about it would be this file asserting what it did not read, inside the branch that exists
+        # to catch exactly that.
+        echo "#$NUMBER head $short — the marker says pass ${MARKER_PASS:-1}, which is not a number this reader can compare, so nothing here is confirmed."
+      fi
+      echo "  next: /pr-reviewer over the CURRENT diff" ;;
+  esac
+  return 1
+}
+
+# The loop paused or stopped (the cycle budget is spent and the question is open, `stop`, or no
+# answer) and what is left is a person's decision. `review:blocked` alone cannot say that: it is also the state a pull request is in
+# while the fixer is about to run. This adds a modifier and moves nothing else. It refuses anything
+# but an OPEN pull request in `review:blocked`, because a halt over any other state would be a claim
+# the cycle does not back.
+cmd_halt() {
+  local reason="" pr=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --reason) [ $# -ge 2 ] || die "review-cycle: --reason needs a value"; reason="${2:-}"; shift 2 ;;
+      *) pr="$1"; shift ;;
+    esac
+  done
+  case "$reason" in ''|*[!A-Za-z0-9_.-]*) [ -z "$reason" ] || die "review-cycle: --reason takes letters, digits, dot, dash and underscore only" ;; esac
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  # Only `--reason` posts a marker, so only then must the publisher be on the list.
+  [ -z "$reason" ] || publisher_on_list
+  local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to halt"
+  parse "$json"
+  [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop left to halt"
+  [ "$LABEL" = "review:blocked" ] || die "review-cycle: #$NUMBER is ${LABEL:-unlabelled}, not review:blocked — only a blocked pull request can need a person"
+  # The marker goes first and the label second: a failed comment then leaves no label behind, so a
+  # retry posts the marker again. The marker is skipped only when the newest TRUSTED extension marker
+  # is already a halted one with this reason, which is the exact reading `budget` makes for the
+  # ceiling; a label alone is not evidence of it (a person can add the label by hand).
+  local posted=""
+  if [ -n "$reason" ]; then
+    local have=""
+    # parse() read the newest trusted extension marker, the reading `budget` makes.
+    [ "${MARKER_EXT_STATE:-}" = halted ] && [ "${MARKER_EXT_REASON:-}" = "$reason" ] && have=yes
+    if [ "$have" != "yes" ]; then
+      printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on #%s (reason: %s). The pull request stays review:blocked and a person decides.\n' \
+        "$reason" "$NUMBER" "$reason" | gh pr comment "$NUMBER" --body-file - >/dev/null \
+        || die "review-cycle: the halted marker could not be posted on #$NUMBER; run it again"
+      posted="yes"
+    fi
+  fi
+  [ -z "${HALTED:-}" ] && { gh pr edit "$NUMBER" --add-label review:needs-human >/dev/null \
+    || die "review-cycle: ${posted:+halted marker posted, but }could not add review:needs-human on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"; }
+  echo "#$NUMBER → review:needs-human (head ${HEAD:0:12})${posted:+, halted marker posted ($reason)}"
+}
+
+# The cycle budget, read from the trusted markers and nothing else. Prints one `B_<KEY>='<value>'`
+# line per field. `B_NEXT` is what the loop does now:
+#
+#     fix      cycle `B_CYCLE` of at most `B_ALLOWED`: dispatch the fixer
+#     ask      the automatic cycles are spent and a blocking finding is open: ask a person (`extend` or halt)
+#     ceiling  the hard ceiling was reached: halt, no answer passes it
+#     none     nothing to do: no trusted verdict at the head, or the verdict there is not BLOCKED, or
+#              the ceiling halt is already posted
+#
+# Cycles are counted from the highest `pass=` among the trusted markers, whatever commit they name,
+# never from a constant and never from the marker at the head alone: `B_DONE` is that pass minus 1,
+# `B_CYCLE` the one about to run, `B_NEXT_PASS` the only `--pass` that `publish` accepts. A
+# granted extension is the newest `state=granted` marker by a trusted login: it allows `cycle + n`
+# cycles in all, clamped to the hard ceiling. A `state=halted` marker other than the ceiling one
+# does not stop a later run from asking again. `B_SUGGESTED` is the number of further cycles the
+# progress supports: 3 when the open blocking count fell in each of the last two cycles, 1 when it
+# is lower than at pass 1 but did not keep falling, 0 otherwise, never more than what remains.
+cmd_budget() {
+  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read a budget from"
+  budget_of "$json"
+}
+# The budget of a pull request already read (`extend` has read it, and a second read costs gh calls).
+budget_of() {
+  local json="$1"
+  # Fail closed. With no author allowlist every commenter would be trusted, and a stranger's
+  # `state=granted` comment would raise the budget. Unlike `status`, which only reads a verdict, the
+  # budget decides whether agents keep editing the branch, so it refuses to guess.
+  if ! marker_authors_ready; then
+    printf "B_NEXT='none'\nB_WHY='REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker is trusted and the budget is not read'\n"
+    return 0
+  fi
+  if ! block_at_ready; then
+    printf "B_NEXT='none'\nB_WHY='%s, so the budget is not read'\n" "$BLOCK_AT_MSG"
+    return 0
+  fi
+  # The highest pass and a foreign edit come from parse(), the one reader of edited markers, so
+  # `publish` and `budget` cannot count them differently.
+  parse "$json"
+  local fmsg=""; [ "${MARKER_FOREIGN_EDIT:--}" = - ] || fmsg="$(foreign_msg)"
+  printf '%s' "$json" | BUDGET_AUTHORS="$(marker_authors)" BUDGET_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" BUDGET_MAX="${MAX_REVIEW_CYCLES:-5}" \
+    BUDGET_HARD="${MAX_REVIEW_CYCLES_HARD:-10}" BUDGET_MAX_PASS="${MARKER_MAX_PASS:-0}" BUDGET_FOREIGN_EDIT="${MARKER_FOREIGN_EDIT:--}" \
+    BUDGET_FOREIGN_MSG="$fmsg" python3 -I -c '
+import json, os, re, shlex, sys
+
+def num(v, d):
+    return int(v) if isinstance(v, str) and re.fullmatch(r"[0-9]+", v) else d
+
+# A value ends at any of the six ASCII whitespace characters (`\s` under re.ASCII), the set the marker
+# regex below accepts between fields, so a two-line or tab-separated marker reads as every reader reads it.
+def fields(text):
+    return {m.group(1).lower(): m.group(2) for m in re.finditer(r"([A-Za-z_]+)=([^ \t\n\r\f\v>]+)", text)}
+
+block_warn = os.environ.get("BUDGET_BLOCK_AT") == "warning"
+data = json.load(sys.stdin)
+hard = min(max(num(os.environ["BUDGET_HARD"], 10), 1), 10)
+mx = min(max(num(os.environ["BUDGET_MAX"], 5), 1), hard)
+head = (data.get("headRefOid") or "").lower()
+# The kept logins (see marker_authors). An empty list trusts nobody; the caller refused it already.
+allow = set(os.environ["BUDGET_AUTHORS"].split(",")) - {""}
+trusted = [c for c in data.get("comments", [])
+           if str((c.get("author") or {}).get("login") or "").lower() in allow]
+
+verdicts = []
+for c in trusted:
+    m = re.match(r"\s*<!--\s*adversarial-review:\s*(sha=[0-9a-f]{7,40}\s+verdict=(?:PASSED|BLOCKED)\s+pass=\d+"
+                 r"(?:\s+critical=\d+\s+warning=\d+\s+note=\d+)?"
+                 r"(?:\s+model=[A-Za-z0-9._:-]+\s+tier=(?:fast|standard|deep))?"
+                 r"(?:\s+block_at=(?:critical|warning))?)\s*-->", c.get("body") or "", re.I | re.ASCII)
+    if not m:
+        continue
+    f = fields(m.group(1))
+    if "pass" in f and "verdict" in f:
+        verdicts.append({"sha": f["sha"].lower(), "verdict": f["verdict"].upper(), "pass": num(f["pass"], 0),
+                         "block_at": f.get("block_at", "").lower(),
+                         "raw_c": num(f.get("critical"), -1), "raw_w": num(f.get("warning"), -1),
+                         "critical": (num(f["critical"], 0) + (num(f.get("warning"), 0) if block_warn else 0))
+                                     if "critical" in f else None})
+at = next((v for v in reversed(verdicts) if head.startswith(v["sha"])), None)
+# A BLOCKED marker with counts and no block_at that counts no CRITICAL but a WARNING was published
+# under warning before the field existed (0.7.x); parse() in the shell makes the same inference.
+if at and not at["block_at"] and at["verdict"] == "BLOCKED" and at["raw_c"] == 0 and at["raw_w"] > 0:
+    at["block_at"] = "warning"
+# Cycles are counted from the highest trusted pass, never from the marker at the head, so a head
+# that returns to an older reviewed commit cannot restart the count. parse() in the shell computes it,
+# edited markers included (they are never a verdict, but an edit that keeps the number cannot lower
+# the count), and this takes it from there rather than read the edited comments a second time.
+max_pass = max([v["pass"] for v in verdicts] + [num(os.environ.get("BUDGET_MAX_PASS"), 0)])
+foreign = os.environ.get("BUDGET_FOREIGN_EDIT") or "-"
+
+ext = []
+for c in trusted:
+    m = re.match(r"<!-- pr-skill-extension: (state=[^>]*)-->", c.get("body") or "", re.ASCII)
+    if m:
+        ext.append(fields(m.group(1)))
+last_ext = ext[-1] if ext else None
+granted_marker = next((e for e in reversed(ext) if e.get("state") == "granted"), None)
+granted = num(granted_marker.get("cycle"), 0) + num(granted_marker.get("n"), 0) if granted_marker else 0
+allowed = min(max(mx, granted), hard)
+
+last_per_pass = {}
+for v in verdicts:
+    last_per_pass[v["pass"]] = v
+counts = [last_per_pass[p] for p in sorted(last_per_pass) if last_per_pass[p]["critical"] is not None]
+xs = [v["critical"] for v in counts]
+n = len(xs)
+if n >= 3 and xs[n-3] > xs[n-2] > xs[n-1]:
+    rule = 3
+elif n >= 2 and xs[n-1] < xs[0]:
+    rule = 1
+else:
+    rule = 0
+
+done = max(max_pass - 1, 0)
+remaining = max(hard - done, 0)
+mine = os.environ.get("BUDGET_BLOCK_AT")
+if foreign != "-":
+    nxt, why = "none", os.environ.get("BUDGET_FOREIGN_MSG") or ("a comment by a trusted login was changed by %s, not by its author, so the pass count cannot be trusted" % foreign)
+elif at is None:
+    nxt, why = "none", "no trusted verdict marker at the head"
+elif at["block_at"] and at["block_at"] != mine:
+    nxt, why = "none", "the verdict at the head was published under REVIEW_BLOCK_AT=%s and this shell has %s; set the same value and read the budget again" % (at["block_at"], mine)
+elif at["verdict"] != "BLOCKED":
+    nxt, why = "none", "verdict at the head is " + at["verdict"]
+elif done < allowed:
+    nxt, why = "fix", "cycle %d of at most %d" % (done + 1, allowed)
+elif done >= hard:
+    if last_ext and last_ext.get("state") == "halted" and last_ext.get("reason") == "ceiling":
+        nxt, why = "none", "the ceiling halt is already posted"
+    else:
+        nxt, why = "ceiling", "%d cycles done, the hard ceiling is %d" % (done, hard)
+else:
+    nxt, why = "ask", "%d cycles done, %d allowed" % (done, allowed)
+
+out = {
+    "next": nxt, "why": why,
+    "verdict": at["verdict"] if at else "NONE", "pass": at["pass"] if at else 0,
+    "crit": "" if not at or at["critical"] is None else at["critical"],
+    "cycle": done + 1, "next_pass": max_pass + 1,
+    "done": done, "allowed": allowed, "max": mx, "hard": hard, "remaining": remaining,
+    "suggested": min(rule, remaining), "rule": rule,
+    "progress": ", ".join("pass %d: %d" % (v["pass"], v["critical"]) for v in counts),
+    "ext_state": (last_ext or {}).get("state", ""),
+}
+for k, v in out.items():
+    print("B_%s=%s" % (k.upper(), shlex.quote(str(v))))
+'
+}
+
+# Records that a person granted `--n` more cycles. It writes the one marker `budget` reads and
+# refuses anything the budget would not honour: no blocking finding open at the head (a CRITICAL, or
+# a WARNING under REVIEW_BLOCK_AT=warning), cycles that are not
+# spent yet, or more than the hard ceiling leaves. The question itself is asked in the session, by
+# the harness's own question tool; this only makes the answer outlive the session.
+cmd_extend() {
+  local pr="" n=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --n) [ $# -ge 2 ] || die "review-cycle: --n needs a value"; n="${2:-}"; shift 2 ;;
+      *) pr="$1"; shift ;;
+    esac
+  done
+  case "$n" in ''|*[!0-9]*) die "review-cycle: extend needs --n <whole number>" ;; esac
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  publisher_on_list
+  # The budget is read once, below, and the granted marker is posted after it. A second `extend` or
+  # a `halt` posted in that window would not be seen by this one. Only a listed login can post a
+  # marker that counts, and the loop runs one review loop agent per pull request, which asks the
+  # person once; two people granting cycles at the same moment would each see the budget before the
+  # other's marker, and `budget` then counts the newest grant.
+  local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to extend"
+  parse "$json"
+  [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no loop to extend"
+  local b; b="$(budget_of "$json")" || die "review-cycle: could not read the budget on #$NUMBER"
+  local B_NEXT="" B_DONE="" B_REMAINING="" B_HARD=""
+  eval "$b"
+  [ "$B_NEXT" = "ask" ] || die "review-cycle: #$NUMBER is not waiting for an extension (budget says: $B_NEXT)"
+  [ "$n" -ge 1 ] && [ "$n" -le "$B_REMAINING" ] || die "review-cycle: --n must be between 1 and $B_REMAINING (the hard ceiling is $B_HARD, $B_DONE cycles are done)"
+  printf '<!-- pr-skill-extension: state=granted cycle=%s n=%s -->\npr-skill: %s more review-fix cycles granted on #%s after cycle %s.\n' \
+    "$B_DONE" "$n" "$n" "$NUMBER" "$B_DONE" | gh pr comment "$NUMBER" --body-file - >/dev/null \
+    || die "review-cycle: could not post the granted marker on #$NUMBER"
+  # The grant ends a halt: the fixer and triage refuse a pull request labelled review:needs-human, so
+  # leaving the label would make the grant do nothing. Marker first, label second, as in `halt`.
+  if [ -n "${HALTED:-}" ]; then
+    gh pr edit "$NUMBER" --remove-label review:needs-human >/dev/null \
+      || die "review-cycle: granted marker posted, but could not remove review:needs-human on #$NUMBER; remove it by hand"
+  fi
+  echo "#$NUMBER → $n more cycles granted after cycle $B_DONE (allowed becomes $((B_DONE + n)))${HALTED:+, review:needs-human withdrawn}"
+}
+
+# Debt, reduced to an exit code, for hooks and CI. Prints nothing on success.
+cmd_debt() { cmd_status "${1:-}" >/dev/null 2>&1; return $?; }
+
+cmd_start() {
+  # Without a login on the list, `parse()` trusts every comment, so any edit or deletion by someone
+  # other than a comment's author would read as a foreign edit of a trusted marker and the refusal
+  # below would name the wrong cause. The real cause is the missing list, and it is refused first.
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
+  parse "$json"
+  # A pass started now could never be published (`publish` refuses on the same reading), so it is
+  # refused before any label moves.
+  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED on #$NUMBER: $(foreign_msg). No pass is started, since publish would refuse it."
+  # A halted pull request whose BLOCKED verdict is still at the head has nothing new to review: a
+  # pass now would only spend a cycle against the ceiling. A push moves the head (and `stale` drops
+  # the halt), and `extend` withdraws it when a person grants cycles.
+  if [ -n "${HALTED:-}" ] && [ "$MARKER_VERDICT" = BLOCKED ] && [ -n "$MARKER_SHA" ] \
+     && [ "${HEAD:0:${#MARKER_SHA}}" = "$MARKER_SHA" ]; then
+    die "review-cycle: REFUSED. #$NUMBER is halted (review:needs-human) and its BLOCKED verdict is still at the head ${HEAD:0:12}, so there is nothing new to review.
+   A person pushes a correction, or grants more cycles in the session (review-cycle.sh extend $NUMBER --n N, when budget says ask)."
+  fi
+  gh pr edit "$NUMBER" --add-label review:running ${HALTED:+--remove-label review:needs-human} \
+      $(remove_states_except review:running) >/dev/null \
+    || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
+  echo "#$NUMBER → review:running (head ${HEAD:0:12})"
+}
+
+# The mechanical barrier in front of the fixer's writes (ISO 27001 A.8.28, task B). A script cannot
+# sandbox the agent's own tool calls: isolation of the tests the fixer runs belongs to the harness.
+# What a script CAN do is refuse to start a correction on code the person did not write or accept.
+#
+# It builds the set of principals (the pull request author and the author of every commit on the
+# pull request) and refuses unless each one is a collaborator with `write`, `maintain` or `admin`
+# permission on the repository. Fail closed: a fork, a commit with no linked GitHub login, a
+# lookup that errors, a bot, or any lower permission refuses. `FIXER_TRUSTED_LOGINS` (comma
+# separated) names logins allowed without a lookup, for a bot the repository owns; `app/<name>` and
+# `<name>[bot]` are the same bot and either form matches both. Base-branch merge
+# commits are covered because their authors are resolved like any other.
+# $2 is the pull request JSON `cmd_fix` already read through pr-json.py, which carries the author and
+# isCrossRepository, so the guard asks gh only for the commits and the permissions. It reaches python
+# on file descriptor 3, never in an argument or the environment: the JSON holds every comment body,
+# and an environment string over 128 KiB (Linux) or 1 MiB of arguments plus environment (macOS)
+# makes the exec fail, which would refuse every long pull request.
+fix_guard() {
+  FG_PR="$1" FG_TRUSTED="${FIXER_TRUSTED_LOGINS:-}" python3 -I - 3<<<"$2" <<'PY'
+import json, os, subprocess, sys
+
+pr = os.environ["FG_PR"]
+
+def norm(login):
+    # GitHub names one bot two ways: `gh pr view --json author` says `app/<name>` and the REST commit
+    # author says `<name>[bot]`. Both become `<name>[bot]`, so listing either form matches both and
+    # the PR author and its commits are one principal.
+    login = login.strip().lower()
+    return login[4:] + "[bot]" if login.startswith("app/") and len(login) > 4 else login
+
+trusted = {norm(x) for x in os.environ["FG_TRUSTED"].split(",") if x.strip()}
+OK = {"admin", "maintain", "write"}
+
+def gh(*args):
+    try:
+        r = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+def refuse(msg):
+    print("review-cycle: REFUSED. " + msg, file=sys.stderr)
+    sys.exit(1)
+
+try:
+    with os.fdopen(3, encoding="utf-8") as f:
+        meta = json.loads(f.read())
+    if not isinstance(meta, dict):
+        raise ValueError
+except (OSError, ValueError):
+    refuse("could not read who wrote #%s, and an unreadable author is not a trusted one" % pr)
+if not isinstance(meta.get("isCrossRepository"), bool):
+    refuse("could not tell whether #%s comes from a fork, and an unknown origin is not a trusted one" % pr)
+if meta.get("isCrossRepository"):
+    refuse("#%s comes from a fork. The fixer does not edit or run code from a fork." % pr)
+principals = {}
+author = norm((meta.get("author") or {}).get("login") or "")
+principals[author] = "the pull request author"
+raw = gh("api", "repos/{owner}/{repo}/pulls/%s/commits" % pr, "--paginate")
+if raw is None:
+    refuse("could not list the commits of #%s, so their authors cannot be checked" % pr)
+dec, i, commits = json.JSONDecoder(), 0, []
+raw = raw.strip()
+try:
+    while i < len(raw):
+        part, j = dec.raw_decode(raw, i)
+        commits.extend(part if isinstance(part, list) else [part])
+        i = j
+        while i < len(raw) and raw[i].isspace():
+            i += 1
+except ValueError:
+    refuse("the commit list of #%s was not JSON" % pr)
+if len(commits) >= 250:
+    refuse("#%s has 250 or more commits, the most this check can list, so some authors would go unchecked" % pr)
+for c in commits:
+    login = norm(((c.get("author") or {}).get("login") or "") if isinstance(c, dict) else "")
+    principals.setdefault(login, "commit %s" % str((c or {}).get("sha", "?"))[:7])
+for login, why in principals.items():
+    if not login:
+        refuse("%s has no linked GitHub login, so the fixer cannot tell who wrote it." % why)
+    if login in trusted:
+        continue
+    # Both fields the endpoint returns, as a JSON array: `permission` holds the legacy values (a
+    # maintain role reads as write, triage as read) and `role_name` the role. Either one equal to
+    # admin, maintain or write is write access. Each field is compared whole, so a custom role named
+    # "Write Docs" is not write access.
+    perm = gh("api", "repos/{owner}/{repo}/collaborators/%s/permission" % login,
+              "--jq", '[.permission, .role_name]')
+    try:
+        fields = json.loads(perm) if perm is not None else None
+    except ValueError:
+        fields = None
+    if not isinstance(fields, list):
+        perm = None
+    if perm is None:
+        refuse("could not confirm that %s (%s) is a collaborator with write access. A bot or an "
+               "outside contributor is refused; list a bot you own in FIXER_TRUSTED_LOGINS." % (login, why))
+    fields = [f for f in fields if isinstance(f, str) and f]
+    if not any(f.lower() in OK for f in fields):
+        refuse("%s (%s) has permission '%s' here, and the fixer only edits code written by "
+               "collaborators with write access or higher." % (login, why, " / ".join(fields) or "none"))
+PY
+}
+
+# The corrector's `start`, and the two writes are the same two writes for the same reason.
+#
+# **WHY IT EXISTS, measured.** `cmd_start` takes the cycle for the reviewer and drops
+# `review:needs-human` in the same call: the claim "a person has to decide" is withdrawn the moment
+# the cycle is taken again. Nothing did that for the corrector, and the gap is
+# not symmetric-looking, it is dangerous: when a `/pr-fixer` starts, the head has not
+# moved yet, so `review:passed` is still true about the COMMIT and already false about the
+# INTENTION. `cmd_stale`, the one thing that retires a claim the head outgrew, cannot help: it acts
+# only after a push, and the whole window is before the push.
+#
+# **Pull requests merged inside that window**, carrying `review:passed`
+# while correctors were working, and the corrections stayed on disk and
+# never reached the base branch: among them a security guard and a defect that locked users out.
+# Each needed a rescue pull request, which is the expensive way to discover that a label was
+# answering a question about a commit while the reader was asking one about the work.
+#
+# So the corrector says so out loud, and `review:fixing` is what says it. This function does not
+# review, does not correct and does not judge: it moves a label and removes a claim.
+cmd_fix() {
+  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to fix on"
+  parse "$json"
+  # **Mirrors the check `cmd_stale` already makes before writing anything** (`[ "$STATE" = "OPEN" ]
+  # || return 0`), and for the same reason `cmd_publish` refuses a non-OPEN state outright: a pull
+  # request that already merged or closed has no cycle left to claim. Without this, `fix` on a
+  # MERGED pull request labelled it `review:fixing` anyway, and `gate-pr-review-state.py` reads that
+  # label on a merged pull request as "a correction was in flight when the merge happened, so look
+  # for corrections that never landed", a specific, false forensic trail about a correction that
+  # never existed, produced by a label applied by mistake after the fact.
+  [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — there is no cycle to claim on a pull request that already merged or closed"
+  # Before any label moves: a refused correction leaves the pull request exactly as it was.
+  fix_guard "$NUMBER" "$json" || die "review-cycle: #$NUMBER was not claimed for correction"
+  gh pr edit "$NUMBER" --add-label review:fixing ${HALTED:+--remove-label review:needs-human} \
+      $(remove_states_except review:fixing) >/dev/null \
+    || die "review-cycle: could not move the label on #$NUMBER; labels may be missing: run review-cycle.sh ensure-labels"
+  echo "#$NUMBER → review:fixing (head ${HEAD:0:12})${HALTED:+, review:needs-human withdrawn}"
+}
+
+# A push over a reviewed head does not make the review wrong; it makes it about another commit.
+# Resetting to `pending` REMOVES a claim, which is why it is safe to do without asking.
+cmd_stale() {
+  # Decides from markers, so it refuses a list that names nobody, as `status` does: unset, the
+  # reader would trust any commenter, and a forged marker at the head would keep a stale label.
+  marker_authors_ready || { echo "review-cycle: $NOT_READY_MSG — INCONCLUSIVE" >&2; return 2; }
+  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || return 2
+  parse "$json"
+  [ "$STATE" = "OPEN" ] || return 0
+  [ -n "$LABEL" ] || return 0
+  # `pending` has nothing to retire. `running` is the one that looks stale and is not: a pass in
+  # flight has published no marker yet, so the newest marker on the pull request belongs to a
+  # PREVIOUS pass and naming an older commit is exactly what it should do. Comparing it to the head
+  # retired a live pass once while the head had not moved at all: the hook cancelling the
+  # review it had just asked for. Only a marker-backed state can go stale.
+  #
+  # **`review:fixing` is NOT in that exemption, and it is the state's exit door.** It looks like
+  # `running` (somebody is working) and it is the opposite case: the marker that stands on the
+  # pull request is the BLOCKED one from the pass that DEMANDED the correction, so it is
+  # marker-backed, and the correction landing is precisely what moves the head past it. Retiring it
+  # here is the whole transition out: the corrector pushes, `fixing` goes back to `pending`, and
+  # `review:needs-human` goes with it if it was standing.
+  case "$LABEL" in review:pending|review:running|*" "*) return 0 ;; esac
+  # A foreign edit or deletion (MARKER_FOREIGN_EDIT) is not checked here, on purpose: `stale` only
+  # removes a claim the head outgrew, which is safe whoever touched a comment, and `status`, `start`,
+  # `publish` and `budget` are the commands that stop on it.
+  [ -n "$MARKER_SHA" ] || return 0
+  if [ "${HEAD:0:${#MARKER_SHA}}" != "$MARKER_SHA" ]; then
+    gh pr edit "$NUMBER" --remove-label "$LABEL" ${HALTED:+--remove-label review:needs-human} \
+        --add-label review:pending >/dev/null 2>&1 \
+      && echo "#$NUMBER: head moved past ${MARKER_SHA:0:12} — $LABEL → review:pending"
+  fi
+}
+
+# **A report is posted to a place other people read, so it is screened before it leaves.** A token
+# pasted into a finding (a reviewer quoting a diff line that holds a key) becomes public the moment
+# `publish` posts it. Redacting by regex has missed loose tokens in other tools, so this refuses
+# instead: the report is never rewritten, and the person or agent removes the secret and publishes
+# again. The match itself is never printed. High-entropy strings are not screened: a 40-character
+# commit SHA is the commonest thing in a report and would be refused every time.
+#
+# `report_secrets FILE patch` reads FILE as a unified diff instead and screens only its ADDED lines,
+# printing one `path:line kind` per hit (the value is never printed). That is the form `screen
+# --staged`, `--diff` and `--patch` use, so a hit can be found and removed without being shown.
+report_secrets() {
+  X_FILE="$1" X_MODE="${2:-text}" python3 -I - <<'PY'
+import os, re, sys
+# Exit 1 means "a hit". Anything that goes wrong in here (an unreadable file, a bug) exits 2, so a
+# caller never reads a crash as a secret found, or as a clean text.
+def crash(kind, value, tb):
+    sys.stderr.write("review-cycle: the secret screen failed (%s: %s)\n" % (kind.__name__, value))
+    os._exit(2)
+sys.excepthook = crash
+text = open(os.environ["X_FILE"], encoding="utf-8", errors="replace").read()
+# A placeholder, never a value: `$NAME`, `${NAME}`, `<anything>`, `[REDACTED]`, `{{ x }}`, `%(x)s`,
+# a run of `*` or `x`, or a word that says it is an example.
+PLACEHOLDER = re.compile(r"(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*|<[^<>\s]*>|\[REDACTED\]|\{\{.*\}\}|%\(\w+\)s|\*+|[xX]+)$")
+PLACEHOLDER_WORDS = ("example", "placeholder", "redacted", "changeme", "change-me", "change_me", "your-", "your_", "dummy")
+def placeholder(v):
+    return bool(PLACEHOLDER.match(v)) or any(w in v.lower() for w in PLACEHOLDER_WORDS)
+BEARER = re.compile(r"(?i)\bauthorization:\s*bearer\s+([^\s`'\"]{20,})")
+def bearer(s):
+    return any(not placeholder(m.group(1)) for m in BEARER.finditer(s))
+# A password or passwd key assigned a quoted value of eight or more characters
+# (`password = "..."`, `"db_password": "..."`), or, at the start of a line (an .env, ini or YAML
+# file), an unquoted one. An unquoted value that reads as code is not a password: an identifier or a
+# dotted name (`self.password`), a path (`/etc/passwd`), or anything with a call, an index or a
+# brace in it. Placeholders do not count either.
+PW_KEY = r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9_.-]*(?:password|passwd)"
+PW_QUOTED = re.compile(PW_KEY + r"[\"']?\s*[:=]\s*([\"'])([^\"'\s]{8,})\1")
+# PW_BARE stays on one line: in --file mode it runs over the whole text, and a YAML key whose value is
+# a nested mapping (`password:`, then `valueFrom:` indented below) is not an assignment. PW_QUOTED may
+# cross a line break, since a quoted value on the next line is still the key's value in YAML.
+PW_BARE = re.compile(r"(?im)^[ \t]*(?:export[ \t]+)?" + PW_KEY[4:] + r"[ \t]*[:=][ \t]*([^\s\"'`#;,]{8,})[ \t]*$")
+CODE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$|[/~][A-Za-z0-9_./~-]*$")
+def password(s):
+    if any(not placeholder(m.group(2)) for m in PW_QUOTED.finditer(s)):
+        return True
+    for m in PW_BARE.finditer(s):
+        v = m.group(1)
+        if not (placeholder(v) or CODE.match(v) or re.search(r"[(){}\[\]]", v)):
+            return True
+    return False
+def git_path(name):
+    """A path from a `+++ ` line as git prints it: one trailing tab (git adds it after a name with a
+    space) dropped, a C-quoted name decoded, the `b/` prefix removed. None for /dev/null."""
+    if name.endswith("\t"):
+        name = name[:-1]
+    if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
+        out, i, body = bytearray(), 0, name[1:-1]
+        esc = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+        while i < len(body):
+            if body[i] == "\\" and i + 1 < len(body):
+                if body[i + 1] in esc:
+                    out.append(esc[body[i + 1]]); i += 2; continue
+                if re.fullmatch(r"[0-7]{3}", body[i + 1:i + 4]):
+                    out.append(int(body[i + 1:i + 4], 8) & 0xFF); i += 4; continue
+            out += body[i].encode("utf-8"); i += 1
+        name = out.decode("utf-8", "replace")
+    if name == "/dev/null":
+        return None
+    return name[2:] if name.startswith("b/") else name
+def hit(p, s):
+    return p(s) if callable(p) else re.search(p, s)
+pats = {
+    "GitHub token": r"(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})",
+    "AWS access key id": r"(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Za-z0-9])",
+    "private key block": r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
+    "Slack token": r"(?<![A-Za-z0-9])xox[abprs]-[A-Za-z0-9-]{10,}",
+    "API key (sk-...)": r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}",
+    "Stripe key": r"(?<![A-Za-z0-9])[sr]k_(?:live|test)_[A-Za-z0-9]{16,}",
+    "Google API key": r"(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}",
+    "JSON web token": r"(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
+    "npm token": r"(?<![A-Za-z0-9])npm_[A-Za-z0-9]{36}",
+    "GitLab token": r"(?<![A-Za-z0-9])glpat-[A-Za-z0-9_-]{20,}",
+    "Google OAuth token": r"(?<![A-Za-z0-9])ya29\.[A-Za-z0-9_-]{20,}",
+    "bearer credential": bearer,
+    "password assignment": password,
+}
+if os.environ["X_MODE"] == "patch":
+    # Added lines only, numbered on the new side from each `@@ -a,b +c,d @@` header. A removed line
+    # is not something this change commits, and a context line is already in the tree.
+    # Inside a hunk every line is a hunk line, counted from the @@ header (as lint-report does): an
+    # added line whose text starts with "++ " shows as "+++ ...", and is not a file header there.
+    found, path, n = [], None, 0
+    rem_old = rem_new = 0
+    for raw in text.split("\n"):
+        if rem_old > 0 or rem_new > 0:
+            if raw.startswith("+"):
+                rem_new -= 1
+                for name, p in pats.items():
+                    if hit(p, raw[1:]):
+                        found.append("%s:%d %s" % (path or "?", n, name))
+                n += 1
+            elif raw.startswith("-"):
+                rem_old -= 1
+            elif not raw.startswith("\\"):
+                rem_old -= 1
+                rem_new -= 1
+                n += 1
+            continue
+        if raw.startswith("+++ "):
+            path = git_path(raw[4:])
+            continue
+        h = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
+        if h:
+            rem_old = int(h.group(1)) if h.group(1) is not None else 1
+            n = int(h.group(2))
+            rem_new = int(h.group(3)) if h.group(3) is not None else 1
+    if found:
+        print("\n".join(found))
+        sys.exit(1)
+    sys.exit(0)
+hits = [name for name, p in pats.items() if hit(p, text)]
+if hits:
+    print(", ".join(hits))
+    sys.exit(1)
+PY
+}
+
+# The same screen, for every other text an agent posts to the pull request: the fixer's closure
+# comment, the `pr-debt` body edit, an overflow comment beside a long report. Exit 0 = clean, 1 = it
+# holds something that looks like a secret (the kind is named, the value never printed), 2 = the
+# file could not be read, the screen failed, or the usage is wrong. Posts nothing.
+#
+# The other forms screen only the ADDED lines of a diff and print each hit as `path:line kind`:
+# `--staged` reads `git diff --cached` (the fixer runs it before each commit), `--diff <base>
+# <head>` reads `git diff <base>...<head>` from the merge base (the loop runs it on the pull request
+# before the reviewer starts), and `--patch <file>` reads a unified diff it is handed (push-guard.sh
+# gives it the commits it is about to push). Exit 2 when git cannot produce the diff, as for a
+# usage error.
+SCREEN_USAGE="review-cycle: usage: review-cycle.sh screen --file <file> | --staged | --patch <file> | --diff <base> <head>"
+cmd_screen() {
+  local file="" mode="" base="" head=""
+  # A usage error exits 2, never 1: 1 is reserved for "it holds a secret", so a caller that branches
+  # on the code cannot take a typo for a hit, or a hit for a typo.
+  usage2() { echo "$1" >&2; exit 2; }
+  while [ $# -gt 0 ]; do
+    [ -z "$mode" ] || usage2 "$SCREEN_USAGE"
+    case "$1" in
+      --file|--patch) [ $# -ge 2 ] || usage2 "review-cycle: $1 needs a value"; mode="${1#--}"; file="$2"; shift 2 ;;
+      --staged) mode=staged; shift ;;
+      --diff) [ $# -ge 3 ] || usage2 "review-cycle: --diff needs <base> and <head>"; mode=diff; base="$2"; head="$3"; shift 3 ;;
+      *) usage2 "$SCREEN_USAGE" ;;
+    esac
+  done
+  [ -n "$mode" ] || usage2 "$SCREEN_USAGE"
+  if [ "$mode" != file ]; then
+    local pf="$file" what="$file" rc leaked
+    if [ "$mode" = staged ] || [ "$mode" = diff ]; then
+      git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+        || { echo "review-cycle: screen --$mode needs a git work tree, INCONCLUSIVE" >&2; return 2; }
+      pf="$(mktemp)" || return 2
+      # --text: a file git treats as binary (a NUL byte, a binary or -diff attribute from any
+      # .gitattributes or .git/info/attributes) would show only "Binary files differ" and no added
+      # line. --no-textconv: a textconv driver would show its output instead of the bytes committed.
+      if [ "$mode" = staged ]; then
+        what="the staged changes"
+        git -c core.quotePath=false diff --cached --text --no-textconv --no-color --no-ext-diff --no-renames -U0 >"$pf" 2>/dev/null
+      else
+        what="the changes from $base to $head"
+        # Three dots: from the merge base, so the base branch's own later changes are not read as added.
+        git rev-parse --verify --quiet "$base^{commit}" >/dev/null && git rev-parse --verify --quiet "$head^{commit}" >/dev/null \
+          && git -c core.quotePath=false diff --text --no-textconv --no-color --no-ext-diff --no-renames -U0 "$base...$head" -- >"$pf" 2>/dev/null
+      fi || { rm -f "$pf"; echo "review-cycle: git could not produce $what (fetch both commits first), INCONCLUSIVE" >&2; return 2; }
+    fi
+    if [ -f "$pf" ] && [ -r "$pf" ]; then leaked="$(report_secrets "$pf" patch)"; rc=$?; else rc=2; fi
+    [ "$mode" = patch ] || rm -f "$pf"
+    if [ "$rc" = 1 ]; then
+      printf '%s\n' "$leaked"
+      echo "review-cycle: REFUSED. $what add what looks like a secret at the lines above (the value is not shown). Remove it from the change, then screen again." >&2
+      return 1
+    fi
+    [ "$rc" = 0 ] || { echo "review-cycle: the screen could not read $what, INCONCLUSIVE" >&2; return 2; }
+    echo "review-cycle: screen ok. $what add no token or private key this screen knows."
+    return 0
+  fi
+  [ -n "$file" ] && [ -f "$file" ] && [ -r "$file" ] \
+    || { echo "review-cycle: screen needs --file <file> that exists and is readable" >&2; return 2; }
+  local leaked rc
+  leaked="$(report_secrets "$file")"; rc=$?
+  if [ "$rc" = 1 ]; then
+    echo "review-cycle: REFUSED. $file looks like it contains a secret ($leaked). Replace the value with [REDACTED], then screen it again before posting. Nothing was posted." >&2
+    return 1
+  fi
+  [ "$rc" = 0 ] || { echo "review-cycle: the screen could not read $file, INCONCLUSIVE" >&2; return 2; }
+  echo "review-cycle: screen ok. $file holds no token or private key this screen knows."
+  return 0
+}
+
+cmd_publish() {
+  local verdict="" passno="" sha="" report="" number="" crit="" warn="" note="" model="" tier=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --verdict)  [ $# -ge 2 ] || die "review-cycle: --verdict needs a value"; verdict="$2"; shift 2 ;;
+      --pass)     [ $# -ge 2 ] || die "review-cycle: --pass needs a value"; passno="$2";  shift 2 ;;
+      --sha)      [ $# -ge 2 ] || die "review-cycle: --sha needs a value"; sha="$(printf '%s' "$2" | tr 'A-Z' 'a-z')"; shift 2 ;;
+      --report)   [ $# -ge 2 ] || die "review-cycle: --report needs a value"; report="$2";  shift 2 ;;
+      --critical) [ $# -ge 2 ] || die "review-cycle: --critical needs a value"; crit="$2";    shift 2 ;;
+      --warning)  [ $# -ge 2 ] || die "review-cycle: --warning needs a value"; warn="$2";    shift 2 ;;
+      --note)     [ $# -ge 2 ] || die "review-cycle: --note needs a value"; note="$2";    shift 2 ;;
+      --model)    [ $# -ge 2 ] || die "review-cycle: --model needs a value"; model="$2";   shift 2 ;;
+      --tier)     [ $# -ge 2 ] || die "review-cycle: --tier needs a value"; tier="$2";    shift 2 ;;
+      *)          number="$1";  shift ;;
+    esac
+  done
+  case "$verdict" in PASSED|BLOCKED) ;; *) die "review-cycle: --verdict must be PASSED or BLOCKED" ;; esac
+  [ -n "$passno" ] || die "review-cycle: --pass is required"
+  # Validated as digits BEFORE any numeric comparison touches it. Under `set -uo pipefail` (no
+  # `-e`), `[ abc -lt 2 ]` is not false: it is an ERROR (status 2), and the `&&` chain that used
+  # to run this check directly short-circuited past `die` on any non-numeric --pass, publishing
+  # `review:passed` with a marker the gate can never parse back (`pass=(\d+)` does not match
+  # `pass=abc`). A format check first turns that error into a refusal.
+  numero --pass "$passno"
+  [ -n "$sha" ]    || die "review-cycle: --sha is required — it is what binds the marker to a real commit"
+  # 40 hex characters, exactly: a Git SHA-1 is never shorter. Accepting any prefix let `--sha 9`
+  # pass whenever the head happened to start with "9"; the comparison below is now EXACT, so this
+  # format check is what makes "exact" meaningful rather than "exact against a string nobody
+  # validated the length of".
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "review-cycle: --sha must be a full 40-character hex commit SHA, got '$sha'"
+  [ -s "$report" ] || die "review-cycle: --report must name a file that exists AND is not empty; the report is the evidence, and an empty file is none"
+  local leaked lrc
+  leaked="$(report_secrets "$report")"; lrc=$?
+  [ "$lrc" -le 1 ] || die "review-cycle: REFUSED. The secret screen could not read the report, so it was not published (INCONCLUSIVE). Nothing was posted."
+  [ "$lrc" = 0 ] || die "review-cycle: REFUSED. The report looks like it contains a secret ($leaked).
+   A comment on a pull request is public to everyone who can read it. Replace the value with
+   [REDACTED] in the report, then publish again. The report was not changed and nothing was posted."
+
+  # **Required when WRITING, optional when READING.** A marker published now carries all three
+  # counts; a marker published by an older script carries none, and the readers above still take it. The
+  # asymmetry is deliberate: relaxing the write side would let a new marker be posted without the one
+  # number the verdict is checked against, and tightening the read side would retroactively unreview
+  # every pull request already reviewed.
+  [ -n "$crit" ] && [ -n "$warn" ] && [ -n "$note" ] || \
+    die "review-cycle: --critical, --warning and --note are required — the verdict is checked against the counts, and a verdict with no counts is the sentence that produced the impasse"
+  numero --critical "$crit"
+  numero --warning  "$warn"
+  numero --note     "$note"
+
+  # **This pair of refusals is the whole of the arithmetic rule, and it lives here rather than only
+  # in the skill because the skill already said it.** The reviewer skill has defined
+  # `BLOCK = 1+ CRITICAL` since its first version, and a measured cycle (many passes, dozens of
+  # findings, zero approvals, zero criticals) blocked on every one of them anyway. A rule written
+  # in prose and checked nowhere is a rule the next pass restates and breaks again.
+  block_at_ready || die "review-cycle: REFUSED. $BLOCK_AT_MSG, got '$REVIEW_BLOCK_AT'"
+  local blk; blk="$(blocking_count "$crit" "$warn")"
+  [ "$verdict" = "BLOCKED" ] && [ "$blk" -eq 0 ] && \
+    die "review-cycle: REFUSED. BLOCKED needs at least one $(blocker_word), and this marker counts none.
+   With REVIEW_BLOCK_AT=${REVIEW_BLOCK_AT:-critical}, a CRITICAL is data loss, a security hole, a production outage, or a
+   broken invariant the project declares non-negotiable (for example in its constitution, CLAUDE.md
+   or AGENTS.md)$([ "${REVIEW_BLOCK_AT:-critical}" = warning ] && printf ', and a WARNING is a likely bug with a concrete failing input')
+   Everything else is a NOTE or declared debt with an owner: publish PASSED with the counts."
+  [ "$verdict" = "PASSED" ] && [ "$blk" -gt 0 ] && \
+    die "review-cycle: REFUSED. PASSED cannot carry a blocking finding, and this marker counts $blk (critical=$crit warning=$warn, REVIEW_BLOCK_AT=${REVIEW_BLOCK_AT:-critical}).
+   Only a $(blocker_word) blocks, so a passing verdict beside one is the verdict contradicting the
+   arithmetic that produced it. Close them with /pr-fixer and review the correction."
+
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  publisher_on_list
+  local json; json="$(pr_json "$number")"; [ -n "$json" ] || die "review-cycle: no pull request to publish on"
+  parse "$json"
+
+  # **A verdict is not published on what already merged**, and this guard lives HERE because here
+  # it is already known which pull request is being talked about. Its first version ran a SECOND argument
+  # parser above, which disagreed with the real one right below: `--x 51`, `-- 51` and `--report=file`
+  # made the two see different pull requests, and so the guard judged one and `publish`
+  # wrote to the other. Two parsers for the same thing is a disagreement waiting to happen;
+  # `$STATE` comes from the `parse` that `publish` itself uses, so there is no way to diverge.
+  #
+  # What this prevents: a verdict stamped after the merge is a review that could no longer change
+  # anything, and the Stop hook even went so far as to SUGGEST it as a way out: the harness pushing
+  # the fabrication that the cycle exists to prevent.
+  [ "$STATE" = "OPEN" ] || die "review-cycle: #$NUMBER is $STATE — a verdict stamped after the merge is a review that could not change anything, which is what the review cycle forbids"
+
+  # **`publish` never read `$LABEL` before this line, so a pull request in `review:fixing` (the
+  # corrector's OWN state, which `cmd_status` already describes as "the head is about to move, so
+  # nothing here concludes anything") could be stamped `review:passed`
+  # anyway. That is the merged-while-fixing shape rebuilt from inside the mechanism meant to
+  # close it: a green
+  # "may merge" beside corrections still sitting on disk, unbound by anything checking the one label
+  # that says the head is not staying still. `start` is the legitimate way off `fixing`: it already
+  # replaces the label and drops `review:needs-human` with it (see `cmd_start` above), so the
+  # refusal names it as the next step instead of leaving the caller to guess.
+  # Matched against the padded string, not by equality: `parse()` joins the states it finds with a
+  # space, so two labels at once arrive here as one string. Equality would miss that and let the
+  # marker through, failing OPEN in the one case where the pull request is most confused about
+  # itself. `cmd_stale` bails on `*" "*` for the same reason.
+  case " $LABEL " in *" review:fixing "*) die "review-cycle: REFUSED. #$NUMBER is review:fixing — a correction is in flight and the head is about to move, so nothing at this head concludes anything.
+   Publishing a verdict now binds review:passed to a commit the correction is still rewriting.
+   Run review-cycle.sh start $NUMBER to take the cycle back before /pr-reviewer runs." ;; esac
+
+  # The whole anti-fabrication property lives in this comparison. It is EXACT now, not a prefix:
+  # `sha` is already validated as a full 40-hex string above, so this is `$HEAD = $sha` or nothing.
+  if [ "$HEAD" != "$sha" ]; then
+    die "review-cycle: REFUSED. The review names ${sha:0:12}; the head is now ${HEAD:0:12}.
+   Someone pushed while the pass ran, so the report is about a commit that is no longer up for merge.
+   Re-run /pr-reviewer over the current diff. This is not a formality: publishing here is
+   exactly the green-that-proves-nothing result a CI check exists to catch."
+  fi
+
+  # **`pass>=2` was never about the number, and reading it as a number closed the only door a clean
+  # first pass had.** Once `BLOCKED` requires a CRITICAL, a pass 1 that counts none is the EXPECTED
+  # outcome, not an oddity, and the script refused it both ways: `BLOCKED` for having no CRITICAL,
+  # `PASSED` for not being a second pass. The first approved verdict a clean review produced
+  # could not be published; the reviewer sat in that impasse trying to publish its own.
+  #
+  # The stated reason for the bar is the whole of it: *the second pass reviews the CORRECTION*. Where
+  # nothing blocked, nothing was corrected, and asking for a second pass is asking someone to review
+  # nothing. So the bar now applies exactly where its own sentence is true: a `BLOCKED` marker
+  # stands on this pull request, so a correction exists and the cycle wants the reviewer to have
+  # read THAT one. That invariant is the heart of the rule and is not what changed here.
+  #
+  # It is read from the marker history rather than from the label, because the label carries one
+  # state at a time and `publish` is itself the thing about to overwrite it.
+  # The pass number is the next one after the highest trusted marker, exactly. A lower one (or the
+  # same one again) would let `budget` restart the cycle count, and a higher one would skip cycles.
+  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED on #$NUMBER: $(foreign_msg). The next pass is not known, so nothing is published."
+  local want_pass=$(( ${MARKER_MAX_PASS:-0} + 1 ))
+  [ "$passno" -eq "$want_pass" ] || die "review-cycle: REFUSED. --pass $passno, and the next pass on #$NUMBER is $want_pass (the highest trusted marker says pass ${MARKER_MAX_PASS:-0}).
+   Publish with --pass $want_pass. \`review-cycle.sh budget $NUMBER\` prints it as B_NEXT_PASS."
+  if [ "$verdict" = "PASSED" ] && [ "$passno" -lt 2 ] && [ "${MARKER_BLOCKED_SEEN:-no}" = "yes" ]; then
+    die "review-cycle: REFUSED. PASSED at pass $passno, and #$NUMBER already carries a BLOCKED marker.
+   A correction was demanded, so there IS one to review, and the cycle wants the reviewer to have
+   read it: publish the approval from pass 2 or later, over the corrected diff. Pass 1 may approve
+   only where nothing ever blocked, because there a second pass would be reviewing nothing."
+  fi
+
+  # **The size refusal, and it has to come before the comment because the comment comes first.**
+  # GitHub rejects a comment body over 65536 characters. The comment is posted before the label
+  # moves (that order is deliberate: a label never claims a verdict that is not on the pull request),
+  # so a rejected body leaves the pull request at `review:running` with no marker, a pass that looks
+  # like it died in flight. Measured in bytes, which are never fewer than characters, so the count
+  # can only overstate the length; the bar sits at 60000 to keep a margin below the hard limit.
+  # Model id and tier are self-attested by the publishing session and are never verified here. They
+  # are optional and come as a pair, so an old marker (without them) and a new one both read.
+  local model_part=""
+  if [ -n "$model$tier" ]; then
+    [ -n "$model" ] && [ -n "$tier" ] || die "review-cycle: --model and --tier go together"
+    case "$model" in ''|*[!A-Za-z0-9._:-]*) die "review-cycle: --model takes letters, digits, dot, colon, dash and underscore only" ;; esac
+    [ "${#model}" -le 64 ] || die "review-cycle: --model is longer than 64 characters"
+    case "$tier" in fast|standard|deep) ;; *) die "review-cycle: --tier is one of fast, standard, deep" ;; esac
+    model_part=" model=$model tier=$tier"
+  fi
+  # The setting goes into the marker only when it is not the default, so a marker published under
+  # `critical` is byte for byte what older readers already parse.
+  local block_part=""
+  [ "${REVIEW_BLOCK_AT:-critical}" = warning ] && block_part=" block_at=warning"
+  local marker_line body_bytes
+  marker_line="$(printf '<!-- adversarial-review: sha=%s verdict=%s pass=%s critical=%s warning=%s note=%s%s%s -->' \
+      "$HEAD" "$verdict" "$passno" "$crit" "$warn" "$note" "$model_part" "$block_part")"
+  body_bytes=$(( $(printf '%s\n\n' "$marker_line" | wc -c) + $(wc -c <"$report") ))
+  if [ "$body_bytes" -gt 60000 ]; then
+    die "review-cycle: REFUSED. The marker plus the report is $body_bytes bytes, and the limit here is 60000.
+   GitHub rejects a comment body over 65536 characters, and a rejected comment leaves #$NUMBER at
+   review:running with no marker. Shorten the report: keep the findings block in it, and move long
+   prose to a second comment or to a job artifact, then publish again."
+  fi
+
+  local label="review:blocked"; [ "$verdict" = "PASSED" ] && label="review:passed"
+  # Any new verdict ends a halt: the person's decision, or the loop's next pass, supersedes it.
+  local halted_rm=""
+  [ -n "${HALTED:-}" ] && halted_rm="--remove-label review:needs-human"
+  { printf '%s\n\n' "$marker_line"
+    cat "$report"; } | gh pr comment "$NUMBER" --body-file - >/dev/null \
+    || die "review-cycle: could not post the marker on #$NUMBER"
+  gh pr edit "$NUMBER" --add-label "$label" $halted_rm \
+      $(remove_states_except "$label") >/dev/null \
+    || die "review-cycle: marker posted but the label did not move on #$NUMBER; fix by hand; labels may be missing: run review-cycle.sh ensure-labels, then move the label to $label"
+  echo "#$NUMBER → $label${halted_rm:+, review:needs-human withdrawn}, marker bound to ${HEAD:0:12}, pass $passno, critical=$crit warning=$warn note=$note"
+  # An approved pull request stops being a draft. This is the one thing publish does beyond the
+  # marker and the label, and only after both are written, so the gate (which starts on
+  # ready_for_review) already finds the marker. A failure here is reported and does not undo the
+  # verdict: the marker is the authority, the draft flag is a convenience.
+  if [ "$verdict" = "PASSED" ] && [ -n "${IS_DRAFT:-}" ]; then
+    if gh pr ready "$NUMBER" >/dev/null 2>&1; then
+      echo "  #$NUMBER was a draft: marked ready for review"
+    else
+      echo "review-cycle: verdict published, but #$NUMBER could not be marked ready for review; run: gh pr ready $NUMBER" >&2
+    fi
+  fi
+  [ "$verdict" = "PASSED" ] && { positivo "$warn" || positivo "$note"; } && \
+    echo "  declared debt: $warn warning, $note note — name an owner for each in the pull request body; passed means nothing blocks, not that nothing was found"
+  audit_append "$NUMBER" "$passno" "$HEAD" "$verdict" "$crit" "$warn" "$note" "${model:--}" "${tier:--}"
+  return 0
+}
+
+# A convenience copy of what was just published, one JSON line per verdict, on this machine only:
+# `${XDG_STATE_HOME:-$HOME/.local/state}/pr-reviewer-fixer/audit.jsonl`. It is NOT evidence. The
+# marker on the pull request is the authority, and this file can be edited or lost with the laptop.
+# A failure to write it is a warning and never undoes the verdict.
+audit_append() {
+  local dir file who ts
+  dir="${XDG_STATE_HOME:-${HOME:-}/.local/state}/pr-reviewer-fixer"
+  file="$dir/audit.jsonl"
+  who="$GH_LOGIN"
+  [ -n "$who" ] || who="$(gh api user --jq .login 2>/dev/null)" || who=""
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if ! { mkdir -p "$dir" && A_PR="$1" A_PASS="$2" A_SHA="$3" A_VERDICT="$4" A_CRIT="$5" A_WARN="$6" A_NOTE="$7" \
+         A_MODEL="$8" A_TIER="$9" A_WHO="$who" A_TS="$ts" python3 -I -c '
+import json, os
+e = os.environ
+n = lambda k: None if e[k] in ("", "-") else e[k]
+print(json.dumps({"pr": int(e["A_PR"]), "pass": int(e["A_PASS"]), "sha": e["A_SHA"],
+    "verdict": e["A_VERDICT"], "critical": int(e["A_CRIT"]), "warning": int(e["A_WARN"]),
+    "note": int(e["A_NOTE"]), "model": n("A_MODEL"), "tier": n("A_TIER"),
+    "publisher": n("A_WHO"), "published_at": e["A_TS"]}, sort_keys=True))' >>"$file"; } 2>/dev/null; then
+    echo "review-cycle: warning: the local audit copy could not be written to $file; the marker on #$1 is the record" >&2
+  fi
+}
+
+# Exports what the pull request itself says about one review, as a JSON file a person commits
+# through a pull request (`docs/compliance-records/<pr>-<pass>.json`). It decides from the same
+# trust rules as `status` and the gate: an author on `REVIEW_MARKER_AUTHORS`, a comment never edited
+# after it was created (pr-json.py), and a refusal when the allowlist is empty or lists no login. It
+# REFUSES when no trusted marker remains, and when the head moved after the last trusted marker,
+# so a record never pairs one commit's verdict with another head. Markers that were posted by
+# someone off the list are listed under `ignored`, with the reason, and never used.
+#
+# Model id and tier are copied from the marker as they are: self-attested by the publishing
+# session, never verified. Everything else (sha, counts, publisher, timestamps, label events)
+# comes from GitHub.
+cmd_export_audit() {
+  local pr="" out="docs/compliance-records"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --out) [ $# -ge 2 ] || die "review-cycle: --out needs a value"; out="${2:-}"; shift 2 ;;
+      *) pr="$1"; shift ;;
+    esac
+  done
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: could not read the pull request, or its comment edits could not be checked"
+  parse "$json"
+  local events
+  events="$(gh api "repos/{owner}/{repo}/issues/$NUMBER/events?per_page=100" --paginate 2>/dev/null)" \
+    || die "review-cycle: could not read the timeline of #$NUMBER, and an export without it would be incomplete"
+  # A symlink at the output directory would send the record wherever the link points. A branch can
+  # commit one under docs/compliance-records/, so the export refuses it instead of following it.
+  [ ! -L "$out" ] || die "review-cycle: REFUSED. $out is a symbolic link; export into a real directory"
+  # That test sees only the last component. A link earlier in the path (`--out link/`, or a committed
+  # `docs` link above the default directory) would still send the record elsewhere, and `mkdir -p`
+  # follows it. So the whole path is resolved first, and it must land inside the repository the
+  # export runs in, where a person reviews and commits the record.
+  local top; top="$(git rev-parse --show-toplevel 2>/dev/null)" && [ -n "$top" ] \
+    || die "review-cycle: REFUSED. export-audit writes into the repository it runs in, and this is not inside a git work tree"
+  # The resolution check and the `mkdir -p` run in the export's own python below, before it writes.
+  # The pull request and the timeline go through files, never the environment: one environment
+  # string over 128 KiB (Linux) or a total over ARG_MAX (macOS) fails with "argument list too long",
+  # and a pull request with a few long reports reaches that.
+  local xdir; xdir="$(mktemp -d)" || die "review-cycle: could not create a temporary directory"
+  printf '%s' "$json" >"$xdir/pr.json" && printf '%s' "$events" >"$xdir/events.json" \
+    || { rm -rf "$xdir"; die "review-cycle: could not write the export inputs to $xdir"; }
+  X_JSON_FILE="$xdir/pr.json" X_EVENTS_FILE="$xdir/events.json" X_AUTHORS="$(marker_authors)" X_OUT="$out" X_TOP="$top" python3 -I - <<'PY'
+import json, os, re, sys
+
+MARK = re.compile(
+    r"^\s*<!--\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
+    r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
+    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?"
+    r"(?:\s+block_at=(critical|warning))?\s*-->", re.I | re.ASCII)
+
+def die(msg):
+    print("review-cycle: REFUSED. " + msg, file=sys.stderr)
+    sys.exit(1)
+
+pr = json.load(open(os.environ["X_JSON_FILE"], encoding="utf-8"))
+allow = set(os.environ["X_AUTHORS"].split(",")) - {""}
+head = (pr.get("headRefOid") or "").lower()
+trusted, ignored = [], []
+for c in pr.get("comments", []):
+    m = MARK.match(c.get("body") or "")
+    if not m:
+        continue
+    who = ((c.get("author") or {}).get("login") or "")
+    if who.lower() in allow:
+        trusted.append((c, m))
+    else:
+        ignored.append({"reason": "author is not in REVIEW_MARKER_AUTHORS", "author": who or None,
+                        "created_at": c.get("createdAt"), "url": c.get("url")})
+if not trusted:
+    die("no trusted marker remains on #%s, so there is nothing to export." % pr.get("number"))
+c, m = trusted[-1]
+if m.group(1).lower() != head:
+    die("the head of #%s is %s but the last trusted marker names %s: the head moved after the "
+        "review, so a record would pair one commit's verdict with another head. Run the loop again."
+        % (pr.get("number"), head[:12], m.group(1)[:12]))
+try:
+    # `gh api --paginate` prints one JSON array per page, back to back, so decode them one by one.
+    dec, i, raw, events = json.JSONDecoder(), 0, open(os.environ["X_EVENTS_FILE"], encoding="utf-8").read().strip(), []
+    while i < len(raw):
+        part, j = dec.raw_decode(raw, i)
+        events.extend(part if isinstance(part, list) else [part])
+        i = j
+        while i < len(raw) and raw[i].isspace():
+            i += 1
+except ValueError:
+    die("the timeline of #%s was not JSON." % pr.get("number"))
+labels = [{"event": e.get("event"), "label": (e.get("label") or {}).get("name"),
+           "actor": (e.get("actor") or {}).get("login"), "at": e.get("created_at")}
+          for e in events if e.get("event") in ("labeled", "unlabeled")]
+rec = {
+    "schema": 1,
+    "pr": pr.get("number"), "head": head, "pass": int(m.group(3)), "verdict": m.group(2).upper(),
+    "critical": int(m.group(4)) if m.group(4) else None,
+    "warning": int(m.group(5)) if m.group(5) else None,
+    "note": int(m.group(6)) if m.group(6) else None,
+    "model": m.group(7), "tier": m.group(8), "model_and_tier_self_attested": True,
+    # Only what the marker says. A marker without the field was published under the default by
+    # 0.8.0 or later, or by an older version under either setting, so absence is not "critical".
+    "block_at": m.group(9).lower() if m.group(9) else None,
+    "publisher": (c.get("author") or {}).get("login"), "published_at": c.get("createdAt"),
+    "marker_url": c.get("url"),
+    "label_events": labels,
+    "ignored": ignored,
+    "comments_dropped_for_edits": pr.get("commentsDroppedEdited", 0),
+}
+out = os.environ["X_OUT"]
+path = os.path.join(out, "%s-%s.json" % (pr.get("number"), m.group(3)))
+_top = os.path.realpath(os.environ["X_TOP"])
+
+
+def inside(where):
+    """Refuse when `where` resolves outside the repository top level."""
+    if os.path.commonpath([os.path.realpath(where), _top]) != _top:
+        die("%s resolves outside the repository top level %s (a symbolic link in the path, or a path "
+            "outside the work tree); export into a directory inside it" % (where, _top))
+
+
+def mkdirs_nofollow(where):
+    """Create `where` one component at a time from the repository top, each step relative to an
+    O_NOFOLLOW directory descriptor of its parent, so a link planted in the path while it is being
+    made is refused instead of followed (os.makedirs resolves each path again by name)."""
+    rel = os.path.relpath(os.path.realpath(os.path.dirname(os.path.abspath(where)) or "."), _top)
+    parts = [] if rel == "." else rel.split(os.sep)
+    parts.append(os.path.basename(os.path.abspath(where)))
+    fd = os.open(_top, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in parts:
+            if part in ("", "."):
+                continue
+            try:
+                os.mkdir(part, 0o777, dir_fd=fd)
+            except FileExistsError:
+                pass
+            nfd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nfd
+    finally:
+        os.close(fd)
+
+
+# Resolved before the directory is made, and again after it, so the export never writes outside.
+inside(out)
+# A link at `out` itself (inside the repository) is named as one, before the walk below would refuse
+# it with ELOOP.
+if os.path.islink(out.rstrip("/") or out):
+    die("%s is a symbolic link; export into a real directory." % out)
+try:
+    mkdirs_nofollow(out)
+except OSError as e:
+    print("review-cycle: cannot create %s (%s)" % (out, e.strerror or e), file=sys.stderr)
+    sys.exit(1)
+# Neither the directory nor the record may be a symlink: a checkout can carry one that points at
+# any file of the person running the export. The temporary file is created by mkstemp (O_CREAT |
+# O_EXCL, a fresh random name), so a link planted at a predictable `<record>.tmp` is never opened,
+# and os.replace renames over the final path without following it.
+if os.path.islink(out):
+    die("%s is a symbolic link; export into a real directory." % out)
+# Checked again after the directories exist: a link planted in the path in between is still refused.
+inside(out)
+if os.path.islink(path):
+    die("%s is a symbolic link, and the export does not write through one. Remove it and export again." % path)
+import tempfile
+fd, tmp = tempfile.mkstemp(dir=out, prefix=".%s-%s." % (pr.get("number"), m.group(3)), suffix=".tmp")
+try:
+    with os.fdopen(fd, "w") as fh:
+        json.dump(rec, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    mask = os.umask(0)
+    os.umask(mask)
+    os.chmod(tmp, 0o666 & ~mask)  # mkstemp makes 0600; a committed record reads like any other file
+    os.replace(tmp, path)
+except BaseException:
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    raise
+print(path)
+PY
+  local xrc=$?
+  rm -rf "$xdir"
+  [ "$xrc" = 0 ] || exit 1
+}
+
+# The one reader of a report's `findings` block. `lint-report` and push-guard.sh both call it, so they
+# can never take different blocks from the same report. The block is defined by position, not by
+# fence tracking: the report's last non-blank line is exactly ``` (three backticks, nothing else),
+# and the block runs from the one line in the whole report that is exactly ```findings down to it. A
+# trailing \r is dropped from each line first (a report saved with CRLF). Refused, exit 1, with the
+# reason on stderr: no such closing line; no ```findings line, or more than one anywhere in the report
+# (a quoted example counts, so quote it without that line); and a line inside the block that starts
+# with three backticks, which would close the fence early when it renders.
+#
+# Prints one JSON object: `entries` (each finding's id and its file, line, severity, status and
+# scenario fields, from the `findings:` list), `counts` ({critical, warning, note} or null when the
+# block has no `counts:` line), `mandatory_units` (a list of {unit, effort, status}, or null when the
+# field is absent) and `mandatory_problems` (what is wrong with that field, empty when it is well
+# formed). Exit 2 when the file cannot be read.
+findings_block_json() {
+  [ -r "${1:-}" ] && [ -f "${1:-}" ] || { echo "review-cycle: cannot read the report ${1:-}" >&2; return 2; }
+  X_REPORT="$1" python3 -I - <<'PY'
+import json, os, re, sys
+
+try:
+    raw = open(os.environ["X_REPORT"], "rb").read().decode("utf-8", "replace")
+except OSError:
+    print("review-cycle: cannot read the report", file=sys.stderr); sys.exit(2)
+lines = [ln[:-1] if ln.endswith("\r") else ln for ln in raw.split("\n")]
+
+def refuse(msg):
+    print("review-cycle: " + msg, file=sys.stderr); sys.exit(1)
+
+last = max((i for i, ln in enumerate(lines) if ln.strip(" \t")), default=None)
+if last is None or lines[last] != "```":
+    refuse("the report does not end with the `findings` block: its last non-blank line must be exactly ``` (the block's closing fence)")
+openers = [i for i, ln in enumerate(lines) if ln == "```findings"]
+if not openers:
+    refuse("the report has no line that is exactly ```findings, so it has no `findings` block")
+if len(openers) > 1:
+    refuse("the report has %d lines that are exactly ```findings; it has one `findings` block, at its end (quote an example without that line)" % len(openers))
+if openers[0] > last:
+    refuse("the ```findings line comes after the report's last fence; the block must end the report")
+body = lines[openers[0] + 1:last]
+for ln in body:
+    if re.match(r" {0,3}```", ln):
+        refuse("a line inside the `findings` block starts with ```, which would close it early; the block must be one fence")
+
+entries, counts, mu, mu_seen, problems = [], None, None, 0, []
+section, e = None, None
+for ln in body:
+    if re.match(r"\s*(#|$)", ln):
+        continue
+    top = re.match(r"([A-Za-z_][A-Za-z0-9_-]*):[ \t]*(.*?)[ \t]*$", ln)
+    if top:
+        section, e, key, val = top.group(1), None, top.group(1), top.group(2)
+        if key == "counts":
+            cm = re.fullmatch(r"\{\s*critical:\s*(\d+),\s*warning:\s*(\d+),\s*note:\s*(\d+)\s*\}", val, re.ASCII)
+            counts = ({"critical": int(cm.group(1)), "warning": int(cm.group(2)), "note": int(cm.group(3))}
+                      if cm else "malformed")
+        elif key == "mandatory_units":
+            mu_seen += 1
+            mu = []
+            if val == "[]":
+                section = None
+            elif val:
+                problems.append("`mandatory_units:` must be `[]` or a list of `- {unit: <u>, effort: max|standard, status: run|skipped}` lines, not `%s`" % val)
+        continue
+    if section == "findings":
+        s = re.match(r"\s*-\s+id:\s*(\S+)", ln)
+        if s:
+            e = {"id": s.group(1).strip("\"'")}
+            entries.append(e)
+            continue
+        kv = re.match(r"\s{2,}(file|line|severity|status|scenario):\s*(.*?)\s*$", ln)
+        if kv and e is not None:
+            e[kv.group(1)] = kv.group(2).strip("\"'")
+    elif section == "mandatory_units":
+        m = re.fullmatch(r"\s+-\s*\{\s*unit:\s*([a-z][a-z-]*)\s*,\s*effort:\s*([a-z]+)\s*,\s*status:\s*([a-z]+)\s*\}\s*", ln)
+        if not m:
+            problems.append("a `mandatory_units` line is not `- {unit: <u>, effort: max|standard, status: run|skipped}`: %s" % ln.strip())
+            continue
+        unit, effort, status = m.groups()
+        if effort not in ("max", "standard"):
+            problems.append("unit %s has effort `%s`; write max or standard" % (unit, effort))
+        if status not in ("run", "skipped"):
+            problems.append("unit %s has status `%s`; write exactly run or skipped" % (unit, status))
+        if any(u["unit"] == unit for u in mu):
+            problems.append("unit %s is listed more than once in `mandatory_units`; list it once" % unit)
+        mu.append({"unit": unit, "effort": effort, "status": status})
+if mu_seen > 1:
+    problems.append("the block has %d `mandatory_units:` fields; write exactly one" % mu_seen)
+print(json.dumps({"entries": entries, "counts": counts, "mandatory_units": mu, "mandatory_problems": problems}))
+PY
+}
+
+# Prints the report's `findings` block as JSON (findings_block_json above). Exit 0 with a block, 1
+# when the report has none by the rule above, 2 when the report cannot be read.
+cmd_findings_block() {
+  local report=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --report) [ $# -ge 2 ] || die "review-cycle: --report needs a value"; report="${2:-}"; shift 2 ;;
+      *) echo "review-cycle: usage: review-cycle.sh findings-block --report <file>" >&2; return 2 ;;
+    esac
+  done
+  [ -n "$report" ] || { echo "review-cycle: usage: review-cycle.sh findings-block --report <file>" >&2; return 2; }
+  findings_block_json "$report"
+}
+
+# Checks the `findings` block of a report against the diff it claims to review, before `publish`.
+# A finding must name a file the diff touches, and a line the diff shows (a hunk's new side). The
+# `counts:` line must equal the number of entries still open, the coverage note must carry a
+# `Declined to judge:` line, and the block's `mandatory_units` field must list each unit the path
+# floor makes mandatory as run. Nothing here posts or labels.
+#
+# The floor comes from a structured file list, never from diff text: with a pull request number, the
+# PR's file list from the GitHub API (`path-floor.sh --pr`); with no number, a NUL-separated list
+# (`--files`) or two commits (`--base`/`--head`, git mode). `--diff FILE` alone gives the line anchors
+# but no floor, and the floor is always needed, so that is exit 2. The line anchors read the diff text,
+# from `--diff` or from `gh pr diff --color=never`.
+#
+# Exit 0 = every check holds · 1 = a finding is not anchored, the report has no valid findings block,
+# or a mandatory unit is not listed as run · 2 = an input could not be read, or the floor could not be
+# computed.
+cmd_lint_report() {
+  local pr="" report="" diff="" files="" fbase="" fhead=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --report) [ $# -ge 2 ] || die "review-cycle: --report needs a value"; report="${2:-}"; shift 2 ;;
+      --diff)   [ $# -ge 2 ] || die "review-cycle: --diff needs a value"; diff="${2:-}"; shift 2 ;;
+      --files)  [ $# -ge 2 ] || die "review-cycle: --files needs a value"; files="${2:-}"; shift 2 ;;
+      --base)   [ $# -ge 2 ] || die "review-cycle: --base needs a value"; fbase="${2:-}"; shift 2 ;;
+      --head)   [ $# -ge 2 ] || die "review-cycle: --head needs a value"; fhead="${2:-}"; shift 2 ;;
+      *) pr="$1"; shift ;;
+    esac
+  done
+  [ -s "$report" ] || { echo "review-cycle: lint-report needs --report <file> that exists and is not empty" >&2; return 2; }
+  # Where the floor comes from. A pull request's floor is its API file list and nothing else.
+  local -a floor_args=()
+  if [ -n "$pr" ]; then
+    case "$pr" in *[!0-9]*) echo "review-cycle: lint-report takes a pull request number, not '$pr'" >&2; return 2 ;; esac
+    if [ -n "$files$fbase$fhead" ]; then
+      echo "review-cycle: with a pull request number the floor is its API file list; drop --files, --base and --head" >&2; return 2
+    fi
+    floor_args=(--pr "$pr")
+  elif [ -n "$files" ]; then
+    [ -z "$fbase$fhead" ] || { echo "review-cycle: give --files or --base and --head, not both" >&2; return 2; }
+    floor_args=(--files "$files")
+  elif [ -n "$fbase" ] && [ -n "$fhead" ]; then
+    floor_args=("$fbase" "$fhead")
+  else
+    [ -n "$diff" ] || { echo "review-cycle: lint-report needs a pull request number or --diff <file>" >&2; return 2; }
+    echo "review-cycle: lint-report --diff needs a structured file list for the path floor (--files <NUL-separated list>, or --base <sha> --head <sha>); the floor is never read from diff text, so it cannot be computed, INCONCLUSIVE" >&2
+    return 2
+  fi
+  local tmp=""
+  if [ -z "$diff" ]; then
+    tmp="$(mktemp)"; diff="$tmp"
+    # --color=never: with CLICOLOR_FORCE=1 gh colours even a redirected diff, and an escape code
+    # before each `diff --git` hides every path from the anchors.
+    gh pr diff --color=never "$pr" >"$diff" 2>/dev/null || { rm -f "$tmp"; echo "review-cycle: could not read the diff of #$pr" >&2; return 2; }
+  fi
+  [ -s "$diff" ] || { rm -f "$tmp"; echo "review-cycle: the diff is empty or unreadable, so no finding can be checked against it" >&2; return 2; }
+  local leaked lrc
+  leaked="$(report_secrets "$report")"; lrc=$?
+  if [ "$lrc" -gt 1 ]; then
+    rm -f "$tmp"; echo "review-cycle: the secret screen could not read the report, INCONCLUSIVE" >&2; return 2
+  fi
+  if [ "$lrc" = 1 ]; then
+    rm -f "$tmp"
+    echo "lint-report: FAIL. 1 problem(s):"
+    echo "  - the report looks like it contains a secret ($leaked); replace the value with [REDACTED]"
+    return 1
+  fi
+  # The path floor (path-floor.sh, shipped beside this script in both skills): the units the paths
+  # of this change make mandatory. A floor that cannot be computed is not an empty floor.
+  local floor frc
+  floor="$(bash "$(dirname "$0")/path-floor.sh" "${floor_args[@]}")"; frc=$?
+  if [ "$frc" -ne 0 ]; then
+    rm -f "$tmp"; echo "review-cycle: path-floor.sh could not read the changed paths (exit $frc), so the mandatory units are unknown, INCONCLUSIVE" >&2; return 2
+  fi
+  local block brc
+  block="$(findings_block_json "$report" 2>&1)"; brc=$?
+  if [ "$brc" -ne 0 ]; then
+    rm -f "$tmp"
+    [ "$brc" = 1 ] || { echo "$block" >&2; return 2; }
+    echo "lint-report: FAIL. The report has no valid \`findings\` block:"
+    echo "  - ${block#review-cycle: }"
+    return 1
+  fi
+  X_REPORT="$report" X_DIFF="$diff" X_FLOOR="$floor" X_BLOCK="$block" X_BLOCK_AT="${REVIEW_BLOCK_AT:-critical}" python3 -I - <<'PY'
+import json, os, re, sys
+
+report = open(os.environ["X_REPORT"], encoding="utf-8", errors="replace").read()
+# Only \n ends a line, as in git (path-floor.sh splits the same way): splitlines() would also break
+# on \f, \v, a lone \r, \x1c-\x1e, U+0085 and U+2028/2029 inside a changed line, and the piece after
+# it could read as a hunk header that swallows the next files. A trailing \r (CRLF) is dropped.
+diff = [ln[:-1] if ln.endswith("\r") else ln
+        for ln in open(os.environ["X_DIFF"], encoding="utf-8", errors="replace", newline="").read().split("\n")]
+
+def git_path(name, side):
+    """A path from a `--- ` or `+++ ` line as git prints it: one trailing tab (git adds it after a
+    name with a space) dropped, a C-quoted name (`"b/caf\\303\\251.txt"`, which git writes for a
+    non-ASCII byte, a quote, a backslash or a control character) decoded, then the `a/` or `b/`
+    prefix removed. The finding names the file as it is, so the diff's spelling must be undone."""
+    if name.endswith("\t"):
+        name = name[:-1]
+    if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
+        out, i, body = bytearray(), 0, name[1:-1]
+        esc = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+        while i < len(body):
+            if body[i] == "\\" and i + 1 < len(body):
+                if body[i + 1] in esc:
+                    out.append(esc[body[i + 1]]); i += 2; continue
+                if re.fullmatch(r"[0-7]{3}", body[i + 1:i + 4]):
+                    out.append(int(body[i + 1:i + 4], 8) & 0xFF); i += 4; continue
+            out += body[i].encode("utf-8"); i += 1
+        name = out.decode("utf-8", "replace")
+    return name[2:] if name.startswith(side) else name
+
+# New-side line ranges per file, and the files the diff deletes (no new side to check).
+ranges, deleted, cur, old = {}, set(), None, None
+rem_old = rem_new = 0
+for ln in diff:
+    if rem_old > 0 or rem_new > 0:
+        # Inside a hunk: a removed line that reads "-- x" shows as "--- x", so only count lines here.
+        if ln.startswith("+"):
+            rem_new -= 1
+        elif ln.startswith("-"):
+            rem_old -= 1
+        elif not ln.startswith("\\"):
+            rem_old -= 1
+            rem_new -= 1
+        continue
+    if ln.startswith("--- "):
+        old = git_path(ln[4:], "a/")
+    elif ln.startswith("+++ "):
+        new = git_path(ln[4:], "b/")
+        if new == "/dev/null":
+            deleted.add(old)
+            cur = None
+        else:
+            cur = new
+            ranges.setdefault(cur, [])
+    elif ln.startswith("@@") and cur is not None:
+        m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", ln, re.ASCII)
+        if m:
+            start, n = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
+            ranges[cur].append((start, start + max(n, 1) - 1))
+    if ln.startswith("@@"):
+        h = re.match(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@", ln, re.ASCII)
+        if h:
+            rem_old = int(h.group(1)) if h.group(1) is not None else 1
+            rem_new = int(h.group(2)) if h.group(2) is not None else 1
+
+
+blk = json.loads(os.environ["X_BLOCK"])
+entries = blk["entries"]
+
+problems = []
+for f in entries:
+    fid = f["id"]
+    path, line = f.get("file"), f.get("line")
+    if (f.get("status") or "open") in ("not-applicable",):
+        continue
+    if (os.environ.get("X_BLOCK_AT") == "warning" and f.get("severity", "").upper() == "WARNING"
+            and (f.get("status") or "open") in ("open", "refused-rejected") and not f.get("scenario")):
+        problems.append("%s: a WARNING blocks under REVIEW_BLOCK_AT=warning, so it needs a `scenario:` with a concrete failing input; without one it is a NOTE" % fid)
+    if not path:
+        problems.append("%s: no file named, so it cannot be checked against the diff" % fid)
+        continue
+    if path in deleted:
+        continue
+    if path not in ranges:
+        problems.append("%s: %s is not in the diff" % (fid, path))
+        continue
+    lm = re.fullmatch(r"(\d+)(?:-(\d+))?", line or "", re.ASCII)
+    if not lm:
+        problems.append("%s: line '%s' is not a line number or a range, so it cannot be checked" % (fid, line or ""))
+        continue
+    lo, hi = int(lm.group(1)), int(lm.group(2) or lm.group(1))
+    if lo > hi:
+        problems.append("%s: line range '%s' runs backwards; write the lower line first" % (fid, line))
+        continue
+    if not any(a <= lo and hi <= b for a, b in ranges[path]):
+        problems.append("%s: %s:%s is not inside any hunk of the diff" % (fid, path, line))
+
+if not re.search(r"Declined to judge:", report):
+    problems.append("the coverage note has no `Declined to judge:` line (write `none` when nothing was skipped)")
+
+# The path floor: each mandatory unit must be in the block's `mandatory_units` field with status `run`,
+# and a unit the floor wants at `max` with `effort: max`. A malformed field is refused whatever the
+# floor; an absent one only when the floor is not empty. Prose is not read for this.
+need, why = {}, {}
+for ln in os.environ.get("X_FLOOR", "").splitlines():
+    parts = ln.split(" ", 2)
+    if len(parts) == 3:
+        u, eff, path = parts
+        if need.get(u) != "max":
+            need[u] = eff
+        why.setdefault(u, path)
+problems += blk["mandatory_problems"]
+mu = blk["mandatory_units"]
+want = ", ".join("{unit: %s, effort: %s, status: run}" % (u, e) for u, e in sorted(need.items()))
+if need and mu is None:
+    problems.append("the path floor makes %s mandatory, and the findings block has no `mandatory_units:` field; add "
+                    "`mandatory_units:` with one line per unit: %s"
+                    % (", ".join("%s (%s)" % (u, e) for u, e in sorted(need.items())), want))
+elif need and not blk["mandatory_problems"]:
+    listed = {m["unit"]: m for m in mu}
+    for u, eff in sorted(need.items()):
+        got = listed.get(u)
+        if got is None or got["status"] != "run":
+            problems.append("mandatory unit %s (%s, effort %s) is not listed as `status: run` in `mandatory_units`"
+                            % (u, why[u], eff))
+        elif eff == "max" and got["effort"] != "max":
+            problems.append("mandatory unit %s (%s) must run at max effort; list it as `{unit: %s, effort: max, status: run}`"
+                            % (u, why[u], u))
+
+# The counts line equals the entries that still count: open or refused-rejected.
+if isinstance(blk["counts"], dict):
+    want = {"CRITICAL": 0, "WARNING": 0, "NOTE": 0}
+    for f in entries:
+        if (f.get("status") or "open") in ("open", "refused-rejected") and f.get("severity", "").upper() in want:
+            want[f["severity"].upper()] += 1
+    c = blk["counts"]
+    got = {"CRITICAL": c["critical"], "WARNING": c["warning"], "NOTE": c["note"]}
+    if got != want:
+        problems.append("counts line says %s but the entries add up to %s" % (got, want))
+else:
+    problems.append("the findings block has no `counts:` line" if blk["counts"] is None
+                    else "the findings block's `counts:` line is not `{critical: N, warning: N, note: N}`")
+
+if problems:
+    print("lint-report: FAIL. %d problem(s):" % len(problems))
+    for p in problems:
+        print("  - " + p)
+    sys.exit(1)
+print("lint-report: ok. %d finding(s) anchored in the diff." % len(entries))
+PY
+  local rc=$?
+  rm -f "$tmp"
+  return $rc
+}
+
+# Creates the six labels, or updates them in place: `--force` makes `gh label create` overwrite the
+# colour and description of a label that already exists, so running this twice is the same as
+# running it once. It needs no pull request, only a repository `gh` can resolve. Every
+# `gh pr edit --add-label` above fails on a label the repository does not have, which is why their
+# refusals point here.
+#
+# Exit 0 when all six were written, 2 when any one was not: `gh` offline, no token, or a token
+# without permission to write labels. A partial run says which labels it could not write.
+cmd_ensure_labels() {
+  local failed="" spec name color desc
+  # One write at a time: GitHub asks clients to make mutating REST requests serially, and concurrent
+  # ones risk its secondary rate limit. This runs once per repository, so the time does not matter.
+  for spec in \
+    "review:pending|fbca04|Not reviewed at this head yet" \
+    "review:running|1d76db|A review pass is in flight" \
+    "review:fixing|d876e3|A correction is in flight; the head is about to move" \
+    "review:blocked|b60205|The review found at least one CRITICAL" \
+    "review:passed|0e8a16|Nothing blocks at this head; the marker comment is the evidence" \
+    "review:needs-human|d93f0b|The loop paused or stopped and a person has to decide; only with review:blocked"; do
+    name="${spec%%|*}"; desc="${spec##*|}"; color="${spec#*|}"; color="${color%%|*}"
+    if gh label create "$name" --force --color "$color" --description "$desc" >/dev/null 2>&1; then
+      echo "label $name ok"
+    else
+      failed="${failed:+$failed }$name"
+    fi
+  done
+  if [ -n "$failed" ]; then
+    echo "review-cycle: could not create or update: $failed (gh offline, not authenticated, or no permission to write labels); INCONCLUSIVE" >&2
+    return 2
+  fi
+  return 0
+}
+
+# Run as a command, it dispatches. Sourced (`. review-cycle.sh`, as tests/fake-gh/run.sh does to call
+# parse() on a crafted payload), it only defines the functions, so a test can reach a function
+# without a subcommand of its own.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+case "${1:-status}" in
+  status)  shift || true; cmd_status  "${1:-}" ;;
+  debt)    shift || true; cmd_debt    "${1:-}" ;;
+  start)   shift || true; cmd_start   "${1:-}" ;;
+  fix)     shift || true; cmd_fix     "${1:-}" ;;
+  halt)    shift || true; cmd_halt    "$@" ;;
+  budget)  shift || true; cmd_budget  "${1:-}" ;;
+  extend)  shift || true; cmd_extend  "$@" ;;
+  export-audit) shift || true; cmd_export_audit "$@" ;;
+  stale)   shift || true; cmd_stale   "${1:-}" ;;
+  marker)  shift || true; cmd_marker  "$@" ;;
+  publish) shift || true; cmd_publish "$@" ;;
+  lint-report) shift || true; cmd_lint_report "$@" ;;
+  findings-block) shift || true; cmd_findings_block "$@" ;;
+  screen)  shift || true; cmd_screen  "$@" ;;
+  ensure-labels) shift || true; cmd_ensure_labels ;;
+  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels} [pr]" ;;
+esac
+fi
