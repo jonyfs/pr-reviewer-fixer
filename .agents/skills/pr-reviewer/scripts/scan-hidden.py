@@ -111,7 +111,7 @@ def gate_marker():
         raise Unreadable("cannot load the verdict marker regex from %s (%s)" % (path, e))
 
 
-# The other four marker forms, exactly as the scripts and skills write them.
+# The other marker forms, exactly as the scripts and skills write them.
 OTHER_MARKERS = [
     re.compile(r"<!-- pr-skill-extension: state=granted cycle=\d+ n=\d+ -->", re.ASCII),
     re.compile(r"<!-- pr-skill-extension: state=halted reason=[A-Za-z0-9_.-]+ -->", re.ASCII),
@@ -119,6 +119,8 @@ OTHER_MARKERS = [
                r"state=(?:started|finished) -->", re.ASCII),
     re.compile(r"<!-- pr-debt:(?:start|end) -->", re.ASCII),
     re.compile(r"<!-- pr-fixer-closure: cycle=\d+ head=[0-9a-f]{7,40} closed=\d+ refused=\d+ debt=\d+ -->",
+               re.ASCII),
+    re.compile(r"<!-- pr-merge-fixer-closure: head=[0-9a-f]{7,40} resolved=\d+ escalated=\d+ -->",
                re.ASCII),
 ]
 
