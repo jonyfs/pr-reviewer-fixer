@@ -46,6 +46,13 @@ Formatting that the scripts and the scanner reject, so never write it into an ag
 variation selector (`⚠️`, `✔️`, `ℹ️`, `➡️`). `scan-hidden.py` flags each one as a candidate finding.
 Mermaid is allowed where it adds a picture; it goes before the findings block, never after.
 
+Links in a comment or in a pull request body are absolute. GitHub resolves a relative path such as
+`docs/guide.md` against the pull request's own URL, so it lands on a compare page, not on the file. Write
+the permalink at the head commit, `https://github.com/<owner>/<repo>/blob/<sha>/<path>`. A branch link
+breaks when the branch is deleted after merge; a commit permalink never does, and it names the same head
+as the comment's `sha=`. A relative link is fine only in a file of the repository, where GitHub resolves
+it against that file.
+
 Summary shape, the same in all three skills: a title line with an emoji and the outcome in six words
 or fewer, one short two-column table whose last row is **Next**, then the detail. The reviewer's template is in its `report-contract.md`
 ("Summary standard"); the fixer's and the merge fixer's are in their closure sections.

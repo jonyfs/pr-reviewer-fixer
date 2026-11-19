@@ -1,3 +1,7 @@
+> **Note:** this page was written for release 0.19.0 and describes its install options. The current
+> options (`--skill all`, `both`, comma lists) and the three-skill layout are in
+> [SKILLS-REFERENCE.md](SKILLS-REFERENCE.md) and [CHANGELOG.md](../CHANGELOG.md).
+
 # pr-reviewer-fixer
 
 Two [Agent Skills](https://agentskills.io) that review and repair pull requests with AI, and keep a

@@ -61,7 +61,10 @@ review is owed. It is a convenience. The rule above is the portable trigger.
 
 ```bash
 export REVIEW_MARKER_AUTHORS="$(gh api user --jq .login)"
-export REVIEW_BLOCK_AT=critical   # or warning: a WARNING then blocks too; match the repository variable
+# Read the repository variable the gate uses, so the verdict is published under the same setting.
+# An unset variable means the gate's default, critical. Publishing under another value makes the
+# gate reject a PASSED that carries a warning, so do not hard-code it.
+export REVIEW_BLOCK_AT="$(gh api "repos/{owner}/{repo}/actions/variables/REVIEW_BLOCK_AT" --jq .value 2>/dev/null || echo critical)"
 .agents/skills/pr-reviewer/scripts/review-cycle.sh ensure-labels
 # Only where the fixer is meant to edit the skills themselves (a repository of skills), set by the person:
 # export PUSH_GUARD_ALLOW_SENSITIVE=skills

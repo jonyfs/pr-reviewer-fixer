@@ -114,7 +114,8 @@ for spec in \
   "pr-reviewer/references/report-contract.md|## Summary standard|^\| \*\*Next\*\* \| 🔧 pr-fixer" \
   "pr-fixer/references/falsify-and-prove.md|Summary first, same shape|^\| \*\*Next\*\* \| 🔁 reviewer pass" \
   "pr-merge-fixer/SKILL.md|Same summary shape as the other two skills|^\| \*\*Next\*\* \| 🔁 reviewer pass" \
-  "pr-reviewer/references/pr-protocol.md|Summary shape, the same in all three skills|"; do
+  "pr-reviewer/references/pr-protocol.md|Summary shape, the same in all three skills|" \
+  "pr-reviewer/references/pr-protocol.md|Links in a comment or in a pull request body are absolute|"; do
   rel="${spec%%|*}"; rest="${spec#*|}"; phrase="${rest%%|*}"; shape="${rest#*|}"
   f="$ROOT/.agents/skills/$rel"
   if grep -qF "$phrase" "$f" && { [ -z "$shape" ] || grep -qE "$shape" "$f"; }; then
