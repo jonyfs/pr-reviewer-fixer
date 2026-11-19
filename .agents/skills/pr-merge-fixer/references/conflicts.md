@@ -11,7 +11,9 @@ base moved. A person may also ask by name.
 
 ## 1. Look before touching anything
 
-1. `scripts/review-cycle.sh fix` when a verdict is owed or present at the head (see SKILL.md).
+1. `scripts/review-cycle.sh fix` on every pull request, reviewed or not, before anything else (see
+   SKILL.md). A refusal (a fork, or an author or commit author without write access) stops here and
+   escalates: no merge, no build, no test runs the pull request's code.
 2. `git fetch origin <base>`, then `git merge origin/<base>`. Merge only. A rebase is never pushed,
    and the loop never rebases.
 3. `git diff --name-only --diff-filter=U` lists the conflicted files. More than `max_conflict_files`

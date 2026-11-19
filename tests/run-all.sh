@@ -141,6 +141,18 @@ for f in references/pr-protocol.md references/harness-matrix.md references/harne
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-merge-fixer/$f" \
     && echo "== $f identical in pr-merge-fixer" || { echo "== $f DIFFERS in pr-merge-fixer"; fail=1; }
 done
+# The merge fixer runs the project's build, tests and lockfile regeneration on the pull request's code,
+# so `review-cycle.sh fix` (the fork and collaborator guard) must run before its first write on every
+# pull request, reviewed or not. Its text may not make that step conditional or skippable.
+mrg_skill="$ROOT/.agents/skills/pr-merge-fixer/SKILL.md"; mrg_conf="$ROOT/.agents/skills/pr-merge-fixer/references/conflicts.md"
+mrg_bad="$(grep -nE 'no cycle to take|Take the cycle when the review owes one|only when a verdict is owed|when a verdict is owed or present' "$mrg_skill" "$mrg_conf")"
+if [ -z "$mrg_bad" ] \
+   && grep -qE '^1\. \*\*Run the guard on every pull request\.\*\* `scripts/review-cycle\.sh fix`' "$mrg_skill" \
+   && grep -qE '^1\. `scripts/review-cycle\.sh fix` on every pull request' "$mrg_conf"; then
+  echo "== pr-merge-fixer runs review-cycle.sh fix before any write on every pull request"
+else
+  echo "== pr-merge-fixer may skip review-cycle.sh fix before its first write:"; printf '%s\n' "$mrg_bad"; fail=1
+fi
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
 # The model-key scan runs here, last: see model_key_scan, defined near the top.
