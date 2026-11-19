@@ -216,6 +216,14 @@ if [ "$(printf '%s\n' "$rba_src" | wc -l)" -ge 5 ] && [ "$(rba_run set)" = warni
 else
   echo "== loop setup misreads REVIEW_BLOCK_AT (set: '$(rba_run set)', 404: '$(rba_run 404)', 403: '$(rba_run 403)')"; fail=1
 fi
+# A fixer that stops with `conflict owed to pr-merge-fixer` sends the loop back to step 0 (the merge
+# fixer), not to step 2, or every cycle ends the same way until the budget is spent.
+fix_row="$(grep -E '^ *\| `fix` \|' "$ROOT/.agents/skills/pr-reviewer/references/harness-loop.md")"
+if printf %s "$fix_row" | grep -qE 'reports `conflict owed to pr-merge-fixer`[^|]*then go to step 0'; then
+  echo "== the loop's fix row returns to step 0 on conflict owed"
+else
+  echo "== the loop's fix row does not return to step 0 when the fixer reports conflict owed"; fail=1
+fi
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
 # The model-key scan runs here, last: see model_key_scan, defined near the top.
