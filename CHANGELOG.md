@@ -16,19 +16,23 @@ Design and the list of improvements: [docs/designs/communication-0.20.0.md](docs
   (no force, no rebase), classifies each conflicted file (lockfile or generated, rename, textual,
   semantic, vendored, sensitive), runs one sub-agent per unit at the tier its class needs, verifies,
   and pushes through `push-guard.sh`. Sensitive and semantic conflicts it cannot decide are escalated.
-  It posts a closure comment with a per-file table and the hunks the reviewer should read first.
+  It posts a plain-text closure comment with one line per file and the hunks the reviewer should read first.
 - **Review loop**: `harness-loop.md` checks `mergeStateStatus` before each review and after PASSED.
   A merge push always owes a new review pass, which reads the whole diff.
 - **`pr-fixer` conflict lane** is a handoff: the playbook moved to `pr-merge-fixer`, so one copy
   exists.
-- **Reports**: every agent comment opens with a banner that names its author (`🤖 Written by
-  pr-reviewer`, `🔧 Written by pr-fixer`, `🔀 Written by pr-merge-fixer`). The verdict has a summary
-  table, a "how to read this review" block, acceptance conditions as checkboxes, and one table per
-  severity. The fixer's closure has a checkpoint list per finding, with the evidence next to each box,
-  and a commit table.
-- **Formatting rules** (`pr-protocol.md`): one comment order, one emoji legend, and no `<details>`
+- **Reports**: every agent comment is plain text and opens with a banner that names its author
+  (`Written by pr-reviewer`, `Written by pr-fixer`, `Written by pr-merge-fixer`). No headings,
+  tables, bold, bullet lists, checkboxes, Mermaid or emoji in a comment; Markdown is for the pull
+  request description. The marker line and the fenced `findings` block are the only exceptions.
+  The verdict has labelled summary lines ending with `Next:`, a three-line reading guide,
+  acceptance conditions as `A<n> met:` or `A<n> open:` lines, and one line per finding. The fixer's
+  closure has one checkpoint line per step of each finding, with its evidence.
+- **Formatting rules** (`pr-protocol.md`): one comment order, one word legend, and no `<details>`
   blocks or emoji with a variation selector, which `scan-hidden.py` reports as hidden text.
-- **Status comment**: a short table of the run's steps, edited in place at finish.
+  `tests/run-all.sh` fails when a comment template in the skills holds a table row, a heading,
+  bold, a bullet or a fenced block other than `findings`.
+- **Status comment**: one plain line per step of the run, edited in place at finish.
 - **Install**: `install.sh --skill` takes `all` (the default, the three skills), `both` (the 0.19
   pair) or a comma-separated list. `update.sh` updates the skills already installed; a skill the
   release adds is installed with `install.sh --skill <name> --yes`.

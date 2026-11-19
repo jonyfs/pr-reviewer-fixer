@@ -2,6 +2,11 @@
 
 Status: design for release 0.20.0. Written before the change, kept as the record of why.
 
+Later in the same release, agent comments became plain text: the banners lost their emoji, and
+the tables, checkboxes, headings and Mermaid charts this design puts in comments became labelled
+lines. `pr-protocol.md` and `report-contract.md` describe the current layout; the rows below are
+the original design.
+
 ## Goal
 
 A person who opens a pull request after the automatic review should, in under a minute, know:

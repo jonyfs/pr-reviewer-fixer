@@ -209,25 +209,28 @@ honesty, not by volume.
 ## Output
 
 The report is written for the person who reads the pull request after the agent, so it leads with
-the answer. It is one comment, in this order (layout and the rules behind it:
+the answer. It is one comment, in plain text: no headings, tables, bold, bullet lists, checkboxes,
+Mermaid or emoji, since Markdown belongs in the pull request description only. The marker line and
+the fenced `findings` block are the only exceptions. In this order (layout and the rules behind it:
 [references/report-contract.md](references/report-contract.md)):
 
-1. the marker, then the banner `🤖 Written by pr-reviewer · pass N · head <sha7>`, which says who wrote
+1. the marker, then the banner `Written by pr-reviewer, pass N, head <sha7>`, which says who wrote
    the report and that it ran;
-2. a summary table: verdict, counts (`🔴` `🟡` `🔵`), blocking count, head, and the next action;
-3. how to read the review, three bullets: what changed, what blocks, what to check first;
-4. acceptance conditions as checkboxes (`- [ ]` open, `- [x]` met), never rewritten after pass 1;
-5. one table per severity: `🔴` CRITICAL findings (they always block), `🟡` WARNINGS and `🔵` NOTES as
-   declared debt, each with a proposed owner;
-6. the coverage table: each review unit, its effort, and whether it ran; plus the `Declined to judge:`
+2. the title line and the summary lines: `Verdict:`, `Counts:` (critical, warning, note), `Head:`
+   and `Next:`;
+3. how to read the review, three labelled lines: what changed, what blocks, what to check first;
+4. acceptance conditions, one `A<n> met:` or `A<n> open:` line each, never rewritten after pass 1;
+5. one line per finding, grouped by severity: CRITICAL findings (they always block), WARNINGS and
+   NOTES as declared debt, each with a proposed owner;
+6. the coverage lines: each review unit, its effort, and whether it ran; plus the `Declined to judge:`
    line;
-7. prior findings on re-review, one row each: verified, open, refused-accepted, refused-rejected or
+7. prior findings on re-review, one line each: verified, open, refused-accepted, refused-rejected or
    not applicable;
-8. a three-line summary, with the one thing to fix first in bold;
+8. the `Pass history:` line from pass 2 on, and a `Summary:` line that names the one thing to fix
+   first;
 9. the fenced machine-readable `findings` block, last, for `pr-fixer` and `pr-merge-fixer`.
 
-A pass-history chart (mermaid) goes before the findings block when the pull request has more than one
-pass. Nothing is wrapped in `<details>`, and no comment carries an emoji with a variation selector: the
+Nothing is wrapped in `<details>`, and no comment carries an emoji with a variation selector: the
 scanner reads both as hidden text.
 
 ## Key Checks Before Publishing

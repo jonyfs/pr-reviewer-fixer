@@ -12,82 +12,54 @@ statuses must match.
 
 ## Layout
 
-The verdict comment is, in order: the marker, the banner, the summary, the detail, and the findings
-block last. `review-cycle.sh publish` writes the marker and posts the report as it is.
+The verdict comment is plain text, in order: the marker, the banner, the summary, the detail, and
+the findings block last. `review-cycle.sh publish` writes the marker and posts the report as it is.
+The template below is the whole comment; everything outside the `findings` fence is plain text.
 
-````markdown
-<!-- adversarial-review: sha=<40hex> verdict=BLOCKED pass=2 critical=1 warning=2 note=3 -->
-🤖 **Written by pr-reviewer** · pass 2 · head `9f2c1ab4e0d3` · 2026-11-19 14:02 UTC
+````text
+<!-- adversarial-review: sha=<40hex> verdict=BLOCKED pass=2 critical=1 warning=1 note=1 -->
+Written by pr-reviewer, pass 2, head 9f2c1ab4e0d3, 2026-11-19 14:02 UTC.
 
-## ⛔ BLOCKED: 1 critical finding stops the merge
+BLOCKED: 1 critical finding stops the merge
 
-| | |
-|---|---|
-| **Verdict** | ⛔ BLOCKED |
-| **Counts** | 🔴 critical 1 · 🟡 warning 2 · 🔵 note 3 |
-| **Scope** | 6 files, 214 lines, change type: feature |
-| **Head** | `9f2c1ab4e0d3` |
-| **Next** | 🔧 `pr-fixer` cycle 2 closes `C1` first |
+Verdict: BLOCKED
+Counts: critical 1, warning 1, note 1
+Scope: 6 files, 214 lines, change type: feature
+Head: 9f2c1ab4e0d3
+Next: pr-fixer cycle 2 closes C1 first
 
-**How to read this review**
+What changed: session expiry now trusts a client clock header (see C1).
+What blocks: only C1. Warnings and notes are declared debt with an owner.
+Check first: src/auth/session.ts:47, then the test list for the refresh path.
 
-- **What changed:** session expiry now trusts a client clock header (see `C1`).
-- **What blocks:** only `C1`. Warnings and notes are declared debt with an owner.
-- **Check first:** `src/auth/session.ts:47`, then the test list for the refresh path.
+Acceptance conditions, written at pass 1:
+A1 met: Expired tokens are rejected on every route.
+A2 open: Refresh tokens are revoked on logout.
 
-### Acceptance conditions
+Critical findings, which always block:
+C1 at src/auth/session.ts:47 (security): Expired token accepted when the clock-skew header is present.
+C1 failure scenario: a request with a Date header two hours ahead and an expired token returns 200.
+C1 suggested fix: compare against server time and ignore the client header.
 
-- [x] Expired tokens are rejected on every route
-- [ ] Refresh tokens are revoked on logout
+Warnings, declared debt:
+W1 at src/auth/session.ts:80: No test for the refresh path. Proposed owner: the author.
 
-### 🔴 Critical findings (always block)
+Notes, declared debt:
+N1 at README.md:12: Setup line refers to the old flag. Proposed owner: the author.
 
-| id | Location | Dimension | Claim |
-|---|---|---|---|
-| `C1` | `src/auth/session.ts:47` | security | Expired token accepted when the clock-skew header is present |
+Coverage:
+security, effort max: run.
+dependencies, effort standard: run.
+privacy: not applicable, no privacy path in the diff.
+Declined to judge: none.
 
-**C1 failure scenario:** a request with a `Date` header two hours ahead and an expired token returns 200.
-**C1 suggested fix:** compare against server time and ignore the client header.
+Prior findings (pass 2 and later, one line per earlier blocking finding):
+C0 verified: the closure's test fails on the old head and passes on this one.
 
-### 🟡 Warnings (declared debt)
+Pass history: pass 1 BLOCKED (1 critical), fixer cycle 1 closed 1, pass 2 BLOCKED (1 critical).
 
-| id | Location | Claim | Proposed owner |
-|---|---|---|---|
-| `W1` | `src/auth/session.ts:80` | No test for the refresh path | the author |
-
-### 🔵 Notes (declared debt)
-
-| id | Location | Claim | Proposed owner |
-|---|---|---|---|
-| `N1` | `README.md:12` | Setup line refers to the old flag | the author |
-
-### Coverage
-
-| Unit | Effort | Status |
-|---|---|---|
-| security | max | ✅ run |
-| dependencies | standard | ✅ run |
-| privacy | not applicable | (no privacy path in the diff) |
-
-Declined to judge: none
-
-### Prior findings
-
-_Pass 2 and later only. One row per earlier blocking finding, from the closure comment of the cycle._
-
-| id | Status | Evidence |
-|---|---|---|
-
-### Summary
-
-The session change reopens expired tokens through a client header. Fix `C1` first; the rest can
-follow in a later pass as declared debt.
-
-```mermaid
-flowchart LR
-    P1["Pass 1: BLOCKED, 1 critical"] --> F1["fixer cycle 1: closed 1"]
-    F1 --> P2["Pass 2: BLOCKED, 1 critical"]
-```
+Summary: the session change reopens expired tokens through a client header. Fix C1 first; the rest
+can follow in a later pass as declared debt.
 
 ```findings
 version: 1
@@ -128,54 +100,71 @@ findings:
     owner_proposed: "author"
     testable: yes
     confidence: 0.8
+  - id: N1
+    severity: NOTE
+    status: open
+    file: README.md
+    line: 12
+    dimension: documentation
+    stance: new-hire
+    claim: "Setup line refers to the old flag"
+    suggested_fix: "Name the new flag"
+    owner_proposed: "author"
+    testable: no
+    confidence: 0.9
 ```
 ````
 
-The banner, the summary table and the chart are for people. The findings block is the only part the
-fixer parses for its work list, so prose and block must agree on every id and count.
+The banner, the summary lines and the pass history are for people. The findings block is the only
+part the fixer parses for its work list, so prose and block must agree on every id and count.
 
 ## Summary standard
 
-The summary is what a person reads first, so it follows one template, in this order:
+The summary is what a person reads first, so it follows one template, in this order, as plain
+lines:
 
-1. **Title line**: an emoji for the verdict, then the verdict and the reason in six words or fewer.
-2. **Verdict table**: verdict, counts, head, and the next action. Two columns, no prose inside cells.
-   The next action is the table's last row, **Next**, starting with the actor (`🔧 pr-fixer`,
-   `👤 A person`); there is no separate next-step line.
-3. **Reading guide**: at most three bullets: what changed, what blocks, what to check first.
+1. Title line: the verdict and the reason in six words or fewer, no emoji.
+2. Labelled lines: `Verdict:`, `Counts:`, `Head:` and, last, `Next:`, which starts with the actor
+   (`pr-fixer`, `A person`). There is no separate next-step line.
+3. Reading guide: at most three labelled lines: what changed, what blocks, what to check first.
 
-```markdown
-## ⛔ BLOCKED: one critical finding stops the merge
+```text
+BLOCKED: one critical finding stops the merge
 
-| | |
-|---|---|
-| **Verdict** | ⛔ BLOCKED |
-| **Counts** | 🔴 1 · 🟡 6 · 🔵 11 |
-| **Head** | `c3d204a` |
-| **Next** | 🔧 pr-fixer, cycle 1 |
+Verdict: BLOCKED
+Counts: critical 1, warning 6, note 11
+Head: c3d204a
+Next: pr-fixer, cycle 1
 
-- **Changed:** the merge fixer's conflict step (see `C1`).
-- **Blocks:** `C1` only. Warnings and notes are debt with an owner.
-- **Check first:** `SKILL.md:102`.
+Changed: the merge fixer's conflict step (see C1).
+Blocks: C1 only. Warnings and notes are debt with an owner.
+Check first: SKILL.md:102.
 ```
 
 Rules that keep the summary short without losing detail:
 
-- Details move down into the tables, never into the summary. The summary has no more than one table.
+- Details move down into the per-finding lines, never into the summary.
 - Every number in the summary equals the number in the marker and in the findings block.
-- Use the legend from [pr-protocol.md](pr-protocol.md) and nothing else.
+- Use the words from the legend in [pr-protocol.md](pr-protocol.md) and nothing else.
 
 ## Rules for the person-facing part
 
-- Every table has a header row. A table cell holds one short value, never a paragraph.
-- The header table states the verdict, the counts, the head and the next action in one place.
-- Counts in the table equal the counts in the marker and in the findings block.
-- Use the legend from [pr-protocol.md](pr-protocol.md) (`🔴` `🟡` `🔵` `✅` `⛔` `🔁`). Do not add other
-  emoji. Do not use an emoji with a variation selector.
-- A checkbox states a condition, not a task. The fixer's checkpoints are a different list.
-- Mermaid appears only where it shows a sequence the tables cannot: the pass history. Keep it to
-  under ten nodes.
-- Three bullets, at most, under "How to read this review".
+- The comment is plain text. No Markdown outside the `findings` fence: no headings, no tables, no
+  bold or italics, no bullet or numbered lists, no checkboxes, no quotes, no other fenced block
+  (Mermaid included), and no emoji. The marker line and the `findings` block are the only
+  exceptions. Markdown belongs in the pull request description only.
+- Each detail line starts with its label or its id (`C1 at path:line`, `Coverage:`, `A2 open:`),
+  so a reader scans the left edge. One finding per line, plus its scenario and fix lines.
+- The labelled summary states the verdict, the counts, the head and the next action in one place.
+- Counts in the summary equal the counts in the marker and in the findings block.
+- Severity and outcome are words from the legend in [pr-protocol.md](pr-protocol.md): CRITICAL,
+  WARNING, NOTE; met, open, verified, refused-accepted, refused-rejected, not applicable.
+- An acceptance condition is a line `A<n> met:` or `A<n> open:` with the condition. It states a
+  condition, not a task.
+- The pass history is one `Pass history:` line from pass 2 on.
+- Three lines, at most, in the reading guide.
+- Write a login without the `@` (jonyfs, not @jonyfs): `publish` does not rewrite the report, and a
+  bare @login notifies that person.
 
 ## Findings block
 
@@ -216,7 +205,7 @@ is mandatory for `refused-accepted` and `refused-rejected`. Counts equal the num
 severity whose status is `open` or `refused-rejected`; `verified`, `refused-accepted` and
 `not-applicable` entries stay in the block for the record and are not counted.
 
-The block is the last thing in the report. Write a login you mention in prose as `@login` in backticks: `publish` does not rewrite the report, so a bare one notifies that person.
+The block is the last thing in the report. Write a login you mention in prose without the `@`: `publish` does not rewrite the report, so a bare @login notifies that person.
 
 ## Marker
 

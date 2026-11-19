@@ -4,9 +4,9 @@
 
 | Skill | What it does | Writes to the pull request |
 |---|---|---|
-| 🔍 **pr-reviewer** | Reads the diff with several read-only agents and gives one verdict: `PASSED` or `BLOCKED`. | A verdict report, with a summary table and a machine-readable block |
-| 🔧 **pr-fixer** | Takes the reviewer's findings, reproduces each one, writes a test that fails first, fixes it and proves the fix. | A closure comment with a checkpoint list, one line per finding |
-| 🔀 **pr-merge-fixer** | Resolves merge conflicts with the base branch before the review, and again when the base moves. | A merge closure comment with a table of files and how each one was resolved |
+| 🔍 **pr-reviewer** | Reads the diff with several read-only agents and gives one verdict: `PASSED` or `BLOCKED`. | A plain-text verdict report, with summary lines and a machine-readable block |
+| 🔧 **pr-fixer** | Takes the reviewer's findings, reproduces each one, writes a test that fails first, fixes it and proves the fix. | A plain-text closure comment with checkpoint lines for each finding |
+| 🔀 **pr-merge-fixer** | Resolves merge conflicts with the base branch before the review, and again when the base moves. | A plain-text merge closure comment with one line per file and how it was resolved |
 
 🧭 **New here?** Start with the [quick start](docs/QUICKSTART.md). Want the full picture? Read the [guide](docs/HOW-IT-WORKS.md). Looking for a fact? Use the [reference](docs/SKILLS-REFERENCE.md).
 
@@ -63,9 +63,9 @@ Other harnesses (Codex, Copilot, Gemini CLI, Cursor, OpenCode and more) work the
 
 | Comment | Starts with | Written by |
 |---|---|---|
-| Verdict report | `🤖 Written by pr-reviewer` | the reviewer, after its checks |
-| Closure report | `🔧 Written by pr-fixer` | the fixer, after it ran |
-| Merge report | `🔀 Written by pr-merge-fixer` | the merge fixer, after it pushed |
+| Verdict report | `Written by pr-reviewer` | the reviewer, after its checks |
+| Closure report | `Written by pr-fixer` | the fixer, after it ran |
+| Merge report | `Written by pr-merge-fixer` | the merge fixer, after it pushed |
 
 Labels show the state at a glance: `review:pending`, `review:running`, `review:passed`, `review:blocked`, `review:fixing`, `review:needs-human`. A person never sets them by hand.
 

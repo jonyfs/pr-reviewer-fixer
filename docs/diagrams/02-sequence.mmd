@@ -10,7 +10,7 @@ sequenceDiagram
     Dev->>GH: Open pull request or push
     alt Branch conflicts with the base
         L->>MF: Dispatch, fresh context, tier per conflict unit
-        MF->>GH: Merge commit, closure comment with per-file table
+        MF->>GH: Merge commit, plain-text closure comment, one line per file
         MF-->>L: Resolved, or escalated with the decision named
     end
     L->>GH: Label review:running
@@ -22,7 +22,7 @@ sequenceDiagram
         L->>F: Dispatch with the PR number
         F->>GH: Label review:fixing
         F->>F: Reproduce, write failing test, fix, run suite
-        F->>GH: Push commits, closure comment with checkpoints
+        F->>GH: Push commits, closure comment with checkpoint lines
         L->>R: Pass 2 on the new head
         R->>GH: Pass 2 verdict
     end

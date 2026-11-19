@@ -108,12 +108,13 @@ done
 # Every skill states the summary shape, so the three reports read the same way to a person: the
 # reviewer's template, the fixer's closure rule, the merge fixer's closure rule and the shared protocol.
 # The phrase is a presence check. Where the file holds a template, one structural line of that
-# template must also be there (the short table's last row), so a template that drops its summary
-# table fails even when the sentence describing it stays. The protocol holds no template.
+# template must also be there (the plain `Next:` line that ends the summary lines), so a template
+# that drops its summary fails even when the sentence describing it stays. The protocol holds no
+# template.
 for spec in \
-  "pr-reviewer/references/report-contract.md|## Summary standard|^\| \*\*Next\*\* \| 🔧 pr-fixer" \
-  "pr-fixer/references/falsify-and-prove.md|Summary first, same shape|^\| \*\*Next\*\* \| 🔁 reviewer pass" \
-  "pr-merge-fixer/SKILL.md|Same summary shape as the other two skills|^\| \*\*Next\*\* \| 🔁 reviewer pass" \
+  "pr-reviewer/references/report-contract.md|## Summary standard|^Next: pr-fixer" \
+  "pr-fixer/references/falsify-and-prove.md|Summary first, same shape|^Next: reviewer pass" \
+  "pr-merge-fixer/SKILL.md|Same summary shape as the other two skills|^Next: reviewer pass" \
   "pr-reviewer/references/pr-protocol.md|Summary shape, the same in all three skills|" \
   "pr-reviewer/references/pr-protocol.md|Links in a comment or in a pull request body are absolute|"; do
   rel="${spec%%|*}"; rest="${spec#*|}"; phrase="${rest%%|*}"; shape="${rest#*|}"
@@ -121,9 +122,68 @@ for spec in \
   if grep -qF "$phrase" "$f" && { [ -z "$shape" ] || grep -qE "$shape" "$f"; }; then
     echo "== summary standard in $rel"
   else
-    echo "== summary standard MISSING from $rel (sentence or template table)"; fail=1
+    echo "== summary standard MISSING from $rel (sentence or template Next: line)"; fail=1
   fi
 done
+# Agent comments are plain text: Markdown belongs in the pull request description only. A comment
+# template is a fenced block in a skill's Markdown whose first line is a protocol marker. Outside its
+# own `findings` fence, a template may hold no table row, heading, bold, bullet, checkbox, quote or
+# other fenced block (Mermaid included). A floor on the templates found keeps a wrong path from
+# passing with nothing read.
+if ! plain_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
+import os, re, sys
+markers = ("<!-- adversarial-review:", "<!-- pr-fixer-closure:", "<!-- pr-merge-fixer-closure:",
+           "<!-- pr-skill-status:")
+rules = [(re.compile(r"^\s*\|"), "table row"), (re.compile(r"^\s*#{1,6}\s"), "heading"),
+         (re.compile(r"\*\*|__\S"), "bold"), (re.compile(r"^\s*([-*+]|\d+[.)])\s"), "list item"),
+         (re.compile(r"^\s*>"), "quote")]
+found, bad = 0, []
+for d, _, fs in os.walk(sys.argv[1]):
+    for name in sorted(fs):
+        if not name.endswith(".md"):
+            continue
+        path = os.path.join(d, name)
+        lines = open(path, encoding="utf-8").read().split("\n")
+        i = 0
+        while i < len(lines):
+            m = re.match(r"^(\s*)(`{3,})", lines[i])
+            if not m:
+                i += 1; continue
+            n, start = len(m.group(2)), i
+            close = re.compile(r"^\s*`{%d,}\s*$" % n)
+            i += 1; body = []
+            while i < len(lines) and not close.match(lines[i]):
+                body.append((i + 1, lines[i])); i += 1
+            i += 1
+            first = next((t.strip() for _, t in body if t.strip()), "")
+            if not first.startswith(markers):
+                continue
+            found += 1
+            inner = None
+            for ln, t in body:
+                f = re.match(r"^\s*(`{3,})\s*(\S*)", t)
+                if inner is not None:
+                    if f and len(f.group(1)) >= len(inner) and not f.group(2):
+                        inner = None
+                    continue
+                if f:
+                    if f.group(2) != "findings":
+                        bad.append("%s:%d fenced block %s" % (path, ln, f.group(2) or "(untagged)"))
+                    inner = f.group(1); continue
+                for rx, what in rules:
+                    if rx.search(t):
+                        bad.append("%s:%d %s" % (path, ln, what))
+print(found)
+for b in bad:
+    print(b)
+sys.exit(1 if bad or found < 5 else 0)
+PY
+)"; then
+  echo "== a comment template holds Markdown (templates found, then each offending line):"
+  printf '%s\n' "$plain_out" | sed "s|$ROOT/||"; fail=1
+else
+  echo "== agent comment templates are plain text ($(printf '%s\n' "$plain_out" | head -n 1) templates)"
+fi
 # One version for both skills: VERSION, each SKILL.md metadata.version and the newest CHANGELOG entry.
 v_root="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 v_rev="$("$ROOT/.agents/skills/pr-reviewer/scripts/check-version.sh" --installed)"
