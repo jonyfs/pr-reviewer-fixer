@@ -224,6 +224,18 @@ if printf %s "$fix_row" | grep -qE 'reports `conflict owed to pr-merge-fixer`[^|
 else
   echo "== the loop's fix row does not return to step 0 when the fixer reports conflict owed"; fail=1
 fi
+# The merge fixer reads the PR text and commit messages for intent, so step 0 scans them for hidden
+# text and passes the hits in its brief, and the merge fixer never takes flagged text as evidence.
+step0="$(awk '/^0\. \*\*Conflicts first/{on=1} on&&/^1\. \*\*Read the state/{exit} on{print}' \
+  "$ROOT/.agents/skills/pr-reviewer/references/harness-loop.md")"
+if printf %s "$step0" | grep -q 'scan-hidden.py --pr <pr>' \
+   && printf %s "$step0" | grep -q 'Hidden-content hits: <hidden.json' \
+   && grep -q 'is never evidence of intent' "$ROOT/.agents/skills/pr-merge-fixer/SKILL.md" \
+   && grep -q 'never evidence of intent' "$ROOT/.agents/skills/pr-merge-fixer/references/conflicts.md"; then
+  echo "== step 0 passes hidden-content hits to the merge fixer, which never takes flagged text as intent"
+else
+  echo "== step 0 or the merge fixer does not handle hidden-content hits"; fail=1
+fi
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
 # The model-key scan runs here, last: see model_key_scan, defined near the top.
