@@ -107,14 +107,21 @@ for i in "${!names[@]}"; do
 done
 # Every skill states the summary shape, so the three reports read the same way to a person: the
 # reviewer's template, the fixer's closure rule, the merge fixer's closure rule and the shared protocol.
-for pair in \
-  "pr-reviewer/references/report-contract.md|## Summary standard" \
-  "pr-fixer/references/falsify-and-prove.md|Summary first, same shape" \
-  "pr-merge-fixer/SKILL.md|Same summary shape as the other two skills" \
-  "pr-reviewer/references/pr-protocol.md|Summary shape, the same in all three skills"; do
-  rel="${pair%%|*}"; phrase="${pair#*|}"
-  grep -qF "$phrase" "$ROOT/.agents/skills/$rel" \
-    && echo "== summary standard in $rel" || { echo "== summary standard MISSING from $rel"; fail=1; }
+# The phrase is a presence check. Where the file holds a template, one structural line of that
+# template must also be there (the short table's last row), so a template that drops its summary
+# table fails even when the sentence describing it stays. The protocol holds no template.
+for spec in \
+  "pr-reviewer/references/report-contract.md|## Summary standard|^\| \*\*Next\*\* \| 🔧 pr-fixer" \
+  "pr-fixer/references/falsify-and-prove.md|Summary first, same shape|^\| \*\*Next\*\* \| 🔁 reviewer pass" \
+  "pr-merge-fixer/SKILL.md|Same summary shape as the other two skills|^\| \*\*Next\*\* \| 🔁 reviewer pass" \
+  "pr-reviewer/references/pr-protocol.md|Summary shape, the same in all three skills|"; do
+  rel="${spec%%|*}"; rest="${spec#*|}"; phrase="${rest%%|*}"; shape="${rest#*|}"
+  f="$ROOT/.agents/skills/$rel"
+  if grep -qF "$phrase" "$f" && { [ -z "$shape" ] || grep -qE "$shape" "$f"; }; then
+    echo "== summary standard in $rel"
+  else
+    echo "== summary standard MISSING from $rel (sentence or template table)"; fail=1
+  fi
 done
 # One version for both skills: VERSION, each SKILL.md metadata.version and the newest CHANGELOG entry.
 v_root="$(tr -d '[:space:]' < "$ROOT/VERSION")"
