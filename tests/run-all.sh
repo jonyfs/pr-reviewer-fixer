@@ -163,11 +163,25 @@ done
 mrg_skill="$ROOT/.agents/skills/pr-merge-fixer/SKILL.md"; mrg_conf="$ROOT/.agents/skills/pr-merge-fixer/references/conflicts.md"
 mrg_bad="$(grep -nE 'no cycle to take|Take the cycle when the review owes one|only when a verdict is owed|when a verdict is owed or present' "$mrg_skill" "$mrg_conf")"
 if [ -z "$mrg_bad" ] \
-   && grep -qE '^1\. \*\*Run the guard on every pull request\.\*\* `scripts/review-cycle\.sh fix`' "$mrg_skill" \
-   && grep -qE '^1\. `scripts/review-cycle\.sh fix` on every pull request' "$mrg_conf"; then
+   && grep -qE '^1\. \*\*Run the guard on every pull request\.\*\* `scripts/review-cycle\.sh fix <pr>`' "$mrg_skill" \
+   && grep -qE '^1\. `scripts/review-cycle\.sh fix <pr>` on every pull request' "$mrg_conf"; then
   echo "== pr-merge-fixer runs review-cycle.sh fix before any write on every pull request"
 else
   echo "== pr-merge-fixer may skip review-cycle.sh fix before its first write:"; printf '%s\n' "$mrg_bad"; fail=1
+fi
+# `review-cycle.sh fix` with no number reads the pull request of the checked-out branch (pr-json.py
+# calls `gh pr view` with none), so the guard can pass for a PR other than the one being worked on.
+# One mechanical rule over every Markdown file of the three skills, descriptive mentions included:
+# each occurrence carries the `<pr>` argument. Checked per occurrence, not per line, with a floor so
+# a wrong path cannot pass with nothing found.
+fix_all="$(cd "$ROOT" && grep -rnoE 'review-cycle\.sh fix.{0,5}' --include='*.md' .agents/skills || true)"
+n_fix="$(printf '%s\n' "$fix_all" | grep -c 'review-cycle' || true)"
+fix_bad="$(printf '%s\n' "$fix_all" | grep 'review-cycle' | grep -vE 'review-cycle\.sh fix <pr>' || true)"
+if [ "$n_fix" -ge 10 ] && [ -z "$fix_bad" ]; then
+  echo "== review-cycle.sh fix names the pull request in all $n_fix mentions in the skills"
+else
+  echo "== review-cycle.sh fix without a pull request number ($n_fix mentions found, at least 10 expected):"
+  printf '%s\n' "$fix_bad"; fail=1
 fi
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }

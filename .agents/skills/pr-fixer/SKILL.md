@@ -110,11 +110,13 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
    granted extension), start cycle c. When the budget is spent, do not start: `budget` says `ask`
    and the review loop agent asks the person (below). Do not start either while the pull request
    carries `review:needs-human`.
-2. **Take the cycle, before the first file.** `scripts/review-cycle.sh fix` first refuses a fork and
+2. **Take the cycle, before the first file.** `scripts/review-cycle.sh fix <pr>` first refuses a fork and
    any pull request whose author or commit author is not a collaborator with write access (it
    moves nothing when it refuses; tell the person which login). Then it moves the label to
    `review:fixing` and withdraws `review:needs-human`. Without it, the pull request can merge
    inside the window where the green label is true about the commit and false about the work.
+   Always write `<pr>`: with no number the script reads the pull request of the checked-out branch,
+   which may be another one. Go on only when the `#<n>` it prints is the pull request you work on.
 3. **Load state.** Head, base, draft, head writability (fork, maintainer edits, write access),
    mergeability, review decision, failing checks, comments with prior outcomes, changed files.
    Detect a concurrent pass and an interrupted one.
@@ -210,7 +212,7 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
 
 ## Key Checks Before Finishing
 
-- [ ] `review-cycle.sh fix` ran before any file was opened for writing
+- [ ] `review-cycle.sh fix <pr>` ran before any file was opened for writing
 - [ ] Acted only after the review closed at the current head
 - [ ] Ingested only the `findings` block of a trusted verdict comment at the head
 - [ ] Each blocking finding reproduced before the fix, or refused with evidence of non-reproduction, and no

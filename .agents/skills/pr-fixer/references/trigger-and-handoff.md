@@ -15,7 +15,7 @@ The fixer starts when any of these holds at the **current head**:
    `review-cycle.sh budget` computes. When the budget is spent it does not start: the person is
    asked in the session (see Termination).
 2. A trusted marker says `verdict=PASSED` with `warning+note > 0`: **debt-only mode**. No code
-   edits, no commits, no label change, no `review-cycle.sh fix`; only the owners into the `pr-debt`
+   edits, no commits, no label change, no `review-cycle.sh fix <pr>`; only the owners into the `pr-debt`
    block and one closure comment.
 3. A report carries WARNINGS the owner asked to close, with a `findings` block.
 4. A human or bot comment or a failing required check appears and the user named the PR. A conflict
@@ -56,7 +56,7 @@ The loop is dispatched by the review loop agent in the person's session, as desc
 
 Each step that touches the PR follows [pr-protocol.md](pr-protocol.md).
 
-1. `scripts/review-cycle.sh fix` first, before any file is opened for writing (skipped in
+1. `scripts/review-cycle.sh fix <pr>` first, before any file is opened for writing (skipped in
    debt-only mode).
 2. Ingest the `findings` block of the trusted verdict comment at the head (filter F1). Split
    blocking and declared debt.

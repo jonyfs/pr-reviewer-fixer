@@ -58,7 +58,7 @@ or fewer, one short table, then the detail. The reviewer's template is in its `r
 | `review:running` | `review-cycle.sh start` | A review pass is in flight |
 | `review:passed` | `review-cycle.sh publish --verdict PASSED` | Marker at the head says PASSED |
 | `review:blocked` | `review-cycle.sh publish --verdict BLOCKED` | Marker at the head says BLOCKED |
-| `review:fixing` | `review-cycle.sh fix` | A correction is in flight; the head is about to move |
+| `review:fixing` | `review-cycle.sh fix <pr>` | A correction is in flight; the head is about to move |
 | `review:needs-human` | `review-cycle.sh halt`, only over `review:blocked`; withdrawn by `start` (which refuses while the BLOCKED verdict is still at the head), `fix`, `stale`, `extend` and any `publish` | The loop paused or stopped (budget spent, stop, or no answer) and a person has to decide |
 
 `review-cycle.sh publish --verdict PASSED` also marks a draft pull request ready for review

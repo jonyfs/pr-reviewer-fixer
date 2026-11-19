@@ -264,7 +264,7 @@ there is nothing new to review until a person pushes a correction or grants cycl
 
 ## Hard rules
 
-- `review-cycle.sh fix` refuses before any label moves when the pull request comes from a fork or
+- `review-cycle.sh fix <pr>` refuses before any label moves when the pull request comes from a fork or
   when its author or any commit author is not a collaborator with write access or higher. Do not
   work around it: tell the person which login was refused. A bot the repository owns is allowed
   with `FIXER_TRUSTED_LOGINS`; `app/<name>` (how `gh pr view` names a bot author) and

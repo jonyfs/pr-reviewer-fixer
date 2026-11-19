@@ -15,7 +15,7 @@ for this lane: they carry no thread state and no author association.
 
 An item is `act` only when its author is the repository OWNER, a MEMBER or COLLABORATOR whose
 permission here is admin, maintain or write (the script looks it up once per login, as
-`review-cycle.sh fix` does; a failed lookup counts as no write access), a login in
+`review-cycle.sh fix <pr>` does; a failed lookup counts as no write access), a login in
 `REVIEW_MARKER_AUTHORS` (the reviewer), or a bot named in `FIXER_TRUSTED_LOGINS`, and the comment
 was not edited by another login. An organisation member or a collaborator with read or triage
 access cannot push, so their comment does not steer a push either. Everything else is never fixed:

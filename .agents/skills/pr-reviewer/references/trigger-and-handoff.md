@@ -16,7 +16,7 @@ provider API key is used anywhere.
 PR opened / pushed to (by the session's agent) or a person asks
   -> pr-reviewer pass p          (publish marker, label review:passed | review:blocked)
   -> BLOCKED?  yes -> pr-fixer cycle c = p
-                       (review-cycle.sh fix, work lanes, push, one closure comment)
+                       (review-cycle.sh fix <pr>, work lanes, push, one closure comment)
                        head moves -> label retired to review:pending
                        -> pr-reviewer pass c+1 (conditions, prior and new blocking findings only)
                        -> still BLOCKED and budget left -> cycle c+1
@@ -94,7 +94,7 @@ the command that finds it, and its lifecycle.
 2. The fixer starts only when a trusted marker at the **current head** says `verdict=BLOCKED`, or
    says PASSED with warnings or notes (debt-only), or when the findings block carries WARNINGS the
    owner asked to close.
-3. The fixer's first write is `review-cycle.sh fix` (not in debt-only mode). Its last are a push,
+3. The fixer's first write is `review-cycle.sh fix <pr>` (not in debt-only mode). Its last are a push,
    `review-cycle.sh stale` (which retires `review:fixing` to `review:pending` once the head has
    moved past the marker), the `pr-debt` block, and one closure comment with the
    `pr-fixer-closure` marker as its finish message.

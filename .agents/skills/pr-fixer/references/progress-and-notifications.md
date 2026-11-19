@@ -23,7 +23,7 @@ run says when it starts, what it is working, and when it is done or why it stopp
 
 Rules:
 
-- The start line comes **after** `review-cycle.sh fix` has taken the cycle and before the first
+- The start line comes **after** `review-cycle.sh fix <pr>` has taken the cycle and before the first
   edit, so the label and the announcement agree.
 - A lane change or push is one line. No running commentary.
 - Every started run ends with exactly one finish or stopped line. Escalation always notifies, and

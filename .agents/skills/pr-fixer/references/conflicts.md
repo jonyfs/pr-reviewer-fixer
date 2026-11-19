@@ -11,7 +11,7 @@ verdict when the base moved.
 
 When this skill starts on a pull request that is `DIRTY` or `CONFLICTING`:
 
-1. Make no write. Do not run `review-cycle.sh fix` for the conflict.
+1. Make no write. Do not run `review-cycle.sh fix <pr>` for the conflict.
 2. Report `conflict owed to pr-merge-fixer` in the session and in the closure comment, if one is
    posted, with the pull request number.
 3. Stop. The loop agent runs the merge fixer, then starts the review again.
