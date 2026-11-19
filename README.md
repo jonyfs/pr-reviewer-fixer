@@ -1,6 +1,6 @@
 # pr-reviewer-fixer
 
-**Three Agent Skills that review, fix and merge pull requests with AI. A person still makes the final call.**
+**Three Agent Skills that review pull requests, fix the findings and resolve merge conflicts with AI. They never merge: a person makes the final call.**
 
 | Skill | What it does | Writes to the pull request |
 |---|---|---|
