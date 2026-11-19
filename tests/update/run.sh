@@ -63,10 +63,10 @@ after="$(cd "$A" && find . -type f | sort | xargs sha256sum | sha256sum)"
 check "no --yes: prints the plan, exit 0, changes nothing" eval \
   '[ $rc = 0 ] && [ "$before" = "$after" ] && printf %s "$out" | grep -q "would install $NEW" && printf %s "$out" | grep -q "Run again with --yes"'
 
-# 2. --yes installs both skills.
+# 2. --yes updates the three installed skills.
 out="$(runu "$A" cache "$REL" --yes)"; rc=$?
-check "--yes: exit 0, both skills at the new version" eval \
-  '[ $rc = 0 ] && [ "$(ver "$A/pr-reviewer")" = "$NEW" ] && [ "$(ver "$A/pr-fixer")" = "$NEW" ] && printf %s "$out" | grep -q "now at $NEW"'
+check "--yes: exit 0, the three skills at the new version" eval \
+  '[ $rc = 0 ] && [ "$(ver "$A/pr-reviewer")" = "$NEW" ] && [ "$(ver "$A/pr-fixer")" = "$NEW" ] && [ "$(ver "$A/pr-merge-fixer")" = "$NEW" ] && printf %s "$out" | grep -q "now at $NEW"'
 check "--yes: the new files are in place" eval 'grep -q "marker of $NEW" "$A/pr-reviewer/references/pr-protocol.md"'
 check "--yes: no scratch directory is left behind" nothing_left
 out="$(env -i PATH="$PATH" HOME="$W/home" TMPDIR="$W/tmp" PR_SKILLS_CACHE_DIR="$W/cache" \
@@ -76,10 +76,16 @@ check "run again from the new copy: already up to date, exit 0" eval \
   '[ $rc = 0 ] && printf %s "$out" | grep -q "already up to date"'
 
 # 3. One skill installed: only that one is updated.
-B="$W/b"; mkinstall "$B"; rm -rf "$B/pr-fixer"
+B="$W/b"; mkinstall "$B"; rm -rf "$B/pr-fixer" "$B/pr-merge-fixer"
 out="$(runu "$B" cache2 "$REL" --yes)"; rc=$?
-check "only pr-reviewer installed: updated, pr-fixer not added" eval \
-  '[ $rc = 0 ] && [ "$(ver "$B/pr-reviewer")" = "$NEW" ] && [ ! -e "$B/pr-fixer" ]'
+check "only pr-reviewer installed: updated, pr-fixer and pr-merge-fixer not added" eval \
+  '[ $rc = 0 ] && [ "$(ver "$B/pr-reviewer")" = "$NEW" ] && [ ! -e "$B/pr-fixer" ] && [ ! -e "$B/pr-merge-fixer" ]'
+
+# 3b. A two-skill install (a 0.19 pair): both updated, pr-merge-fixer not added.
+B2="$W/b2"; mkinstall "$B2"; rm -rf "$B2/pr-merge-fixer"
+out="$(runu "$B2" cache2b "$REL" --yes)"; rc=$?
+check "pr-reviewer and pr-fixer installed: both updated, pr-merge-fixer not added" eval \
+  '[ $rc = 0 ] && [ "$(ver "$B2/pr-reviewer")" = "$NEW" ] && [ "$(ver "$B2/pr-fixer")" = "$NEW" ] && [ ! -e "$B2/pr-merge-fixer" ]'
 
 # 4. A checksum that does not match is refused and the install is untouched.
 C="$W/c"; mkinstall "$C"; BAD="$W/badrel"; mkrelease "$NEW" "$BAD"
