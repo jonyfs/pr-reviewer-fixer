@@ -9,6 +9,8 @@ colors:
   text-muted: "#9b9fa7"
   line: "#2c3036"
   accent: "#7fc4d1"
+  accent-ink: "#15171a"
+  note: "#7fc4d1"
   critical: "#ff7a66"
   warning: "#e9b553"
   passed: "#6fc795"
@@ -17,6 +19,7 @@ colors:
   paper-muted: "#596069"
   paper-line: "#d9dcd6"
   paper-accent: "#1d6b7a"
+  paper-accent-ink: "#ffffff"
   paper-surface: "#ffffff"
   paper-critical: "#b3261e"
   paper-warning: "#8f5c00"
@@ -78,7 +81,7 @@ components:
 ## Colors
 
 **Strategy:** Restrained. One accent, neutrals, and severity colors used only where a verdict or a severity appears.
-**Light or dark:** Dark by default, because readers arrive from GitHub and terminals, both usually dark. Light is served when the system asks for it, through the same tokens, on a cool paper ground (not white, not cream).
+**Light or dark:** Dark by default, because readers arrive from GitHub and terminals, both usually dark. Light is served when the system asks for it, through the `paper-*` tokens, on a cool paper ground (not cream); the paper surface is white.
 
 Light mode uses the paper tokens (`paper-*`): the ground is cool paper (`#f3f4f1`), surfaces are white (`#ffffff`), and severity uses the `paper-critical`, `paper-warning`, `paper-passed` and `paper-note` values, which pass contrast on paper. The dark critical `#ff7a66` measures 2.31:1 on paper, so it is never used on the light ground.
 
@@ -117,7 +120,7 @@ Radius 4px for the slip and the command block, 6px maximum anywhere. No pill sha
 
 - Do: state every claim with a place to check it.
 - Do: use mono only for text the tool writes.
-- Do: keep the three severity colors on the severity legend and the verdict slip only.
+- Do: keep the four severity colors (critical, warning, passed, note) on the severity legend and the verdict slip only.
 - Don't: use a three-column icon grid, cards for everything, or centered headings.
 - Don't: use a kicker or eyebrow label above a heading.
 - Don't: put a gradient on a button or behind the hero.

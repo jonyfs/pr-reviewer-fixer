@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## What this repository is
 
-Three Agent Skills, `pr-reviewer`, `pr-fixer` and `pr-merge-fixer` (the last one resolves merge conflicts with the base), plus the scripts that enforce their protocol. The skills live in `.agents/skills/` and nowhere else. Do not add copies or symlinks under `.claude/skills/`. Almost everything is prose (`SKILL.md` and `references/*.md`) read by a model at run time. The only executable code is a few shell and Python scripts, one gate workflow and one release workflow (whose logic is `.github/scripts/release.sh`). `README.md` has the full explanation, install table and caveats.
+Three Agent Skills, `pr-reviewer`, `pr-fixer` and `pr-merge-fixer` (the last one resolves merge conflicts with the base), plus the scripts that enforce their protocol. The skills live in `.agents/skills/` and nowhere else. Do not add copies or symlinks under `.claude/skills/`. Almost everything is prose (`SKILL.md` and `references/*.md`) read by a model at run time. The only executable code is a few shell and Python scripts, one gate workflow and one release workflow (whose logic is `.github/scripts/release.sh`). `README.md` is the short entry point; `docs/SKILLS-REFERENCE.md` has the tables and `docs/REFERENCE.md` the full previous README with install details and caveats.
 
 ## Commands
 
@@ -34,7 +34,7 @@ The suite needs bash, python3, node, jq, git, curl, tar and sha256sum. It puts a
 
 ## Architecture
 
-**The three skills never call each other.** They communicate only through the pull request: `review:*` labels, a verdict comment carrying `<!-- adversarial-review: sha=... verdict=... pass=... -->`, a fixer closure comment, a merge closure comment (`<!-- pr-merge-fixer-closure: ... -->`), a `pr-debt` block in the PR body, and extension answer comments. The review loop agent dispatches the merge fixer before a review, when the branch conflicts. The artifact table in `README.md` lists each one, and `.agents/skills/pr-reviewer/references/pr-protocol.md` has the exact `gh` command to find it. Changing a marker or label format means updating both skills and the scripts.
+**The three skills never call each other.** They communicate only through the pull request: `review:*` labels, a verdict comment carrying `<!-- adversarial-review: sha=... verdict=... pass=... -->`, a fixer closure comment, a merge closure comment (`<!-- pr-merge-fixer-closure: ... -->`), a `pr-debt` block in the PR body, and extension answer comments. The review loop agent dispatches the merge fixer before a review, when the branch conflicts. The artifact table in `docs/REFERENCE.md` lists each one, and `.agents/skills/pr-reviewer/references/pr-protocol.md` has the exact `gh` command to find it. Changing a marker or label format means updating both skills and the scripts.
 
 **Mechanism lives in scripts, judgement lives in prose.**
 - `scripts/review-cycle.sh` is the state machine: it owns labels, prints a report's findings block as JSON (`findings-block`, the one parser `lint-report` and `push-guard.sh` share), publishes the verdict bound to the head SHA (it re-reads the head from GitHub and refuses a stale `--sha`), refuses inconsistent verdict arithmetic (a `BLOCKED` with no CRITICAL, a `PASSED` with one), computes the cycle budget (`budget`, `extend`, `halt`), refuses to start a correction on code from a fork or a non-collaborator (`fix`), and exports audit records (`export-audit`).
@@ -59,7 +59,7 @@ The suite needs bash, python3, node, jq, git, curl, tar and sha256sum. It puts a
   `install.sh` keeps a skill's old copy when that skill's swap fails but swaps one skill at a time,
   so with both skills the first may already be replaced, and running `update.sh` again finishes the
   job. A PR comment never answers the question.
-- `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `README.md`; change both together. Without `--yes` it changes nothing.
+- `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `docs/SKILLS-REFERENCE.md`; change both together. Without `--yes` it changes nothing.
 - `scripts/scan-hidden.py` (both skills) reports invisible text in what the agents read: the diff's
   added lines, the PR title, body and comments (through `pr-json.py`), the commit messages and,
   with `--feedback-json`, the fixer's `fetch-feedback.py` list (review-thread comments, review bodies and issue comments). It
@@ -120,20 +120,20 @@ Decide what to update from what the change touches:
 
 | The change touches | Update |
 |---|---|
-| A label, a state, a marker field, a trust rule or a `review-cycle.sh` subcommand | `README.md` (the artifact table, the label state diagram, the cycle budget text), `docs/HOW-IT-WORKS.md` (its own diagrams, which are not in `docs/diagrams/`), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
-| Budget settings (`MAX_REVIEW_CYCLES`, `MAX_REVIEW_CYCLES_HARD`) | `README.md` budget table and text, the defaults in `review-cycle.sh budget`, `references/harness-loop.md` and `references/posture-and-config.md`, and the `Cycle budget` paragraph in this file |
-| A script, a test or a workflow (added, renamed, removed) | `README.md` (layout, install, tests), the `Commands` and `Architecture` sections of this file, and `tests/run-all.sh` |
-| An install path, a harness or a model name | the `README.md` install table and its date, the harness table in `install.sh`, and `references/harness-matrix.md` and `references/execution-profiles.md` (both skills) |
-| The version | `CHANGELOG.md` and the `Versions and updates` section of `README.md` if the mechanism changed |
-| Controls, records or roles that the ISO mapping cites | `docs/ISO-27001-AND-42001.md` and the ISO section of `README.md` |
+| A label, a state, a marker field, a trust rule or a `review-cycle.sh` subcommand | `docs/SKILLS-REFERENCE.md` (labels, markers, settings), `docs/REFERENCE.md` (the artifact table, the label state diagram and the cycle budget text), `docs/HOW-IT-WORKS.md` (its own diagrams, which are not in `docs/diagrams/`), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
+| Budget settings (`MAX_REVIEW_CYCLES`, `MAX_REVIEW_CYCLES_HARD`) | `docs/SKILLS-REFERENCE.md` settings table and `docs/REFERENCE.md` budget text, the defaults in `review-cycle.sh budget`, `references/harness-loop.md` and `references/posture-and-config.md`, and the `Cycle budget` paragraph in this file |
+| A script, a test or a workflow (added, renamed, removed) | `docs/REFERENCE.md` (layout, install, tests), the `Commands` and `Architecture` sections of this file, and `tests/run-all.sh` |
+| An install path, a harness or a model name | the install table in `docs/SKILLS-REFERENCE.md`, and the date line in `docs/REFERENCE.md`, the harness table in `install.sh`, and `references/harness-matrix.md` and `references/execution-profiles.md` (both skills) |
+| The version | `CHANGELOG.md` and the `Versions and updates` section of `docs/REFERENCE.md` if the mechanism changed |
+| Controls, records or roles that the ISO mapping cites | `docs/ISO-27001-AND-42001.md` and the ISO section of `docs/REFERENCE.md` |
 | This file's own subject (commands, layout, process) | this file |
 
 Rules for doing it:
 
-- A diagram exists twice, as a Mermaid block in `README.md` and as a file in `docs/diagrams/`. Change both and keep them identical.
+- Every `docs/diagrams/*.mmd` file is the source of the diagram copy in `docs/REFERENCE.md` (overview, sequence, label states and the rest). Change both and keep them identical. `docs/HOW-IT-WORKS.md` and the flow diagram in `README.md` have their own diagrams; keep them in step with the loop text.
 - Before opening the pull request, search the repository for the old name, path or label you removed or renamed, for example `grep -rn "<old name>" . --exclude-dir=.git`. Zero hits outside `CHANGELOG.md` is the goal.
 - Describe what the code does now. Put history in `CHANGELOG.md`, not in the other documents.
-- Claims in `README.md` about status and limits ("not run on live GitHub Actions", test counts) must match what is true after the change. Change them when they stop being true.
+- Claims in `README.md` and `docs/REFERENCE.md` about status and limits ("not run on live GitHub Actions", test counts) must match what is true after the change. Change them when they stop being true.
 - Run the `humanizer` skill over any Markdown you write or substantially edit, except `CHANGELOG.md`.
 - If a document could not be updated in the pull request, say which one and why in the pull request description.
 
@@ -141,8 +141,8 @@ Rules for doing it:
 
 - Write everything in this project in English: code, comments, docs, commit messages, PR text and skill prose.
 - `SKILL.md` frontmatter uses `name`, `description` and `metadata.version`. Do not add harness-specific keys.
-- `templates/review-gate.yml` calls scripts at `.agents/skills/pr-reviewer/scripts/`. Keep that prefix, since the README tells users to replace it if they install elsewhere. Claude Code does not scan `.agents/skills/`, so tell a sub-agent to read `.agents/skills/<skill>/SKILL.md` by path.
+- `templates/review-gate.yml` calls scripts at `.agents/skills/pr-reviewer/scripts/`. Keep that prefix, since `docs/REFERENCE.md` tells users to replace it if they install elsewhere. Claude Code does not scan `.agents/skills/`, so tell a sub-agent to read `.agents/skills/<skill>/SKILL.md` by path.
 - Third-party actions in workflows and templates are pinned to full commit SHAs. Keep them pinned.
-- Diagrams in `README.md` are sourced from `docs/diagrams/*.mmd`. Update both together.
+- Every `docs/diagrams/*.mmd` file is the source of a diagram copy in `docs/REFERENCE.md`. Update both together.
 - Dated facts (harness paths, model names) carry a date, currently 2026-10-14. Update the date when you re-verify them.
 - Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored. The model-key scan in `tests/run-all.sh` reads the files git lists in `.github/`, `install.sh`, both skills' `templates/` and `scripts/` and `tests/`: the tracked ones and the untracked ones that `.gitignore` does not hide (`git ls-files -z --cached --others --exclude-standard` feeds `grep`, 100 files per call), with no exclusion by name or path. A new file is read before it is `git add`ed; the gitignored scratch (`state-*/`, `work-*/`) is not. It sets `GIT_LITERAL_PATHSPECS=0` and `GIT_NOGLOB_PATHSPECS=0` for the listing. It fails when `git ls-files` cannot answer, when the checkout is not the top of its own git repository, when git lists no file, and when `grep` exits with anything but 0 or 1. `bash tests/run-all.sh --scan-only` runs just that scan, and `tests/scan/run.sh` drives it against planted trees (a tree of more than 100 files included) in a scratch copy.
