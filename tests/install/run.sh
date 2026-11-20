@@ -344,6 +344,9 @@ r=$(ins --target "$W/sel-both" --skill both --yes); check "both keeps the 0.19 p
 r=$(ins --target "$W/sel-bad" --skill pr-reviewer,nope); check "unknown name in the list -> refused, nothing written" eval '[ $r = 1 ] && grep -q "got .nope." "$W/out" && [ ! -e "$W/sel-bad" ]'
 r=$(ins --target "$W/sel-dup" --skill pr-fixer,pr-fixer); check "a name given twice -> refused, nothing written" eval '[ $r = 1 ] && grep -q "twice" "$W/out" && [ ! -e "$W/sel-dup" ]'
 
+# An empty --skill value installs nothing and exits 0 in no skill list; it must be refused (0.20.1).
+r=$(ins --target "$W/sel-empty" --skill "" --yes); check "empty --skill value -> refused, nothing written" eval '[ $r = 1 ] && grep -q "needs a value" "$W/out" && [ ! -e "$W/sel-empty" ]'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

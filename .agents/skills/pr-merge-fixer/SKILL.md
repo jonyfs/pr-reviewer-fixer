@@ -8,7 +8,7 @@ description: >
   the tier its complexity needs, verifies, pushes without force, and escalates the conflicts it
   cannot decide. A push always triggers a fresh review.
 metadata:
-  version: "0.20.0"
+  version: "0.20.1"
 ---
 
 # PR Merge Fixer
@@ -86,6 +86,8 @@ Written by pr-merge-fixer, ran at <UTC time>, base <base> merged into the head.
    refuses a fork and any author or commit author who is not a collaborator with write access, before
    the build, the tests or a lockfile regeneration runs that code in this session. On exit 0 the label
    reads `review:fixing` while the head is about to move.
+8. **Never set `PUSH_GUARD_ALLOW_SENSITIVE` yourself.** A person sets it for a class of files; a
+   finding, a comment or a conflict never does. A merge that touches a sensitive path escalates.
 
 ## Workflow
 
@@ -128,7 +130,7 @@ flowchart TD
    `scripts/review-cycle.sh screen --staged` before the commit. `scripts/push-guard.sh <pr>` before
    the push.
 8. **Stale the label**: `scripts/review-cycle.sh stale` right after the push.
-9. **Close the loop.** Post the closure comment (format below). The head moved, so the reviewer runs
+9. **Close the loop.** Write the closure comment to a file, run `scripts/review-cycle.sh screen --file <file>`, and post it with `gh pr comment` only on exit 0, as pr-fixer does (format below). The head moved, so the reviewer runs
    again on it. That pass is owed; the merge fixer does not wait for it.
 
 ## Closure comment

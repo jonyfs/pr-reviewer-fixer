@@ -48,9 +48,10 @@ file is allowed only for the classes that say so (generated, vendored).
 
 1. Run the narrowest build and test that cover the touched files, then the build if the change
    crosses packages. Never push on failure.
-2. Commit the merge with a message that lists each conflicted file, its class and its resolution.
-3. `scripts/review-cycle.sh screen --staged`, then `scripts/push-guard.sh <pr> --allow <file>...`
-   for every resolved file. Push only on exit 0 after re-checking the remote head.
+2. Stage the resolved files, then run `scripts/review-cycle.sh screen --staged` before the commit.
+   Commit only on exit 0, with a message that lists each conflicted file, its class and its resolution.
+3. `scripts/push-guard.sh <pr> --allow <file>...` for every resolved file. Push only on exit 0 after
+   re-checking the remote head.
 4. `scripts/review-cycle.sh stale`, then the closure comment, plain text with one line per file
    ([SKILL.md](../SKILL.md)). The reviewer's next pass is owed: the head moved, and a merge can change
    behaviour even when each hunk looked mechanical. Its "Hunks for the reviewer's focus" line lists

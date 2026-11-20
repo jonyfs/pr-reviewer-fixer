@@ -4,6 +4,22 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.20.1
+
+Fixes found in the review of the 0.20.0 pull request that were not blocking, plus one defect in the
+install script.
+
+- `install.sh --skill ""` is refused. It used to install nothing and exit 0.
+- `install.sh` header names the three skills and the list form, not two.
+- The loop's step 0 reads `mergeable` as well as `mergeStateStatus`, and waits for `UNKNOWN`.
+- The merge fixer runs `screen --staged` before the commit, not after, and screens the closure comment
+  before posting it.
+- The merge fixer never sets `PUSH_GUARD_ALLOW_SENSITIVE` itself, as `pr-fixer` already did not.
+- The scan-hidden suite covers the merge closure marker, both as a marker and as a near miss.
+- `tests/run-all.sh` checks each of these wording rules.
+
+Compatibility: no marker, label or subcommand changes meaning. Patch version.
+
 ## 0.20.0
 
 The reports read as documents for the person who opens the pull request after the agents. A new
