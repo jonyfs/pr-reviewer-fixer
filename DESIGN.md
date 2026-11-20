@@ -19,6 +19,7 @@ colors:
   paper-accent: "#1d6b7a"
 typography:
   display:
+    fontFamily: Satoshi
     fontWeight: 700
     fontSize: clamp(36px, 5.4vw, 64px)
     letterSpacing: -0.02em
@@ -78,7 +79,7 @@ Neutrals derive from the graphite ground. The accent marks links, focus rings an
 
 ## Typography
 
-**Display:** Satoshi 700, self-hosted from `docs/fonts/Satoshi-Variable.woff2`. Source: Fontshare. License: ITF Free Font License v2.0 (17 Aug 2026), read from the official package, section 01: self-hosting on your own website is permitted; section 02 forbids serving the font to third parties, so do not use a public CDN or the Fontshare API for it. The license text is kept at `docs/fonts/LICENSE-Satoshi-FFL.txt`.
+**Display:** Satoshi 700, loaded from the Fontshare API (`https://api.fontshare.com/v2/css?f%5B%5D=satoshi@700&display=swap`). Source: Fontshare. License: ITF Free Font License v2.0 (17 Aug 2026), read from the official package. Section 01 allows the API for the licensee's own website, and section 02 forbids serving the font to third parties. The font files are not kept in this repository, so nothing is redistributed from it.
 **Body and UI:** Instrument Sans, 400 to 700 (Google Fonts, SIL Open Font License). Verified weight range 400 to 700.
 **Mono:** JetBrains Mono 400 and 500 (Google Fonts). Mono marks text the tool writes: the install command, the verdict slip, markers and label names, and inline code.
 
@@ -125,6 +126,6 @@ Radius 4px for the slip and the command block, 6px maximum anywhere. No pill sha
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-11-20 | Initial design system created | Created by /design-consultation from the approved proposal ("verdict ledger") and independent research |
-| 2026-11-20 | Satoshi confirmed for self-hosting | Read from the official FFL v2.0 in the Fontshare package (section 01); CDN and API use are not part of the grant |
+| 2026-11-20 | Satoshi loaded from the Fontshare API, not kept in the repository | Section 01 allows the API for the licensee's website; keeping the file in a public repository is a redistribution question the file itself avoids |
 | 2026-11-20 | Clash Grotesk dropped | License not verified; the skill omits unverified faces |
 | 2026-11-20 | "Open Agent Skills" label to be removed | The label names a category, not the tool; the wordmark takes its place |
