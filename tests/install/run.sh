@@ -346,6 +346,9 @@ r=$(ins --target "$W/sel-dup" --skill pr-fixer,pr-fixer); check "a name given tw
 
 # An empty --skill value installs nothing and exits 0 in no skill list; it must be refused (0.20.1).
 r=$(ins --target "$W/sel-empty" --skill "" --yes); check "empty --skill value -> refused, nothing written" eval '[ $r = 1 ] && grep -q "needs a value" "$W/out" && [ ! -e "$W/sel-empty" ]'
+r=$(ins --target "$W/sel-nl" --skill "$(printf '\n')" --yes); check "a newline as the --skill value -> refused, nothing written (0.20.1 W1)" eval '[ $r = 1 ] && [ ! -e "$W/sel-nl" ]'
+r=$(ins --target "$W/sel-mixed" --skill "$(printf 'pr-reviewer\nnope')" --yes); check "a newline inside a list -> refused, nothing written (0.20.1 W1)" eval '[ $r = 1 ] && [ ! -e "$W/sel-mixed" ]'
+r=$(ins --target "$W/sel-comma" --skill "pr-reviewer,,pr-fixer" --yes); check "an empty name in the list -> refused, nothing written" eval '[ $r = 1 ] && [ ! -e "$W/sel-comma" ]'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

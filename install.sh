@@ -88,13 +88,15 @@ case "$SCOPE" in project|user) ;; *) die "--scope must be project or user" ;; es
 # Expands --skill into the list of skill folders, one name per entry. Each name is checked.
 expand_skills() {
   local v="$1" tok out=()
-  # An empty value must be refused: it would expand to no skill and exit 0 having installed nothing.
-  [ -n "$v" ] || die "--skill needs a value: all, both, or a list of pr-reviewer, pr-fixer and pr-merge-fixer"
+  # Only lower-case letters, hyphens and commas are a list. Anything else (an empty value, a newline,
+  # a space) would expand to fewer skills than given, and exit 0 having installed nothing or less.
+  case "$v" in ""|*[!a-z,-]*) die "--skill needs a value: all, both, or a list of pr-reviewer, pr-fixer and pr-merge-fixer" ;; esac
   case "$v" in all) v="pr-reviewer,pr-fixer,pr-merge-fixer" ;; both) v="pr-reviewer,pr-fixer" ;; esac
   IFS=, read -r -a parts <<<"$v"
   for tok in "${parts[@]}"; do
     case "$tok" in
       pr-reviewer|pr-fixer|pr-merge-fixer) ;;
+      "") die "--skill has an empty name in its list" ;;
       *) die "--skill must be all, both, or a list of pr-reviewer, pr-fixer and pr-merge-fixer (got '$tok')" ;;
     esac
     case " ${out[*]:-} " in *" $tok "*) die "--skill names '$tok' twice" ;; esac
