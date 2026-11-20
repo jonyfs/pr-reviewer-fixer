@@ -17,6 +17,11 @@ colors:
   paper-muted: "#596069"
   paper-line: "#d9dcd6"
   paper-accent: "#1d6b7a"
+  paper-surface: "#ffffff"
+  paper-critical: "#b3261e"
+  paper-warning: "#8f5c00"
+  paper-passed: "#1d7a40"
+  paper-note: "#1d6b7a"
 typography:
   display:
     fontFamily: Satoshi
@@ -74,6 +79,8 @@ components:
 
 **Strategy:** Restrained. One accent, neutrals, and severity colors used only where a verdict or a severity appears.
 **Light or dark:** Dark by default, because readers arrive from GitHub and terminals, both usually dark. Light is served when the system asks for it, through the same tokens, on a cool paper ground (not white, not cream).
+
+Light mode uses the paper tokens (`paper-*`): the ground is cool paper (`#f3f4f1`), surfaces are white (`#ffffff`), and severity uses the `paper-critical`, `paper-warning`, `paper-passed` and `paper-note` values, which pass contrast on paper. The dark critical `#ff7a66` measures 2.31:1 on paper, so it is never used on the light ground.
 
 Neutrals derive from the graphite ground. The accent marks links, focus rings and the install prompt only. Dark-mode surfaces separate by a one-step lightness change and a 1px line, not by shadow.
 
