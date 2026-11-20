@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# install.sh: copy pr-reviewer and pr-fixer into the folder a harness reads skills from.
+# install.sh: copy pr-reviewer, pr-fixer and pr-merge-fixer into the folder a harness reads skills from.
 #
 # Usage: install.sh --harness <name> [--scope project|user] [--skill <list>]
 #                   [--target <dir>] [--source <dir>] [--yes]
@@ -19,7 +19,7 @@
 #            kiro | windsurf | zed | junie. The table below mirrors the install table in README.md.
 # --scope    project (default) installs under the current directory; user installs under $HOME.
 # --target   a skills directory to use instead of the harness table (needs no --harness).
-# --source   the folder that holds pr-reviewer/ and pr-fixer/ (default: .agents/skills next to
+# --source   the folder that holds the skill folders (default: .agents/skills next to
 #            this script).
 #
 # After a project install into a folder other than .agents/skills it rewrites the script prefix in
@@ -60,8 +60,8 @@
 # source and destination that overlap, a destination that is not safe to replace), or a step that
 # failed with --yes: the destination folder could not be created, a copy could not be made or made
 # writable, a folder could not be moved, or an old copy could not be removed in full after the new
-# one was put in place. A failed step names what it left and where. With --skill both, pr-reviewer
-# may already be replaced when a pr-fixer step fails. It installs nothing it cannot check.
+# one was put in place. A failed step names what it left and where. With several skills, an earlier
+# one may already be replaced when a later step fails. It installs nothing it cannot check.
 set -uo pipefail
 
 die() { echo "install: $*" >&2; exit 1; }
@@ -88,11 +88,15 @@ case "$SCOPE" in project|user) ;; *) die "--scope must be project or user" ;; es
 # Expands --skill into the list of skill folders, one name per entry. Each name is checked.
 expand_skills() {
   local v="$1" tok out=()
+  # Only lower-case letters, hyphens and commas are a list. Anything else (an empty value, a newline,
+  # a space) would expand to fewer skills than given, and exit 0 having installed nothing or less.
+  case "$v" in ""|*[!a-z,-]*) die "--skill needs a value: all, both, or a list of pr-reviewer, pr-fixer and pr-merge-fixer" ;; esac
   case "$v" in all) v="pr-reviewer,pr-fixer,pr-merge-fixer" ;; both) v="pr-reviewer,pr-fixer" ;; esac
   IFS=, read -r -a parts <<<"$v"
   for tok in "${parts[@]}"; do
     case "$tok" in
       pr-reviewer|pr-fixer|pr-merge-fixer) ;;
+      "") die "--skill has an empty name in its list" ;;
       *) die "--skill must be all, both, or a list of pr-reviewer, pr-fixer and pr-merge-fixer (got '$tok')" ;;
     esac
     case " ${out[*]:-} " in *" $tok "*) die "--skill names '$tok' twice" ;; esac

@@ -138,9 +138,11 @@ outside the pull request; the person says yes to it knowingly or does not.
 
 ## The loop
 
-0. **Conflicts first.** Before a review is owed, read `mergeStateStatus` with
-   `gh pr view <pr> --json mergeStateStatus --jq .mergeStateStatus`. When it is `DIRTY` or
-   `CONFLICTING`, scan what the merge fixer reads for intent (the PR title, body and comments, and the
+0. **Conflicts first.** Before a review is owed, read both fields with
+   `gh pr view <pr> --json mergeable,mergeStateStatus`. `mergeable` is `CONFLICTING` on a conflict and
+   `mergeStateStatus` is `DIRTY`; either one means a conflict. When either is `UNKNOWN`, wait a few
+   seconds and read again, since GitHub computes it after a push. When one of them says a conflict,
+   scan what the merge fixer reads for intent (the PR title, body and comments, and the
    pull request's commit messages) for hidden text, as step 3 does for the reviewer:
 
    ```bash

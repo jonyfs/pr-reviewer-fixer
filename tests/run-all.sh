@@ -184,6 +184,16 @@ PY
 else
   echo "== agent comment templates are plain text ($(printf '%s\n' "$plain_out" | head -n 1) templates)"
 fi
+# 0.20.1 wording rules: each must stay in its file, or the defect it closes returns.
+for check in \
+  "pr-reviewer/references/harness-loop.md|json mergeable,mergeStateStatus|read both fields (N1)" \
+  "pr-merge-fixer/references/conflicts.md|Stage the resolved files, then run|the staged screen runs before the commit (N9)" \
+  "pr-merge-fixer/SKILL.md|screen --file <file>|the closure is screened before posting (N10)" \
+  "pr-merge-fixer/SKILL.md|Never set \`PUSH_GUARD_ALLOW_SENSITIVE\` yourself|the merge fixer never sets the allow variable (N11)"; do
+  rel="${check%%|*}"; rest="${check#*|}"; phrase="${rest%%|*}"; why="${rest#*|}"
+  grep -qF "$phrase" "$ROOT/.agents/skills/$rel" \
+    && echo "== $why" || { echo "== MISSING from $rel: $why"; fail=1; }
+done
 # One version for both skills: VERSION, each SKILL.md metadata.version and the newest CHANGELOG entry.
 v_root="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 v_rev="$("$ROOT/.agents/skills/pr-reviewer/scripts/check-version.sh" --installed)"
