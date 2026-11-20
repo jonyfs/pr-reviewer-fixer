@@ -10,6 +10,11 @@
 <meta property="og:title" content="pr-reviewer-fixer">
 <meta property="og:description" content="AI skills that review pull requests, fix the findings and resolve merge conflicts. They never merge: a person makes the final call.">
 <meta property="og:type" content="website">
+<meta property="og:image" content="https://jonyfs.github.io/pr-reviewer-fixer/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta property="og:url" content="https://jonyfs.github.io/pr-reviewer-fixer/">
 <script type="application/ld+json">
 {
@@ -19,7 +24,9 @@
   "description": "Three Agent Skills (pr-reviewer, pr-fixer, pr-merge-fixer) that review pull requests, fix findings with failing-first tests, and resolve merge conflicts with the base branch.",
   "codeRepository": "https://github.com/jonyfs/pr-reviewer-fixer",
   "programmingLanguage": ["Shell", "Python", "Markdown"],
-  "url": "https://jonyfs.github.io/pr-reviewer-fixer/"
+  "url": "https://jonyfs.github.io/pr-reviewer-fixer/",
+  "author": {"@type": "Person", "name": "jonyfs", "url": "https://github.com/jonyfs"},
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}
 }
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -113,6 +120,11 @@ h1 {
   margin: 0 0 18px;
 }
 .lead { color: var(--muted); font-size: 19px; max-width: 36em; margin: 0 0 24px; }
+.flow-strip { display: flex; flex-wrap: wrap; gap: 8px 0; list-style: none; margin: 0 0 20px; padding: 0; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 14px; }
+.flow-strip li { padding: 4px 10px; border: 1px solid var(--rule); border-radius: 4px; color: var(--text); }
+.flow-strip li:last-child { border-color: var(--ok); color: var(--ok); }
+.flow-strip li + li::before { content: "\2192"; color: var(--muted); margin: 0 8px 0 0; }
+@media (prefers-reduced-motion: no-preference) { .copy { transition: background 150ms ease, color 150ms ease; } }
 .install { grid-column: 1; margin: 0 0 16px; }
 .install-label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 8px; }
 .cmd { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
@@ -246,6 +258,12 @@ footer p { margin: 0 0 8px; }
     <div class="wrap">
       <div class="hero-copy">
         <h1>Pull requests reviewed, fixed and unblocked by AI. You make the final call.</h1>
+        <ol class="flow-strip" aria-label="The loop, in four steps">
+          <li>PR opened</li>
+          <li>Reviewed</li>
+          <li>Fixed</li>
+          <li>PASSED</li>
+        </ol>
         <p class="lead">Three skills work together on your GitHub pull requests. One reviews. One fixes, with a test that fails first. One resolves merge conflicts. Each comment says who wrote it, and nothing merges without you.</p>
       </div>
 
@@ -375,8 +393,11 @@ next      pr-fixer, cycle 2 of 5</pre>
   var btn = document.getElementById('copy-install');
   var status = document.getElementById('copy-status');
   if (!btn || !status) return;
+  var label = btn.textContent;
   function report(ok) {
     status.textContent = ok ? 'Copied.' : 'Copy failed. Select the command and copy it by hand.';
+    btn.textContent = ok ? 'Copied' : 'Failed';
+    setTimeout(function () { btn.textContent = label; }, 2000);
   }
   btn.addEventListener('click', function () {
     var text = btn.getAttribute('data-copy') || '';
