@@ -394,10 +394,12 @@ next      pr-fixer, cycle 2 of 5</pre>
   var status = document.getElementById('copy-status');
   if (!btn || !status) return;
   var label = btn.textContent;
+  var resetTimer = null;
   function report(ok) {
     status.textContent = ok ? 'Copied.' : 'Copy failed. Select the command and copy it by hand.';
     btn.textContent = ok ? 'Copied' : 'Failed';
-    setTimeout(function () { btn.textContent = label; }, 2000);
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(function () { btn.textContent = label; }, 2000);
   }
   btn.addEventListener('click', function () {
     var text = btn.getAttribute('data-copy') || '';
