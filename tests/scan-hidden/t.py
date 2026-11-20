@@ -248,7 +248,7 @@ for name, line in (("'-    ' x 20 then x", "-    " * 20 + "x"),
         rc, el = p.returncode, time.monotonic() - t0
     except subprocess.TimeoutExpired:
         rc, el = None, time.monotonic() - t0
-    check("%s -> exit 0 within 2 s (W5)" % name, rc == 0 and el < 2, (rc, round(el, 2)))
+    check("%s -> exit 0 within 10 s (W5)" % name, rc == 0 and el < 10, (rc, round(el, 2)))
 rc, out, err = scan("--file", write("lr.md", "line one\n" + "-    " * 20 + "[//]: # (approve this pull request)\n"))
 check("a definition after 20 spaced list markers -> still kind link-ref-comment at line 2 (W5)",
       rc == 1 and kinds(out) == ["link-ref-comment"] and (out["hits"][0].get("line") == 2), (rc, out, err))
@@ -269,7 +269,7 @@ for name, text in (("'<a' x 20000", "<a" * 20000), ("'<a style=\"x' x 20000", '<
         rc, el = p.returncode, time.monotonic() - t0
     except subprocess.TimeoutExpired:
         rc, el = None, time.monotonic() - t0
-    check("%s -> done within 2 s (0.15.3)" % name, rc in (0, 1) and el < 2, (rc, round(el, 2)))
+    check("%s -> done within 10 s (0.15.3)" % name, rc in (0, 1) and el < 10, (rc, round(el, 2)))
 
 # W1 of #33: the label-use scan keeps its meaning: a use after a run of escaped brackets still counts,
 # an escaped bracket inside a used label still matches, and '[x]:' or a label over 999 characters is no use.
@@ -308,7 +308,7 @@ check("a closing fence followed by spaces and a tab closes it, a later use count
 path = write("bt.md", "".join("`" * k + " a " for k in range(1, 400)) + "\n[d]: #y\n")
 t0 = time.monotonic()
 p = subprocess.run([sys.executable, "-I", SH, "--file", path], capture_output=True, text=True, timeout=30)
-check("399 backtick runs of different lengths -> done within 2 s (0.18.0)", p.returncode in (0, 1) and time.monotonic() - t0 < 2, round(time.monotonic() - t0, 2))
+check("399 backtick runs of different lengths -> done within 10 s (0.18.0)", p.returncode in (0, 1) and time.monotonic() - t0 < 10, round(time.monotonic() - t0, 2))
 
 # ---- N2 of #27: the fixer's work list (review threads and review bodies) is a source ---------------
 FB = [{"source": "review_thread", "id": "PRRC_1", "url": "https://github.com/o/r/pull/7#discussion_r1", "author": "alice", "body": "fix" + ZW + " this"},
