@@ -57,11 +57,16 @@ finding blocks the merge never ends. These skills are built around those two fai
 
 ```mermaid
 flowchart TD
-    A([Pull request opened or updated]) --> B[pr-reviewer<br/>read-only agents review the diff]
+    A([Pull request opened or updated]) --> X{Conflicts with<br/>the base branch?}
+    X -- Yes --> MF[pr-merge-fixer<br/>merges the base, resolves each file<br/>escalates only what the code does not decide]
+    MF -- resolved and pushed --> B
+    MF -- escalated --> Q([A person decides<br/>the one named conflict])
+    X -- No --> B[pr-reviewer<br/>read-only agents review the diff]
     B --> C{Any CRITICAL<br/>finding?}
     C -- No --> D[Verdict PASSED<br/>label review:passed<br/>draft marked ready]
     C -- Yes --> E[Verdict BLOCKED<br/>label review:blocked]
     D --> F{Warnings or notes<br/>left?}
+    D -. base moved, conflicts again .-> X
     F -- Yes --> G[pr-fixer in debt-only mode<br/>writes an owner for each item]
     F -- No --> H([A person merges])
     G --> H
@@ -89,21 +94,27 @@ sequenceDiagram
     autonumber
     participant Dev as Author
     participant L as Review loop agent (session)
+    participant MF as pr-merge-fixer sub-agent
     participant R as pr-reviewer sub-agent
     participant F as pr-fixer sub-agent
     participant GH as GitHub PR
     participant P as Person
     Dev->>GH: Open pull request or push
+    alt Branch conflicts with the base
+        L->>MF: Dispatch, fresh context, tier per conflict unit
+        MF->>GH: Merge commit, plain-text closure comment, one line per file
+        MF-->>L: Resolved, or escalated with the decision named
+    end
     L->>GH: Label review:running
     L->>R: Dispatch, fresh context, read-only
     R->>R: Read-only agents review in parallel
-    R->>GH: Verdict comment with marker and findings block
+    R->>GH: Verdict comment: banner, summary, findings block
     R->>GH: Label review:blocked or review:passed
     alt CRITICAL found
         L->>F: Dispatch with the PR number
         F->>GH: Label review:fixing
         F->>F: Reproduce, write failing test, fix, run suite
-        F->>GH: Push commits, closure comment, debt block
+        F->>GH: Push commits, closure comment with checkpoint lines
         L->>R: Pass 2 on the new head
         R->>GH: Pass 2 verdict
     end

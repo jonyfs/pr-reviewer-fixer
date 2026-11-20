@@ -16,7 +16,7 @@
 # ever replaced, and only inside the skills directory it resolved.
 #
 # --harness  claude-code | codex | copilot | gemini | cursor | opencode | amp | roo | cline |
-#            kiro | windsurf | zed | junie. The table below mirrors the install table in README.md.
+#            kiro | windsurf | zed | junie. The table below mirrors the install table in docs/SKILLS-REFERENCE.md.
 # --scope    project (default) installs under the current directory; user installs under $HOME.
 # --target   a skills directory to use instead of the harness table (needs no --harness).
 # --source   the folder that holds the skill folders (default: .agents/skills next to
@@ -106,7 +106,7 @@ expand_skills() {
 }
 SKILLS=(); expand_skills "$SKILL"
 
-# project path | user path, per harness. Dated 2026-10-14 in README.md; confirm against vendor docs.
+# project path | user path, per harness. Dated 2026-10-14 in docs/SKILLS-REFERENCE.md; confirm against vendor docs.
 paths_for() {
   case "$1" in
     claude-code) echo ".claude/skills|.claude/skills" ;;
@@ -360,5 +360,5 @@ for s in "${SKILLS[@]}"; do
   ver="$( { tr -d '[:space:]' <"$SRC_P/../../VERSION"; } 2>/dev/null)" || ver=""
   echo "install: installed $DEST_ROOT/$s (${ver:-unknown})"
 done
-echo "install: next, set REVIEW_MARKER_AUTHORS and run review-cycle.sh ensure-labels (README, 'Check the install')."
+echo "install: next, set REVIEW_MARKER_AUTHORS and run review-cycle.sh ensure-labels (docs/QUICKSTART.md, 'Check the install')."
 [ "$LEFT" = 0 ] || exit 1
