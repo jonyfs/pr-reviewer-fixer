@@ -136,3 +136,4 @@ Radius 4px for the slip and the command block, 6px maximum anywhere. No pill sha
 | 2026-11-20 | Satoshi loaded from the Fontshare API, not kept in the repository | Section 01 allows the API for the licensee's website; keeping the file in a public repository is a redistribution question the file itself avoids |
 | 2026-11-20 | Clash Grotesk dropped | License not verified; the skill omits unverified faces |
 | 2026-11-20 | "Open Agent Skills" label to be removed | The label names a category, not the tool; the wordmark takes its place |
+| 2026-11-20 | Flow strip in the first viewport; share image and favicon; Copy button confirms on itself; JSON-LD names the author and a free offer | The first view should show the loop at a glance; links shared outside GitHub need an image; the button should confirm the copy where the eye is |
