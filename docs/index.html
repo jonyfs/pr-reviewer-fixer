@@ -22,257 +22,377 @@
   "url": "https://jonyfs.github.io/pr-reviewer-fixer/"
 }
 </script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <style>
-:root {
-  --bg: #fbfaf7;
-  --surface: #ffffff;
-  --text: #1c1b19;
-  --muted: #5c5a55;
-  --line: #e4e1d9;
-  --accent: #2f5bea;
-  --accent-soft: #e8edfd;
-  --ok: #1f7a4d;
-  --warn: #a15c00;
-  --bad: #b3261e;
-  --radius: 14px;
-  --max: 960px;
-  color-scheme: light dark;
+/* Self-hosted Satoshi (Fontshare, ITF Free Font License: self-hosting permitted, see docs/fonts). */
+@font-face {
+  font-family: "Satoshi";
+  src: url("fonts/Satoshi-Variable.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #14130f;
-    --surface: #1d1c18;
-    --text: #f2efe8;
-    --muted: #aaa69c;
-    --line: #34322c;
-    --accent: #8ea8ff;
-    --accent-soft: #232b4a;
-    --ok: #6fd39a;
-    --warn: #f0b35a;
-    --bad: #ff8a80;
+/* Graphite tokens from DESIGN.md. Dark is the default; light follows the system or data-theme. */
+:root {
+  color-scheme: dark light;
+  --bg: #15171a;
+  --surface: #1c1f23;
+  --text: #e9e7e2;
+  --muted: #9b9fa7;
+  --rule: #2c3036;
+  --accent: #7fc4d1;
+  --accent-ink: #15171a;
+  --crit: #ff7a66;
+  --warn: #e9b553;
+  --note: #7fc4d1;
+  --ok: #6fc795;
+  --max: 960px;
+  --gutter: 16px;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f3f4f1;
+    --surface: #ffffff;
+    --text: #16181b;
+    --muted: #596069;
+    --rule: #d9dcd6;
+    --accent: #1d6b7a;
+    --accent-ink: #ffffff;
+    --crit: #b3261e;
+    --warn: #8f5c00;
+    --note: #1d6b7a;
+    --ok: #1d7a40;
   }
 }
-:root[data-theme="dark"] {
-  --bg: #14130f;
-  --surface: #1d1c18;
-  --text: #f2efe8;
-  --muted: #aaa69c;
-  --line: #34322c;
-  --accent: #8ea8ff;
-  --accent-soft: #232b4a;
-  --ok: #6fd39a;
-  --warn: #f0b35a;
-  --bad: #ff8a80;
+:root[data-theme="light"] {
+  --bg: #f3f4f1;
+  --surface: #ffffff;
+  --text: #16181b;
+  --muted: #596069;
+  --rule: #d9dcd6;
+  --accent: #1d6b7a;
+  --accent-ink: #ffffff;
+  --crit: #b3261e;
+  --warn: #8f5c00;
+  --note: #1d6b7a;
+  --ok: #1d7a40;
 }
+
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
 }
-.wrap { max-width: var(--max); margin: 0 auto; padding: 0 16px; }
-header.hero { padding: 56px 0 32px; }
-.eyebrow { color: var(--accent); font-weight: 600; letter-spacing: .04em; font-size: 14px; text-transform: uppercase; }
-h1 { font-size: clamp(32px, 6vw, 52px); line-height: 1.1; margin: 8px 0 16px; letter-spacing: -.02em; }
-.lead { color: var(--muted); font-size: 19px; max-width: 680px; margin: 0 0 24px; }
-.cta { display: flex; flex-wrap: wrap; gap: 12px; }
-.btn {
-  display: inline-block; padding: 11px 18px; border-radius: 10px; text-decoration: none;
-  font-weight: 600; border: 1px solid var(--line); color: var(--text); background: var(--surface);
-}
-.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-section { padding: 40px 0; border-top: 1px solid var(--line); }
-h2 { font-size: 26px; margin: 0 0 12px; letter-spacing: -.01em; }
-h3 { font-size: 18px; margin: 0 0 6px; }
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+code { font-size: 0.9em; }
 p { margin: 0 0 12px; }
-.cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 20px; }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
-.card .tag { font-size: 13px; color: var(--muted); }
-.card p { color: var(--muted); margin: 0; }
-.steps { display: grid; gap: 14px; counter-reset: s; list-style: none; padding: 0; margin: 20px 0 0; }
-.steps li {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 18px 18px 18px 64px; position: relative;
+
+/* Header */
+.site-head { border-bottom: 1px solid var(--rule); }
+.site-head .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding-top: 18px; padding-bottom: 18px; }
+.wordmark { font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; letter-spacing: -0.01em; }
+.site-nav { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.site-nav a { color: var(--muted); text-decoration: none; font-size: 15px; }
+.site-nav a:hover { color: var(--text); text-decoration: underline; }
+
+/* Hero: headline, lead, install, slip. On wide screens the slip sits in the right column. */
+.hero { padding: 56px 0 40px; }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px 40px; align-items: start; }
+.hero-copy { grid-column: 1; }
+h1, h2, h3 { font-family: "Satoshi", "Instrument Sans", system-ui, sans-serif; }
+h1 {
+  font-size: clamp(36px, 5.4vw, 64px);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  margin: 0 0 18px;
 }
-.steps li::before {
-  counter-increment: s; content: counter(s);
-  position: absolute; left: 18px; top: 16px; width: 30px; height: 30px; border-radius: 50%;
-  background: var(--accent-soft); color: var(--accent); font-weight: 700; display: grid; place-items: center;
+.lead { color: var(--muted); font-size: 19px; max-width: 36em; margin: 0 0 24px; }
+.install { grid-column: 1; margin: 0 0 16px; }
+.install-label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+.cmd { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.cmd pre {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  overflow-x: auto;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
 }
-.flow { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; overflow-x: auto; margin-top: 20px; }
-.flow svg { width: 100%; height: auto; min-width: 560px; display: block; }
-.flow text { fill: var(--text); font: 13px system-ui, sans-serif; }
-.flow .muted { fill: var(--muted); }
-.flow .hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
-.flow .nd { fill: var(--surface); stroke: var(--line); stroke-width: 1.4; }
-.flow .wr { fill: var(--surface); stroke: var(--warn); stroke-width: 1.4; }
-.flow .bd { fill: var(--surface); stroke: var(--bad); stroke-width: 1.4; }
-.flow .ln { fill: none; stroke: var(--muted); stroke-width: 1.6; }
-.flow .ah { fill: var(--muted); }
-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); font-size: 15px; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { background: var(--accent-soft); font-weight: 600; }
-tr:last-child td { border-bottom: 0; }
-code { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--accent-soft); padding: 1px 6px; border-radius: 6px; }
-pre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; overflow-x: auto; }
-pre code { background: none; padding: 0; }
-footer { border-top: 1px solid var(--line); padding: 28px 0 48px; color: var(--muted); font-size: 14px; }
-footer a { color: var(--accent); }
-a { color: var(--accent); }
+.copy {
+  flex: 0 0 auto;
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 0 16px;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+.copy:hover { background: var(--accent); color: var(--accent-ink); }
+.copy-status { min-height: 1.5em; font-size: 14px; color: var(--muted); margin: 6px 0 0; }
+.hero-links { font-size: 15px; margin: 0; }
+
+/* Verdict slip */
+.slip {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  min-width: 0;
+}
+.slip-head { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--rule); color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.slip-body { margin: 0; padding: 14px 16px 16px; overflow-x: auto; white-space: pre; color: var(--text); }
+.slip-body .k { color: var(--muted); }
+.slip-body .v-blocked { color: var(--crit); font-weight: 700; }
+.slip-body .v-passed { color: var(--ok); font-weight: 700; }
+.slip-foot { padding: 10px 16px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
+
+/* Sections */
+section { padding: 40px 0; border-top: 1px solid var(--rule); }
+h2 { font-size: 26px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 10px; line-height: 1.2; }
+h3 { font-size: 18px; font-weight: 600; margin: 0 0 4px; line-height: 1.3; }
+.intro { color: var(--muted); max-width: 40em; margin: 0 0 20px; }
+
+/* Skills ledger: rows, not cards */
+.ledger { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.ledger li {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  gap: 6px 28px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.ledger .name { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-weight: 500; font-size: 16px; color: var(--text); }
+.ledger .role { color: var(--muted); margin: 0; }
+.ledger .ends { margin: 6px 0 0; font-size: 15px; }
+.ledger .ends span { color: var(--muted); }
+
+/* Numbered PR path */
+.path { margin: 0; padding-left: 1.6em; }
+.path li { padding-left: 6px; margin-bottom: 10px; }
+.path li::marker { color: var(--muted); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 15px; min-width: 520px; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+td.sev { border-left: 4px solid var(--bar, var(--rule)); padding-left: 14px; font-weight: 600; white-space: nowrap; }
+tr.crit { --bar: var(--crit); }
+tr.warn { --bar: var(--warn); }
+tr.note { --bar: var(--note); }
+
+/* Checked claims */
+.claims { margin: 0; padding-left: 1.6em; }
+.claims li { margin-bottom: 14px; padding-left: 6px; }
+.claims li::marker { color: var(--muted); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+
+/* Footer */
+footer { border-top: 1px solid var(--rule); padding: 32px 0 48px; color: var(--muted); font-size: 15px; }
+footer .read { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0 0 18px; padding: 0; list-style: none; }
+footer p { margin: 0 0 8px; }
+
+/* Narrow screens: the slip drops below the install command, page gutter stays 16px */
 @media (max-width: 600px) {
+  .hero { padding: 36px 0 28px; }
+  .hero .wrap { display: block; }
   .lead { font-size: 17px; }
+  .slip { margin-top: 24px; }
+  .ledger li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   section { padding: 32px 0; }
+  .cmd { flex-direction: column; }
+  .copy { padding: 10px 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
 </style>
 </head>
-<body>
-<header class="hero">
+<body id="top">
+
+<header class="site-head">
   <div class="wrap">
-    <div class="eyebrow">Agent Skills</div>
-    <h1>Pull requests reviewed, fixed and unblocked by AI.<br>You make the final call.</h1>
-    <p class="lead">Three skills work together on your GitHub pull requests. One reviews. One fixes, with a test that fails first. One resolves merge conflicts. Each comment says who wrote it, and nothing merges without you.</p>
-    <div class="cta">
-      <a class="btn primary" href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/QUICKSTART.md">Quick start</a>
-      <a class="btn" href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/HOW-IT-WORKS.md">How it works</a>
-      <a class="btn" href="https://github.com/jonyfs/pr-reviewer-fixer">View on GitHub</a>
-    </div>
+    <a class="wordmark" href="#top">pr-reviewer-fixer</a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/QUICKSTART.md">Quick start</a>
+      <a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/HOW-IT-WORKS.md">How it works</a>
+      <a href="https://github.com/jonyfs/pr-reviewer-fixer">GitHub</a>
+    </nav>
   </div>
 </header>
 
-<section>
-  <div class="wrap">
-    <h2>Three skills, one pull request</h2>
-    <p>Each skill does one job and says so in its report. They never call each other. They talk through the pull request itself.</p>
-    <div class="cards">
-      <article class="card">
-        <div class="tag">🔍 pr-reviewer</div>
-        <h3>Reviews the diff</h3>
-        <p>Read-only agents check the change from several angles. Every finding is checked before it is shown. One verdict: PASSED or BLOCKED.</p>
-      </article>
-      <article class="card">
-        <div class="tag">🔧 pr-fixer</div>
-        <h3>Fixes what was found</h3>
-        <p>Reproduces each finding, writes a test that fails first, fixes it, and posts a checklist with the evidence for every box.</p>
-      </article>
-      <article class="card">
-        <div class="tag">🔀 pr-merge-fixer</div>
-        <h3>Resolves conflicts</h3>
-        <p>Merges the base branch in, sorts each conflicted file by difficulty, and stops only when a decision really belongs to a person.</p>
-      </article>
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <div class="hero-copy">
+        <h1>Pull requests reviewed, fixed and unblocked by AI. You make the final call.</h1>
+        <p class="lead">Three skills work together on your GitHub pull requests. One reviews. One fixes, with a test that fails first. One resolves merge conflicts. Each comment says who wrote it, and nothing merges without you.</p>
+      </div>
+
+      <div class="install">
+        <span class="install-label" id="install-label">Install from a release clone</span>
+        <div class="cmd">
+          <pre aria-labelledby="install-label" tabindex="0"><code>./install.sh --harness claude-code --yes</code></pre>
+          <button type="button" class="copy" id="copy-install" data-copy="./install.sh --harness claude-code --yes" aria-describedby="copy-status">Copy</button>
+        </div>
+        <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+        <p class="hero-links">Other harnesses use their own flag. <a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/QUICKSTART.md">Full quick start</a>.</p>
+      </div>
+
+      <figure class="slip" aria-labelledby="slip-cap">
+        <div class="slip-head"><span id="slip-cap">Verdict</span><span>illustrative format</span></div>
+        <pre class="slip-body">PR #12   head 3f2a9c1
+verdict   <span class="v-blocked">BLOCKED</span>
+critical  1
+warning   2
+note      3
+blocks    1 CRITICAL
+
+next      pr-fixer, cycle 2 of 5</pre>
+        <figcaption class="slip-foot">Shape of the reviewer's verdict comment. Not a live report.</figcaption>
+      </figure>
     </div>
   </div>
-</section>
 
-<section>
-  <div class="wrap">
-    <h2>How a pull request moves</h2>
-    <p>The loop runs by itself, in the agent session you already use. It asks you only when the budget of automatic cycles is spent or a decision belongs to you.</p>
-    <div class="flow" role="img" aria-label="Pull request opened, conflicts resolved if needed, review, fix and review again until PASSED or until a person decides.">
-      <svg viewBox="0 0 880 220" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0 0 L10 5 L0 10 z" class="ah"/>
-          </marker>
-        </defs>
-        <g class="ln" marker-end="url(#arr)">
-          <path d="M150 70 H190"/>
-          <path d="M310 70 H350"/>
-          <path d="M470 70 H510"/>
-          <path d="M630 70 H670"/>
-          <path d="M310 70 V150 H350" stroke-dasharray="4 4"/>
-          <path d="M790 110 V150 H470" stroke-dasharray="4 4"/>
-        </g>
-        <g>
-          <rect x="20" y="40" width="130" height="60" rx="12" class="hl"/>
-          <text x="85" y="66" text-anchor="middle">PR opened</text>
-          <text x="85" y="84" class="muted" text-anchor="middle">or updated</text>
-
-          <rect x="190" y="40" width="120" height="60" rx="12" class="nd"/>
-          <text x="250" y="66" text-anchor="middle">Conflicts?</text>
-          <text x="250" y="84" class="muted" text-anchor="middle">yes: merge fixer</text>
-
-          <rect x="350" y="40" width="120" height="60" rx="12" class="nd"/>
-          <text x="410" y="66" text-anchor="middle">🔍 Review</text>
-          <text x="410" y="84" class="muted" text-anchor="middle">verdict</text>
-
-          <rect x="510" y="40" width="120" height="60" rx="12" class="nd"/>
-          <text x="570" y="66" text-anchor="middle">⛔ BLOCKED?</text>
-          <text x="570" y="84" class="muted" text-anchor="middle">fixer runs</text>
-
-          <rect x="670" y="40" width="180" height="60" rx="12" class="hl"/>
-          <text x="760" y="66" text-anchor="middle">✅ PASSED</text>
-          <text x="760" y="84" class="muted" text-anchor="middle">you merge</text>
-
-          <rect x="350" y="150" width="120" height="50" rx="12" class="wr"/>
-          <text x="410" y="172" text-anchor="middle">🔧 Fix</text>
-          <text x="410" y="188" class="muted" text-anchor="middle">then review again</text>
-
-          <rect x="20" y="150" width="200" height="50" rx="12" class="bd"/>
-          <text x="120" y="172" text-anchor="middle">👤 Cycles spent?</text>
-          <text x="120" y="188" class="muted" text-anchor="middle">you decide</text>
-        </g>
-      </svg>
+  <section>
+    <div class="wrap">
+      <h2>Three skills, one pull request</h2>
+      <p class="intro">Each skill does one job and says so in its report. They never call each other. They talk through the pull request itself.</p>
+      <ul class="ledger">
+        <li>
+          <div>
+            <h3 class="name">pr-reviewer</h3>
+          </div>
+          <div>
+            <p class="role">Reviews the diff. Read-only agents check the change from several angles, and every finding is checked before it is shown.</p>
+            <p class="ends">Ends with <span>one verdict:</span> PASSED or BLOCKED.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3 class="name">pr-fixer</h3>
+          </div>
+          <div>
+            <p class="role">Fixes what was found. Reproduces each finding, writes a test that fails first, fixes it, and posts a checklist with the evidence for every box.</p>
+            <p class="ends">Ends with <span>a closure comment,</span> one line per finding.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3 class="name">pr-merge-fixer</h3>
+          </div>
+          <div>
+            <p class="role">Resolves conflicts. Merges the base branch in, sorts each conflicted file by difficulty, and stops only when a decision really belongs to a person.</p>
+            <p class="ends">Ends with <span>a merge comment</span> and a table of files.</p>
+          </div>
+        </li>
+      </ul>
     </div>
-  </div>
-</section>
+  </section>
 
-<section>
-  <div class="wrap">
-    <h2>Start in four steps</h2>
-    <ol class="steps">
-      <li><strong>Install.</strong> From a release clone: <code>./install.sh --harness claude-code --yes</code>. Other harnesses use their own flag.</li>
-      <li><strong>Prepare the repository once.</strong> Set <code>REVIEW_MARKER_AUTHORS</code> to your GitHub login, then run <code>review-cycle.sh ensure-labels</code>.</li>
-      <li><strong>Open a draft pull request.</strong> The agent in your session starts the loop without being asked.</li>
-      <li><strong>Read the report.</strong> The first comment says who wrote it, what passed, what blocks, and what to read first.</li>
-    </ol>
-    <p style="margin-top:20px"><a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/QUICKSTART.md">Full quick start →</a></p>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <h2>Severity at a glance</h2>
-    <table>
-      <thead><tr><th>Label</th><th>Meaning</th><th>Blocks the merge?</th></tr></thead>
-      <tbody>
-        <tr><td>🔴 CRITICAL</td><td>Data loss, a security breach, an outage, or a broken rule the project declares non-negotiable</td><td>Always</td></tr>
-        <tr><td>🟡 WARNING</td><td>A likely bug in an edge case, or a missing test for new logic</td><td>Only if you set <code>REVIEW_BLOCK_AT=warning</code></td></tr>
-        <tr><td>🔵 NOTE</td><td>Style, documentation, a question</td><td>No</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <h2>Built to be checked</h2>
-    <div class="cards">
-      <article class="card"><h3>No model in CI</h3><p>No GitHub Actions workflow calls a model. The review and the fix run in your own session, with your own authentication.</p></article>
-      <article class="card"><h3>Trust by login</h3><p>Only comments from logins you name count as reports. An edited comment never counts as a verdict.</p></article>
-      <article class="card"><h3>No silent merges</h3><p>The skills never merge, approve, tag or release. Automatic reviews never request changes on GitHub.</p></article>
-      <article class="card"><h3>Tests that run offline</h3><p>The scripts have a test suite that runs against a fake <code>gh</code>. Nothing touches GitHub while it runs.</p></article>
+  <section>
+    <div class="wrap">
+      <h2>How a pull request moves</h2>
+      <p class="intro">The loop runs by itself, in the agent session you already use. It asks you only when the budget of automatic cycles is spent or a decision belongs to you.</p>
+      <ol class="path">
+        <li>A pull request is opened or updated.</li>
+        <li>If it conflicts with its base, the merge fixer resolves what it can.</li>
+        <li>The reviewer checks the head and publishes one verdict, PASSED or BLOCKED.</li>
+        <li>If BLOCKED, the fixer works the findings, then the reviewer runs again.</li>
+        <li>Repeat until PASSED. When the cycle budget is spent, the question goes to you.</li>
+        <li>On PASSED, you read the report and merge. The skills never merge.</li>
+      </ol>
     </div>
-  </div>
-</section>
+  </section>
 
-<section>
-  <div class="wrap">
-    <h2>Read more</h2>
-    <div class="cards">
-      <article class="card"><h3><a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/HOW-IT-WORKS.md">How it works</a></h3><p>Each step of the loop, and why each rule exists.</p></article>
-      <article class="card"><h3><a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/SKILLS-REFERENCE.md">Skills reference</a></h3><p>Commands, labels, markers and settings, in tables.</p></article>
-      <article class="card"><h3><a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/FAQ.md">FAQ</a></h3><p>The questions people ask first.</p></article>
-      <article class="card"><h3><a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/CHANGELOG.md">Changelog</a></h3><p>What changed in each release, in plain words.</p></article>
+  <section>
+    <div class="wrap">
+      <h2>Severity at a glance</h2>
+      <p class="intro">Each finding has one of three labels. Only the first blocks a merge unless you change the setting.</p>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Severity levels, scrollable on narrow screens">
+        <table>
+          <thead>
+            <tr><th scope="col">Label</th><th scope="col">Meaning</th><th scope="col">Blocks the merge?</th></tr>
+          </thead>
+          <tbody>
+            <tr class="crit"><td class="sev">CRITICAL</td><td>Data loss, a security breach, an outage, or a broken rule the project declares non-negotiable</td><td>Always</td></tr>
+            <tr class="warn"><td class="sev">WARNING</td><td>A likely bug in an edge case, or a missing test for new logic</td><td>Only if you set <code>REVIEW_BLOCK_AT=warning</code></td></tr>
+            <tr class="note"><td class="sev">NOTE</td><td>Style, documentation, a question</td><td>No</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-</section>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What the skills promise, and how to check it</h2>
+      <ol class="claims">
+        <li>No GitHub Actions workflow calls a model. The review and the fix run in your own session, with your own authentication.</li>
+        <li>Only comments from logins named in <code>REVIEW_MARKER_AUTHORS</code> count as reports. An edited comment never counts as a verdict.</li>
+        <li>The skills never merge, approve, tag or release. The automatic reviewer never requests changes on GitHub.</li>
+        <li>The scripts have a test suite that runs against a fake <code>gh</code>. Nothing touches GitHub while it runs.</li>
+      </ol>
+    </div>
+  </section>
+</main>
 
 <footer>
   <div class="wrap">
+    <ul class="read">
+      <li><a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/HOW-IT-WORKS.md">How it works</a></li>
+      <li><a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/SKILLS-REFERENCE.md">Skills reference</a></li>
+      <li><a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/docs/FAQ.md">FAQ</a></li>
+      <li><a href="https://github.com/jonyfs/pr-reviewer-fixer/blob/main/CHANGELOG.md">Changelog</a></li>
+    </ul>
     <p><a href="https://github.com/jonyfs/pr-reviewer-fixer">Source on GitHub</a>. This page is kept in step with each release.</p>
     <p>Machine-readable summary for tools and AI assistants: <a href="llms.txt">llms.txt</a>.</p>
   </div>
 </footer>
+
+<script>
+(function () {
+  var btn = document.getElementById('copy-install');
+  var status = document.getElementById('copy-status');
+  if (!btn || !status) return;
+  function report(ok) {
+    status.textContent = ok ? 'Copied.' : 'Copy failed. Select the command and copy it by hand.';
+  }
+  btn.addEventListener('click', function () {
+    var text = btn.getAttribute('data-copy') || '';
+    try {
+      navigator.clipboard.writeText(text).then(function () { report(true); }, function () { report(false); });
+    } catch (e) {
+      report(false);
+    }
+  });
+})();
+</script>
 </body>
 </html>
