@@ -16,7 +16,7 @@ Researched 2026-10-14. `Target` says where an item belongs: SKILL (core rule), r
 
 Research date: 2026-10-14. Scope: what the merged `pr-fixer` should add, given what already exists in
 `pr-fixer` (lanes, cycles, push-race, head writability, flaky triage, ledger, config),
-`pr-fixer` (falsify, threat-shaped red test, declared debt, 3 cycles, `review-cycle.sh fix`),
+`pr-fixer` (falsify, threat-shaped red test, declared debt, 3 cycles, `review-cycle.sh fix <pr>`),
 `specs/006-pr-skill-agents` (serialized write lanes, model and effort profiles, structured outcomes) and,
 found while reading, the new `pr-reviewer` references (`trigger-and-handoff.md`, `report-contract.md`,
 `execution-profiles.md`, `harness-matrix.md`). Items that would duplicate those files were dropped or

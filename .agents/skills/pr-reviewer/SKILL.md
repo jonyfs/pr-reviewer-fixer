@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.19.0"
+  version: "0.20.0"
 ---
 
 # PR Reviewer
@@ -33,8 +33,8 @@ author reviewing themselves.
 - Also works on a local branch diff, the working tree, or a pasted diff; state which checks are
   unavailable for that target ([references/targets-and-context.md](references/targets-and-context.md)).
 
-**Not for**: driving a pull request to merge, resolving comments or conflicts (`pr-fixer`);
-opening a pull request.
+**Not for**: resolving comments or findings (`pr-fixer`); resolving merge conflicts
+(`pr-merge-fixer`); merging, or opening a pull request.
 
 ## Posture
 
@@ -208,12 +208,30 @@ honesty, not by volume.
 
 ## Output
 
-One report, severity-ranked: header (`Pass`, `Verdict`, `Counts`), acceptance conditions, CRITICAL
-findings, WARNINGS and NOTES as declared debt (each with a proposed owner), coverage note for large
-changes, prior findings on re-review (each verified, open, refused-accepted, refused-rejected, or
-no longer applicable), summary of two or three sentences. It ends with a fenced machine-readable
-findings block for `pr-fixer`.
-[references/report-contract.md](references/report-contract.md)
+The report is written for the person who reads the pull request after the agent, so it leads with
+the answer. It is one comment, in plain text: no headings, tables, bold, bullet lists, checkboxes,
+Mermaid or emoji, since Markdown belongs in the pull request description only. The marker line and
+the fenced `findings` block are the only exceptions. In this order (layout and the rules behind it:
+[references/report-contract.md](references/report-contract.md)):
+
+1. the marker, then the banner `Written by pr-reviewer, pass N, head <sha7>`, which says who wrote
+   the report and that it ran;
+2. the title line and the summary lines: `Verdict:`, `Counts:` (critical, warning, note), `Head:`
+   and `Next:`;
+3. how to read the review, three labelled lines: what changed, what blocks, what to check first;
+4. acceptance conditions, one `A<n> met:` or `A<n> open:` line each, never rewritten after pass 1;
+5. one line per finding, grouped by severity: CRITICAL findings (they always block), WARNINGS and
+   NOTES as declared debt, each with a proposed owner;
+6. the coverage lines: each review unit, its effort, and whether it ran; plus the `Declined to judge:`
+   line;
+7. prior findings on re-review, one line each: verified, open, refused-accepted, refused-rejected or
+   not applicable;
+8. the `Pass history:` line from pass 2 on, and a `Summary:` line that names the one thing to fix
+   first;
+9. the fenced machine-readable `findings` block, last, for `pr-fixer` and `pr-merge-fixer`.
+
+Nothing is wrapped in `<details>`, and no comment carries an emoji with a variation selector: the
+scanner reads both as hidden text.
 
 ## Key Checks Before Publishing
 

@@ -15,14 +15,15 @@ The fixer starts when any of these holds at the **current head**:
    `review-cycle.sh budget` computes. When the budget is spent it does not start: the person is
    asked in the session (see Termination).
 2. A trusted marker says `verdict=PASSED` with `warning+note > 0`: **debt-only mode**. No code
-   edits, no commits, no label change, no `review-cycle.sh fix`; only the owners into the `pr-debt`
+   edits, no commits, no label change, no `review-cycle.sh fix <pr>`; only the owners into the `pr-debt`
    block and one closure comment.
 3. A report carries WARNINGS the owner asked to close, with a `findings` block.
-4. A human or bot comment, a conflict, or a failing required check appears and the user named the PR.
+4. A human or bot comment or a failing required check appears and the user named the PR. A conflict
+   goes to `pr-merge-fixer` instead ([conflicts.md](conflicts.md)).
 5. **The review loop agent dispatches it**, with nobody naming the PR: `review-cycle.sh budget`
-   said `fix`, or a person's session found a conflict or a failing check on an open
-   same-repository PR and `scripts/triage-pr.sh <n>` returned lanes and no `skip_reason`.
-   Playbooks: [conflicts.md](conflicts.md), [ci-failures.md](ci-failures.md).
+   said `fix`, or a person's session found a failing check on an open same-repository PR and
+   `scripts/triage-pr.sh <n>` returned lanes and no `skip_reason`. Playbook:
+   [ci-failures.md](ci-failures.md); a conflict is handed off ([conflicts.md](conflicts.md)).
 
 Nothing starts while the pull request carries `review:needs-human`: a halted PR waits for a person.
 The next run of the loop asks again (`budget` says `ask`), and a `continue N` answer resumes it.
@@ -48,18 +49,19 @@ The loop is dispatched by the review loop agent in the person's session, as desc
   It runs no model and calls `review-cycle.sh` from the base commit, not from the PR tree. Protect
   `.agents/skills/**` and `.github/workflows/**` with CODEOWNERS and require code owner review.
 - Optional environment variables: `MAX_REVIEW_CYCLES` (5), `MAX_REVIEW_CYCLES_HARD` (10),
-  `MAX_CONFLICT_FILES` (15; the fixer agent reads it in the conflict lane, no script enforces it),
+  `MAX_CONFLICT_FILES` (15; `pr-merge-fixer` reads it, no script enforces it),
   `REVIEW_MARKER_AUTHORS`.
 
 ## Order of operations
 
 Each step that touches the PR follows [pr-protocol.md](pr-protocol.md).
 
-1. `scripts/review-cycle.sh fix` first, before any file is opened for writing (skipped in
+1. `scripts/review-cycle.sh fix <pr>` first, before any file is opened for writing (skipped in
    debt-only mode).
 2. Ingest the `findings` block of the trusted verdict comment at the head (filter F1). Split
    blocking and declared debt.
-3. Writing lanes serially: conflict, findings, comments, checks.
+3. Writing lanes serially: findings, comments, checks. A conflict is not one of them: stop and
+   report `conflict owed to pr-merge-fixer` ([conflicts.md](conflicts.md)).
 4. Verify, re-check the remote head, push.
 5. Replace the `pr-debt` block in the PR body with the owners (read-modify-write, filter F4). Never
    overwrite the author's text. Screen the new body with `review-cycle.sh screen --file` first.

@@ -130,8 +130,8 @@ main() {
   skill_dir="$(cd "$here/.." && pwd -P)"
   skills_dir="$(cd "$skill_dir/.." && pwd -P)"
   case "$(basename "$skill_dir")" in
-    pr-reviewer|pr-fixer) ;;
-    *) die "this script is not in a pr-reviewer or pr-fixer folder ($skill_dir); nothing changed"; return 1 ;;
+    pr-reviewer|pr-fixer|pr-merge-fixer) ;;
+    *) die "this script is not in a pr-reviewer, pr-fixer or pr-merge-fixer folder ($skill_dir); nothing changed"; return 1 ;;
   esac
   # The repository's own .agents/skills is the source of the release, not an install of it.
   if [ -f "$skills_dir/../../install.sh" ] && [ -f "$skills_dir/../../.github/scripts/release.sh" ]; then
@@ -139,11 +139,13 @@ main() {
     return 1
   fi
 
+  # Only the skills already installed are updated; a skill this release adds is installed by
+  # install.sh --skill <name> --yes. The list is passed to install.sh as one comma-separated value.
   local s names=() sk
-  for s in pr-reviewer pr-fixer; do
+  for s in pr-reviewer pr-fixer pr-merge-fixer; do
     [ -d "$skills_dir/$s" ] && names+=("$s")
   done
-  if [ "${#names[@]}" = 2 ]; then sk=both; else sk="${names[0]}"; fi
+  sk="$(IFS=,; printf '%s' "${names[*]}")"
 
   command -v python3 >/dev/null 2>&1 || { die "python3 is needed to compare versions; nothing changed"; return 1; }
   command -v curl >/dev/null 2>&1 || { die "curl is needed to download the release; nothing changed"; return 1; }

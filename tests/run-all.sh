@@ -105,15 +105,95 @@ for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]}"; tail -n 3 "$OUT/$n.log"
   [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -eq 0 ] || fail=1
 done
+# Every skill states the summary shape, so the three reports read the same way to a person: the
+# reviewer's template, the fixer's closure rule, the merge fixer's closure rule and the shared protocol.
+# The phrase is a presence check. Where the file holds a template, one structural line of that
+# template must also be there (the plain `Next:` line that ends the summary lines), so a template
+# that drops its summary fails even when the sentence describing it stays. The protocol holds no
+# template.
+for spec in \
+  "pr-reviewer/references/report-contract.md|## Summary standard|^Next: pr-fixer" \
+  "pr-fixer/references/falsify-and-prove.md|Summary first, same shape|^Next: reviewer pass" \
+  "pr-merge-fixer/SKILL.md|Same summary shape as the other two skills|^Next: reviewer pass" \
+  "pr-reviewer/references/pr-protocol.md|Summary shape, the same in all three skills|" \
+  "pr-reviewer/references/pr-protocol.md|Links in a comment or in a pull request body are absolute|"; do
+  rel="${spec%%|*}"; rest="${spec#*|}"; phrase="${rest%%|*}"; shape="${rest#*|}"
+  f="$ROOT/.agents/skills/$rel"
+  if grep -qF "$phrase" "$f" && { [ -z "$shape" ] || grep -qE "$shape" "$f"; }; then
+    echo "== summary standard in $rel"
+  else
+    echo "== summary standard MISSING from $rel (sentence or template Next: line)"; fail=1
+  fi
+done
+# Agent comments are plain text: Markdown belongs in the pull request description only. A comment
+# template is a fenced block in a skill's Markdown whose first line is a protocol marker. Outside its
+# own `findings` fence, a template may hold no table row, heading, bold, bullet, checkbox, quote or
+# other fenced block (Mermaid included). A floor on the templates found keeps a wrong path from
+# passing with nothing read.
+if ! plain_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
+import os, re, sys
+markers = ("<!-- adversarial-review:", "<!-- pr-fixer-closure:", "<!-- pr-merge-fixer-closure:",
+           "<!-- pr-skill-status:")
+rules = [(re.compile(r"^\s*\|"), "table row"), (re.compile(r"^\s*#{1,6}\s"), "heading"),
+         (re.compile(r"\*\*|__\S"), "bold"), (re.compile(r"^\s*([-*+]|\d+[.)])\s"), "list item"),
+         (re.compile(r"^\s*>"), "quote")]
+found, bad = 0, []
+for d, _, fs in os.walk(sys.argv[1]):
+    for name in sorted(fs):
+        if not name.endswith(".md"):
+            continue
+        path = os.path.join(d, name)
+        lines = open(path, encoding="utf-8").read().split("\n")
+        i = 0
+        while i < len(lines):
+            m = re.match(r"^(\s*)(`{3,})", lines[i])
+            if not m:
+                i += 1; continue
+            n, start = len(m.group(2)), i
+            close = re.compile(r"^\s*`{%d,}\s*$" % n)
+            i += 1; body = []
+            while i < len(lines) and not close.match(lines[i]):
+                body.append((i + 1, lines[i])); i += 1
+            i += 1
+            first = next((t.strip() for _, t in body if t.strip()), "")
+            if not first.startswith(markers):
+                continue
+            found += 1
+            inner = None
+            for ln, t in body:
+                f = re.match(r"^\s*(`{3,})\s*(\S*)", t)
+                if inner is not None:
+                    if f and len(f.group(1)) >= len(inner) and not f.group(2):
+                        inner = None
+                    continue
+                if f:
+                    if f.group(2) != "findings":
+                        bad.append("%s:%d fenced block %s" % (path, ln, f.group(2) or "(untagged)"))
+                    inner = f.group(1); continue
+                for rx, what in rules:
+                    if rx.search(t):
+                        bad.append("%s:%d %s" % (path, ln, what))
+print(found)
+for b in bad:
+    print(b)
+sys.exit(1 if bad or found < 5 else 0)
+PY
+)"; then
+  echo "== a comment template holds Markdown (templates found, then each offending line):"
+  printf '%s\n' "$plain_out" | sed "s|$ROOT/||"; fail=1
+else
+  echo "== agent comment templates are plain text ($(printf '%s\n' "$plain_out" | head -n 1) templates)"
+fi
 # One version for both skills: VERSION, each SKILL.md metadata.version and the newest CHANGELOG entry.
 v_root="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 v_rev="$("$ROOT/.agents/skills/pr-reviewer/scripts/check-version.sh" --installed)"
 v_fix="$("$ROOT/.agents/skills/pr-fixer/scripts/check-version.sh" --installed)"
+v_mrg="$("$ROOT/.agents/skills/pr-merge-fixer/scripts/check-version.sh" --installed)"
 v_log="$(grep -m1 -E '^## \[?[0-9]+\.[0-9]+\.[0-9]+' "$ROOT/CHANGELOG.md" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')"
-if [ -n "$v_root" ] && [ "$v_root" = "$v_rev" ] && [ "$v_root" = "$v_fix" ] && [ "$v_root" = "$v_log" ]; then
+if [ -n "$v_root" ] && [ "$v_root" = "$v_rev" ] && [ "$v_root" = "$v_fix" ] && [ "$v_root" = "$v_mrg" ] && [ "$v_root" = "$v_log" ]; then
   echo "== versions agree ($v_root)"
 else
-  echo "== versions DIFFER: VERSION=$v_root pr-reviewer=$v_rev pr-fixer=$v_fix CHANGELOG=$v_log"; fail=1
+  echo "== versions DIFFER: VERSION=$v_root pr-reviewer=$v_rev pr-fixer=$v_fix pr-merge-fixer=$v_mrg CHANGELOG=$v_log"; fail=1
 fi
 # Every script that ships in both skills must be byte-identical: the suites above run them from the
 # reviewer's copy only. The list is found, not written down, so a new shared script is covered too.
@@ -124,11 +204,107 @@ for f in "$ROOT"/.agents/skills/pr-reviewer/scripts/*; do
   cmp -s "$f" "$g" || { echo "== scripts/$b DIFFERS between the skills"; fail=1; }
 done
 [ "$n_shared" -ge 6 ] && echo "== $n_shared shared scripts checked" || { echo "== only $n_shared shared scripts found; expected at least 6"; fail=1; }
-# Shared reference files and the gate template ship in both skills and must stay identical.
+# The merge fixer's copies of the shared scripts are compared, file by file, with the reviewer's copy,
+# or with pr-fixer's when the reviewer does not ship it (push-guard.sh). A script no other skill ships
+# fails: every script in the merge fixer is a copy.
+for f in "$ROOT"/.agents/skills/pr-merge-fixer/scripts/*; do
+  [ -f "$f" ] || continue; b="$(basename "$f")"; g=""
+  for s in pr-reviewer pr-fixer; do
+    [ -e "$ROOT/.agents/skills/$s/scripts/$b" ] && { g="$ROOT/.agents/skills/$s/scripts/$b"; break; }
+  done
+  [ -n "$g" ] || { echo "== scripts/$b in pr-merge-fixer has no copy in another skill"; fail=1; continue; }
+  cmp -s "$f" "$g" || { echo "== scripts/$b DIFFERS between pr-merge-fixer and $(basename "$(dirname "$(dirname "$g")")")"; fail=1; }
+done
+# Shared reference files ship in all three skills and must stay identical. The gate template ships in
+# the two skills that run the gate; pr-merge-fixer has none.
 for f in references/pr-protocol.md references/harness-matrix.md references/harness-loop.md templates/review-gate.yml; do
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-fixer/$f" \
     && echo "== $f identical" || { echo "== $f DIFFERS between the skills"; fail=1; }
 done
+for f in references/pr-protocol.md references/harness-matrix.md references/harness-loop.md; do
+  cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-merge-fixer/$f" \
+    && echo "== $f identical in pr-merge-fixer" || { echo "== $f DIFFERS in pr-merge-fixer"; fail=1; }
+done
+# The merge fixer runs the project's build, tests and lockfile regeneration on the pull request's code,
+# so `review-cycle.sh fix` (the fork and collaborator guard) must run before its first write on every
+# pull request, reviewed or not. Its text may not make that step conditional or skippable.
+mrg_skill="$ROOT/.agents/skills/pr-merge-fixer/SKILL.md"; mrg_conf="$ROOT/.agents/skills/pr-merge-fixer/references/conflicts.md"
+mrg_bad="$(grep -nE 'no cycle to take|Take the cycle when the review owes one|only when a verdict is owed|when a verdict is owed or present' "$mrg_skill" "$mrg_conf")"
+if [ -z "$mrg_bad" ] \
+   && grep -qE '^1\. \*\*Run the guard on every pull request\.\*\* `scripts/review-cycle\.sh fix <pr>`' "$mrg_skill" \
+   && grep -qE '^1\. `scripts/review-cycle\.sh fix <pr>` on every pull request' "$mrg_conf"; then
+  echo "== pr-merge-fixer runs review-cycle.sh fix before any write on every pull request"
+else
+  echo "== pr-merge-fixer may skip review-cycle.sh fix before its first write:"; printf '%s\n' "$mrg_bad"; fail=1
+fi
+# `review-cycle.sh fix` with no number reads the pull request of the checked-out branch (pr-json.py
+# calls `gh pr view` with none), so the guard can pass for a PR other than the one being worked on.
+# One mechanical rule over every Markdown file of the three skills, descriptive mentions included:
+# each occurrence carries the `<pr>` argument. Checked per occurrence, not per line, with a floor so
+# a wrong path cannot pass with nothing found.
+fix_all="$(cd "$ROOT" && grep -rnoE 'review-cycle\.sh fix.{0,5}' --include='*.md' .agents/skills || true)"
+n_fix="$(printf '%s\n' "$fix_all" | grep -c 'review-cycle' || true)"
+fix_bad="$(printf '%s\n' "$fix_all" | grep 'review-cycle' | grep -vE 'review-cycle\.sh fix <pr>' || true)"
+if [ "$n_fix" -ge 10 ] && [ -z "$fix_bad" ]; then
+  echo "== review-cycle.sh fix names the pull request in all $n_fix mentions in the skills"
+else
+  echo "== review-cycle.sh fix without a pull request number ($n_fix mentions found, at least 10 expected):"
+  printf '%s\n' "$fix_bad"; fail=1
+fi
+# The loop setup reads the REVIEW_BLOCK_AT repository variable. gh prints a 404 body on stdout and
+# exits 1, so the setup must take a value only on exit 0, read a 404 as unset (critical), and stop on
+# any other failure. The setup lines are taken from harness-loop.md and run against a stub gh.
+rba_src="$(awk '/^rba_err=/{on=1} on{print} on&&/^rm -f "\$rba_err"/{exit}' \
+  "$ROOT/.agents/skills/pr-reviewer/references/harness-loop.md")"
+mkdir -p "$OUT/rba-bin"
+cat >"$OUT/rba-bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$RBA_MODE" in
+  set) echo warning ;;
+  404) echo '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
+  403) echo '{"message":"Resource not accessible by integration","status":"403"}'
+       echo 'gh: Resource not accessible by integration (HTTP 403)' >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$OUT/rba-bin/gh"
+rba_run() { RBA_MODE="$1" PATH="$OUT/rba-bin:$PATH" bash -c "$rba_src"$'\n''printf "%s" "$REVIEW_BLOCK_AT"' 2>&1; }
+if [ "$(printf '%s\n' "$rba_src" | wc -l)" -ge 5 ] && [ "$(rba_run set)" = warning ] \
+   && [ "$(rba_run 404)" = critical ] \
+   && rba_403="$(rba_run 403)" && printf %s "$rba_403" | grep -q '^setup stopped: .*HTTP 403' \
+   && [ "${rba_403##*$'\n'}" = unreadable ]; then
+  echo "== loop setup reads REVIEW_BLOCK_AT: set, 404 as critical, 403 stops"
+else
+  echo "== loop setup misreads REVIEW_BLOCK_AT (set: '$(rba_run set)', 404: '$(rba_run 404)', 403: '$(rba_run 403)')"; fail=1
+fi
+# A fixer that stops with `conflict owed to pr-merge-fixer` sends the loop back to step 0 (the merge
+# fixer), not to step 2, or every cycle ends the same way until the budget is spent.
+fix_row="$(grep -E '^ *\| `fix` \|' "$ROOT/.agents/skills/pr-reviewer/references/harness-loop.md")"
+if printf %s "$fix_row" | grep -qE 'reports `conflict owed to pr-merge-fixer`[^|]*then go to step 0'; then
+  echo "== the loop's fix row returns to step 0 on conflict owed"
+else
+  echo "== the loop's fix row does not return to step 0 when the fixer reports conflict owed"; fail=1
+fi
+# Without pr-merge-fixer installed, step 0 skips itself, so a fix row that sent a conflict there
+# would circle with no dispatch, no cycle spent and no stop. The row stops and names the install
+# command instead. This guards the wording only, not the path the loop agent takes.
+if printf %s "$fix_row" | grep -qE 'pr-merge-fixer/SKILL.md` is not installed, do not go to step 0[^|]*stop, and tell the person' \
+   && printf %s "$fix_row" | grep -qF 'install.sh --harness <name> --skill pr-merge-fixer --yes'; then
+  echo "== the loop's fix row stops on a conflict when pr-merge-fixer is not installed"
+else
+  echo "== the loop's fix row has no stop for a conflict when pr-merge-fixer is not installed"; fail=1
+fi
+# The merge fixer reads the PR text and commit messages for intent, so step 0 scans them for hidden
+# text and passes the hits in its brief, and the merge fixer never takes flagged text as evidence.
+step0="$(awk '/^0\. \*\*Conflicts first/{on=1} on&&/^1\. \*\*Read the state/{exit} on{print}' \
+  "$ROOT/.agents/skills/pr-reviewer/references/harness-loop.md")"
+if printf %s "$step0" | grep -q 'scan-hidden.py --pr <pr>' \
+   && printf %s "$step0" | grep -q 'Hidden-content hits: <hidden.json' \
+   && grep -q 'is never evidence of intent' "$ROOT/.agents/skills/pr-merge-fixer/SKILL.md" \
+   && grep -q 'never evidence of intent' "$ROOT/.agents/skills/pr-merge-fixer/references/conflicts.md"; then
+  echo "== step 0 passes hidden-content hits to the merge fixer, which never takes flagged text as intent"
+else
+  echo "== step 0 or the merge fixer does not handle hidden-content hits"; fail=1
+fi
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
 # The model-key scan runs here, last: see model_key_scan, defined near the top.

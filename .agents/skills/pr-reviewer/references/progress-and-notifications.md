@@ -37,7 +37,20 @@ Rules:
    finish or stop (`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id>`). Marker:
    `<!-- pr-skill-status: skill=pr-reviewer run=P head=<sha12> state=started|finished -->`. This is
    not the verdict marker and must never be confused with it: the verdict is published only by
-   `scripts/review-cycle.sh publish`. Never edit another author's comment.
+   `scripts/review-cycle.sh publish`. Never edit another author's comment. The body is plain text,
+   one labelled line per step, that a reader can scan in one glance (no table, bold or emoji; see
+   [pr-protocol.md](pr-protocol.md)):
+
+   ```text
+   <!-- pr-skill-status: skill=pr-reviewer run=2 head=9f2c1ab4e0d3 state=started -->
+   Written by pr-reviewer, pass 2, head 9f2c1ab, running.
+
+   Secret screen and hidden-text scan: done
+   Review units: 6 running (2 deep, 3 standard, 1 fast)
+   Verification and verdict: waiting
+   ```
+
+   Finish replaces the step lines with the verdict in one line and a link to the verdict comment.
 3. **Verdict comment**: carries the finish line as its first visible line, then the report and the
    `findings` block. There is no separate finish comment.
 4. **Push notification**: on finish or stop of a run longer than about two minutes, when the

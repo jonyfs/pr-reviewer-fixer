@@ -83,46 +83,63 @@ nothing. Commit messages state the finding id and the failing test's name.
 
 Posted once per cycle as the closure comment, which is the fixer's finish message (format and
 locate command in [pr-protocol.md](pr-protocol.md)). The first line is the marker, the second the
-finish line:
+banner.
 
-```markdown
+The closure comment proves that the fixer ran, not only that it intended to. It is plain text: a
+reader sees the banner, the summary lines, then one labelled line per checkpoint, each with its
+evidence. The layout is fixed:
+
+```text
 <!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->
-pr-fixer: finished PR #N cycle <c>: closed <n>, refused with evidence <n>, debt declared <n> with owners. Head <sha7>. Next: reviewer pass <c+1>.
+Written by pr-fixer, cycle <c>, ran at <UTC time>, head <sha7>.
 
-## Closure: <what was reviewed>
+Closed 1, refused 1, debt 3
 
-**Findings received:** N (critical: n, warning: n, note: n)
-**Blocking (critical):** n closed: n, refused with evidence: n
-**Declared debt (warning + note):** n, each with an owner below
-**Claimed counts for pass c+1 (the reviewer decides):** critical=<n> warning=<n> note=<n>
+Findings received: 4 (critical 1, warning 2, note 1)
+Blocking closed: 1 of 1 (C1)
+Refused, pending the reviewer: C2
+Declared debt: 3 items, owners listed below and in the pr-debt block
+Counts claimed for pass <c+1>: critical 0, warning 1, note 1 (the reviewer decides)
+Next: reviewer pass <c+1> on <sha7>
 
-### Per finding
-#### C1 <claim in one line>
-- **Status:** closed
-- **Reproduction:** <command and output>
-- **Test:** `path/to/test`, which threat it reproduces and why that form
-- **Red:** <failure output, verbatim>
-- **Fix:** <one sentence>
-- **Green:** <output>
-- **Suite:** <counts afterwards>
+C1 closed: expired token accepted when the skew header is present.
+C1 reproduced: pytest tests/auth/test_session.py::test_skew_header failed as the finding says.
+C1 test, in the form the finding names: test_skew_header_does_not_extend_expiry.
+C1 red: AssertionError: expired token accepted (status 200).
+C1 fix: compare against server time, ignore the client header (src/auth/session.ts:47).
+C1 green: 1 passed.
+C1 suite: 214 passed, 0 failed.
+C1 commit: a1b2c3d fix(auth): ignore client clock header (C1), files src/auth/session.ts and tests/auth/test_session.py.
 
-#### C2 <claim in one line>
-- **Status:** refused (pending the reviewer's judgement)
-- **Does not reproduce:** <command and output, the form the finding names>
-- **Why:** <what the reviewer read wrong>
+C2 refused: does not reproduce.
+C2 reproduction: the named form returns 401; output: 401 Unauthorized.
+C2 why refused: the finding reads ADD CONSTRAINT; the code path it names is unreachable. The reviewer decides.
 
-Status per finding is one of `closed`, `refused`, `escalated`, `open` (not reached). Only the
-reviewer turns `refused` into `refused-accepted` or `refused-rejected`.
+Debt W2 (WARNING): refresh path has no test. Owner: person.
 
-### Declared debt (carried into the PR body)
-| id | severity | claim | owner |
-|----|----------|-------|-------|
-| W2 | WARNING | ... | @person / issue #NN |
-
-### Next
-<PR state and the single next action: reviewer pass c+1, the extension question (when this was
-the last cycle of the budget), escalate, or hand off.>
+Next: reviewer pass <c+1> on <sha7>. The reviewer re-reads the refusal C2 and the new commit.
 ```
+
+Rules for the closure comment:
+
+- **Summary first, same shape as the reviewer's**: a title line with the result in six words or
+  fewer, then labelled lines (findings received, blocking closed, refused, declared debt, counts
+  claimed, and `Next:` last), then the checkpoints. The reader gets the answer in ten seconds and
+  the proof below it.
+- Plain text only, as [pr-protocol.md](pr-protocol.md) says: no heading, table, bold, bullet,
+  checkbox, emoji or fenced block in the comment. Markdown belongs in the pull request description.
+- The checkpoint lines are the proof: each line starts with the finding id and the step
+  (reproduced, test, red, fix, green, suite, commit) and carries the output or the commit that
+  shows it. A step with no evidence says `not reached` and why.
+- A test name, an output line or a commit sha is copied from the run, never retyped from memory.
+- `What changed since the last pass:` is one line at the top of the detail, when the cycle is not
+  the first.
+- Status per finding is one of `closed`, `refused`, `escalated`, `open` (not reached). Only the
+  reviewer turns `refused` into `refused-accepted` or `refused-rejected`.
+- Debt is one `Debt <id> (<severity>): <claim>. Owner: <owner>.` line per item, the same items as
+  the `pr-debt` block of the PR body. A login is written without the `@`.
+- Avoid `<details>`, HTML comments other than the marker, and emoji with a variation selector: the
+  scanner flags each one (see [pr-protocol.md](pr-protocol.md)).
 
 ## What this is not
 

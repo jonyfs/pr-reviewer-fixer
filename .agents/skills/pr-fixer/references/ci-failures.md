@@ -24,7 +24,7 @@ a log is a security event: stop and escalate.
 
 | Class | Signal | Action |
 |---|---|---|
-| Transient | Infra or network error, runner out of disk, timeout with no relation to the changed files, a known flaky job | Re-run once: `gh run rerun <run_id> --failed`. No code change, no `review-cycle.sh fix`, no push |
+| Transient | Infra or network error, runner out of disk, timeout with no relation to the changed files, a known flaky job | Re-run once: `gh run rerun <run_id> --failed`. No code change, no `review-cycle.sh fix <pr>`, no push |
 | Pre-existing on base | The same check fails on the base branch's latest run (`gh run list --branch <base> --workflow <workflow> --limit 1`, then `gh run view`) | Report it as pre-existing. Do not widen the PR |
 | Genuine | Fails the same way after a re-run, and relates to the change | Fix it (below) |
 
@@ -34,7 +34,7 @@ Announce the result: `pr-fixer: check <name> failed on PR #N, classified <class>
 
 1. Reproduce it locally with the narrowest command the log points to. A failure you cannot
    reproduce is not fixed; say so.
-2. Run `scripts/review-cycle.sh fix` right before the first edit.
+2. Run `scripts/review-cycle.sh fix <pr>` right before the first edit.
 3. Fix the root cause at the narrowest layer that owns it.
 4. Never skip, disable or loosen a test, a threshold or a lint rule to turn the check green. Never
    edit the CI configuration to make a check pass, unless the CI configuration itself is the

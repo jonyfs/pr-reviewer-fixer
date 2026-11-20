@@ -22,7 +22,7 @@ unverified items). Prefer aliases where the harness has them.
 | Lane | Tier | Writes | Why |
 |---|---|---|---|
 | Falsification of a CRITICAL | deep | no (reads, runs) | Deciding that a finding is false is the riskiest call in the cycle |
-| Conflict resolution | deep | yes, history | A wrong semantic merge is silent. Run in an isolated worktree |
+| Conflict resolution | handed to `pr-merge-fixer` (its own tiers) | no | Moved out in 0.20.0; see that skill's `orchestration.md` |
 | Finding fix (CRITICAL) | deep, then standard once the red test exists | yes | Reasoning is in understanding the threat; the edit is bounded |
 | Check repair | standard (deep after two failed attempts) | yes | Test output gives a tight loop |
 | Comment fixes | standard | yes | Scoped edits with a stated intent |

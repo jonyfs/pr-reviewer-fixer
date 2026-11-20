@@ -5,11 +5,11 @@ Tags: [#pr #review #fix #protocol #reference]
 
 # PR Protocol
 
-`pr-reviewer` and `pr-fixer` never call each other. They talk only through artifacts on the pull
-request: labels, comments, inline threads and one block in the PR body. This file says, for each
-artifact, who writes it, who reads it, what it looks like, the exact command that finds it, and
-when it stops being true. It is byte-identical in both skills. Change both copies together and
-check with `cmp`.
+`pr-reviewer`, `pr-fixer` and `pr-merge-fixer` never call each other. They talk only through artifacts
+on the pull request: labels, comments, inline threads and one block in the PR body. This file says,
+for each artifact, who writes it, who reads it, what it looks like, the exact command that finds it,
+and when it stops being true. It is byte-identical in all three skills. Change every copy together
+and check with `cmp`.
 
 ## Artifacts
 
@@ -19,10 +19,52 @@ check with `cmp`.
 | Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-- adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> [model=<id> tier=fast\|standard\|deep] [block_at=warning] -->`, then the report, ending with the fenced `findings` block | `scripts/pr-json.py <n>` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
 | Inline review comments | `pr-reviewer`, only in a run a person invoked | `pr-fixer` comment lane | Body starts with the finding id in brackets: `[C1] <claim>` | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed by a thread reply, then resolved. The automatic run posts none |
 | Fixer closure comment | `pr-fixer`, once per cycle, as its finish message, after `review-cycle.sh screen` passes it | `pr-reviewer` pass c+1 (Understand the change) | `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `scripts/pr-json.py <n>` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
+| Merge closure comment | `pr-merge-fixer`, once per merge run, after `review-cycle.sh screen` passes it | `pr-reviewer` pass P+1 (focus hunks), people | `<!-- pr-merge-fixer-closure: head=<sha12> resolved=<n> escalated=<n> -->`, then the banner, the summary lines and one line per file | Filter F7 | One per merge run. Never edited after posting. A merge push always owes the next review pass |
 | Debt block | `pr-fixer` (Declare debt), after `review-cycle.sh screen` passes the new body | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-- pr-debt:start -->` and `<!-- pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
 | Thread replies | `pr-fixer` comment lane | The comment's author, `pr-reviewer` pass 2+ | `Closed in <sha7> (C1)`, and the thread resolved only when the reviewer's login or a trusted bot opened it; or `Declined (C1): <reason>` or `Escalated (C1): <what the person must decide>` and the thread left open | `scripts/fetch-feedback.py <n>` (pr-fixer) | A loop-owned thread is resolved on reply. A person's thread, and a decline, stay open for its author |
 | Status comment | The skill run that is in progress | People watching the PR | `<!-- pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
 | Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-- pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-- pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then one human-readable line | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling, and `extend` removes `review:needs-human`. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
+
+## Comment layout and legend (all three skills)
+
+Every comment an agent posts is plain text. Markdown is for the pull request description only. A
+comment has no headings, no tables, no bold or italics, no bullet or numbered lists, no checkboxes,
+no quotes, no fenced block other than the `findings` block (no Mermaid), and no emoji. The marker
+line and the `findings` block are the only exceptions. Every comment follows one order, so a reader
+learns where to look and a parser finds the marker on the first line:
+
+1. the marker, alone on the first line (`<!-- ... -->`);
+2. the banner, one line: `Written by pr-reviewer`, `Written by pr-fixer` or `Written by
+   pr-merge-fixer`, with the pass, cycle or run and the time;
+3. the summary: the title line, then labelled lines (`Verdict:`, `Counts:`, `Head:`, and `Next:`
+   last), one value each;
+4. the detail: one labelled line per item, starting with its id or its label (`C1 closed:`,
+   `Coverage:`, `File src/a.ts:`), with the evidence on that line or the next labelled one;
+5. the fenced `findings` block last, when the comment has one.
+
+Legend, used the same way everywhere, in words: CRITICAL, WARNING and NOTE for severity; closed,
+refused, escalated and open for a fixer outcome; verified, refused-accepted, refused-rejected and not
+applicable for a reviewer's judgement; met and open for an acceptance condition; resolved and
+escalated for a merged file; lockfile, rename, textual, semantic, vendored and sensitive for a
+conflict class. A login is written without the `@`, so it notifies nobody.
+
+Formatting that the scripts and the scanner reject, so never write it into an agent comment:
+`<details>` blocks, HTML comments other than the protocol's markers, invisible HTML, and emoji with a
+variation selector (`⚠️`, `✔️`, `ℹ️`, `➡️`). `scan-hidden.py` flags each one as a candidate finding.
+`tests/run-all.sh` fails when a comment template in the skills holds a table row, a heading, bold,
+a bullet or a fenced block other than `findings`.
+
+Links in a comment or in a pull request body are absolute. GitHub resolves a relative path such as
+`docs/guide.md` against the pull request's own URL, so it lands on a compare page, not on the file. Write
+the permalink at the head commit, `https://github.com/<owner>/<repo>/blob/<sha>/<path>`. A branch link
+breaks when the branch is deleted after merge; a commit permalink never does, and it names the same head
+as the comment's `sha=`. A relative link is fine only in a file of the repository, where GitHub resolves
+it against that file.
+
+Summary shape, the same in all three skills: a title line with the outcome in six words or fewer,
+then labelled lines whose last is `Next:`, then the detail. The reviewer's template is in its
+`report-contract.md` ("Summary standard"); the fixer's and the merge fixer's are in their closure
+sections.
 
 ## Labels: who writes which state
 
@@ -32,7 +74,7 @@ check with `cmp`.
 | `review:running` | `review-cycle.sh start` | A review pass is in flight |
 | `review:passed` | `review-cycle.sh publish --verdict PASSED` | Marker at the head says PASSED |
 | `review:blocked` | `review-cycle.sh publish --verdict BLOCKED` | Marker at the head says BLOCKED |
-| `review:fixing` | `review-cycle.sh fix` | A correction is in flight; the head is about to move |
+| `review:fixing` | `review-cycle.sh fix <pr>` | A correction is in flight; the head is about to move |
 | `review:needs-human` | `review-cycle.sh halt`, only over `review:blocked`; withdrawn by `start` (which refuses while the BLOCKED verdict is still at the head), `fix`, `stale`, `extend` and any `publish` | The loop paused or stopped (budget spent, stop, or no answer) and a person has to decide |
 
 `review-cycle.sh publish --verdict PASSED` also marks a draft pull request ready for review
@@ -219,6 +261,18 @@ python3 <skill folder>/scripts/pr-json.py <n> \
     | last | .body // empty' | head -n 1
 ```
 
+**F7. The newest trusted merge closure** (the head it names is the head the reviewer must re-read):
+
+```bash
+python3 <skill folder>/scripts/pr-json.py <n> \
+| jq -r --arg authors "${REVIEW_MARKER_AUTHORS:-}" '
+    ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
+    | [ .comments[]
+        | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
+        | select(.body | startswith("<!-- pr-merge-fixer-closure: ")) ]
+    | last | .body // empty'
+```
+
 ## Numbering: pass and cycle
 
 - **Pass p** is the p-th published verdict on the pull request. The next pass is the highest
@@ -258,7 +312,7 @@ python3 <skill folder>/scripts/pr-json.py <n> \
 --critical C --warning W --note N`. `P` is exactly one more than the highest `pass=` among the
 trusted markers (`budget` prints it as `B_NEXT_PASS`). The script writes the marker, refuses a stale `--sha`, refuses
 counts that contradict the verdict, refuses a report that holds a token or private key (it names
-the kind and never prints the value), and does not rewrite the report (a login is written as `@login` in backticks so that it notifies nobody). It also refuses a marker plus report over 60000 bytes (GitHub
+the kind and never prints the value), and does not rewrite the report (a login is written without the `@` so that it notifies nobody). It also refuses a marker plus report over 60000 bytes (GitHub
 rejects comment bodies over 65536 characters), and it refuses when the login `gh` is signed in to
 is not on `REVIEW_MARKER_AUTHORS` or cannot be resolved. Never type the marker with `gh pr comment`.
 Before it, run `review-cycle.sh lint-report <n> --report FILE`: it exits 1 when a finding names a file

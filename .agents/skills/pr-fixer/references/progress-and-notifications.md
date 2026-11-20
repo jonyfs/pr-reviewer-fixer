@@ -23,7 +23,7 @@ run says when it starts, what it is working, and when it is done or why it stopp
 
 Rules:
 
-- The start line comes **after** `review-cycle.sh fix` has taken the cycle and before the first
+- The start line comes **after** `review-cycle.sh fix <pr>` has taken the cycle and before the first
   edit, so the label and the announcement agree.
 - A lane change or push is one line. No running commentary.
 - Every started run ends with exactly one finish or stopped line. Escalation always notifies, and
@@ -62,7 +62,7 @@ Notifications carry no secrets, no log excerpts and no finding bodies.
 | Marker at head is `PASSED` with debt | Debt-only mode in the automatic run: owners into the `pr-debt` block, one closure comment, no code edits. By hand, a WARNING may be fixed when that is cheaper than recording it |
 | No marker at head | Wait or ask for the review; do not fix against a report for another commit |
 | Only comments, no report | Comment lane only; no cycle count against the review budget |
-| Conflict present | Conflict lane first, alone; announce that other lanes are waiting. Playbook: [conflicts.md](conflicts.md) |
+| Conflict present | Stop before any write and report `conflict owed to pr-merge-fixer`; the loop agent dispatches the merge fixer. Handoff: [conflicts.md](conflicts.md) |
 | Dispatched with nobody naming the PR and `triage-pr.sh` returns lanes with no `skip_reason` | Announce the start line, then work the lanes it named. `skip_reason` set: do nothing and say why in the session |
 | Head not writable (fork, no edit access) | Produce a patch and replies, say no push will happen |
 | Failing check looks transient | Re-run once, announce it, then classify. Playbook: [ci-failures.md](ci-failures.md) |

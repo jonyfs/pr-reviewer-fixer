@@ -8,7 +8,7 @@ Tags: [#pr #fix #principles #reference]
 These are the rules the correction loop depends on. Each one exists because its absence produced a
 false green, a merged-while-fixing pull request, or a loop that never ended.
 
-1. **Take the cycle first.** `scripts/review-cycle.sh fix` is the first command of any correcting
+1. **Take the cycle first.** `scripts/review-cycle.sh fix <pr>` is the first command of any correcting
    pass, before any file is opened, and it withdraws `review:needs-human` in the same call.
    Otherwise the head has not moved yet, so the label is still true about the commit and already
    false about the work, and the pull request can merge with corrections only on disk.
