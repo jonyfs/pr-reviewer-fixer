@@ -120,7 +120,7 @@ Decide what to update from what the change touches:
 
 | The change touches | Update |
 |---|---|
-| A label, a state, a marker field, a trust rule or a `review-cycle.sh` subcommand | `docs/SKILLS-REFERENCE.md` (labels, markers, settings), `docs/REFERENCE.md` (the artifact table and the cycle budget text), `docs/HOW-IT-WORKS.md` (its own diagrams, which are not in `docs/diagrams/`), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
+| A label, a state, a marker field, a trust rule or a `review-cycle.sh` subcommand | `docs/SKILLS-REFERENCE.md` (labels, markers, settings), `docs/REFERENCE.md` (the artifact table, the label state diagram and the cycle budget text), `docs/HOW-IT-WORKS.md` (its own diagrams, which are not in `docs/diagrams/`), `docs/diagrams/*.mmd`, both copies of `references/pr-protocol.md`, the `SKILL.md` steps that name it, and the header comments of `review-cycle.sh` |
 | Budget settings (`MAX_REVIEW_CYCLES`, `MAX_REVIEW_CYCLES_HARD`) | `docs/SKILLS-REFERENCE.md` settings table and `docs/REFERENCE.md` budget text, the defaults in `review-cycle.sh budget`, `references/harness-loop.md` and `references/posture-and-config.md`, and the `Cycle budget` paragraph in this file |
 | A script, a test or a workflow (added, renamed, removed) | `docs/REFERENCE.md` (layout, install, tests), the `Commands` and `Architecture` sections of this file, and `tests/run-all.sh` |
 | An install path, a harness or a model name | the install table in `docs/SKILLS-REFERENCE.md`, and the date line in `docs/REFERENCE.md`, the harness table in `install.sh`, and `references/harness-matrix.md` and `references/execution-profiles.md` (both skills) |
@@ -130,7 +130,7 @@ Decide what to update from what the change touches:
 
 Rules for doing it:
 
-- `docs/diagrams/01-overview.mmd` and `02-sequence.mmd` are the sources of the overview and sequence diagrams in `docs/REFERENCE.md`. Change both and keep them identical. `docs/HOW-IT-WORKS.md` and the flow diagram in `README.md` have their own diagrams; keep them in step with the loop text.
+- Every `docs/diagrams/*.mmd` file is the source of the diagram copy in `docs/REFERENCE.md` (overview, sequence, label states and the rest). Change both and keep them identical. `docs/HOW-IT-WORKS.md` and the flow diagram in `README.md` have their own diagrams; keep them in step with the loop text.
 - Before opening the pull request, search the repository for the old name, path or label you removed or renamed, for example `grep -rn "<old name>" . --exclude-dir=.git`. Zero hits outside `CHANGELOG.md` is the goal.
 - Describe what the code does now. Put history in `CHANGELOG.md`, not in the other documents.
 - Claims in `README.md` and `docs/REFERENCE.md` about status and limits ("not run on live GitHub Actions", test counts) must match what is true after the change. Change them when they stop being true.
@@ -143,6 +143,6 @@ Rules for doing it:
 - `SKILL.md` frontmatter uses `name`, `description` and `metadata.version`. Do not add harness-specific keys.
 - `templates/review-gate.yml` calls scripts at `.agents/skills/pr-reviewer/scripts/`. Keep that prefix, since `docs/REFERENCE.md` tells users to replace it if they install elsewhere. Claude Code does not scan `.agents/skills/`, so tell a sub-agent to read `.agents/skills/<skill>/SKILL.md` by path.
 - Third-party actions in workflows and templates are pinned to full commit SHAs. Keep them pinned.
-- `docs/diagrams/01-overview.mmd` and `02-sequence.mmd` are the sources of the overview and sequence diagrams in `docs/REFERENCE.md`. Update both together.
+- Every `docs/diagrams/*.mmd` file is the source of a diagram copy in `docs/REFERENCE.md`. Update both together.
 - Dated facts (harness paths, model names) carry a date, currently 2026-10-14. Update the date when you re-verify them.
 - Test output directories (`tests/**/state/`, `work-*/`, `state-*/` and a few generated files) are gitignored. The model-key scan in `tests/run-all.sh` reads the files git lists in `.github/`, `install.sh`, both skills' `templates/` and `scripts/` and `tests/`: the tracked ones and the untracked ones that `.gitignore` does not hide (`git ls-files -z --cached --others --exclude-standard` feeds `grep`, 100 files per call), with no exclusion by name or path. A new file is read before it is `git add`ed; the gitignored scratch (`state-*/`, `work-*/`) is not. It sets `GIT_LITERAL_PATHSPECS=0` and `GIT_NOGLOB_PATHSPECS=0` for the listing. It fails when `git ls-files` cannot answer, when the checkout is not the top of its own git repository, when git lists no file, and when `grep` exits with anything but 0 or 1. `bash tests/run-all.sh --scan-only` runs just that scan, and `tests/scan/run.sh` drives it against planted trees (a tree of more than 100 files included) in a scratch copy.

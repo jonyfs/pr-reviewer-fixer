@@ -106,7 +106,7 @@ expand_skills() {
 }
 SKILLS=(); expand_skills "$SKILL"
 
-# project path | user path, per harness. Dated 2026-10-14 in docs/SKILLS-REFERENCE.md; confirm against vendor docs.
+# project path | user path, per harness. Dated 2026-10-14 in docs/REFERENCE.md; confirm against vendor docs.
 paths_for() {
   case "$1" in
     claude-code) echo ".claude/skills|.claude/skills" ;;
@@ -360,5 +360,5 @@ for s in "${SKILLS[@]}"; do
   ver="$( { tr -d '[:space:]' <"$SRC_P/../../VERSION"; } 2>/dev/null)" || ver=""
   echo "install: installed $DEST_ROOT/$s (${ver:-unknown})"
 done
-echo "install: next, set REVIEW_MARKER_AUTHORS and run review-cycle.sh ensure-labels (docs/QUICKSTART.md, 'Check the install')."
+echo "install: next, set REVIEW_MARKER_AUTHORS and run review-cycle.sh ensure-labels (docs/REFERENCE.md, 'Check the install')."
 [ "$LEFT" = 0 ] || exit 1
