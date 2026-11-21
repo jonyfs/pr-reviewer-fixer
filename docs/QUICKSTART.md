@@ -32,6 +32,17 @@ bash install-remote.sh --harness auto --yes      # install
 ``` Pick one
 skill only with `--skill pr-reviewer`, or a list such as `--skill pr-reviewer,pr-fixer`.
 
+## Review a branch from another repository
+
+Without installing anything in that repository:
+
+```bash
+bash remote-review.sh owner/repo feature-branch --base main --test "npm test" --push --open-pr
+```
+
+It makes a worktree on `review/feature-branch`, runs the checks, and pushes that branch. The review and
+the fixes then run from this copy of the skills against the worktree. The author's branch is not touched.
+
 ## 3. Prepare your repository (once)
 
 ```bash

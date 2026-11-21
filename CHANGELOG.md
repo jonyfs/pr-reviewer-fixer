@@ -18,7 +18,11 @@ One-line install from GitHub, automatic harness detection, and six more harnesse
 - **Six more harnesses**: goose, qwen, crush (user scope only), continue, trae and factory. The
   folders for goose, qwen, continue and factory come from their own documentation; trae comes from
   third-party guides, so check it against Trae's documentation before relying on it.
-- An empty `--skill` value is refused (0.20.1 fixed the list check; this release keeps it).
+- **`remote-review.sh`** (new, at the repository root): prepares a branch of another GitHub repository
+  for review and correction. It clones into a cache, creates a worktree on a new `review/<branch>` branch
+  from the author's branch head, runs the secret screen, the hidden-text scan, the path floor and the
+  project's tests there, and pushes or opens a draft pull request only for `review/<branch>`. The
+  author's branch is never checked out, moved or pushed to. The skills are read from this repository.
 
 ## 0.20.1
 
