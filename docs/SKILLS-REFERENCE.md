@@ -29,6 +29,14 @@ is opened or pushed. You can also start any of them by hand.
 | `kiro` | `.kiro/skills` | `~/.kiro/skills` |
 | `windsurf` | `.windsurf/skills` | `~/.codeium/windsurf/skills` |
 | `junie` | `.junie/skills` | `~/.junie/skills` |
+| `goose` | `.agents/skills` | `~/.agents/skills` |
+| `qwen` | `.qwen/skills` | `~/.qwen/skills` |
+| `crush` | not supported | `~/.config/crush/skills` |
+| `continue` | `.continue/<skill>/` | `~/.continue/<skill>/` |
+| `trae` | `.trae/skills` | `~/.trae/skills` (third-party sources; check Trae's docs) |
+| `factory` | `.factory/skills` | `~/.factory/skills` |
+
+`--harness auto` finds the harnesses whose marker is present (for example `.cursor` or `~/.cursor`) and installs into each. `--harness a,b` runs one install per harness.
 
 Options:
 

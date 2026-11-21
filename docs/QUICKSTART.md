@@ -21,7 +21,15 @@ then, from that clone:
 ./install.sh --harness claude-code --yes    # installs all three skills
 ```
 
-Use `--harness codex`, `copilot`, `gemini`, `cursor`, `opencode` and others the same way. Pick one
+Use `--harness codex`, `copilot`, `gemini`, `cursor`, `opencode` and others the same way, or `--harness auto` to install wherever a harness is found.
+
+Without a clone, one line downloads the latest release, checks its SHA-256, and runs its installer. It shows the plan first:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/jonyfs/pr-reviewer-fixer/main/install-remote.sh
+bash install-remote.sh --harness auto            # plan only
+bash install-remote.sh --harness auto --yes      # install
+``` Pick one
 skill only with `--skill pr-reviewer`, or a list such as `--skill pr-reviewer,pr-fixer`.
 
 ## 3. Prepare your repository (once)

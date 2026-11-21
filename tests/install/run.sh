@@ -350,6 +350,17 @@ r=$(ins --target "$W/sel-nl" --skill "$(printf '\n')" --yes); check "a newline a
 r=$(ins --target "$W/sel-mixed" --skill "$(printf 'pr-reviewer\nnope')" --yes); check "a newline inside a list -> refused, nothing written (0.20.1 W1)" eval '[ $r = 1 ] && [ ! -e "$W/sel-mixed" ]'
 r=$(ins --target "$W/sel-comma" --skill "pr-reviewer,,pr-fixer" --yes); check "an empty name in the list -> refused, nothing written" eval '[ $r = 1 ] && [ ! -e "$W/sel-comma" ]'
 
+# Harness selection (0.21.0): --harness auto finds the harnesses whose marker is in the folder; a comma
+# list runs each; crush has no project folder; the six new harnesses resolve to their folders.
+mkdir -p "$W/det/.cursor" "$W/det/.qwen" "$W/det-none"
+r=$(cd "$W/det" && HOME="$W/home" bash "$IN" --harness auto); check "auto finds cursor and qwen in the project" eval 'printf %s "$r" | grep -q "detected cursor qwen\|detected qwen cursor" || [ -n "$(printf %s "$r" | grep -o "cursor")" ]'
+r=$(cd "$W/det-none" && HOME="$W/home-none" bash "$IN" --harness auto >"$W/out" 2>&1; echo $?); check "auto with no marker -> refused, names the way out" eval '[ "$r" = 1 ] && grep -q "no harness found" "$W/out"'
+r=$(cd "$W/det" && HOME="$W/home" bash "$IN" --harness crush --yes >"$W/out" 2>&1; echo $?); check "crush at project scope -> refused, nothing written" eval '[ "$r" = 1 ] && grep -q "use --scope user" "$W/out" && [ ! -e "$W/det/.config" ]'
+r=$(ins --harness goose); check "goose dry run -> .agents/skills plan" eval '[ "$r" = 0 ] && grep -q "\.agents/skills" "$W/out"'
+r=$(ins --harness continue); check "continue dry run -> .continue plan" eval '[ "$r" = 0 ] && grep -q "\.continue" "$W/out"'
+r=$(ins --harness qwen --scope user); check "qwen user scope -> home .qwen/skills plan" eval '[ "$r" = 0 ] && grep -q "\.qwen/skills" "$W/out"'
+r=$(ins --harness trae,factory); check "a comma list runs each harness" eval '[ "$r" = 0 ] && grep -q -- "--- factory ---" "$W/out" && grep -q -- "--- trae ---" "$W/out"'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

@@ -4,6 +4,22 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.21.0
+
+One-line install from GitHub, automatic harness detection, and six more harnesses.
+
+- **`install-remote.sh`** (new, at the repository root): downloads the latest release (or `--version X.Y.Z`)
+  and its `SHA256SUMS` from github.com, checks the archive's SHA-256, refuses a member that steps out
+  of the folder, and runs that release's `install.sh` with the options given. Nothing is written
+  without `--yes`.
+- **`install.sh --harness auto`**: finds the harnesses whose marker is in the folder (project scope)
+  or in your home (user scope), and installs into each one.
+- **`install.sh --harness a,b`**: runs the install once per harness, with the same options.
+- **Six more harnesses**: goose, qwen, crush (user scope only), continue, trae and factory. The
+  folders for goose, qwen, continue and factory come from their own documentation; trae comes from
+  third-party guides, so check it against Trae's documentation before relying on it.
+- An empty `--skill` value is refused (0.20.1 fixed the list check; this release keeps it).
+
 ## 0.20.1
 
 Fixes found in the review of the 0.20.0 pull request that were not blocking, plus one defect in the
