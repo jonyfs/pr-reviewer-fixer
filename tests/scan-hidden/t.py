@@ -364,5 +364,7 @@ check("the same comment in a .md file is flagged", rc == 1 and (out or {}).get("
 
 rc, out, err = scan("--file", write("code-sample2.py", "s = '<p hidden>x</p>'\n"))
 check("a hidden-style element in a .py file is not flagged (no Markdown rendering)", (out or {}).get("count") == 0, out)
+rc, out, err = scan("--file", write("msg-sample.txt", "x <!-- shown -->\n"))
+check("a comment in a plain-text file (not Markdown) is not flagged", (out or {}).get("count") == 0, out)
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)
