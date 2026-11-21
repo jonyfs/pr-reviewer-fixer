@@ -86,6 +86,7 @@ EXIT CODES: 0 nothing found, 1 at least one hit, 2 an input could not be read (g
 failed, a file is missing); then nothing is printed on stdout. Exit 2 never means clean.
 """
 import bisect
+import collections
 import importlib.util
 import json
 import os
@@ -262,8 +263,8 @@ def blank_code(text):
     # a fence), ends a paragraph in CommonMark and so ends a span. Breaking more often only scans more.
     # Thematic breaks and setext underlines (a line of - * _ or =) end a paragraph too.
     breaks = [m.start() for m in re.finditer(
-        r"\n[ \t\r]*(?=\n)|\n(?=[ ]{0,3}(?:[#>]|[-*+][ \t]|\d{1,9}[.)][ \t]|<|`{3}|~{3}))"
-        r"|\n(?=[ ]{0,3}[-*_=][-*_= \t]*\r?(?:\n|$))", flat)]
+        r"\n[ \t\r]*(?=\n)|\n(?=[ \t]*(?:[#>]|[-*+][ \t]|\d{1,9}[.)][ \t]|<|`{3}|~{3}))"
+        r"|\n(?=[ \t]*[-*_=][-*_= \t]*\r?(?:\n|$))", flat)]
     def same_paragraph(a, c):
         k = bisect.bisect_right(breaks, a)
         return k >= len(breaks) or breaks[k] >= c
@@ -430,22 +431,45 @@ def scan_diff(base, head, verdict_re):
             continue
         h = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
         if h:
+            if path is not None:
+                added.setdefault(path, set())
             rem_old = int(h.group(1)) if h.group(1) is not None else 1
             n = int(h.group(2))
             rem_new = int(h.group(3)) if h.group(3) is not None else 1
+    # The base is the merge base, the file as the change began. A hit on an unchanged line is reported
+    # when the base file has no more copies of that hit than the head does (a count, by kind, line text
+    # and detail), so a second copy of an old hit is still reported.
+    mb = git("merge-base", base, head).strip()
     for p, lines in added.items():
+        if p == "/dev/null":
+            continue
+        # A submodule is a commit, not a file: its content is not scanned here (its own repository is).
+        if not git_exists(head, p) or git_type(head, p) == "commit":
+            continue
         text = git("show", "%s:%s" % (head, p))
-        # A hit on an unchanged line is reported too when the base file had no such hit: an added
-        # backtick or fence can make an old comment hidden. The base copy is the file before the change.
-        try:
-            before = git("show", "%s:%s" % (base, p))
-        except Unreadable:
-            before = ""
-        known = {(h_["kind"], h_["excerpt"]) for h_ in scan_text(before, verdict_re, "diff", lambda l: "", markup=is_markup(p))}
+        base_text = git("show", "%s:%s" % (mb, p)) if git_exists(mb, p) else ""
+        budget = collections.Counter(
+            (h_["kind"], h_["excerpt"], h_["detail"])
+            for h_ in scan_text(base_text, verdict_re, "diff", lambda l: "", markup=is_markup(p)))
         for h_ in scan_text(text, verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), markup=is_markup(p)):
-            if h_["line"] in lines or (h_["kind"], h_["excerpt"]) not in known:
+            key = (h_["kind"], h_["excerpt"], h_["detail"])
+            matched = budget[key] > 0
+            if matched:
+                budget[key] -= 1
+            if h_["line"] in lines or not matched:
                 hits.append(h_)
     return hits
+
+
+def git_exists(ref, path):
+    """Whether `ref:path` names an object. A missing path is False."""
+    r = subprocess.run(["git", "cat-file", "-e", "%s:%s" % (ref, path)], capture_output=True)
+    return r.returncode == 0
+
+
+def git_type(ref, path):
+    return subprocess.run(["git", "cat-file", "-t", "%s:%s" % (ref, path)], capture_output=True,
+                          text=True).stdout.strip()
 
 
 def scan_commits(base, head, verdict_re):
