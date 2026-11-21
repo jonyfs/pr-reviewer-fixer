@@ -88,10 +88,12 @@ if git -C "$DIR" rev-parse --verify -q "refs/heads/$REVIEW_BRANCH" >/dev/null; t
   AHEAD="$(git -C "$DIR" rev-list --count "origin/$BRANCH..$REVIEW_BRANCH")"
 fi
 if [ "$AHEAD" != 0 ] && [ "$RESET" != 1 ]; then
-  # Reuse only if the review branch builds on the head being reviewed now. If the author pushed since,
-  # the fixes were made on an older head, and the review would not read what is being fixed.
-  if ! git -C "$DIR" merge-base --is-ancestor "$HEAD_SHA" "$REVIEW_BRANCH"; then
-    die "$BRANCH moved after $REVIEW_BRANCH was made; the fixes are on an older head. Pass --reset to start again from $SHORT"
+  # Reuse only if the review branch was cut from the head being reviewed now. The recorded head is the
+  # one the fixes were checked against; a rewind or a push since then makes it differ, and the review
+  # would not read what is being fixed.
+  RECORDED="$(git -C "$DIR" config --get "branch.$REVIEW_BRANCH.remoteReviewFrom" || true)"
+  if [ "$RECORDED" != "$HEAD_SHA" ]; then
+    die "$BRANCH is not at the head $REVIEW_BRANCH was cut from; the fixes are on another head. Pass --reset to start again from $SHORT"
   fi
   [ -d "$WT" ] || git -C "$DIR" worktree add -q "$WT" "$REVIEW_BRANCH" || die "could not attach the worktree at $WT"
   echo "remote-review: reusing $REVIEW_BRANCH with $AHEAD fix commit(s) on top of $BRANCH; --reset discards them"
@@ -102,6 +104,7 @@ else
   git -C "$DIR" branch -D "$REVIEW_BRANCH" >/dev/null 2>&1 || true
   mkdir -p "$(dirname "$WT")"
   git -C "$DIR" worktree add -q -B "$REVIEW_BRANCH" "$WT" "$HEAD_SHA" || die "could not create the worktree at $WT"
+  git -C "$DIR" config "branch.$REVIEW_BRANCH.remoteReviewFrom" "$HEAD_SHA"
 fi
 echo "remote-review: worktree $WT on $REVIEW_BRANCH (from $BRANCH at $SHORT, base $BASE)"
 

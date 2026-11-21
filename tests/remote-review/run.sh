@@ -52,7 +52,7 @@ bash "$S" acme/app feature --url "$REMOTE" --cache "$CACHE" --base main >/dev/nu
 echo "fix" > "$CACHE/acme/app/worktrees/feature/fix2.txt" && (cd "$CACHE/acme/app/worktrees/feature" && g add fix2.txt && g commit -qm fix2)
 (cd "$W/src" && g checkout -q feature && echo newer > newer.txt && g add newer.txt && g commit -qm "author moved on" && g push -q -f "$REMOTE" feature 2>/dev/null)
 out="$(bash "$S" acme/app feature --url "$REMOTE" --cache "$CACHE" --base main 2>&1)"; rc=$?
-check "W7: the author pushed after fixes -> refused, names --reset" eval '[ "$rc" = 1 ] && printf %s "$out" | grep -q "moved after"'
+check "W7: the author pushed after fixes -> refused, names --reset" eval '[ "$rc" = 1 ] && printf %s "$out" | grep -q "not at the head"'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

@@ -361,6 +361,9 @@ r=$(ins --harness continue); check "continue dry run -> .continue plan" eval '[ 
 r=$(ins --harness qwen --scope user); check "qwen user scope -> home .qwen/skills plan" eval '[ "$r" = 0 ] && grep -q "\.qwen/skills" "$W/out"'
 r=$(ins --harness trae,factory); check "a comma list runs each harness" eval '[ "$r" = 0 ] && grep -q -- "--- factory ---" "$W/out" && grep -q -- "--- trae ---" "$W/out"'
 
+# W6 (pass 1 of PR 51): every name in a comma list is checked before any write, so a bad later name
+# writes nothing, not even the first harness's folder.
+r=$(ins --harness cursor,crush --yes); check "a list with crush at project scope -> refused before cursor writes" eval '[ "$r" = 1 ] && [ ! -e "$W/proj/.cursor" ]'
 # 0.21.0 pass 2 (N7): an empty name in the harness list is refused, not skipped.
 r=$(ins --harness , --yes); check "a harness list of only a comma -> refused, nothing written" eval '[ "$r" = 1 ] && grep -q "empty name" "$W/out"'
 r=$(ins --harness "claude-code,,codex" --yes); check "an empty name between two harnesses -> refused, nothing written" eval '[ "$r" = 1 ] && grep -q "empty name" "$W/out"'
