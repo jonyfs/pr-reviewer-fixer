@@ -54,6 +54,20 @@ echo "fix" > "$CACHE/acme/app/worktrees/feature/fix2.txt" && (cd "$CACHE/acme/ap
 out="$(bash "$S" acme/app feature --url "$REMOTE" --cache "$CACHE" --base main 2>&1)"; rc=$?
 check "W7: the author pushed after fixes -> refused, names --reset" eval '[ "$rc" = 1 ] && printf %s "$out" | grep -q "not at the head"'
 
+# W9 (pass 4): the rewind case (the author force-pushes back to an earlier commit) must be refused, the
+# message must name --reset, and a review branch with no recorded head must be refused.
+g -C "$W/src" checkout -q -b rewind main && echo r1 > "$W/src/r1.txt" && (cd "$W/src" && g add r1.txt && g commit -qm r1) && g -C "$W/src" push -q "$REMOTE" rewind 2>/dev/null
+bash "$S" acme/app rewind --url "$REMOTE" --cache "$CACHE" --base main >/dev/null 2>&1
+echo fix > "$CACHE/acme/app/worktrees/rewind/fixr.txt" && (cd "$CACHE/acme/app/worktrees/rewind" && g add fixr.txt && g commit -qm fixr)
+REWIND_OLD="$(git -C "$W/src" rev-parse main)"
+(cd "$W/src" && g checkout -q rewind && g reset -q --hard "$REWIND_OLD" && g push -q -f "$REMOTE" rewind 2>/dev/null)
+out="$(bash "$S" acme/app rewind --url "$REMOTE" --cache "$CACHE" --base main 2>&1)"; rc=$?
+check "W9: a rewound author branch is refused, not republished" eval '[ "$rc" = 1 ] && printf %s "$out" | grep -q "not at the head" && [ -f "$CACHE/acme/app/worktrees/rewind/fixr.txt" ]'
+check "W9: the refusal names --reset" eval 'printf %s "$out" | grep -q -- "--reset"'
+git -C "$CACHE/acme/app" config --unset "branch.review/rewind.remoteReviewFrom" 2>/dev/null
+out="$(bash "$S" acme/app rewind --url "$REMOTE" --cache "$CACHE" --base main 2>&1)"; rc=$?
+check "W9: a review branch with no recorded head is refused" eval '[ "$rc" = 1 ] && printf %s "$out" | grep -q "not at the head"'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
