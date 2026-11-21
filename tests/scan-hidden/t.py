@@ -366,5 +366,13 @@ rc, out, err = scan("--file", write("code-sample2.py", "s = '<p hidden>x</p>'\n"
 check("a hidden-style element in a .py file is not flagged (no Markdown rendering)", (out or {}).get("count") == 0, out)
 rc, out, err = scan("--file", write("msg-sample.txt", "x <!-- shown -->\n"))
 check("a comment in a plain-text file (not Markdown) is not flagged", (out or {}).get("count") == 0, out)
+# A span does not survive a line that starts a block (PR 54 pass 1 W2), and Markdown extensions GitHub
+# renders are checked (W3). A plain code file stays exempt.
+rc, out, err = scan("--file", write("block-break.md", "lone `\n<!-- hidden --> tail `\n"))
+check("a comment on a line that starts a block is not masked by a span opened above", rc == 1 and kinds(out) == ["html-comment"], out)
+rc, out, err = scan("--file", write("b.mkd", "x <!-- hidden -->\n"))
+check("a .mkd file (Markdown on GitHub) is checked", rc == 1 and kinds(out) == ["html-comment"], out)
+rc, out, err = scan("--file", write("c.mkdn", "x <!-- hidden -->\n"))
+check("a .mkdn file is checked", rc == 1 and kinds(out) == ["html-comment"], out)
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)
