@@ -38,6 +38,22 @@ check "--open-pr without --push -> refused" eval '[ "$rc" = 1 ]'
 out="$(bash "$S" notarepo feature --url "$REMOTE" --cache "$CACHE" 2>&1)"; rc=$?
 check "a repository name without an owner -> refused" eval '[ "$rc" = 1 ]'
 
+# Regressions for the pass 1 and pass 2 findings (C1, W1, W2, W7).
+# C1: a planted json.py on the reviewed branch must not be imported from the worktree.
+g -C "$W/src" checkout -q -b planted main && echo 'open("pwned.flag","w").write("x")' > "$W/src/json.py" && (cd "$W/src" && g add json.py && g commit -qm plant) && g -C "$W/src" push -q "$REMOTE" planted 2>/dev/null || g clone -q "$W/src" "$W/planted.git" 2>/dev/null
+bash "$S" acme/app planted --url "$REMOTE" --cache "$CACHE" --base main >/dev/null 2>&1
+check "C1: a planted json.py in the reviewed branch is not imported" eval '[ ! -e "$CACHE/acme/app/worktrees/planted/pwned.flag" ]'
+# W2: a branch name with a slash works, its log is named after it.
+g -C "$W/src" checkout -q -b feat/slash main && echo s > "$W/src/s.txt" && (cd "$W/src" && g add s.txt && g commit -qm slash) && g -C "$W/src" push -q "$REMOTE" feat/slash 2>/dev/null
+out="$(bash "$S" acme/app feat/slash --url "$REMOTE" --cache "$CACHE" --base main --test "true" 2>&1)"; rc=$?
+check "W2: a branch with a slash prepares and logs its test" eval '[ "$rc" = 0 ] && printf %s "$out" | grep -q "tests: exit 0" && [ -f "$CACHE/acme/app/logs/feat_slash.test.log" ]'
+# W7: the author pushes after a fix exists; a second run must refuse to reuse the old review branch.
+bash "$S" acme/app feature --url "$REMOTE" --cache "$CACHE" --base main >/dev/null 2>&1
+echo "fix" > "$CACHE/acme/app/worktrees/feature/fix2.txt" && (cd "$CACHE/acme/app/worktrees/feature" && g add fix2.txt && g commit -qm fix2)
+(cd "$W/src" && g checkout -q feature && echo newer > newer.txt && g add newer.txt && g commit -qm "author moved on" && g push -q -f "$REMOTE" feature 2>/dev/null)
+out="$(bash "$S" acme/app feature --url "$REMOTE" --cache "$CACHE" --base main 2>&1)"; rc=$?
+check "W7: the author pushed after fixes -> refused, names --reset" eval '[ "$rc" = 1 ] && printf %s "$out" | grep -q "moved after"'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

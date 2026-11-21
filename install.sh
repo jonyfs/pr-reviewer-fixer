@@ -185,6 +185,9 @@ if [ -z "$TARGET" ] && { [ "$HARNESS" = auto ] || [ "${HARNESS#*,}" != "$HARNESS
   else
     LIST="${HARNESS//,/ }"
   fi
+  # An empty name in the list (",", "a,,b") is refused, not skipped: the run must not succeed having installed less.
+  case "$HARNESS" in ,*|*,|*,,*) die "the harness list has an empty name: '$HARNESS'; nothing installed" ;; esac
+  [ -n "${LIST// /}" ] || die "no harness named; nothing installed"
   # Every name is checked before anything is written, so a bad name in the list stops the whole run.
   for h in $LIST; do
     e="$(paths_for "$h")" || die "unknown harness '$h'; nothing installed"
