@@ -20,9 +20,21 @@ for entry in "${MUTANTS[@]}"; do
   rm -rf "$W/copy"; mkdir -p "$W/copy"
   (cd "$ROOT" && cp -R .agents install.sh install-remote.sh remote-review.sh VERSION tests "$W/copy/" 2>/dev/null)
   before="$(cmp -s "$W/copy/$file" "$ROOT/$file" && echo same)"
-  perl -0pi -e "$expr" "$W/copy/$file"
+  # A mutant counts only when its file exists in the copy, perl succeeds, and the text changed.
+  if [ ! -f "$W/copy/$file" ]; then
+    ROWS+=("ERR  | $name (the file is not in the copy)"); FAIL=$((FAIL+1)); continue
+  fi
+  if ! perl -0pi -e "$expr" "$W/copy/$file"; then
+    ROWS+=("ERR  | $name (perl could not apply the substitution)"); FAIL=$((FAIL+1)); continue
+  fi
   if cmp -s "$W/copy/$file" "$ROOT/$file"; then
     ROWS+=("ERR  | $name (mutant did not apply)"); FAIL=$((FAIL+1)); continue
+  fi
+  # The unmutated copy must pass first: a suite that already fails proves nothing about the guard.
+  rm -rf "$W/base"; mkdir -p "$W/base"
+  (cd "$ROOT" && cp -R .agents install.sh install-remote.sh remote-review.sh VERSION tests "$W/base/" 2>/dev/null)
+  if ! (cd "$W/base" && bash "$suite" >/dev/null 2>&1); then
+    ROWS+=("ERR  | $name (the suite fails before any mutation: no baseline)"); FAIL=$((FAIL+1)); continue
   fi
   if (cd "$W/copy" && bash "$suite" >/dev/null 2>&1); then
     ROWS+=("MISS | $name (the suite still passes: no test protects it)"); FAIL=$((FAIL+1))
