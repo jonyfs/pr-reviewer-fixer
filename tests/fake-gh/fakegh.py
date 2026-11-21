@@ -64,6 +64,12 @@ if args[:1] == ["api"] and len(args) > 1 and "/git/tags/" in args[1]:
     if sha not in tags:
         print("HTTP 404: Not Found", file=sys.stderr); sys.exit(1)
     _jq(_opt("--jq") or ".", tags[sha]); sys.exit(0)
+if args[:1] == ["run"] and len(args) > 1:
+    # `gh run list` answers from runs.json (the fixture's runs); `gh run rerun` is recorded by the shim's calls.log.
+    if args[1] == "list":
+        f = os.path.join(d, "runs.json")
+        _jq(_opt("--jq") or ".", json.load(open(f)) if os.path.exists(f) else [])
+    sys.exit(0)
 if args[:1] == ["release"]:
     import base64
     sub, tag = args[1], args[2]

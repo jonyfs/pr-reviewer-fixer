@@ -1246,6 +1246,22 @@ check "findings-block: CRLF lines and blank lines after the closer -> the block,
 "$RC" findings-block --report "$W/nope.md" >/dev/null 2>&1; r=$?
 check "findings-block: an unreadable report -> 2" eq "$r" 2
 
+# next, start --sha, and the gate re-run after PASSED (PR 52 pass 1 review, items 2, 3 and 8)
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+"$RC" next 7 >"$W/next.out" 2>&1; r=$?
+check "next: pending -> prints start with the head it will review" eval '[ $r = 0 ] && grep -q "start 7 --sha $C" "$W/next.out"'
+"$RC" start 7 --sha $A >"$W/sha.out" 2>&1; r=$?
+check "start --sha with another head -> refused, no label moved" eval '[ $r = 1 ] && grep -q "REFUSED" "$W/sha.out" && hasnt review:running'
+"$RC" start 7 --sha ${C:0:10} >/dev/null 2>&1; r=$?
+check "start --sha at the head -> started" eval '[ $r = 0 ] && has review:running'
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+printf '[{"databaseId":555,"headSha":"%s","conclusion":"failure","workflowName":"review-gate"},{"databaseId":556,"headSha":"%s","conclusion":"failure","workflowName":"other"},{"databaseId":557,"headSha":"%s","conclusion":"failure","workflowName":"review-gate"}]' "$C" "$C" "$D" >"$FAKE_DIR/runs.json"
+"$RC" start 7 >/dev/null 2>&1; r=$(pub --verdict PASSED --pass 1 --sha $C --critical 0 --warning 0 --note 0)
+check "publish PASSED re-runs only the failed review-gate run at this head" eval '[ "$r" = 0 ] && grep -q "gh run rerun 555" "$FAKE_DIR/calls.log" && ! grep -q "gh run rerun 556" "$FAKE_DIR/calls.log" && ! grep -q "gh run rerun 557" "$FAKE_DIR/calls.log"'
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+"$RC" start 7 >/dev/null 2>&1; r=$(pub --verdict BLOCKED --pass 1 --sha $C --critical 1 --warning 0 --note 0)
+check "publish BLOCKED re-runs nothing" eval '[ "$r" = 0 ] && ! grep -q "gh run rerun" "$FAKE_DIR/calls.log"'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
