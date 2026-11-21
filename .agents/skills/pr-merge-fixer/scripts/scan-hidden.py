@@ -260,8 +260,10 @@ def blank_code(text):
     # this, a lone backtick could pair with one far below and hide a real comment between them.
     # A blank line, or a line that starts a block (a heading, a quote, a list item, an HTML tag or comment,
     # a fence), ends a paragraph in CommonMark and so ends a span. Breaking more often only scans more.
+    # Thematic breaks and setext underlines (a line of - * _ or =) end a paragraph too.
     breaks = [m.start() for m in re.finditer(
-        r"\n[ \t\r]*(?=\n)|\n(?=[ ]{0,3}(?:[#>]|[-*+][ \t]|\d{1,9}[.)][ \t]|<|`{3}|~{3}))", flat)]
+        r"\n[ \t\r]*(?=\n)|\n(?=[ ]{0,3}(?:[#>]|[-*+][ \t]|\d{1,9}[.)][ \t]|<|`{3}|~{3}))"
+        r"|\n(?=[ ]{0,3}[-*_=][-*_= \t]*\r?(?:\n|$))", flat)]
     def same_paragraph(a, c):
         k = bisect.bisect_right(breaks, a)
         return k >= len(breaks) or breaks[k] >= c
@@ -403,10 +405,10 @@ def scan_diff(base, head, verdict_re):
                 "--no-renames", "-U0", base + "..." + head)
     hits, path, n = [], None, 0
     rem_old = rem_new = 0
-    # The added lines of each file are scanned as one text. A code span or a comment can run across
-    # lines, so scanning one line at a time would miss a span opened on an earlier line. A hunk boundary
-    # is an empty line in the text, which ends every paragraph and span there.
-    bufs = {}
+    # Which lines each file adds (new-file numbers). The whole file is then scanned at the head, because a
+    # span or a comment can open on an added line and close on an unchanged one, and the hits are kept
+    # only where a line was added.
+    added = {}
     for raw in patch.split("\n"):
         if rem_old > 0 or rem_new > 0:
             # Inside a hunk every line is a hunk line, counted from the @@ header: an added line
@@ -414,7 +416,7 @@ def scan_diff(base, head, verdict_re):
             if raw.startswith("+"):
                 rem_new -= 1
                 if path is not None:
-                    bufs.setdefault(path, []).append((n, raw[1:]))
+                    added.setdefault(path, set()).add(n)
                 n += 1
             elif raw.startswith("-"):
                 rem_old -= 1
@@ -428,16 +430,21 @@ def scan_diff(base, head, verdict_re):
             continue
         h = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
         if h:
-            if path is not None:
-                bufs.setdefault(path, []).append((None, ""))
             rem_old = int(h.group(1)) if h.group(1) is not None else 1
             n = int(h.group(2))
             rem_new = int(h.group(3)) if h.group(3) is not None else 1
-    for p, entries in bufs.items():
-        numbers = [k for k, _ in entries]
-        text = "\n".join(t for _, t in entries)
-        hits += scan_text(text, verdict_re, "diff", lambda l, p=p, numbers=numbers: "%s:%d" % (p, numbers[l - 1] or 0),
-                          markup=is_markup(p))
+    for p, lines in added.items():
+        text = git("show", "%s:%s" % (head, p))
+        # A hit on an unchanged line is reported too when the base file had no such hit: an added
+        # backtick or fence can make an old comment hidden. The base copy is the file before the change.
+        try:
+            before = git("show", "%s:%s" % (base, p))
+        except Unreadable:
+            before = ""
+        known = {(h_["kind"], h_["excerpt"]) for h_ in scan_text(before, verdict_re, "diff", lambda l: "", markup=is_markup(p))}
+        for h_ in scan_text(text, verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), markup=is_markup(p)):
+            if h_["line"] in lines or (h_["kind"], h_["excerpt"]) not in known:
+                hits.append(h_)
     return hits
 
 
