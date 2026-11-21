@@ -356,5 +356,13 @@ check("a comment outside code next to a code span is still flagged", kinds_of("c
 check("a lone backtick cannot hide a comment across a blank line", kinds_of("cs4.md", "lone ` here\n\nhidden <!-- x --> `y`\n") == ["html-comment"])
 check("an invisible character inside a code span is still flagged", len(kinds_of("cs5.md", "`a\u200bb`\n")) == 1)
 
+# Only Markdown renders a comment as hidden: the same text in a code file is visible, so it is not flagged.
+rc, out, err = scan("--file", write("code-sample.py", "x = 1  # <!-- shown as a comment -->\n"))
+check("a comment in a .py file is visible code, not flagged", rc == 0 and (out or {}).get("count") == 0, out)
+rc, out, err = scan("--file", write("doc-sample.md", "x <!-- hidden -->\n"))
+check("the same comment in a .md file is flagged", rc == 1 and (out or {}).get("count") == 1, out)
+
+rc, out, err = scan("--file", write("code-sample2.py", "s = '<p hidden>x</p>'\n"))
+check("a hidden-style element in a .py file is not flagged (no Markdown rendering)", (out or {}).get("count") == 0, out)
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)

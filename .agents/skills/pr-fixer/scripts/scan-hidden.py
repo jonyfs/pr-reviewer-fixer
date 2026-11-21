@@ -283,7 +283,13 @@ def esc(s):
     return ascii(s)[1:-1][:120]
 
 
-def scan_text(text, verdict_re, source, where, line_offset=0):
+def is_markup(path):
+    """GitHub renders these as Markdown, where an HTML comment or a details tag can be hidden text.
+    Any other file is shown as plain text or code, so the comment or tag is visible and not hidden."""
+    return path.lower().endswith((".md", ".markdown", ".mdx"))
+
+
+def scan_text(text, verdict_re, source, where, line_offset=0, markup=True):
     """Every hit in one text. `where(line)` names the location of a line number."""
     hits = []
     lines = text.split("\n")
@@ -311,21 +317,23 @@ def scan_text(text, verdict_re, source, where, line_offset=0):
         cp = ord(m.group())
         kind = "tag" if 0xE0000 <= cp <= 0xE007F else CHARS[cp]
         add(m.start(), kind, "U+%04X" % cp)
-    # A comment or <details> inside a code span or a fenced block is shown as literal text, not hidden:
-    # the reader sees exactly what the model reads. So those two kinds are looked for outside code only.
-    # Invisible characters stay scanned everywhere (they are invisible in code too).
-    outside = blank_code(text) if ("<!--" in text or "<details" in text.lower()) else text
-    for m in re.finditer(r"<!--", outside):
+    # An HTML comment or a details tag inside a code span or a fenced block is shown as literal text, not
+    # hidden: the reader sees exactly what the model reads. So those two kinds are looked for outside code
+    # only, and only in Markdown (is_markup), as are hidden-style HTML elements. Invisible characters
+    # (zero-width and bidi controls) stay scanned everywhere.
+    opener, details = "<" + "!--", "<" + "details"
+    outside = blank_code(text) if markup and (opener in text or details in text.lower()) else text
+    for m in (re.finditer(re.escape(opener), outside) if markup else []):
         rest = outside[m.start():]
         if verdict_re.match(rest) or any(r.match(rest) for r in OTHER_MARKERS):
             continue
         end = outside.find("-->", m.start() + 4)
         add(m.start(), "html-comment", "unterminated" if end < 0 else "%d characters" % (end + 3 - m.start()))
-    for m in DETAILS_RE.finditer(outside):
+    for m in (DETAILS_RE.finditer(outside) if markup else []):
         add(m.start(), "details", "<details>")
     for m in VS_RUN_RE.finditer(text):
         add(m.start(), "variation-selector", "%d selectors from U+%04X" % (len(m.group()), ord(m.group()[0])))
-    for start, end in invisible_html(text):
+    for start, end in (invisible_html(text) if markup else []):
         add(start, "invisible-html", esc(text[start:end])[:60])
     seen = set()
     for m in LINKREF_RE.finditer(text):
@@ -393,7 +401,8 @@ def scan_diff(base, head, verdict_re):
                 rem_new -= 1
                 if path is not None:
                     p = path
-                    hits += scan_text(raw[1:], verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), line_offset=n - 1)
+                    hits += scan_text(raw[1:], verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), line_offset=n - 1,
+                                      markup=is_markup(p))
                 n += 1
             elif raw.startswith("-"):
                 rem_old -= 1
@@ -495,7 +504,7 @@ def main(argv):
                 hits += scan_commits(vals[0], vals[1], verdict_re)
             else:
                 hits += scan_text(open(vals[0], encoding="utf-8", errors="replace").read(), verdict_re,
-                                  "file", lambda l, f=vals[0]: "%s:%d" % (f, l))
+                                  "file", lambda l, f=vals[0]: "%s:%d" % (f, l), markup=is_markup(vals[0]))
             sources.append(opt[2:] + " " + " ".join(vals))
     except (Unreadable, OSError, ValueError, subprocess.TimeoutExpired) as e:
         print("scan-hidden: could not read an input, INCONCLUSIVE: %s" % e, file=sys.stderr)
