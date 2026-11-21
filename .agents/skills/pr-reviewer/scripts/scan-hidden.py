@@ -256,6 +256,12 @@ def blank_code(text):
         pos += len(line) + 1
     flat = "".join(out)
     runs = [(m.start(), m.end()) for m in re.finditer(r"`+", flat)]
+    # A code span cannot cross a blank line (a paragraph ends there, in CommonMark and on GitHub). Without
+    # this, a lone backtick could pair with one far below and hide a real comment between them.
+    breaks = [m.start() for m in re.finditer(r"\n[ \t\r]*\n", flat)]
+    def same_paragraph(a, c):
+        k = bisect.bisect_right(breaks, a)
+        return k >= len(breaks) or breaks[k] >= c
     by_len = {}
     for idx, (a, b) in enumerate(runs):
         by_len.setdefault(b - a, []).append(idx)
@@ -264,7 +270,7 @@ def blank_code(text):
         a, b = runs[i]
         same = by_len[b - a]
         j = bisect.bisect_right(same, i)
-        if j < len(same):
+        if j < len(same) and same_paragraph(a, runs[same[j]][0]):
             close = runs[same[j]]
             blank(a, close[1])
             i = same[j] + 1
@@ -305,13 +311,17 @@ def scan_text(text, verdict_re, source, where, line_offset=0):
         cp = ord(m.group())
         kind = "tag" if 0xE0000 <= cp <= 0xE007F else CHARS[cp]
         add(m.start(), kind, "U+%04X" % cp)
-    for m in re.finditer(r"<!--", text):
-        rest = text[m.start():]
+    # A comment or <details> inside a code span or a fenced block is shown as literal text, not hidden:
+    # the reader sees exactly what the model reads. So those two kinds are looked for outside code only.
+    # Invisible characters stay scanned everywhere (they are invisible in code too).
+    outside = blank_code(text) if ("<!--" in text or "<details" in text.lower()) else text
+    for m in re.finditer(r"<!--", outside):
+        rest = outside[m.start():]
         if verdict_re.match(rest) or any(r.match(rest) for r in OTHER_MARKERS):
             continue
-        end = text.find("-->", m.start() + 4)
+        end = outside.find("-->", m.start() + 4)
         add(m.start(), "html-comment", "unterminated" if end < 0 else "%d characters" % (end + 3 - m.start()))
-    for m in DETAILS_RE.finditer(text):
+    for m in DETAILS_RE.finditer(outside):
         add(m.start(), "details", "<details>")
     for m in VS_RUN_RE.finditer(text):
         add(m.start(), "variation-selector", "%d selectors from U+%04X" % (len(m.group()), ord(m.group()[0])))

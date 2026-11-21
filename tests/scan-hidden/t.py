@@ -345,5 +345,16 @@ lone = os.path.join(W, "lone"); os.makedirs(lone); shutil.copy(SH, lone)
 p = subprocess.run([sys.executable, "-I", os.path.join(lone, "scan-hidden.py"), "--file", write("z.md", "x\n")], capture_output=True, text=True)
 check("without the gate beside it (no verdict regex to reuse) -> exit 2", p.returncode == 2 and "verdict marker regex" in p.stderr, p.stderr)
 
+# Code spans and fenced blocks (PR 53 review item 5): a comment shown as code is not hidden, and a code
+# span cannot cross a paragraph break, so a lone backtick cannot hide a comment (a bypass).
+def kinds_of(name, body):
+    rc, out, err = scan("--file", write(name, body))
+    return [h["kind"] for h in (out or {}).get("hits", [])]
+check("a comment inside a code span is shown, not flagged", kinds_of("cs1.md", "use `<!-- x -->` here\n") == [])
+check("a comment inside a fenced block is shown, not flagged", kinds_of("cs2.md", "```\n<!-- x -->\n```\n") == [])
+check("a comment outside code next to a code span is still flagged", kinds_of("cs3.md", "`a` <!-- x --> `b`\n") == ["html-comment"])
+check("a lone backtick cannot hide a comment across a blank line", kinds_of("cs4.md", "lone ` here\n\nhidden <!-- x --> `y`\n") == ["html-comment"])
+check("an invisible character inside a code span is still flagged", len(kinds_of("cs5.md", "`a\u200bb`\n")) == 1)
+
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)
