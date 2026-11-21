@@ -1181,13 +1181,18 @@ cmd_extend() {
 cmd_debt() { cmd_status "${1:-}" >/dev/null 2>&1; return $?; }
 
 cmd_start() {
-  local want_sha="" pr=""
+  local want_sha="" pr="" sha_given=0
+  # Every form of the pin is parsed here. A `--sha` with no value, an empty value, `--sha=` with
+  # nothing after it, or an unknown option is refused, so no pass starts unpinned by mistake.
   while [ $# -gt 0 ]; do
     case "$1" in
-      --sha) want_sha="${2:-}"; shift 2 ;;
-      *) pr="$1"; shift ;;
+      --sha)   [ $# -ge 2 ] || die "review-cycle: --sha needs a commit"; want_sha="$2"; sha_given=1; shift 2 ;;
+      --sha=*) want_sha="${1#--sha=}"; sha_given=1; shift ;;
+      -*)      die "review-cycle: start: unknown option '$1'" ;;
+      *)       pr="$1"; shift ;;
     esac
   done
+  if [ "$sha_given" = 1 ] && [ -z "$want_sha" ]; then die "review-cycle: --sha needs a commit, got nothing"; fi
   # Without a login on the list, `parse()` trusts every comment, so any edit or deletion by someone
   # other than a comment's author would read as a foreign edit of a trusted marker and the refusal
   # below would name the wrong cause. The real cause is the missing list, and it is refused first.
@@ -1196,7 +1201,7 @@ cmd_start() {
   parse "$json"
   # --sha pins the commit the reviewer read. A head that moved since then would make this pass review
   # a commit nobody read, so it is refused before any label moves (PR 52 pass 1 review, item 2).
-  if [ -n "$want_sha" ]; then
+  if [ "$sha_given" = 1 ]; then
     case "$want_sha" in *[!0-9a-f]*) die "review-cycle: --sha must be lowercase hex, got '$want_sha'" ;; esac
     [ "${#want_sha}" -ge 7 ] || die "review-cycle: --sha needs at least 7 hex digits"
     [ "${HEAD:0:${#want_sha}}" = "$want_sha" ] || die "review-cycle: REFUSED on #$NUMBER. The head is ${HEAD:0:12}, not ${want_sha:0:12}: the pass would review a commit nobody read. Read the pull request again and start on the head you reviewed."
@@ -2360,13 +2365,13 @@ cmd_next() {
   parse "$json"
   local short="${HEAD:0:12}"
   case "$LABEL" in
-    review:running)    echo "#$NUMBER: a pass is in flight at $short. Publish its verdict: review-cycle.sh publish $NUMBER --verdict PASSED|BLOCKED --pass N --sha $HEAD --report FILE" ;;
+    review:running)    echo "#$NUMBER: a pass is in flight at $short. Publish its verdict: review-cycle.sh publish $NUMBER --verdict PASSED|BLOCKED --pass N --sha <the head you reviewed> --report FILE --critical C --warning W --note N" ;;
     review:fixing)     echo "#$NUMBER: a correction is in flight. After the fixer pushes, run review-cycle.sh stale $NUMBER, then start $NUMBER --sha <new head>" ;;
     review:blocked)    echo "#$NUMBER: BLOCKED at ${MARKER_SHA:0:12}. The fixer corrects the findings; a person decides if it is halted (review-cycle.sh status $NUMBER)" ;;
     review:passed)     echo "#$NUMBER: PASSED at ${MARKER_SHA:0:12}. Nothing blocks. Merging is a person's decision, not the loop's" ;;
     review:needs-human) echo "#$NUMBER: halted for a person (review:needs-human). Read review-cycle.sh status $NUMBER and decide" ;;
-    review:pending)    echo "#$NUMBER: not reviewed at $short yet. Run review-cycle.sh start $NUMBER --sha $HEAD" ;;
-    *)                 echo "#$NUMBER: no review state. Run review-cycle.sh ensure-labels, then start $NUMBER --sha $HEAD" ;;
+    review:pending)    echo "#$NUMBER: not reviewed yet (the head is $short). Read the diff you will review, then run review-cycle.sh start $NUMBER --sha <that head>" ;;
+    *)                 echo "#$NUMBER: no review state. Run review-cycle.sh ensure-labels, then start $NUMBER --sha <the head you will review>" ;;
   esac
   if [ -n "${MARKER_SHA:-}" ] && [ "${HEAD:0:${#MARKER_SHA}}" != "$MARKER_SHA" ]; then
     echo "  the head moved since the last verdict (${MARKER_SHA:0:12}): run review-cycle.sh stale $NUMBER first"
