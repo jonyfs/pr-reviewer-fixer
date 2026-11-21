@@ -176,7 +176,7 @@ const INSTR_NAMES = ["agents.md", "agents.override.md", "claude.md", "claude.loc
 // through their skills/ folder (every project skill folder install.sh writes).
 const AGENT_DIRS = { ".claude": "claude", ".codex": "instructions", ".opencode": "instructions",
   ".cursor": "instructions", ".gemini": "instructions", ".windsurf": "instructions",
-  ".qwen": "skills", ".factory": "skills", ".trae": "skills", ".continue": "skills" };
+  ".qwen": "claude", ".factory": "claude", ".trae": "claude", ".continue": "claude" };
 const SKILL_PARENTS = [".agents", ".roo", ".cline", ".kiro", ".devin", ".junie"];
 // The class of the first agent directory among these directory names, or "".
 const agentClass = (dirs) => {

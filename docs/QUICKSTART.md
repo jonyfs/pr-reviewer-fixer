@@ -40,7 +40,9 @@ Without installing anything in that repository:
 bash remote-review.sh owner/repo feature-branch --base main --test "npm test" --push --open-pr
 ```
 
-It makes a worktree on `review/feature-branch`, runs the checks, and pushes that branch. The review and
+It makes a worktree on `review/feature-branch`, runs the checks, and pushes that branch. A second run keeps fix commits already on the review branch; `--reset` discards them.
+
+**`--test` runs the repository's own code on your machine**, with your permissions. Use it only for repositories you trust. The script prints a warning before it runs. The review and
 the fixes then run from this copy of the skills against the worktree. The author's branch is not touched.
 
 ## 3. Prepare your repository (once)

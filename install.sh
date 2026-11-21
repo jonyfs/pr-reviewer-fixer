@@ -185,6 +185,11 @@ if [ -z "$TARGET" ] && { [ "$HARNESS" = auto ] || [ "${HARNESS#*,}" != "$HARNESS
   else
     LIST="${HARNESS//,/ }"
   fi
+  # Every name is checked before anything is written, so a bad name in the list stops the whole run.
+  for h in $LIST; do
+    e="$(paths_for "$h")" || die "unknown harness '$h'; nothing installed"
+    if [ "$SCOPE" = project ] && [ -z "${e%%|*}" ]; then die "$h reads skills only from its user folder; use --scope user; nothing installed"; fi
+  done
   rc_all=0
   for h in $LIST; do
     echo "install: --- $h ---"

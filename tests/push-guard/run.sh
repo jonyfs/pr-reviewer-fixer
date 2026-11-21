@@ -215,7 +215,7 @@ ROOTS="$(awk '/^paths_for\(\) \{/{f=1;next} f&&/^\}/{f=0} f' "$T/../../install.s
 check "install.sh names at least 11 project skill folders for the rows below (W7 of PR #29)" eval '[ "$(printf "%s\n" "$ROOTS" | grep -c /skills$)" -ge 11 ]'
 for sp in $ROOTS .devin/skills; do
   sens "the skill folder install.sh writes" "$sp/s/SKILL.md" "$(case "$sp" in .claude/*) echo claude ;; \
-    .github/*|.gemini/*|.cursor/*|.opencode/*|.windsurf/*) echo instructions ;; *) echo skills ;; esac)"
+    .github/*|.gemini/*|.cursor/*|.opencode/*|.windsurf/*) echo instructions ;; .qwen/*|.factory/*|.trae/*|.continue/*) echo claude ;; *) echo skills ;; esac)"
 done
 sens "a Roo skill" .roo/skills/pr-fixer/scripts/review-cycle.sh skills
 sens "a nested Cursor rule" packages/web/.cursor/rules/evil.mdc instructions

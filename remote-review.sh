@@ -16,7 +16,7 @@
 #   5. Prints the worktree path and the review and fix steps the agent runs next (the skills are
 #      read from this copy, not from the worktree).
 #   6. With --push: pushes review/<branch> to origin (the target repository).
-#      With --open-pr: opens a draft pull request from review/<branch> into <branch>, after --push.
+#      With --open-pr: opens a draft pull request from review/<branch> into the base branch, after --push.
 #
 # The reviewer and the fixer run as agents, following this repository's skills, with the worktree
 # as the repository they work on. The fixes are committed on review/<branch>; the branch the author
@@ -39,7 +39,7 @@ SCAN="$HERE/.agents/skills/pr-reviewer/scripts/scan-hidden.py"
 FLOOR="$HERE/.agents/skills/pr-reviewer/scripts/path-floor.sh"
 die() { echo "remote-review: $*" >&2; exit 1; }
 
-REPO="" BRANCH="" BASE="" TEST_CMD="" URL="" CACHE="${PR_REVIEW_CACHE:-$HOME/.cache/pr-reviewer-fixer/remote}" PUSH=0 OPEN=0
+REPO="" BRANCH="" BASE="" TEST_CMD="" URL="" CACHE="${PR_REVIEW_CACHE:-$HOME/.cache/pr-reviewer-fixer/remote}" PUSH=0 OPEN=0 RESET=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --base)    [ $# -ge 2 ] || die "--base needs a branch"; BASE="$2"; shift 2 ;;
@@ -48,6 +48,7 @@ while [ $# -gt 0 ]; do
     --cache)   [ $# -ge 2 ] || die "--cache needs a folder"; CACHE="$2"; shift 2 ;;
     --push)    PUSH=1; shift ;;
     --open-pr) OPEN=1; shift ;;
+    --reset)   RESET=1; shift ;;
     -h|--help) sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*)        die "unknown option '$1'" ;;
     *)         if [ -z "$REPO" ]; then REPO="$1"; elif [ -z "$BRANCH" ]; then BRANCH="$1"; else die "one repository and one branch"; fi; shift ;;
@@ -55,6 +56,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$REPO" ] && [ -n "$BRANCH" ] || die "usage: remote-review.sh owner/repo branch [options]"
 case "$REPO" in */*) ;; *) die "the repository must be owner/repo" ;; esac
+[[ "${REPO%%/*}" =~ ^[A-Za-z0-9._-]+$ ]] && [[ "${REPO#*/}" =~ ^[A-Za-z0-9._-]+$ ]] || die "owner and repository names may only use letters, digits, dot, dash and underscore"
 [ "$OPEN" = 0 ] || [ "$PUSH" = 1 ] || die "--open-pr needs --push"
 for tool in git; do command -v "$tool" >/dev/null 2>&1 || die "$tool is needed"; done
 [ -f "$REVIEW_CYCLE" ] && [ -f "$SCAN" ] && [ -f "$FLOOR" ] || die "this checkout lacks the review scripts"
@@ -79,12 +81,23 @@ BASE_SHA="$(git -C "$DIR" rev-parse "origin/$BASE")"
 SHORT="${HEAD_SHA:0:7}"
 REVIEW_BRANCH="review/$BRANCH"
 WT="$DIR/worktrees/$BRANCH"
-if [ -e "$WT" ]; then
-  git -C "$DIR" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+# A review branch that holds fix commits the author's branch does not have is reused as it is, so a
+# second run keeps them and --push publishes them. Only --reset replaces it, and that discards them.
+AHEAD=0
+if git -C "$DIR" rev-parse --verify -q "refs/heads/$REVIEW_BRANCH" >/dev/null; then
+  AHEAD="$(git -C "$DIR" rev-list --count "origin/$BRANCH..$REVIEW_BRANCH")"
 fi
-git -C "$DIR" branch -D "$REVIEW_BRANCH" >/dev/null 2>&1 || true
-mkdir -p "$(dirname "$WT")"
-git -C "$DIR" worktree add -q -B "$REVIEW_BRANCH" "$WT" "$HEAD_SHA" || die "could not create the worktree at $WT"
+if [ "$AHEAD" != 0 ] && [ "$RESET" != 1 ]; then
+  [ -d "$WT" ] || git -C "$DIR" worktree add -q "$WT" "$REVIEW_BRANCH" || die "could not attach the worktree at $WT"
+  echo "remote-review: reusing $REVIEW_BRANCH with $AHEAD fix commit(s) on top of $BRANCH; --reset discards them"
+else
+  if [ -e "$WT" ]; then
+    git -C "$DIR" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+  fi
+  git -C "$DIR" branch -D "$REVIEW_BRANCH" >/dev/null 2>&1 || true
+  mkdir -p "$(dirname "$WT")"
+  git -C "$DIR" worktree add -q -B "$REVIEW_BRANCH" "$WT" "$HEAD_SHA" || die "could not create the worktree at $WT"
+fi
 echo "remote-review: worktree $WT on $REVIEW_BRANCH (from $BRANCH at $SHORT, base $BASE)"
 
 # 3. Mechanical checks, from this repository's copy of the scripts. They read git only.
@@ -93,7 +106,7 @@ echo "remote-review: diff $BASE..$BRANCH touches $FILES file(s)"
 SCREEN="ok"
 if (cd "$WT" && "$REVIEW_CYCLE" screen --diff "$BASE_SHA" "$HEAD_SHA") >/dev/null 2>&1; then SCREEN="ok"; else SCREEN="HITS (run review-cycle.sh screen --diff by hand; values are never printed)"; fi
 echo "remote-review: secret screen: $SCREEN"
-HIDDEN="$(cd "$WT" && python3 "$SCAN" --diff "$BASE_SHA" "$HEAD_SHA" --commits "$BASE_SHA" "$HEAD_SHA" 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("hits",[])))' 2>/dev/null || echo "?")"
+HIDDEN="$(cd "$WT" && python3 -I "$SCAN" --diff "$BASE_SHA" "$HEAD_SHA" --commits "$BASE_SHA" "$HEAD_SHA" 2>/dev/null | python3 -I -c 'import json,sys; print(len(json.load(sys.stdin).get("hits",[])))' 2>/dev/null || echo "?")"
 echo "remote-review: hidden-text hits in the diff and commit messages: $HIDDEN"
 FLOOR_OUT="$(cd "$WT" && "$FLOOR" "$BASE_SHA" "$HEAD_SHA" 2>/dev/null | awk '{print $1}' | sort | uniq -c | tr -s ' ' | tr '\n' ';')"
 echo "remote-review: path floor units: ${FLOOR_OUT:-none}"
@@ -101,8 +114,11 @@ echo "remote-review: path floor units: ${FLOOR_OUT:-none}"
 # 4. The project's own tests, in the worktree.
 TEST_RESULT="not run"
 if [ -n "$TEST_CMD" ]; then
-  (cd "$WT" && bash -c "$TEST_CMD") >"$WT/../$BRANCH.test.log" 2>&1; rc=$?
-  TEST_RESULT="exit $rc (log: $WT/../$BRANCH.test.log)"
+  # The test runs the repository's own code on this machine, with your permissions. Say so in the log.
+  LOG_DIR="$DIR/logs"; mkdir -p "$LOG_DIR"; LOG="$LOG_DIR/${BRANCH//\//_}.test.log"
+  echo "remote-review: WARNING: --test runs $REPO's code on this machine, with your permissions"
+  (cd "$WT" && bash -c "$TEST_CMD") >"$LOG" 2>&1; rc=$?
+  TEST_RESULT="exit $rc (log: $LOG)"
   echo "remote-review: tests: $TEST_RESULT"
 fi
 
@@ -118,15 +134,14 @@ if [ "$PUSH" = 1 ]; then
 fi
 if [ "$OPEN" = 1 ]; then
   command -v gh >/dev/null 2>&1 || die "gh is needed to open the pull request"
+  BODY="$DIR/logs/pr-body.md"; mkdir -p "$DIR/logs"
+  printf '%s\n' "Fixes from a review of \`$BRANCH\` at \`$SHORT\`, prepared with pr-reviewer and pr-fixer." "" \
+    "- Secret screen: $SCREEN" "- Hidden-text hits: $HIDDEN" "- Tests: $TEST_RESULT" "" \
+    "Nothing merges from this pull request without a person." > "$BODY"
+  "$REVIEW_CYCLE" screen --file "$BODY" >/dev/null 2>&1 || die "the pull request body holds what the secret screen refuses; nothing opened"
   URL_PR="$(cd "$WT" && gh pr create --repo "$REPO" --draft --base "$BASE" --head "$REVIEW_BRANCH" \
     --title "Review fixes for $BRANCH" \
-    --body "Fixes from a review of \`$BRANCH\` at \`$SHORT\`, prepared with pr-reviewer and pr-fixer.
-
-- Secret screen: $SCREEN
-- Hidden-text hits: $HIDDEN
-- Tests: $TEST_RESULT
-
-Nothing merges from this pull request without a person.")" || die "could not open the pull request"
+    --body-file "$BODY")" || die "could not open the pull request"
   echo "remote-review: draft pull request: $URL_PR"
 fi
 echo "remote-review: done. Worktree: $WT"

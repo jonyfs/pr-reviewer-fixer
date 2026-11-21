@@ -23,6 +23,11 @@ One-line install from GitHub, automatic harness detection, and six more harnesse
   from the author's branch head, runs the secret screen, the hidden-text scan, the path floor and the
   project's tests there, and pushes or opens a draft pull request only for `review/<branch>`. The
   author's branch is never checked out, moved or pushed to. The skills are read from this repository.
+  A second run keeps fix commits already on the review branch (`--reset` discards them). `--test` runs
+  the repository's code on your machine, and the script says so before it runs.
+- The four new config folders (`.qwen`, `.factory`, `.trae`, `.continue`) are sensitive under the
+  `claude` class in push-guard, which needs its own opt-in.
+- `install.sh` checks every name in a comma list before it writes anything.
 
 ## 0.20.1
 
