@@ -86,7 +86,7 @@ EXIT CODES: 0 nothing found, 1 at least one hit, 2 an input could not be read (g
 failed, a file is missing); then nothing is printed on stdout. Exit 2 never means clean.
 """
 import bisect
-import collections
+import hashlib
 import importlib.util
 import json
 import os
@@ -257,17 +257,6 @@ def blank_code(text):
         pos += len(line) + 1
     flat = "".join(out)
     runs = [(m.start(), m.end()) for m in re.finditer(r"`+", flat)]
-    # A code span cannot cross a blank line (a paragraph ends there, in CommonMark and on GitHub). Without
-    # this, a lone backtick could pair with one far below and hide a real comment between them.
-    # A blank line, or a line that starts a block (a heading, a quote, a list item, an HTML tag or comment,
-    # a fence), ends a paragraph in CommonMark and so ends a span. Breaking more often only scans more.
-    # Thematic breaks and setext underlines (a line of - * _ or =) end a paragraph too.
-    breaks = [m.start() for m in re.finditer(
-        r"\n[ \t\r]*(?=\n)|\n(?=[ \t]*(?:[#>]|[-*+][ \t]|\d{1,9}[.)][ \t]|<|`{3}|~{3}))"
-        r"|\n(?=[ \t]*[-*_=][-*_= \t]*\r?(?:\n|$))", flat)]
-    def same_paragraph(a, c):
-        k = bisect.bisect_right(breaks, a)
-        return k >= len(breaks) or breaks[k] >= c
     by_len = {}
     for idx, (a, b) in enumerate(runs):
         by_len.setdefault(b - a, []).append(idx)
@@ -276,7 +265,7 @@ def blank_code(text):
         a, b = runs[i]
         same = by_len[b - a]
         j = bisect.bisect_right(same, i)
-        if j < len(same) and same_paragraph(a, runs[same[j]][0]):
+        if j < len(same):
             close = runs[same[j]]
             blank(a, close[1])
             i = same[j] + 1
@@ -289,20 +278,49 @@ def esc(s):
     return ascii(s)[1:-1][:120]
 
 
-PLAIN_EXTENSIONS = (".py", ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".go", ".rb",
-                    ".rs", ".java", ".kt", ".swift", ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".php", ".pl",
-                    ".lua", ".r", ".sql", ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".csv", ".log",
-                    ".txt", ".css", ".scss", ".xml")
+# The allowlist: exact lines that show a comment or details tag as documentation, not as hidden text.
+# A line is excused only when its path and the sha256 of its whole text match an entry, and only the
+# html-comment and details kinds are excused. Any change to the line changes the hash. A missing file
+# excuses nothing (fail closed).
+ALLOW_FILE = os.path.join(HERE, "scan-hidden.allow")
+EXCUSABLE = ("html-comment", "details")
 
 
-def is_markup(path):
-    """Whether GitHub may render this file as Markdown, where an HTML comment or details tag can be hidden.
-    Only a known code or data file is shown as it is, so the rule defaults to Markdown: an unknown
-    extension, a name with no extension, or .mkd, .rst and the like is checked."""
-    return not path.lower().endswith(PLAIN_EXTENSIONS)
+def load_allow():
+    entries = set()
+    try:
+        with open(ALLOW_FILE, encoding="utf-8") as f:
+            for ln in f:
+                if ln.startswith("#") or "\t" not in ln:
+                    continue
+                path, digest = ln.rstrip("\r\n").split("\t", 1)
+                entries.add((path, digest.strip()))
+    except OSError:
+        pass
+    return entries
 
 
-def scan_text(text, verdict_re, source, where, line_offset=0, markup=True, mask_code=True):
+ALLOW = load_allow()
+
+
+def excused(path, line_text):
+    digest = hashlib.sha256(line_text.encode("utf-8", "replace")).hexdigest()
+    return (path, digest) in ALLOW
+
+
+def drop_excused(hits, path, text):
+    """Remove the excusable hits that sit on an allowlisted line of this file."""
+    lines = text.split("\n")
+    kept = []
+    for h in hits:
+        n = h.get("line", 0)
+        if h["kind"] in EXCUSABLE and 1 <= n <= len(lines) and excused(path, lines[n - 1]):
+            continue
+        kept.append(h)
+    return kept
+
+
+def scan_text(text, verdict_re, source, where, line_offset=0):
     """Every hit in one text. `where(line)` names the location of a line number."""
     hits = []
     lines = text.split("\n")
@@ -330,23 +348,17 @@ def scan_text(text, verdict_re, source, where, line_offset=0, markup=True, mask_
         cp = ord(m.group())
         kind = "tag" if 0xE0000 <= cp <= 0xE007F else CHARS[cp]
         add(m.start(), kind, "U+%04X" % cp)
-    # An HTML comment or a details tag inside a code span or a fenced block is shown as literal text, not
-    # hidden: the reader sees exactly what the model reads. So those two kinds are looked for outside code
-    # only, and only in Markdown (is_markup), as are hidden-style HTML elements. Invisible characters
-    # (zero-width and bidi controls) stay scanned everywhere.
-    opener, details = "<" + "!--", "<" + "details"
-    outside = blank_code(text) if (mask_code and markup and (opener in text or details in text.lower())) else text
-    for m in (re.finditer(re.escape(opener), outside) if markup else []):
-        rest = outside[m.start():]
+    for m in re.finditer(r"<!--", text):
+        rest = text[m.start():]
         if verdict_re.match(rest) or any(r.match(rest) for r in OTHER_MARKERS):
             continue
-        end = outside.find("-->", m.start() + 4)
+        end = text.find("-->", m.start() + 4)
         add(m.start(), "html-comment", "unterminated" if end < 0 else "%d characters" % (end + 3 - m.start()))
-    for m in (DETAILS_RE.finditer(outside) if markup else []):
+    for m in DETAILS_RE.finditer(text):
         add(m.start(), "details", "<details>")
     for m in VS_RUN_RE.finditer(text):
         add(m.start(), "variation-selector", "%d selectors from U+%04X" % (len(m.group()), ord(m.group()[0])))
-    for start, end in (invisible_html(text) if markup else []):
+    for start, end in invisible_html(text):
         add(start, "invisible-html", esc(text[start:end])[:60])
     seen = set()
     for m in LINKREF_RE.finditer(text):
@@ -406,10 +418,6 @@ def scan_diff(base, head, verdict_re):
                 "--no-renames", "-U0", base + "..." + head)
     hits, path, n = [], None, 0
     rem_old = rem_new = 0
-    # Which lines each file adds (new-file numbers). The whole file is then scanned at the head, because a
-    # span or a comment can open on an added line and close on an unchanged one, and the hits are kept
-    # only where a line was added.
-    added = {}
     for raw in patch.split("\n"):
         if rem_old > 0 or rem_new > 0:
             # Inside a hunk every line is a hunk line, counted from the @@ header: an added line
@@ -417,7 +425,9 @@ def scan_diff(base, head, verdict_re):
             if raw.startswith("+"):
                 rem_new -= 1
                 if path is not None:
-                    added.setdefault(path, set()).add(n)
+                    p = path
+                    found = scan_text(raw[1:], verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), line_offset=n - 1)
+                    hits += [h for h in found if not (h["kind"] in EXCUSABLE and excused(p, raw[1:]))]
                 n += 1
             elif raw.startswith("-"):
                 rem_old -= 1
@@ -431,45 +441,10 @@ def scan_diff(base, head, verdict_re):
             continue
         h = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
         if h:
-            if path is not None:
-                added.setdefault(path, set())
             rem_old = int(h.group(1)) if h.group(1) is not None else 1
             n = int(h.group(2))
             rem_new = int(h.group(3)) if h.group(3) is not None else 1
-    # The base is the merge base, the file as the change began. A hit on an unchanged line is reported
-    # when the base file has no more copies of that hit than the head does (a count, by kind, line text
-    # and detail), so a second copy of an old hit is still reported.
-    mb = git("merge-base", base, head).strip()
-    for p, lines in added.items():
-        if p == "/dev/null":
-            continue
-        # A submodule is a commit, not a file: its content is not scanned here (its own repository is).
-        if not git_exists(head, p) or git_type(head, p) == "commit":
-            continue
-        text = git("show", "%s:%s" % (head, p))
-        base_text = git("show", "%s:%s" % (mb, p)) if git_exists(mb, p) else ""
-        budget = collections.Counter(
-            (h_["kind"], h_["excerpt"], h_["detail"])
-            for h_ in scan_text(base_text, verdict_re, "diff", lambda l: "", markup=is_markup(p)))
-        for h_ in scan_text(text, verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), markup=is_markup(p)):
-            key = (h_["kind"], h_["excerpt"], h_["detail"])
-            matched = budget[key] > 0
-            if matched:
-                budget[key] -= 1
-            if h_["line"] in lines or not matched:
-                hits.append(h_)
     return hits
-
-
-def git_exists(ref, path):
-    """Whether `ref:path` names an object. A missing path is False."""
-    r = subprocess.run(["git", "cat-file", "-e", "%s:%s" % (ref, path)], capture_output=True)
-    return r.returncode == 0
-
-
-def git_type(ref, path):
-    return subprocess.run(["git", "cat-file", "-t", "%s:%s" % (ref, path)], capture_output=True,
-                          text=True).stdout.strip()
 
 
 def scan_commits(base, head, verdict_re):
@@ -482,8 +457,7 @@ def scan_commits(base, head, verdict_re):
             continue
         sha, _, msg = rec.partition("\n")
         s = sha.strip()
-        hits += scan_text(msg, verdict_re, "commit-message", lambda l, s=s: "commit %s line %d" % (s[:12], l),
-                          mask_code=False)
+        hits += scan_text(msg, verdict_re, "commit-message", lambda l, s=s: "commit %s line %d" % (s[:12], l))
     return hits
 
 
@@ -554,8 +528,9 @@ def main(argv):
             elif opt == "--commits":
                 hits += scan_commits(vals[0], vals[1], verdict_re)
             else:
-                hits += scan_text(open(vals[0], encoding="utf-8", errors="replace").read(), verdict_re,
-                                  "file", lambda l, f=vals[0]: "%s:%d" % (f, l), markup=is_markup(vals[0]))
+                body = open(vals[0], encoding="utf-8", errors="replace").read()
+                hits += drop_excused(scan_text(body, verdict_re, "file", lambda l, f=vals[0]: "%s:%d" % (f, l)),
+                                     vals[0], body)
             sources.append(opt[2:] + " " + " ".join(vals))
     except (Unreadable, OSError, ValueError, subprocess.TimeoutExpired) as e:
         print("scan-hidden: could not read an input, INCONCLUSIVE: %s" % e, file=sys.stderr)

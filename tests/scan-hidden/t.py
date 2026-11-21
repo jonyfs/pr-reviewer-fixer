@@ -345,38 +345,30 @@ lone = os.path.join(W, "lone"); os.makedirs(lone); shutil.copy(SH, lone)
 p = subprocess.run([sys.executable, "-I", os.path.join(lone, "scan-hidden.py"), "--file", write("z.md", "x\n")], capture_output=True, text=True)
 check("without the gate beside it (no verdict regex to reuse) -> exit 2", p.returncode == 2 and "verdict marker regex" in p.stderr, p.stderr)
 
-# Code spans and fenced blocks (PR 53 review item 5): a comment shown as code is not hidden, and a code
-# span cannot cross a paragraph break, so a lone backtick cannot hide a comment (a bypass).
-def kinds_of(name, body):
-    rc, out, err = scan("--file", write(name, body))
-    return [h["kind"] for h in (out or {}).get("hits", [])]
-check("a comment inside a code span is shown, not flagged", kinds_of("cs1.md", "use `<!-- x -->` here\n") == [])
-check("a comment inside a fenced block is shown, not flagged", kinds_of("cs2.md", "```\n<!-- x -->\n```\n") == [])
-check("a comment outside code next to a code span is still flagged", kinds_of("cs3.md", "`a` <!-- x --> `b`\n") == ["html-comment"])
-check("a lone backtick cannot hide a comment across a blank line", kinds_of("cs4.md", "lone ` here\n\nhidden <!-- x --> `y`\n") == ["html-comment"])
-check("an invisible character inside a code span is still flagged", len(kinds_of("cs5.md", "`a\u200bb`\n")) == 1)
+# ---- the allowlist: an exact line shown as documentation is excused; nothing else is ----------------
+AL = os.path.join(W, "allow-dir"); os.makedirs(AL)
+for _f in os.listdir(SCRIPTS):
+    if _f.endswith((".py", ".sh")) and not _f.startswith("zz"):
+        shutil.copy(os.path.join(SCRIPTS, _f), AL)
+LINE = "keep <!-- ok --> shown"
+import hashlib as _h
+open(os.path.join(AL, "scan-hidden.allow"), "w").write("# test\nx.md\t%s\n" % _h.sha256(LINE.encode()).hexdigest())
+def scan_in(name, body):
+    path = os.path.join(W, "al", name)
+    os.makedirs(os.path.dirname(path), exist_ok=True); open(path, "w", encoding="utf-8").write(body)
+    p = subprocess.run([sys.executable, "-I", os.path.join(AL, "scan-hidden.py"), "--file", name],
+                       capture_output=True, text=True, cwd=os.path.join(W, "al"))
+    return p.returncode, (json.loads(p.stdout) if p.stdout.strip() else None)
+rc, out = scan_in("x.md", LINE + "\n")
+check("an allowlisted line for its path is excused", rc == 0 and (out or {}).get("count") == 0, out)
+rc, out = scan_in("x.md", LINE + " more\n")
+check("the same line changed is reported again", rc == 1 and (out or {}).get("count") == 1, out)
+rc, out = scan_in("y.md", LINE + "\n")
+check("an allowlisted line in another path is reported", rc == 1 and (out or {}).get("count") == 1, out)
+rc, out = scan_in("x.md", LINE + ZW + "\n")
+check("an invisible character on an allowlisted line is still reported", rc == 1 and "zero-width" in (out or {}).get("kinds", {}), out)
+rc, out, _e = scan("--file", write("noallow.md", LINE + "\n"))
+check("no allowlist file in the scanner's folder: nothing is excused", rc == 1, out)
 
-# Only Markdown renders a comment as hidden: the same text in a code file is visible, so it is not flagged.
-rc, out, err = scan("--file", write("code-sample.py", "x = 1  # <!-- shown as a comment -->\n"))
-check("a comment in a .py file is visible code, not flagged", rc == 0 and (out or {}).get("count") == 0, out)
-rc, out, err = scan("--file", write("doc-sample.md", "x <!-- hidden -->\n"))
-check("the same comment in a .md file is flagged", rc == 1 and (out or {}).get("count") == 1, out)
-
-rc, out, err = scan("--file", write("code-sample2.py", "s = '<p hidden>x</p>'\n"))
-check("a hidden-style element in a .py file is not flagged (no Markdown rendering)", (out or {}).get("count") == 0, out)
-rc, out, err = scan("--file", write("msg-sample.txt", "x <!-- shown -->\n"))
-check("a comment in a plain-text file (not Markdown) is not flagged", (out or {}).get("count") == 0, out)
-# A span does not survive a line that starts a block (PR 54 pass 1 W2), and Markdown extensions GitHub
-# renders are checked (W3). A plain code file stays exempt.
-rc, out, err = scan("--file", write("block-break.md", "lone `\n<!-- hidden --> tail `\n"))
-check("a comment on a line that starts a block is not masked by a span opened above", rc == 1 and kinds(out) == ["html-comment"], out)
-rc, out, err = scan("--file", write("b.mkd", "x <!-- hidden -->\n"))
-check("a .mkd file (Markdown on GitHub) is checked", rc == 1 and kinds(out) == ["html-comment"], out)
-rc, out, err = scan("--file", write("c.mkdn", "x <!-- hidden -->\n"))
-check("a .mkdn file is checked", rc == 1 and kinds(out) == ["html-comment"], out)
-rc, out, err = scan("--file", write("thematic.md", "lone `\n***\n<!-- hidden --> tail `\n"))
-check("a thematic break ends a span: the comment after it is not masked", rc == 1 and kinds(out) == ["html-comment"], out)
-rc, out, err = scan("--file", write("nested.md", "lone `\n    - nested item\n    <!-- hidden --> tail `\n"))
-check("an indented list item ends a span: a comment under it is not masked", rc == 1 and kinds(out) == ["html-comment"], out)
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)
