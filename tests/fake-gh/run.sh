@@ -1094,7 +1094,7 @@ check "path-floor: .github/scripts and agent instruction files -> security max (
   eval '[ $r = 0 ] && [ "$(grep -c "^security max " "$W/pf.out")" = 19 ] && ! grep -q agents-guide "$W/pf.out" && pfhas "security max .github/scripts/release.sh" && pfhas "security max sub/AGENTS.md"'
 # W7 (PR #29): every project skill folder install.sh writes, and README's .devin/skills, summons
 # security at max; agent directories count at any depth.
-ROOTS="$(sed -n 's/^ *[a-z-]*) *echo "\([^|]*\)|.*/\1/p' "$T/../../install.sh" | sort -u) .devin/skills"
+ROOTS="$(awk '/^paths_for\(\) \{/{f=1;next} f&&/^\}/{f=0} f' "$T/../../install.sh" | sed -n 's/^ *[a-z-]*) *echo "\([^|]*\)|.*/\1/p' | grep -v '^$' | sort -u) .devin/skills"
 # shellcheck disable=SC2046
 nul $(printf '%s/x/SKILL.md\n' $ROOTS) packages/web/.cursor/rules/evil.mdc pkg/.claude/settings.json \
     apps/a/.agents/skills/x/SKILL.md apps/a/.roo/skills/x/SKILL.md lib/.codex/config.toml docs/roo/skills.md src/.agents/notes.md >"$W/pf-w7.z"
