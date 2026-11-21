@@ -256,6 +256,15 @@ def blank_code(text):
         pos += len(line) + 1
     flat = "".join(out)
     runs = [(m.start(), m.end()) for m in re.finditer(r"`+", flat)]
+    # A code span cannot cross a blank line (a paragraph ends there, in CommonMark and on GitHub). Without
+    # this, a lone backtick could pair with one far below and hide a real comment between them.
+    # A blank line, or a line that starts a block (a heading, a quote, a list item, an HTML tag or comment,
+    # a fence), ends a paragraph in CommonMark and so ends a span. Breaking more often only scans more.
+    breaks = [m.start() for m in re.finditer(
+        r"\n[ \t\r]*(?=\n)|\n(?=[ ]{0,3}(?:[#>]|[-*+][ \t]|\d{1,9}[.)][ \t]|<|`{3}|~{3}))", flat)]
+    def same_paragraph(a, c):
+        k = bisect.bisect_right(breaks, a)
+        return k >= len(breaks) or breaks[k] >= c
     by_len = {}
     for idx, (a, b) in enumerate(runs):
         by_len.setdefault(b - a, []).append(idx)
@@ -264,7 +273,7 @@ def blank_code(text):
         a, b = runs[i]
         same = by_len[b - a]
         j = bisect.bisect_right(same, i)
-        if j < len(same):
+        if j < len(same) and same_paragraph(a, runs[same[j]][0]):
             close = runs[same[j]]
             blank(a, close[1])
             i = same[j] + 1
@@ -277,7 +286,20 @@ def esc(s):
     return ascii(s)[1:-1][:120]
 
 
-def scan_text(text, verdict_re, source, where, line_offset=0):
+PLAIN_EXTENSIONS = (".py", ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".go", ".rb",
+                    ".rs", ".java", ".kt", ".swift", ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".php", ".pl",
+                    ".lua", ".r", ".sql", ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".csv", ".log",
+                    ".txt", ".css", ".scss", ".xml")
+
+
+def is_markup(path):
+    """Whether GitHub may render this file as Markdown, where an HTML comment or details tag can be hidden.
+    Only a known code or data file is shown as it is, so the rule defaults to Markdown: an unknown
+    extension, a name with no extension, or .mkd, .rst and the like is checked."""
+    return not path.lower().endswith(PLAIN_EXTENSIONS)
+
+
+def scan_text(text, verdict_re, source, where, line_offset=0, markup=True, mask_code=True):
     """Every hit in one text. `where(line)` names the location of a line number."""
     hits = []
     lines = text.split("\n")
@@ -305,17 +327,23 @@ def scan_text(text, verdict_re, source, where, line_offset=0):
         cp = ord(m.group())
         kind = "tag" if 0xE0000 <= cp <= 0xE007F else CHARS[cp]
         add(m.start(), kind, "U+%04X" % cp)
-    for m in re.finditer(r"<!--", text):
-        rest = text[m.start():]
+    # An HTML comment or a details tag inside a code span or a fenced block is shown as literal text, not
+    # hidden: the reader sees exactly what the model reads. So those two kinds are looked for outside code
+    # only, and only in Markdown (is_markup), as are hidden-style HTML elements. Invisible characters
+    # (zero-width and bidi controls) stay scanned everywhere.
+    opener, details = "<" + "!--", "<" + "details"
+    outside = blank_code(text) if (mask_code and markup and (opener in text or details in text.lower())) else text
+    for m in (re.finditer(re.escape(opener), outside) if markup else []):
+        rest = outside[m.start():]
         if verdict_re.match(rest) or any(r.match(rest) for r in OTHER_MARKERS):
             continue
-        end = text.find("-->", m.start() + 4)
+        end = outside.find("-->", m.start() + 4)
         add(m.start(), "html-comment", "unterminated" if end < 0 else "%d characters" % (end + 3 - m.start()))
-    for m in DETAILS_RE.finditer(text):
+    for m in (DETAILS_RE.finditer(outside) if markup else []):
         add(m.start(), "details", "<details>")
     for m in VS_RUN_RE.finditer(text):
         add(m.start(), "variation-selector", "%d selectors from U+%04X" % (len(m.group()), ord(m.group()[0])))
-    for start, end in invisible_html(text):
+    for start, end in (invisible_html(text) if markup else []):
         add(start, "invisible-html", esc(text[start:end])[:60])
     seen = set()
     for m in LINKREF_RE.finditer(text):
@@ -375,6 +403,10 @@ def scan_diff(base, head, verdict_re):
                 "--no-renames", "-U0", base + "..." + head)
     hits, path, n = [], None, 0
     rem_old = rem_new = 0
+    # The added lines of each file are scanned as one text. A code span or a comment can run across
+    # lines, so scanning one line at a time would miss a span opened on an earlier line. A hunk boundary
+    # is an empty line in the text, which ends every paragraph and span there.
+    bufs = {}
     for raw in patch.split("\n"):
         if rem_old > 0 or rem_new > 0:
             # Inside a hunk every line is a hunk line, counted from the @@ header: an added line
@@ -382,8 +414,7 @@ def scan_diff(base, head, verdict_re):
             if raw.startswith("+"):
                 rem_new -= 1
                 if path is not None:
-                    p = path
-                    hits += scan_text(raw[1:], verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), line_offset=n - 1)
+                    bufs.setdefault(path, []).append((n, raw[1:]))
                 n += 1
             elif raw.startswith("-"):
                 rem_old -= 1
@@ -397,9 +428,16 @@ def scan_diff(base, head, verdict_re):
             continue
         h = re.match(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
         if h:
+            if path is not None:
+                bufs.setdefault(path, []).append((None, ""))
             rem_old = int(h.group(1)) if h.group(1) is not None else 1
             n = int(h.group(2))
             rem_new = int(h.group(3)) if h.group(3) is not None else 1
+    for p, entries in bufs.items():
+        numbers = [k for k, _ in entries]
+        text = "\n".join(t for _, t in entries)
+        hits += scan_text(text, verdict_re, "diff", lambda l, p=p, numbers=numbers: "%s:%d" % (p, numbers[l - 1] or 0),
+                          markup=is_markup(p))
     return hits
 
 
@@ -413,7 +451,8 @@ def scan_commits(base, head, verdict_re):
             continue
         sha, _, msg = rec.partition("\n")
         s = sha.strip()
-        hits += scan_text(msg, verdict_re, "commit-message", lambda l, s=s: "commit %s line %d" % (s[:12], l))
+        hits += scan_text(msg, verdict_re, "commit-message", lambda l, s=s: "commit %s line %d" % (s[:12], l),
+                          mask_code=False)
     return hits
 
 
@@ -485,7 +524,7 @@ def main(argv):
                 hits += scan_commits(vals[0], vals[1], verdict_re)
             else:
                 hits += scan_text(open(vals[0], encoding="utf-8", errors="replace").read(), verdict_re,
-                                  "file", lambda l, f=vals[0]: "%s:%d" % (f, l))
+                                  "file", lambda l, f=vals[0]: "%s:%d" % (f, l), markup=is_markup(vals[0]))
             sources.append(opt[2:] + " " + " ".join(vals))
     except (Unreadable, OSError, ValueError, subprocess.TimeoutExpired) as e:
         print("scan-hidden: could not read an input, INCONCLUSIVE: %s" % e, file=sys.stderr)
