@@ -43,7 +43,8 @@
 #                              are not summoned by name, and the change to the config that names them
 #                              is, so the security unit reads what it loads.
 #   security         max       agent directories at any depth: .claude/**, .codex/**, .opencode/**,
-#                              .cursor/**, .gemini/**, .windsurf/**, and the skills/ folder of .agents,
+#                              .cursor/**, .gemini/**, .windsurf/**, .qwen/**, .factory/**, .trae/**,
+#                              .continue/**, and the skills/ folder of .agents,
 #                              .roo, .cline, .kiro, .devin and .junie (every project skill folder
 #                              install.sh writes), so pkg/.claude/x and apps/a/.roo/skills/x count
 #   security         max       agent instructions: AGENTS.md, AGENTS.override.md, CLAUDE.md,
@@ -102,7 +103,7 @@ case "${1:-}" in
   --files) [ $# -eq 2 ] || die2 "$USAGE"; mode="files"; file="$2" ;;
   --pr) [ $# -eq 2 ] || die2 "$USAGE"; mode="pr"; pr="$2"
         case "$pr" in ''|*[!0-9]*) die2 "--pr needs a pull request number; $USAGE" ;; esac ;;
-  -h|--help) sed -n '2,94p' "$0"; exit 0 ;;
+  -h|--help) awk 'NR == 1 { next } /^#/ { print; next } { exit }' "$0"; exit 0 ;;
   -*) die2 "$USAGE" ;;
   *) [ $# -eq 2 ] || die2 "$USAGE"; mode="git"; base="$1"; head="$2" ;;
 esac
@@ -192,7 +193,7 @@ OTHER_CI_FILES = {".gitlab-ci.yml", ".gitlab-ci.yaml", ".travis.yml", "azure-pip
 # (a nested .cursor/rules, .claude/skills or .agents/skills). AGENT_DIRS count whole; SKILL_PARENTS
 # count through their skills/ folder, which is where install.sh puts these skills for each harness
 # (its table and README's install table; a test checks every one of them).
-AGENT_DIRS = {".claude", ".codex", ".opencode", ".cursor", ".gemini", ".windsurf"}
+AGENT_DIRS = {".claude", ".codex", ".opencode", ".cursor", ".gemini", ".windsurf", ".qwen", ".factory", ".trae", ".continue"}
 SKILL_PARENTS = {".agents", ".roo", ".cline", ".kiro", ".devin", ".junie"}
 # Files and directories an agent reads as instructions (references/harness-matrix.md lists who reads
 # which): a change there changes what an agent obeys, so it is agent configuration like .claude/.

@@ -21,8 +21,29 @@ then, from that clone:
 ./install.sh --harness claude-code --yes    # installs all three skills
 ```
 
-Use `--harness codex`, `copilot`, `gemini`, `cursor`, `opencode` and others the same way. Pick one
+Use `--harness codex`, `copilot`, `gemini`, `cursor`, `opencode` and others the same way, or `--harness auto` to install wherever a harness is found.
+
+Without a clone, one line downloads the latest release, checks its SHA-256, and runs its installer. It shows the plan first:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/jonyfs/pr-reviewer-fixer/main/install-remote.sh
+bash install-remote.sh --harness auto            # plan only
+bash install-remote.sh --harness auto --yes      # install
+``` Pick one
 skill only with `--skill pr-reviewer`, or a list such as `--skill pr-reviewer,pr-fixer`.
+
+## Review a branch from another repository
+
+Without installing anything in that repository:
+
+```bash
+bash remote-review.sh owner/repo feature-branch --base main --test "npm test" --push --open-pr
+```
+
+It makes a worktree on `review/feature-branch`, runs the checks, and pushes that branch. A second run keeps fix commits already on the review branch; `--reset` discards them.
+
+**`--test` runs the repository's own code on your machine**, with your permissions. Use it only for repositories you trust. The script prints a warning before it runs. The review and
+the fixes then run from this copy of the skills against the worktree. The author's branch is not touched.
 
 ## 3. Prepare your repository (once)
 

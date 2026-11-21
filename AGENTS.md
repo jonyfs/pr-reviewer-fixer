@@ -59,6 +59,8 @@ The suite needs bash, python3, node, jq, git, curl, tar and sha256sum. It puts a
   `install.sh` keeps a skill's old copy when that skill's swap fails but swaps one skill at a time,
   so with both skills the first may already be replaced, and running `update.sh` again finishes the
   job. A PR comment never answers the question.
+- `remote-review.sh` at the repository root prepares a branch of another repository for review: a worktree on a new `review/<branch>` branch, the mechanical checks from this copy of the scripts, the project's tests, and a push or a draft pull request for the review branch only. `tests/remote-review/run.sh` drives it against a bare repository on disk.
+- `install-remote.sh` at the repository root installs a GitHub release without a clone: it downloads the archive and `SHA256SUMS`, checks the SHA-256, refuses an archive member that steps out of its folder, and runs that release's `install.sh`. `tests/remote/run.sh` drives it with a local archive.
 - `install.sh` at the repository root copies the skills into the folder a harness reads. Its harness table mirrors the install table in `docs/SKILLS-REFERENCE.md`; change both together. Without `--yes` it changes nothing.
 - `scripts/scan-hidden.py` (both skills) reports invisible text in what the agents read: the diff's
   added lines, the PR title, body and comments (through `pr-json.py`), the commit messages and,

@@ -4,6 +4,31 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.21.0
+
+One-line install from GitHub, automatic harness detection, and six more harnesses.
+
+- **`install-remote.sh`** (new, at the repository root): downloads the latest release (or `--version X.Y.Z`)
+  and its `SHA256SUMS` from github.com, checks the archive's SHA-256, refuses a member that steps out
+  of the folder, and runs that release's `install.sh` with the options given. Nothing is written
+  without `--yes`.
+- **`install.sh --harness auto`**: finds the harnesses whose marker is in the folder (project scope)
+  or in your home (user scope), and installs into each one.
+- **`install.sh --harness a,b`**: runs the install once per harness, with the same options.
+- **Six more harnesses**: goose, qwen, crush (user scope only), continue, trae and factory. The
+  folders for goose, qwen, continue and factory come from their own documentation; trae comes from
+  third-party guides, so check it against Trae's documentation before relying on it.
+- **`remote-review.sh`** (new, at the repository root): prepares a branch of another GitHub repository
+  for review and correction. It clones into a cache, creates a worktree on a new `review/<branch>` branch
+  from the author's branch head, runs the secret screen, the hidden-text scan, the path floor and the
+  project's tests there, and pushes or opens a draft pull request only for `review/<branch>`. The
+  author's branch is never checked out, moved or pushed to. The skills are read from this repository.
+  A second run keeps fix commits already on the review branch (`--reset` discards them). `--test` runs
+  the repository's code on your machine, and the script says so before it runs.
+- The four new config folders (`.qwen`, `.factory`, `.trae`, `.continue`) are sensitive under the
+  `claude` class in push-guard, which needs its own opt-in.
+- `install.sh` checks every name in a comma list before it writes anything.
+
 ## 0.20.1
 
 Fixes found in the review of the 0.20.0 pull request that were not blocking, plus one defect in the

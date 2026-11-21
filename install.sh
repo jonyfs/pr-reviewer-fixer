@@ -122,10 +122,87 @@ paths_for() {
     windsurf)    echo ".windsurf/skills|.codeium/windsurf/skills" ;;
     zed)         echo ".agents/skills|.agents/skills" ;;
     junie)       echo ".junie/skills|.junie/skills" ;;
+    goose)       echo ".agents/skills|.agents/skills" ;;
+    qwen)        echo ".qwen/skills|.qwen/skills" ;;
+    crush)       echo "|.config/crush/skills" ;;
+    continue)    echo ".continue|.continue" ;;
+    trae)        echo ".trae/skills|.trae/skills" ;;
+    factory)     echo ".factory/skills|.factory/skills" ;;
     aider)       return 2 ;;
     *)           return 1 ;;
   esac
 }
+
+# Markers that show a harness is in use, for --harness auto. Project markers are looked for in the
+# current folder, user markers under $HOME. A marker is a file or folder; it says the person runs the
+# harness, not that the harness reads this skill folder. Empty means no marker in that scope.
+markers_for() {
+  case "$1" in
+    claude-code) echo ".claude|.claude" ;;
+    codex)       echo ".codex|.codex" ;;
+    copilot)     echo ".github/copilot-instructions.md|.copilot" ;;
+    gemini)      echo ".gemini|.gemini" ;;
+    cursor)      echo ".cursor|.cursor" ;;
+    opencode)    echo ".opencode|.config/opencode" ;;
+    amp)         echo ".amp|.config/amp" ;;
+    roo)         echo ".roo|.roo" ;;
+    cline)       echo ".clinerules|.cline" ;;
+    kiro)        echo ".kiro|.kiro" ;;
+    windsurf)    echo ".windsurf|.codeium/windsurf" ;;
+    junie)       echo ".junie|.junie" ;;
+    goose)       echo ".goose|.config/goose" ;;
+    qwen)        echo ".qwen|.qwen" ;;
+    crush)       echo "|.config/crush" ;;
+    continue)    echo ".continue|.continue" ;;
+    trae)        echo ".trae|.trae" ;;
+    factory)     echo ".factory|.factory" ;;
+    *)           return 1 ;;
+  esac
+}
+ALL_HARNESSES="claude-code codex copilot gemini cursor opencode amp roo cline kiro windsurf junie goose qwen crush continue trae factory"
+# Prints the harnesses whose marker is present for the scope, space separated.
+detect_harnesses() {
+  local h m proj home out=""
+  for h in $ALL_HARNESSES; do
+    m="$(markers_for "$h")" || continue
+    proj="${m%%|*}"; home="${m##*|}"
+    if [ "$1" = project ]; then
+      [ -n "$proj" ] && [ -e "$PWD/$proj" ] && out="$out $h"
+    else
+      [ -n "$home" ] && [ -e "$HOME/$home" ] && out="$out $h"
+    fi
+  done
+  echo "${out# }"
+}
+
+# --harness auto, or a comma list: run this script once per harness, with the same options. Each run
+# is a full install of its own, with its own dry run or --yes, so the logic is not repeated here.
+if [ -z "$TARGET" ] && { [ "$HARNESS" = auto ] || [ "${HARNESS#*,}" != "$HARNESS" ]; }; then
+  if [ "$HARNESS" = auto ]; then
+    LIST="$(detect_harnesses "$SCOPE")"
+    [ -n "$LIST" ] || die "no harness found in ${SCOPE_FOLDER:-the current folder or your home} (looked for its folder). Name one with --harness <name>, or see --help"
+    echo "install: detected $LIST (scope $SCOPE)"
+  else
+    LIST="${HARNESS//,/ }"
+  fi
+  # An empty name in the list (",", "a,,b") is refused, not skipped: the run must not succeed having installed less.
+  case "$HARNESS" in ,*|*,|*,,*) die "the harness list has an empty name: '$HARNESS'; nothing installed" ;; esac
+  [ -n "${LIST// /}" ] || die "no harness named; nothing installed"
+  # Every name is checked before anything is written, so a bad name in the list stops the whole run.
+  for h in $LIST; do
+    e="$(paths_for "$h")" || die "unknown harness '$h'; nothing installed"
+    if [ "$SCOPE" = project ] && [ -z "${e%%|*}" ]; then die "$h reads skills only from its user folder; use --scope user; nothing installed"; fi
+  done
+  rc_all=0
+  for h in $LIST; do
+    echo "install: --- $h ---"
+    args=(--harness "$h" --scope "$SCOPE" --skill "$SKILL")
+    [ -n "$SOURCE" ] && args+=(--source "$SOURCE")
+    [ "$YES" -eq 1 ] && args+=(--yes)
+    bash "$0" "${args[@]}" || rc_all=1
+  done
+  exit "$rc_all"
+fi
 
 REL=""
 if [ -n "$TARGET" ]; then
@@ -135,7 +212,11 @@ else
   entry="$(paths_for "$HARNESS")"; rc=$?
   [ "$rc" -ne 2 ] || die "aider has no skills feature; load SKILL.md with --read instead"
   [ "$rc" -eq 0 ] || die "unknown harness '$HARNESS'"
-  if [ "$SCOPE" = project ]; then REL="${entry%%|*}"; DEST_ROOT="$PWD/$REL"; else DEST_ROOT="$HOME/${entry##*|}"; fi
+  if [ "$SCOPE" = project ]; then
+    REL="${entry%%|*}"
+    [ -n "$REL" ] || die "$HARNESS reads skills only from its user folder; use --scope user"
+    DEST_ROOT="$PWD/$REL"
+  else DEST_ROOT="$HOME/${entry##*|}"; fi
 fi
 [ -n "$DEST_ROOT" ] && [ "$DEST_ROOT" != "/" ] || die "refusing an empty or root destination"
 

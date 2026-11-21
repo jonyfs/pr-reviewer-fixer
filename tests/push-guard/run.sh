@@ -211,11 +211,11 @@ sens "Drone jsonnet" .drone.jsonnet workflows
 sens "Codefresh" .codefresh/build.yml workflows
 # W7 of PR #29: every project skill folder install.sh writes (and README's .devin/skills) is
 # sensitive, whatever harness it is for, and an agent directory counts at any depth.
-ROOTS="$(sed -n 's/^ *[a-z-]*) *echo "\([^|]*\)|.*/\1/p' "$T/../../install.sh" | sort -u)"
+ROOTS="$(awk '/^paths_for\(\) \{/{f=1;next} f&&/^\}/{f=0} f' "$T/../../install.sh" | sed -n 's/^ *[a-z-]*) *echo "\([^|]*\)|.*/\1/p' | grep -v '^$' | sort -u)"
 check "install.sh names at least 11 project skill folders for the rows below (W7 of PR #29)" eval '[ "$(printf "%s\n" "$ROOTS" | grep -c /skills$)" -ge 11 ]'
 for sp in $ROOTS .devin/skills; do
   sens "the skill folder install.sh writes" "$sp/s/SKILL.md" "$(case "$sp" in .claude/*) echo claude ;; \
-    .github/*|.gemini/*|.cursor/*|.opencode/*|.windsurf/*) echo instructions ;; *) echo skills ;; esac)"
+    .github/*|.gemini/*|.cursor/*|.opencode/*|.windsurf/*) echo instructions ;; .qwen|.qwen/*|.factory|.factory/*|.trae|.trae/*|.continue|.continue/*) echo claude ;; *) echo skills ;; esac)"
 done
 sens "a Roo skill" .roo/skills/pr-fixer/scripts/review-cycle.sh skills
 sens "a nested Cursor rule" packages/web/.cursor/rules/evil.mdc instructions
