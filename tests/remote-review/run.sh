@@ -62,7 +62,7 @@ echo fix > "$CACHE/acme/app/worktrees/rewind/fixr.txt" && (cd "$CACHE/acme/app/w
 REWIND_OLD="$(git -C "$W/src" rev-parse main)"
 (cd "$W/src" && g checkout -q rewind && g reset -q --hard "$REWIND_OLD" && g push -q -f "$REMOTE" rewind 2>/dev/null)
 out="$(bash "$S" acme/app rewind --url "$REMOTE" --cache "$CACHE" --base main 2>&1)"; rc=$?
-check "W9: a rewound author branch is refused, not republished" eval '[ "$rc" = 1 ] && printf %s "$out" | grep -q "not at the head" && [ -f "$CACHE/acme/app/worktrees/rewind/fixr.txt" ]'
+check "W9: a rewound author branch is refused, and the fix commit is still on the review branch" eval '[ "$rc" = 1 ] && printf %s "$out" | grep -q "not at the head" && [ "$(git -C "$CACHE/acme/app" log -1 --format=%s review/rewind)" = fixr ]'
 check "W9: the refusal names --reset" eval 'printf %s "$out" | grep -q -- "--reset"'
 git -C "$CACHE/acme/app" config --unset "branch.review/rewind.remoteReviewFrom" 2>/dev/null
 out="$(bash "$S" acme/app rewind --url "$REMOTE" --cache "$CACHE" --base main 2>&1)"; rc=$?

@@ -83,15 +83,21 @@ REVIEW_BRANCH="review/$BRANCH"
 WT="$DIR/worktrees/$BRANCH"
 # A review branch that holds fix commits the author's branch does not have is reused as it is, so a
 # second run keeps them and --push publishes them. Only --reset replaces it, and that discards them.
-AHEAD=0
+AHEAD=0 RECORDED=""
 if git -C "$DIR" rev-parse --verify -q "refs/heads/$REVIEW_BRANCH" >/dev/null; then
-  AHEAD="$(git -C "$DIR" rev-list --count "origin/$BRANCH..$REVIEW_BRANCH")"
+  RECORDED="$(git -C "$DIR" config --get "branch.$REVIEW_BRANCH.remoteReviewFrom" || true)"
+  # Fix commits are those on the review branch beyond the head it was cut from. Without a recorded head,
+  # everything beyond the author's current head counts, so the branch is refused rather than reset.
+  if [ -n "$RECORDED" ]; then
+    AHEAD="$(git -C "$DIR" rev-list --count "$RECORDED..$REVIEW_BRANCH")"
+  else
+    AHEAD="$(git -C "$DIR" rev-list --count "origin/$BRANCH..$REVIEW_BRANCH")"
+  fi
 fi
 if [ "$AHEAD" != 0 ] && [ "$RESET" != 1 ]; then
   # Reuse only if the review branch was cut from the head being reviewed now. The recorded head is the
   # one the fixes were checked against; a rewind or a push since then makes it differ, and the review
   # would not read what is being fixed.
-  RECORDED="$(git -C "$DIR" config --get "branch.$REVIEW_BRANCH.remoteReviewFrom" || true)"
   if [ "$RECORDED" != "$HEAD_SHA" ]; then
     die "$BRANCH is not at the head $REVIEW_BRANCH was cut from; the fixes are on another head. Pass --reset to start again from $SHORT"
   fi
