@@ -1246,6 +1246,33 @@ check "findings-block: CRLF lines and blank lines after the closer -> the block,
 "$RC" findings-block --report "$W/nope.md" >/dev/null 2>&1; r=$?
 check "findings-block: an unreadable report -> 2" eq "$r" 2
 
+# next, start --sha, and the gate re-run after PASSED (PR 52 pass 1 review, items 2, 3 and 8)
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+"$RC" next 7 >"$W/next.out" 2>&1; r=$?
+check "next: pending -> tells the caller to pin the head it reads, prints no sha to copy" eval '[ $r = 0 ] && grep -q "start 7 --sha <that head>" "$W/next.out" && ! grep -q "$C" "$W/next.out"'
+"$RC" start 7 --sha $A >"$W/sha.out" 2>&1; r=$?
+check "start --sha with another head -> refused, no label moved" eval '[ $r = 1 ] && grep -q "REFUSED" "$W/sha.out" && hasnt review:running'
+"$RC" start 7 --sha ${C:0:10} >/dev/null 2>&1; r=$?
+check "start --sha at the head -> started" eval '[ $r = 0 ] && has review:running'
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+printf '[{"databaseId":555,"headSha":"%s","conclusion":"failure","workflowName":"review-gate"},{"databaseId":556,"headSha":"%s","conclusion":"failure","workflowName":"other"},{"databaseId":557,"headSha":"%s","conclusion":"failure","workflowName":"review-gate"}]' "$C" "$C" "$D" >"$FAKE_DIR/runs.json"
+"$RC" start 7 >/dev/null 2>&1; r=$(pub --verdict PASSED --pass 1 --sha $C --critical 0 --warning 0 --note 0)
+check "publish PASSED re-runs only the failed review-gate run at this head" eval '[ "$r" = 0 ] && grep -q "gh run rerun 555" "$FAKE_DIR/calls.log" && ! grep -q "gh run rerun 556" "$FAKE_DIR/calls.log" && ! grep -q "gh run rerun 557" "$FAKE_DIR/calls.log"'
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+printf '[{"databaseId":555,"headSha":"%s","conclusion":"failure","workflowName":"review-gate"}]' "$C" >"$FAKE_DIR/runs.json"
+"$RC" start 7 >/dev/null 2>&1; r=$(pub --verdict BLOCKED --pass 1 --sha $C --critical 1 --warning 0 --note 0)
+check "publish BLOCKED re-runs nothing, though a failed gate run sits at this head" eval '[ "$r" = 0 ] && ! grep -q "gh run rerun" "$FAKE_DIR/calls.log"'
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+timeout 20 "$RC" start 7 --sha >/dev/null 2>&1; r=$?
+check "start --sha with no value -> refused, not a hang" eval '[ $r = 1 ] && hasnt review:running'
+timeout 20 "$RC" start 7 --sha= >/dev/null 2>&1; r=$?
+check "start --sha= (empty) -> refused" eval '[ $r = 1 ] && hasnt review:running'
+timeout 20 "$RC" start --sha=$C 7 >/dev/null 2>&1; r=$?
+check "start --sha=X before the number -> pinned and started" eval '[ $r = 0 ] && has review:running'
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+timeout 20 "$RC" start --bogus 7 >/dev/null 2>&1; r=$?
+check "start with an unknown option -> refused" eval '[ $r = 1 ] && hasnt review:running'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

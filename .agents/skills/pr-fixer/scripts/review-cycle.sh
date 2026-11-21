@@ -1181,12 +1181,31 @@ cmd_extend() {
 cmd_debt() { cmd_status "${1:-}" >/dev/null 2>&1; return $?; }
 
 cmd_start() {
+  local want_sha="" pr="" sha_given=0
+  # Every form of the pin is parsed here. A `--sha` with no value, an empty value, `--sha=` with
+  # nothing after it, or an unknown option is refused, so no pass starts unpinned by mistake.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --sha)   [ $# -ge 2 ] || die "review-cycle: --sha needs a commit"; want_sha="$2"; sha_given=1; shift 2 ;;
+      --sha=*) want_sha="${1#--sha=}"; sha_given=1; shift ;;
+      -*)      die "review-cycle: start: unknown option '$1'" ;;
+      *)       pr="$1"; shift ;;
+    esac
+  done
+  if [ "$sha_given" = 1 ] && [ -z "$want_sha" ]; then die "review-cycle: --sha needs a commit, got nothing"; fi
   # Without a login on the list, `parse()` trusts every comment, so any edit or deletion by someone
   # other than a comment's author would read as a foreign edit of a trusted marker and the refusal
   # below would name the wrong cause. The real cause is the missing list, and it is refused first.
   marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
-  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
+  local json; json="$(pr_json "$pr")"; [ -n "$json" ] || die "review-cycle: no pull request to start on"
   parse "$json"
+  # --sha pins the commit the reviewer read. A head that moved since then would make this pass review
+  # a commit nobody read, so it is refused before any label moves (PR 52 pass 1 review, item 2).
+  if [ "$sha_given" = 1 ]; then
+    case "$want_sha" in *[!0-9a-f]*) die "review-cycle: --sha must be lowercase hex, got '$want_sha'" ;; esac
+    [ "${#want_sha}" -ge 7 ] || die "review-cycle: --sha needs at least 7 hex digits"
+    [ "${HEAD:0:${#want_sha}}" = "$want_sha" ] || die "review-cycle: REFUSED on #$NUMBER. The head is ${HEAD:0:12}, not ${want_sha:0:12}: the pass would review a commit nobody read. Read the pull request again and start on the head you reviewed."
+  fi
   # A pass started now could never be published (`publish` refuses on the same reading), so it is
   # refused before any label moves.
   [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED on #$NUMBER: $(foreign_msg). No pass is started, since publish would refuse it."
@@ -1767,6 +1786,26 @@ cmd_publish() {
   [ "$verdict" = "PASSED" ] && { positivo "$warn" || positivo "$note"; } && \
     echo "  declared debt: $warn warning, $note note — name an owner for each in the pull request body; passed means nothing blocks, not that nothing was found"
   audit_append "$NUMBER" "$passno" "$HEAD" "$verdict" "$crit" "$warn" "$note" "${model:--}" "${tier:--}"
+  [ "$verdict" = "PASSED" ] && rerun_gate_failures "$HEAD" "$NUMBER"
+  return 0
+}
+
+# The review gate reads the marker at the head of each run. A gate run that failed before a PASSED
+# was published read no marker, so its failure is stale. This re-runs the failed review-gate runs at
+# exactly this head, so the check reads the verdict that now stands. Other workflows are not touched.
+rerun_gate_failures() {
+  local head="$1" n="$2" branch ids id
+  branch="$(gh pr view "$n" --json headRefName --jq .headRefName 2>/dev/null)" || return 0
+  [ -n "$branch" ] || return 0
+  ids="$(gh run list --branch "$branch" --limit 50 --json databaseId,headSha,conclusion,workflowName \
+        --jq ".[] | select(.headSha == \"$head\" and .conclusion == \"failure\" and .workflowName == \"review-gate\") | .databaseId" 2>/dev/null)" || return 0
+  for id in $ids; do
+    if gh run rerun "$id" >/dev/null 2>&1; then
+      echo "  gate: re-ran failed review-gate run $id at ${head:0:12}"
+    else
+      echo "  gate: could not re-run review-gate run $id; re-run it in the Actions tab" >&2
+    fi
+  done
   return 0
 }
 
@@ -2319,6 +2358,27 @@ PY
   return $rc
 }
 
+# Read-only. Prints the one next step for a pull request, from its label and the head its verdict
+# covers. It moves no label and posts nothing, so it is safe to run at any time.
+cmd_next() {
+  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read"
+  parse "$json"
+  local short="${HEAD:0:12}"
+  case "$LABEL" in
+    review:running)    echo "#$NUMBER: a pass is in flight at $short. Publish its verdict: review-cycle.sh publish $NUMBER --verdict PASSED|BLOCKED --pass N --sha <the head you reviewed> --report FILE --critical C --warning W --note N" ;;
+    review:fixing)     echo "#$NUMBER: a correction is in flight. After the fixer pushes, run review-cycle.sh stale $NUMBER, then start $NUMBER --sha <new head>" ;;
+    review:blocked)    echo "#$NUMBER: BLOCKED at ${MARKER_SHA:0:12}. The fixer corrects the findings; a person decides if it is halted (review-cycle.sh status $NUMBER)" ;;
+    review:passed)     echo "#$NUMBER: PASSED at ${MARKER_SHA:0:12}. Nothing blocks. Merging is a person's decision, not the loop's" ;;
+    review:needs-human) echo "#$NUMBER: halted for a person (review:needs-human). Read review-cycle.sh status $NUMBER and decide" ;;
+    review:pending)    echo "#$NUMBER: not reviewed yet (the head is $short). Read the diff you will review, then run review-cycle.sh start $NUMBER --sha <that head>" ;;
+    *)                 echo "#$NUMBER: no review state. Run review-cycle.sh ensure-labels, then start $NUMBER --sha <the head you will review>" ;;
+  esac
+  if [ -n "${MARKER_SHA:-}" ] && [ "${HEAD:0:${#MARKER_SHA}}" != "$MARKER_SHA" ]; then
+    echo "  the head moved since the last verdict (${MARKER_SHA:0:12}): run review-cycle.sh stale $NUMBER first"
+  fi
+  return 0
+}
+
 # Creates the six labels, or updates them in place: `--force` makes `gh label create` overwrite the
 # colour and description of a label that already exists, so running this twice is the same as
 # running it once. It needs no pull request, only a repository `gh` can resolve. Every
@@ -2359,7 +2419,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 case "${1:-status}" in
   status)  shift || true; cmd_status  "${1:-}" ;;
   debt)    shift || true; cmd_debt    "${1:-}" ;;
-  start)   shift || true; cmd_start   "${1:-}" ;;
+  start)   shift || true; cmd_start   "$@" ;;
+  next)    shift || true; cmd_next    "${1:-}" ;;
   fix)     shift || true; cmd_fix     "${1:-}" ;;
   halt)    shift || true; cmd_halt    "$@" ;;
   budget)  shift || true; cmd_budget  "${1:-}" ;;
@@ -2372,6 +2433,6 @@ case "${1:-status}" in
   findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|next|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels} [pr]" ;;
 esac
 fi
