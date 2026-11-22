@@ -15,8 +15,8 @@ row() { if [ "$2" = ok ]; then PASS=$((PASS+1)); ROWS+=("PASS | $1"); else FAIL=
 eq() { [ "$1" = "$2" ]; }
 check() { local name="$1"; shift; if "$@"; then row "$name" ok; else row "$name" bad "assert failed"; fi; }
 g() { git -C "$W/repo" -c user.name=t -c user.email=t@example.com "$@"; }
-prjson() { # state head_ref head_oid cross [base_oid]
-  printf '{"state":"%s","headRefName":"%s","headRefOid":"%s","baseRefName":"main","baseRefOid":"%s","isCrossRepository":%s}' "$1" "$2" "$3" "${5:-$BASE_OID}" "$4" >"$FAKE_DIR/pr.json"; }
+prjson() { # state head_ref head_oid cross [base_oid] [base_ref]
+  printf '{"state":"%s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","baseRefOid":"%s","isCrossRepository":%s}' "$1" "$2" "$3" "${6:-main}" "${5:-$BASE_OID}" "$4" >"$FAKE_DIR/pr.json"; }
 run() { (cd "$W/repo" && "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
 
 g init -q -b main . 2>/dev/null || { git -C "$W/repo" init -q; g checkout -q -b main; }
@@ -80,6 +80,15 @@ r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live 
 g rev-parse main >"$FAKE_DIR/base-tip"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live base tip from GitHub -> ok" eq "$r" 0
 grep -q '^gh api repos/{owner}/{repo}/git/ref/heads/main --jq ' "$FAKE_DIR/calls.log"; check "the live base tip is read by the base branch's name" eq "$?" 0
+# A base name gh would not send as written (a # fragment, a %-escape, a {placeholder}, a ..) names
+# another ref: the live tip is not read at all, so only baseRefOid is excluded and the push is refused.
+for b in 'sprint#4' 'zz/%2e%2e/main' '{branch}' 'a..b' 'a b'; do
+  prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" "$b"; : >"$FAKE_DIR/calls.log"
+  r=$(run --findings "$W/rep.md" --allow src/q.ts); check "base name '$b' -> live tip not read, refused" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log"'
+done
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'release/v1.2_rc-3'; : >"$FAKE_DIR/calls.log"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "plain base name with / . _ - -> live tip read, ok" eval '[ $r = 0 ] && grep -q "git/ref/heads/release/v1.2_rc-3 " "$FAKE_DIR/calls.log"'
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"
 echo 0123456789abcdef0123456789abcdef01234567 >"$FAKE_DIR/base-tip"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "live base tip not in this clone -> refused" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
 echo "$(g rev-parse main) x" >"$FAKE_DIR/base-tip"
