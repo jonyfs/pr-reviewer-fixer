@@ -73,6 +73,22 @@ echo y >"$W/repo/src/y.ts"; g add -A; g commit -q -m "main moves"; g checkout -q
 g merge -q --no-edit main >/dev/null 2>&1
 prjson OPEN feat/m "$HEAD_OID" false "$(g rev-parse main)"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "merge commit from the base -> ok" eq "$r" 0
+# GitHub's baseRefOid still names the old base before the first push of a merge of a base that moved
+# (PR 65): the live tip of the base branch, read from GitHub, keeps the base's commits out of scope.
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live base tip unreadable -> refused, the base's file counts" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
+g rev-parse main >"$FAKE_DIR/base-tip"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live base tip from GitHub -> ok" eq "$r" 0
+grep -q '^gh api repos/{owner}/{repo}/git/ref/heads/main --jq ' "$FAKE_DIR/calls.log"; check "the live base tip is read by the base branch's name" eq "$?" 0
+echo 0123456789abcdef0123456789abcdef01234567 >"$FAKE_DIR/base-tip"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "live base tip not in this clone -> refused" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
+echo "$(g rev-parse main) x" >"$FAKE_DIR/base-tip"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "live base tip not a commit id -> refused" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
+# A commit on the local base that GitHub's base does not hold is the pushing agent's own.
+LIVE="$(g rev-parse main)"; g checkout -q main; echo v >"$W/repo/src/v.ts"; g add -A; g commit -q -m "local base only"
+g checkout -q feat/m; g merge -q --no-edit main >/dev/null 2>&1; echo "$LIVE" >"$FAKE_DIR/base-tip"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "a local base commit the live base lacks -> refused" eval '[ $r = 1 ] && grep -q "src/v.ts" "$W/out"'
+g reset -q --hard HEAD~1; g branch -q -f main "$LIVE"; rm -f "$FAKE_DIR/base-tip"
 
 # S4: a merge commit is checked by what it changes beyond the automatic merge of its parents.
 g checkout -q -b feat/e "$HEAD_OID"; g checkout -q main; echo w >"$W/repo/src/w.ts"; g add -A; g commit -q -m "main moves again"
