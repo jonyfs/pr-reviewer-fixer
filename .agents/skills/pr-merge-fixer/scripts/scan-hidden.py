@@ -388,6 +388,11 @@ def scan_diff(base, head, verdict_re):
                 if path is not None:
                     p = path
                     hits += scan_text(raw[1:], verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), line_offset=n - 1)
+                    # An added line that can change how text BELOW it renders (a backtick, a tilde, an angle bracket,
+                    # or an indented block) makes the file risky: the construct below may become live (PR 67 W1).
+                    text_line = raw[1:]
+                    if re.search(r"[`~<>]", text_line) or text_line.startswith(("\t", "    ")):
+                        info.setdefault(path, {"removed": False, "touch": 0, "risky": False})["risky"] = True
                 n += 1
             elif raw.startswith("-"):
                 rem_old -= 1
@@ -405,7 +410,7 @@ def scan_diff(base, head, verdict_re):
             n = int(h.group(2))
             rem_new = int(h.group(3)) if h.group(3) is not None else 1
             if path is not None:
-                inf = info.setdefault(path, {"removed": False, "touch": 0})
+                inf = info.setdefault(path, {"removed": False, "touch": 0, "risky": False})
                 if rem_old > 0:
                     inf["removed"] = True
                 inf["touch"] = max(inf["touch"], n + rem_new - 1 if rem_new > 0 else n)
@@ -434,7 +439,7 @@ def changed_file_hits(head, verdict_re, info, seen):
         if not openers:
             continue
         first = min(h["line"] for h in openers)
-        if inf["removed"] or inf["touch"] >= first:
+        if inf["removed"] or inf.get("risky") or inf["touch"] >= first:
             out += [h for h in whole if h["location"] not in seen]
     return out
 

@@ -367,6 +367,8 @@ rc, out = fc_case("above.md", "line one\nline two\nline three\n" + OPEN + "x -" 
 check("a line added wholly above a construct is not reported (no noise on a change that cannot alter it)", rc == 0 and (out or {}).get("count", 0) == 0, (rc, out))
 rc, out = fc_case("removed.md", "x\ny\n" + OPEN + "z -" + "->\n" + "w\n", "x\n" + OPEN + "z -" + "->\n" + "w\n")
 check("a removed line in a file with a construct is reported (the removal can change a render)", rc == 1, (rc, out))
+rc, out = fc_case("fence.md", "keep\n" + OPEN + "z -" + "->\n", "~" * 3 + "\n" + "keep\n" + OPEN + "z -" + "->\n")
+check("an added fence line above a construct is reported (it can make the construct live)", rc == 1, (rc, out))
 
 print(f"{ok}/{total} passed")
 sys.exit(0 if ok == total else 1)
