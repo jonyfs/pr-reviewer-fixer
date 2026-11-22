@@ -168,6 +168,7 @@ start "install-remote.sh"                         env TEST_TAG="${P}run" bash "$
 start "remote-review.sh"                          env TEST_TAG="${P}run" bash "$HERE/remote-review/run.sh"
 start "preflight (scratch repositories)"         env TEST_TAG="${P}run" bash "$HERE/preflight/run.sh"
 start "run-all --only refusals"                env TEST_TAG="${P}run" bash "$HERE/run-only/run.sh"
+start "merge conflict end to end (preflight)"    env TEST_TAG="${P}run" bash "$HERE/merge-integration/run.sh"
 start "run-all cache key and refusals"             env TEST_TAG="${P}run" bash "$HERE/run-cache/run.sh"
 start "mutation check (guards)"                 env TEST_TAG="${P}run" bash "$HERE/mutation/run.sh"
 start "cycle budget and extend"                  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
@@ -212,8 +213,8 @@ done
 # passing with nothing read.
 if ! plain_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
 import os, re, sys
-markers = ("<!-- adversarial-review:", "<!-- pr-fixer-closure:", "<!-- pr-merge-fixer-closure:",
-           "<!-- pr-skill-status:")
+markers = ("<!-[-] adversarial-review:", "<!-[-] pr-fixer-closure:", "<!-[-] pr-merge-fixer-closure:",
+           "<!-[-] pr-skill-status:")
 rules = [(re.compile(r"^\s*\|"), "table row"), (re.compile(r"^\s*#{1,6}\s"), "heading"),
          (re.compile(r"\*\*|__\S"), "bold"), (re.compile(r"^\s*([-*+]|\d+[.)])\s"), "list item"),
          (re.compile(r"^\s*>"), "quote")]

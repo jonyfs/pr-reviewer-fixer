@@ -70,11 +70,11 @@ Each agent comment starts with one marker line. The scripts read these markers, 
 
 | Marker | Written by | Meaning |
 |---|---|---|
-| `<!-- adversarial-review: sha=… verdict=… pass=… -->` | reviewer | The verdict for one commit, with its counts |
-| `<!-- pr-fixer-closure: cycle=… head=… -->` | fixer | Its work in one cycle |
-| `<!-- pr-merge-fixer-closure: head=… resolved=… escalated=… -->` | merge fixer | The conflicts it resolved or escalated |
-| `<!-- pr-skill-status: skill=… … -->` | any | The live status of one run, edited in place |
-| `<!-- pr-skill-extension: state=granted\|halted … -->` | `extend` or `halt` | Your answer to the cycle question |
+| `<!-[-] adversarial-review: sha=… verdict=… pass=… -->` | reviewer | The verdict for one commit, with its counts |
+| `<!-[-] pr-fixer-closure: cycle=… head=… -->` | fixer | Its work in one cycle |
+| `<!-[-] pr-merge-fixer-closure: head=… resolved=… escalated=… -->` | merge fixer | The conflicts it resolved or escalated |
+| `<!-[-] pr-skill-status: skill=… … -->` | any | The live status of one run, edited in place |
+| `<!-[-] pr-skill-extension: state=granted\|halted … -->` | `extend` or `halt` | Your answer to the cycle question |
 
 Only comments from a login in `REVIEW_MARKER_AUTHORS` count, and an edited comment does not count.
 
