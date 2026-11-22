@@ -128,7 +128,8 @@ tree_key() {
       "$(python3 -V 2>&1)" "$(uname -sm 2>/dev/null)" "$(node -v 2>/dev/null)" "$(jq --version 2>/dev/null)" \
       "$(curl --version 2>/dev/null | head -n 1)"
     # the user's global git configuration changes what git diff and git hash-object produce: its digest is part of the key
-    shasum -a 256 "${HOME:-/dev/null}/.gitconfig" "${XDG_CONFIG_HOME:-${HOME:-/dev/null}/.config}/git/config" 2>/dev/null
+    shasum -a 256 "${HOME:-/dev/null}/.gitconfig" "${XDG_CONFIG_HOME:-${HOME:-/dev/null}/.config}/git/config" \
+      "${GIT_CONFIG_GLOBAL:-/dev/null}" 2>/dev/null
   } | shasum -a 256 2>/dev/null | cut -d' ' -f1
 }
 if [ "${PRINT_KEY:-0}" = 1 ]; then tree_key; exit 0; fi

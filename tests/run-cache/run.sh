@@ -51,5 +51,16 @@ rm -f "$CD/$KEYNOW"
 out="$(bash "$R/tests/run-all.sh" 2>&1)"; r=$?
 check "a run with a failing suite does not write the key (the write gate)" eval '[ $r -ne 0 ] && [ ! -e "$CD/$KEYNOW" ]'
 unset XDG_CACHE_HOME
+# The toolchain and the global git configuration are part of the key (PR 65 pass 4 W4)
+mkdir -p "$W/fakebin" "$W/home"
+printf '#!/usr/bin/env bash\necho v99.0.0\n' > "$W/fakebin/node"; chmod +x "$W/fakebin/node"
+KB="$(key)"
+KN1="$(PATH="$W/fakebin:$PATH" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+check "a different node on PATH changes the key (the toolchain is keyed)" eval '[ -n "$KN1" ] && [ "$KN1" != "$KB" ]'
+printf '[user]\n\tname = one\n' > "$W/home/.gitconfig"
+KG1="$(HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+printf '[user]\n\tname = two\n' > "$W/home/.gitconfig"
+KG2="$(HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+check "changing the global git config changes the key" eval '[ -n "$KG1" ] && [ "$KG1" != "$KG2" ]'
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
