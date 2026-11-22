@@ -5,11 +5,11 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Scanner noise in the documentation (declared debt)
 
-The hidden-text scanner reports every comment opener, details tag and hidden element in a Markdown file that a
-change touches (PR 67, fail closed). The reference files list the review markers as examples, so an edit to one of
-those files reports them. This is accepted: the report is noise, never a missed hidden comment. Rewriting the
-examples so the raw text holds no opener is the follow-up, and it needs each jq and grep snippet tested against the
-real script first (see the notes of PR 67).
+The hidden-text scanner reports every comment opener, details tag and hidden element in each changed file that GitHub
+may render as Markdown (PR 67, fail closed). Several files list the review markers as examples, so an edit to one of
+them reports those examples again. That is accepted as noise, but each reported hit is still judged: a new comment with
+an instruction is a candidate CRITICAL even among the existing examples. Rewriting the examples is the follow-up; it
+needs each jq and grep snippet tested against the real script first.
 
 ## What this repository is
 
