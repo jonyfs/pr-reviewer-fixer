@@ -62,5 +62,17 @@ KG1="$(HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" bash "$R/tests/run-all.s
 printf '[user]\n\tname = two\n' > "$W/home/.gitconfig"
 KG2="$(HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
 check "changing the global git config changes the key" eval '[ -n "$KG1" ] && [ "$KG1" != "$KG2" ]'
+# The XDG git config and GIT_CONFIG_GLOBAL are keyed too (PR 65 pass 5, W6): each changes the key when its content changes
+mkdir -p "$W/home/.config/git"
+printf '[user]\n\tname = one\n' > "$W/home/.config/git/config"
+KX1="$(HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+printf '[user]\n\tname = two\n' > "$W/home/.config/git/config"
+KX2="$(HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+check "changing the XDG git config changes the key" eval '[ -n "$KX1" ] && [ "$KX1" != "$KX2" ]'
+printf '[user]\n\tname = one\n' > "$W/gcg.config"
+KC1="$(GIT_CONFIG_GLOBAL="$W/gcg.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+printf '[user]\n\tname = two\n' > "$W/gcg.config"
+KC2="$(GIT_CONFIG_GLOBAL="$W/gcg.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+check "changing the file GIT_CONFIG_GLOBAL names changes the key" eval '[ -n "$KC1" ] && [ "$KC1" != "$KC2" ]'
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
