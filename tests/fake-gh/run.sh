@@ -4,6 +4,9 @@ set -u
 # A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what is refused; a row that
 # needs one sets it itself.
 unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
+# The read cache is off for every row unless a row turns it on: the rows reuse one pull request number, so a
+# window would show one row's copy to the next.
+export REVIEW_READ_CACHE_SECONDS=0
 T="$(cd "$(dirname "$0")" && pwd)"
 SRC="${1:-$T/../../.agents/skills/pr-reviewer/scripts}"
 RC="$SRC/review-cycle.sh"; GATE="$SRC/gate-pr-review-state.py"
@@ -1272,6 +1275,19 @@ check "start --sha=X before the number -> pinned and started" eval '[ $r = 0 ] &
 reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
 timeout 20 "$RC" start --bogus 7 >/dev/null 2>&1; r=$?
 check "start with an unknown option -> refused" eval '[ $r = 1 ] && hasnt review:running'
+
+# The read cache (PR 56 follow-up, item 2): read-only commands reuse a copy within the window; state-moving
+# commands always read fresh (a decision never rests on an old copy).
+export XDG_CACHE_HOME="$W/cache-home"; mkdir -p "$XDG_CACHE_HOME"
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+REVIEW_READ_CACHE_SECONDS=10 "$RC" status 7 >/dev/null 2>&1; a1=$(calls "gh pr view")
+REVIEW_READ_CACHE_SECONDS=10 "$RC" status 7 >/dev/null 2>&1; a2=$(calls "gh pr view")
+check "status twice in the window reads the pull request once" eval '[ "$a2" = "$a1" ] && [ "$a1" -ge 1 ]'
+REVIEW_READ_CACHE_SECONDS=0 "$RC" status 7 >/dev/null 2>&1; a3=$(calls "gh pr view")
+check "a window of zero reads fresh every time" eval '[ "$a3" -gt "$a2" ]'
+"$RC" start 7 >/dev/null 2>&1; a4=$(calls "gh pr view")
+check "start never reuses the cache (it reads fresh)" eval '[ "$a4" -gt "$a3" ]'
+export -n XDG_CACHE_HOME
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

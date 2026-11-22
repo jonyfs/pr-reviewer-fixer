@@ -478,6 +478,29 @@ publisher_on_list() {
 command -v gh >/dev/null 2>&1 || { echo "review-cycle: gh is not installed — INCONCLUSIVE" >&2; exit 2; }
 
 # Reads the pull request once. $1 is an optional explicit number; without it, the branch's own.
+# Read-only commands (status, next, budget) may reuse a copy of the pull request read in the last
+# REVIEW_READ_CACHE_SECONDS (default 10). Commands that decide or move state (start, fix, stale, publish, halt,
+# extend) always read fresh, so a decision never rests on an old copy. The cache is a file in the user's cache
+# folder, keyed by the pull request number and the owner of this checkout; a failure to use it reads fresh.
+pr_json_read() {
+  local n="${1:-}" dir file age limit
+  dir="${XDG_CACHE_HOME:-${HOME:-}/.cache}/pr-reviewer-fixer"
+  # Keyed by the repository too: the same number in another repository is another pull request.
+  local repo; repo="$(git config --get remote.origin.url 2>/dev/null | cksum | cut -d' ' -f1)"
+  file="$dir/pr-${repo:-none}-${n:-current}.json"
+  limit="${REVIEW_READ_CACHE_SECONDS:-10}"
+  if [ "${REVIEW_READ_CACHE:-0}" = 1 ] && [ -f "$file" ]; then
+    age=$(( $(date +%s) - $(date -r "$file" +%s 2>/dev/null || echo 0) ))
+    if [ "$age" -ge 0 ] && [ "$age" -lt "$limit" ] 2>/dev/null; then cat "$file"; return 0; fi
+  fi
+  local out; out="$(pr_json "$n")" || return $?
+  if [ "${REVIEW_READ_CACHE:-0}" = 1 ] && [ -n "$out" ]; then
+    # The file holds comment bodies: readable by this user only.
+    (umask 077; mkdir -p "$dir" && printf '%s' "$out" >"$file") 2>/dev/null
+  fi
+  printf '%s' "$out"
+}
+
 pr_json() {
   local n="${1:-}"
   # Read through pr-json.py, which drops every comment edited after it was created and fails closed
@@ -707,8 +730,9 @@ cmd_marker() {
 
 # Says, in one line, what the cycle owes, and the exact next command, never a description of one.
 cmd_status() {
+  REVIEW_READ_CACHE=1
   marker_authors_ready || { echo "review-cycle: $NOT_READY_MSG — INCONCLUSIVE"; return 2; }
-  local json; json="$(pr_json "${1:-}")"
+  local json; json="$(pr_json_read "${1:-}")"
   [ -n "$json" ] || { echo "review-cycle: no open pull request for this branch, gh is offline, or comment edits could not be checked — INCONCLUSIVE"; return 2; }
   parse "$json"
   # CLOSED without merge shipped nothing. MERGED shipped, and the first version of this line treated the
@@ -1006,7 +1030,8 @@ cmd_halt() {
 # progress supports: 3 when the open blocking count fell in each of the last two cycles, 1 when it
 # is lower than at pass 1 but did not keep falling, 0 otherwise, never more than what remains.
 cmd_budget() {
-  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read a budget from"
+  REVIEW_READ_CACHE=1
+  local json; json="$(pr_json_read "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read a budget from"
   budget_of "$json"
 }
 # The budget of a pull request already read (`extend` has read it, and a second read costs gh calls).
@@ -2361,7 +2386,8 @@ PY
 # Read-only. Prints the one next step for a pull request, from its label and the head its verdict
 # covers. It moves no label and posts nothing, so it is safe to run at any time.
 cmd_next() {
-  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read"
+  REVIEW_READ_CACHE=1
+  local json; json="$(pr_json_read "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read"
   parse "$json"
   local short="${HEAD:0:12}"
   case "$LABEL" in
