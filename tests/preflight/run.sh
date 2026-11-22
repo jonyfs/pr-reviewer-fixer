@@ -43,9 +43,9 @@ printf 'before\n<%s<<<<<< HEAD\nours\n=======\ntheirs\n>%s>>>>>>> origin/main\n'
 ( cd "$R" && "$RC" preflight main >"$W/conflict.out" 2>&1 ); r=$?
 check "a change that adds conflict markers is refused (exit 1)" [ "$r" = 1 ]
 check "the refusal names the conflict markers" grep -q "conflict markers" "$W/conflict.out"
-# A large change whose conflict marker is at the end: a pipe into grep -q under pipefail once reported it clean (PR 64 W1)
+# A large change whose conflict marker is the first line: a pipe into grep -q under pipefail once reported it clean (PR 64 W1)
 g reset -q --hard HEAD~1 2>/dev/null
-seq 1 40000 | sed 's/^/line /' > "$R/big.md"; printf '%s HEAD\n' '<<<<<<<' >> "$R/big.md"; g add -A; g commit -qm "a large conflicted merge"
+printf '%s HEAD\n' '<<<<<<<' > "$R/big.md"; seq 1 40000 | sed 's/^/line /' >> "$R/big.md"; g add -A; g commit -qm "a large conflicted merge"
 ( cd "$R" && "$RC" preflight main >"$W/big.out" 2>&1 ); r=$?
 check "a large change with a conflict marker at its end is refused (exit 1)" [ "$r" = 1 ]
 echo "TOTAL: $PASS passed, $FAIL failed"
