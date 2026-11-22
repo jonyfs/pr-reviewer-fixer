@@ -22,5 +22,17 @@ check "a commit with a hidden comment is refused (exit 1)" [ "$r" = 1 ]
 check "the refusal names the hidden-text scan" grep -q "hidden-text scan" "$W/hidden.out"
 ( cd "$R" && "$RC" preflight no-such-base >"$W/nobase.out" 2>&1 ); r=$?
 check "a base that is not fetched is refused (exit 1)" [ "$r" = 1 ]
+# A secret-screen refusal: a fake token in the shape the screen knows (not a real credential)
+printf 'token ghp_%s\n' "$(printf 'A%.0s' $(seq 1 36))" > "$R/c.md"; g add -A; g commit -qm "fake token"
+( cd "$R" && "$RC" preflight main >"$W/token.out" 2>&1 ); r=$?
+check "a commit with a token-shaped secret is refused (exit 1)" [ "$r" = 1 ]
+check "the refusal names the secret screen" grep -q "secret screen" "$W/token.out"
+# With the scanner missing, preflight cannot report clean
+g reset -q --hard HEAD~1
+printf 'plain again\n' > "$R/d.md"; g add -A; g commit -qm "plain"
+mv "$ROOT/.agents/skills/pr-reviewer/scripts/scan-hidden.py" "$W/scan-hidden.py.moved"
+( cd "$R" && "$RC" preflight main >"$W/noscan.out" 2>&1 ); r=$?
+mv "$W/scan-hidden.py.moved" "$ROOT/.agents/skills/pr-reviewer/scripts/scan-hidden.py"
+check "with scan-hidden.py missing, preflight does not report clean (exit 1)" [ "$r" = 1 ]
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
