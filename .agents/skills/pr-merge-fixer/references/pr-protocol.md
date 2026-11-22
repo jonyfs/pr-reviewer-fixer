@@ -16,14 +16,18 @@ and check with `cmp`.
 | Artifact | Writer | Reader | Marker or format | Locate with | Lifecycle |
 |---|---|---|---|---|---|
 | Labels | `scripts/review-cycle.sh` only, never by hand (table below) | Both skills, the `review-gate` check, people in the PR list | `review:pending`, `review:running`, `review:passed`, `review:blocked`, `review:fixing`, `review:needs-human` | `gh pr view <n> --json labels --jq '.labels[].name'` | Moves with every script call. Absence of any `review:*` label reads as "not reviewed" |
-| Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-- adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> [model=<id> tier=fast\|standard\|deep] [block_at=warning] -->`, then the report, ending with the fenced `findings` block | `scripts/pr-json.py <n>` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
+| Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-[-] adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> [model=<id> tier=fast\|standard\|deep] [block_at=warning] -->`, then the report, ending with the fenced `findings` block | `scripts/pr-json.py <n>` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
 | Inline review comments | `pr-reviewer`, only in a run a person invoked | `pr-fixer` comment lane | Body starts with the finding id in brackets: `[C1] <claim>` | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed by a thread reply, then resolved. The automatic run posts none |
-| Fixer closure comment | `pr-fixer`, once per cycle, as its finish message, after `review-cycle.sh screen` passes it | `pr-reviewer` pass c+1 (Understand the change) | `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `scripts/pr-json.py <n>` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
-| Merge closure comment | `pr-merge-fixer`, once per merge run, after `review-cycle.sh screen` passes it | `pr-reviewer` pass P+1 (focus hunks), people | `<!-- pr-merge-fixer-closure: head=<sha12> resolved=<n> escalated=<n> -->`, then the banner, the summary lines and one line per file | Filter F7 | One per merge run. Never edited after posting. A merge push always owes the next review pass |
-| Debt block | `pr-fixer` (Declare debt), after `review-cycle.sh screen` passes the new body | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-- pr-debt:start -->` and `<!-- pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
+| Fixer closure comment | `pr-fixer`, once per cycle, as its finish message, after `review-cycle.sh screen` passes it | `pr-reviewer` pass c+1 (Understand the change) | `<!-[-] pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `scripts/pr-json.py <n>` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
+| Merge closure comment | `pr-merge-fixer`, once per merge run, after `review-cycle.sh screen` passes it | `pr-reviewer` pass P+1 (focus hunks), people | `<!-[-] pr-merge-fixer-closure: head=<sha12> resolved=<n> escalated=<n> -->`, then the banner, the summary lines and one line per file | Filter F7 | One per merge run. Never edited after posting. A merge push always owes the next review pass |
+| Debt block | `pr-fixer` (Declare debt), after `review-cycle.sh screen` passes the new body | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-[-] pr-debt:start -->` and `<!-[-] pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
 | Thread replies | `pr-fixer` comment lane | The comment's author, `pr-reviewer` pass 2+ | `Closed in <sha7> (C1)`, and the thread resolved only when the reviewer's login or a trusted bot opened it; or `Declined (C1): <reason>` or `Escalated (C1): <what the person must decide>` and the thread left open | `scripts/fetch-feedback.py <n>` (pr-fixer) | A loop-owned thread is resolved on reply. A person's thread, and a decline, stay open for its author |
-| Status comment | The skill run that is in progress | People watching the PR | `<!-- pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
-| Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-- pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-- pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then one human-readable line | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling, and `extend` removes `review:needs-human`. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
+| Status comment | The skill run that is in progress | People watching the PR | `<!-[-] pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
+| Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-[-] pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-[-] pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then one human-readable line | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling, and `extend` removes `review:needs-human`. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
+
+> Written here with a bracket inside the opener, a form that a regex reads as the plain opener, so the scanner does not take the examples for
+> live comments. A marker an agent writes uses the plain form, the opener without the brackets, never the bracket form.
+
 
 ## Comment layout and legend (all three skills)
 
@@ -33,7 +37,7 @@ no quotes, no fenced block other than the `findings` block (no Mermaid), and no 
 line and the `findings` block are the only exceptions. Every comment follows one order, so a reader
 learns where to look and a parser finds the marker on the first line:
 
-1. the marker, alone on the first line (`<!-- ... -->`);
+1. the marker, alone on the first line (`<!-[-] ... -->`);
 2. the banner, one line: `Written by pr-reviewer`, `Written by pr-fixer` or `Written by
    pr-merge-fixer`, with the pass, cycle or run and the time;
 3. the summary: the title line, then labelled lines (`Verdict:`, `Counts:`, `Head:`, and `Next:`
@@ -49,7 +53,7 @@ escalated for a merged file; lockfile, rename, textual, semantic, vendored and s
 conflict class. A login is written without the `@`, so it notifies nobody.
 
 Formatting that the scripts and the scanner reject, so never write it into an agent comment:
-`<details>` blocks, HTML comments other than the protocol's markers, invisible HTML, and emoji with a
+`details` blocks, HTML comments other than the protocol's markers, invisible HTML, and emoji with a
 variation selector (`⚠️`, `✔️`, `ℹ️`, `➡️`). `scan-hidden.py` flags each one as a candidate finding.
 `tests/run-all.sh` fails when a comment template in the skills holds a table row, a heading, bold,
 a bullet or a fenced block other than `findings`.
@@ -200,11 +204,11 @@ python3 <skill folder>/scripts/pr-json.py <n> \
     | ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
-        | select(.body | test("<!-- adversarial-review: sha=[0-9a-f]{7,40} "))
-        | select(.body | capture("<!-- adversarial-review: sha=(?<s>[0-9a-f]{7,40}) ").s as $s
+        | select(.body | test("<!-[-] adversarial-review: sha=[0-9a-f]{7,40} "))
+        | select(.body | capture("<!-[-] adversarial-review: sha=(?<s>[0-9a-f]{7,40}) ").s as $s
                  | $head | startswith($s)) ]
     | last | .body // empty' > verdict.md
-grep -o '<!-- adversarial-review: [^>]*-->' verdict.md | head -n 1        # the marker
+grep -o '<!-[-] adversarial-review: [^>]*-->' verdict.md | head -n 1        # the marker
 awk '/^```findings$/{f=1; next} f && /^```$/{exit} f' verdict.md          # the findings block
 ```
 
@@ -225,14 +229,14 @@ python3 <skill folder>/scripts/pr-json.py <n> \
     ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
-        | select(.body | startswith("<!-- pr-fixer-closure: cycle=" + $cycle + " ")) ]
+        | select(.body | startswith("<" + "!-- pr-fixer-closure: cycle=" + $cycle + " ")) ]
     | last | .body // empty'
 ```
 
 **F4. The debt block:**
 
 ```bash
-gh pr view <n> --json body --jq .body | awk '/<!-- pr-debt:start -->/,/<!-- pr-debt:end -->/'
+gh pr view <n> --json body --jq .body | awk '/<!-[-] pr-debt:start -->/,/<!-[-] pr-debt:end -->/'
 ```
 
 **F5. The id of a status comment** (to edit it after a restart):
@@ -243,7 +247,7 @@ python3 <skill folder>/scripts/pr-json.py <n> \
     ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
-        | select(.body | startswith("<!-- pr-skill-status: skill=" + $skill + " ")) ]
+        | select(.body | startswith("<" + "!-- pr-skill-status: skill=" + $skill + " ")) ]
     | last | .url // empty | sub(".*issuecomment-"; "")'
 ```
 
@@ -257,7 +261,7 @@ python3 <skill folder>/scripts/pr-json.py <n> \
     ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
-        | select(.body | startswith("<!-- pr-skill-extension: ")) ]
+        | select(.body | startswith("<" + "!-- pr-skill-extension: ")) ]
     | last | .body // empty' | head -n 1
 ```
 
@@ -269,7 +273,7 @@ python3 <skill folder>/scripts/pr-json.py <n> \
     ($authors | ascii_downcase | split(",") | map(gsub("^[ \t\r\n]+|[ \t\r\n]+$"; "")) | map(select(test("^[a-z0-9][a-z0-9_-]*$")))) as $allow
     | [ .comments[]
         | select(($allow | length) > 0 and ((.author.login | ascii_downcase) as $a | ($allow | index($a) != null)))
-        | select(.body | startswith("<!-- pr-merge-fixer-closure: ")) ]
+        | select(.body | startswith("<" + "!-- pr-merge-fixer-closure: ")) ]
     | last | .body // empty'
 ```
 
@@ -331,7 +335,7 @@ secret screen `publish` applies (exit 1 names the kind of secret, never the valu
 scripts/review-cycle.sh screen --file closure.md && gh pr comment <n> --body-file closure.md
 ```
 
-`closure.md` starts with `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`,
+`closure.md` starts with `<!-[-] pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`,
 where `head` is the head after the fixer's last push. The body is the closure report: per finding
 id, the reproduction, the test, the red output, the fix, the green output and the suite counts; per
 refused finding, the evidence of non-reproduction. The finish line is the closure comment's first
@@ -345,7 +349,7 @@ python3 -I - body.md debt.md <<'PY'
 import sys
 body = open(sys.argv[1]).read()
 debt = open(sys.argv[2]).read().strip("\n")
-start, end = "<!-- pr-debt:start -->", "<!-- pr-debt:end -->"
+start, end = "<" + "!-- pr-debt:start -->", "<" + "!-- pr-debt:end -->"
 block = start + "\n" + debt + "\n" + end
 if start in body and end in body:
     head, rest = body.split(start, 1)

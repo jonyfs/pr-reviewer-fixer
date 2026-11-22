@@ -26,3 +26,4 @@ tests/update/state-*/
 tests/scan/work-*/
 tests/preflight/work-*/
 tests/merge-integration/work-*/
+tests/run-cache/work-*/

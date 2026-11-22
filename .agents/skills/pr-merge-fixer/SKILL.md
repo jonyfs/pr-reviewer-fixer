@@ -50,7 +50,7 @@ Every comment this skill posts is plain text (no Markdown, no emoji; see
 who wrote it and that it ran:
 
 ```text
-<!-- pr-merge-fixer-closure: head=<sha12> resolved=<r> escalated=<e> -->
+<!-[-] pr-merge-fixer-closure: head=<sha12> resolved=<r> escalated=<e> -->
 Written by pr-merge-fixer, ran at <UTC time>, base <base> merged into the head.
 ```
 
@@ -142,7 +142,7 @@ heading, table, bold, bullet, emoji or fenced block: Markdown belongs in the pul
 description only.
 
 ```text
-<!-- pr-merge-fixer-closure: head=<sha12> resolved=<r> escalated=<e> -->
+<!-[-] pr-merge-fixer-closure: head=<sha12> resolved=<r> escalated=<e> -->
 Written by pr-merge-fixer, ran at <UTC time>, base <base> merged into the head.
 
 Resolved 3 files, review owed

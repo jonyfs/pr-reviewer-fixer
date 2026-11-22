@@ -312,7 +312,7 @@ flowchart TD
    replies instead.
 7. **Close the loop.** The push moves the head, and `review-cycle.sh stale` moves the label back to
    `review:pending`. The fixer posts one closure comment carrying
-   `<!-- pr-fixer-closure: cycle=… head=… closed=… refused=… debt=… -->`. For each finding it records
+   `<!-[-] pr-fixer-closure: cycle=… head=… closed=… refused=… debt=… -->`. For each finding it records
    the reproduction, the test, the red run, the fix, the green run and the suite counts. For each
    refusal it records the evidence. The reviewer's next pass takes it from there.
 
@@ -356,7 +356,7 @@ never read as "reviewed".
 | `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `findings-block`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
-| `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi, tag and filler characters, variation-selector runs, HTML comments other than the markers, link references that hide text, `<details>`, invisible HTML) in the diff, the pull request text and the commit messages, and with `--feedback-json` in the fixer's comment work list, as JSON. It strips nothing. |
+| `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi, tag and filler characters, variation-selector runs, HTML comments other than the markers, link references that hide text, a `details` tag, invisible HTML) in the diff, the pull request text and the commit messages, and with `--feedback-json` in the fixer's comment work list, as JSON. It strips nothing. |
 | `path-floor.sh` | Read-only, both skills. Maps the changed paths to the review units that must run, and `lint-report` runs it over the diff it checks. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
 | `fetch-feedback.py` | Read-only, fixer only. Every review thread, review body and issue comment as one list, with author association, thread state and whether the fixer may act on it or resolve it. |

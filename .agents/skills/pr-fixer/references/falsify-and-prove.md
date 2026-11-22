@@ -90,7 +90,7 @@ reader sees the banner, the summary lines, then one labelled line per checkpoint
 evidence. The layout is fixed:
 
 ```text
-<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->
+<!-[-] pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->
 Written by pr-fixer, cycle <c>, ran at <UTC time>, head <sha7>.
 
 Closed 1, refused 1, debt 3
@@ -138,7 +138,7 @@ Rules for the closure comment:
   reviewer turns `refused` into `refused-accepted` or `refused-rejected`.
 - Debt is one `Debt <id> (<severity>): <claim>. Owner: <owner>.` line per item, the same items as
   the `pr-debt` block of the PR body. A login is written without the `@`.
-- Avoid `<details>`, HTML comments other than the marker, and emoji with a variation selector: the
+- Avoid a `details` tag, HTML comments other than the marker, and emoji with a variation selector: the
   scanner flags each one (see [pr-protocol.md](pr-protocol.md)).
 
 ## What this is not

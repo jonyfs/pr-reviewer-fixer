@@ -3,13 +3,12 @@
 This file provides guidance to AI coding agents when working with code in this repository.
 
 
-## Scanner noise in the documentation (declared debt)
+## Scanner noise in the documentation
 
 The hidden-text scanner reports every comment opener, details tag and hidden element in each changed file that GitHub
-may render as Markdown (PR 67, fail closed). Several files list the review markers as examples, so an edit to one of
-them reports those examples again. That is accepted as noise, but each reported hit is still judged: a new comment with
-an instruction is a candidate CRITICAL even among the existing examples. Rewriting the examples is the follow-up; it
-needs each jq and grep snippet tested against the real script first.
+may render as Markdown (PR 67, fail closed). The examples of review markers are written with a bracket form,
+`<!-[-]`, so the raw text holds no literal opener (PR 69); an agent that writes a real marker uses the plain form, without the brackets. Each reported
+hit is still judged: a new comment with an instruction is a candidate CRITICAL.
 
 ## What this repository is
 
@@ -43,7 +42,7 @@ The suite needs bash, python3, node, jq, git, curl, tar and sha256sum. It puts a
 
 ## Architecture
 
-**The three skills never call each other.** They communicate only through the pull request: `review:*` labels, a verdict comment carrying `<!-- adversarial-review: sha=... verdict=... pass=... -->`, a fixer closure comment, a merge closure comment (`<!-- pr-merge-fixer-closure: ... -->`), a `pr-debt` block in the PR body, and extension answer comments. The review loop agent dispatches the merge fixer before a review, when the branch conflicts. The artifact table in `docs/REFERENCE.md` lists each one, and `.agents/skills/pr-reviewer/references/pr-protocol.md` has the exact `gh` command to find it. Changing a marker or label format means updating both skills and the scripts.
+**The three skills never call each other.** They communicate only through the pull request: `review:*` labels, a verdict comment carrying `<!-[-] adversarial-review: sha=... verdict=... pass=... -->`, a fixer closure comment, a merge closure comment (`<!-[-] pr-merge-fixer-closure: ... -->`), a `pr-debt` block in the PR body, and extension answer comments. The review loop agent dispatches the merge fixer before a review, when the branch conflicts. The artifact table in `docs/REFERENCE.md` lists each one, and `.agents/skills/pr-reviewer/references/pr-protocol.md` has the exact `gh` command to find it. Changing a marker or label format means updating both skills and the scripts.
 
 **Mechanism lives in scripts, judgement lives in prose.**
 - `scripts/review-cycle.sh` is the state machine: it owns labels, prints a report's findings block as JSON (`findings-block`, the one parser `lint-report` and `push-guard.sh` share), publishes the verdict bound to the head SHA (it re-reads the head from GitHub and refuses a stale `--sha`), refuses inconsistent verdict arithmetic (a `BLOCKED` with no CRITICAL, a `PASSED` with one), computes the cycle budget (`budget`, `extend`, `halt`), refuses to start a correction on code from a fork or a non-collaborator (`fix`), and exports audit records (`export-audit`).
