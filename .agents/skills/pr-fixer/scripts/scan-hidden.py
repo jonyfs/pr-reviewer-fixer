@@ -375,6 +375,10 @@ def scan_diff(base, head, verdict_re):
                 "--no-renames", "-U0", base + "..." + head)
     hits, path, n = [], None, 0
     rem_old = rem_new = 0
+    # Per file: whether any old line is removed or changed, and the last new line the change touches. A change
+    # anywhere in a file can make a construct above it live (an added backtick, a removed fence, a body edited inside an
+    # unterminated comment), so the file is judged as a whole below (PR 67: the fail-closed rule).
+    info = {}
     for raw in patch.split("\n"):
         if rem_old > 0 or rem_new > 0:
             # Inside a hunk every line is a hunk line, counted from the @@ header: an added line
@@ -400,7 +404,39 @@ def scan_diff(base, head, verdict_re):
             rem_old = int(h.group(1)) if h.group(1) is not None else 1
             n = int(h.group(2))
             rem_new = int(h.group(3)) if h.group(3) is not None else 1
-    return hits
+            if path is not None:
+                inf = info.setdefault(path, {"removed": False, "touch": 0})
+                if rem_old > 0:
+                    inf["removed"] = True
+                inf["touch"] = max(inf["touch"], n + rem_new - 1 if rem_new > 0 else n)
+    return hits + changed_file_hits(head, verdict_re, info, {h["location"] for h in hits})
+
+
+CONSTRUCT_KINDS = ("html-comment", "details", "invisible-html")
+
+
+def changed_file_hits(head, verdict_re, info, seen):
+    """Fail closed: a changed file that holds a construct (a comment, a details tag, a hidden element) is reported
+    whole when its change removes or changes a line, or adds a line at or after the construct's first line. Only a
+    change wholly above every construct is passed without a report, because only then can it not alter how the
+    construct renders. The base's copy is not compared: a count of hits let a second copy, or an edited body, hide."""
+    out = []
+    for p, inf in info.items():
+        if p is None:
+            continue
+        if subprocess.run(["git", "cat-file", "-e", head + ":" + p], capture_output=True).returncode != 0:
+            continue  # deleted at the head: no text is left to hide anything
+        if git("cat-file", "-t", head + ":" + p).strip() != "blob":
+            continue  # a submodule is a commit, not text
+        text = git("show", head + ":" + p)
+        whole = scan_text(text, verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l))
+        openers = [h for h in whole if h["kind"] in CONSTRUCT_KINDS]
+        if not openers:
+            continue
+        first = min(h["line"] for h in openers)
+        if inf["removed"] or inf["touch"] >= first:
+            out += [h for h in whole if h["location"] not in seen]
+    return out
 
 
 def scan_commits(base, head, verdict_re):
