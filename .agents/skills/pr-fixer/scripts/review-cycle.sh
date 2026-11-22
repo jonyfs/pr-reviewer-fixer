@@ -2302,6 +2302,11 @@ for f in entries:
 
 if not re.search(r"Declined to judge:", report):
     problems.append("the coverage note has no `Declined to judge:` line (write `none` when nothing was skipped)")
+# Independence (PR 59 review of the loop, item 7): the report must say whether the stances were run by separate
+# agents or by one session. A single-session review is allowed, but it has to say so; it is not presented as independent.
+mode = re.search(r"^\s*Review mode:\s*(separate agents|single session)\.?\s*$", report, re.M | re.I)
+if not mode:
+    problems.append("the coverage note has no `Review mode:` line (write `separate agents` or `single session`)")
 
 # The path floor: each mandatory unit must be in the block's `mandatory_units` field with status `run`,
 # and a unit the floor wants at `max` with `effort: max`. A malformed field is refused whatever the
