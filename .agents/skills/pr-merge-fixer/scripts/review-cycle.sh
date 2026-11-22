@@ -2416,6 +2416,11 @@ cmd_preflight() {
   if ! python3 "$(dirname "$0")/scan-hidden.py" --diff "origin/$base" "$head" --commits "origin/$base" "$head" >/dev/null 2>&1; then
     echo "preflight: the hidden-text scan finds something on origin/$base..${head:0:12}: run scan-hidden.py --diff origin/$base $head --commits origin/$base $head" >&2; rc=1
   fi
+  # A merge that stopped on a conflict leaves markers in the files. They are not a finding the scanners know, so they
+  # are refused here: a push of a conflicted merge would be reviewed as if the conflict were content.
+  if git diff -U0 "origin/$base" "$head" 2>/dev/null | grep -qE '^\+(<{7}( |$)|>{7}( |$)|={7}$)'; then
+    echo "preflight: the change adds conflict markers (<<<<<<< / ======= / >>>>>>>) on origin/$base..${head:0:12}: finish the merge first" >&2; rc=1
+  fi
   [ "$rc" = 0 ] && echo "preflight: clean at ${head:0:12} against origin/$base"
   return "$rc"
 }
