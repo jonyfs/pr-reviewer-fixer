@@ -620,6 +620,13 @@ printf 'Declined to judge: none\nReview mode: single session\nno block here\n' >
 printf 'Declined to judge: none\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/lr-nomode.md"
 "$RC" lint-report 7 --report "$W/lr-nomode.md" >"$W/out-nomode" 2>&1; r=$?
 check "lint: a report with no Review mode line is refused" eval '[ $r -ne 0 ] && grep -q "Review mode" "$W/out-nomode"'
+# the line may end with a period (the contract example does), and a value with extra words is refused
+printf 'Declined to judge: none\nReview mode: single session.\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/lr-period.md"
+"$RC" lint-report 7 --report "$W/lr-period.md" >"$W/out-period" 2>&1; r=$?
+check "lint: a Review mode line ending with a period is accepted" eval '! grep -q "Review mode" "$W/out-period"'
+printf 'Declined to judge: none\nReview mode: single session and a half\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/lr-extra.md"
+"$RC" lint-report 7 --report "$W/lr-extra.md" >"$W/out-extra" 2>&1; r=$?
+check "lint: a Review mode value with extra words is refused" eval '[ $r -ne 0 ] && grep -q "Review mode" "$W/out-extra"'
 "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report no findings block -> 1" eq "$r" 1
 lr 1 src/a.ts 11; sed -i.bak '/Declined to judge/d' "$W/lr.md"; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?

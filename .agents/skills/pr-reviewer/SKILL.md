@@ -243,6 +243,7 @@ scanner reads both as hidden text.
 - [ ] Failing required check read; no PASSED over an unexplained one
 - [ ] Review agents made no write of any kind
 - [ ] Large changes: size warning, partitioned review, depth map, split recommended
+- [ ] Coverage note carries a `Review mode:` line, `separate agents` or `single session` (a single-session review says so); 
 - [ ] Coverage note carries a `Declined to judge:` line, even when it says `none`; a PASSED never
       hides a region the review did not read
 - [ ] `lint-report` exits 0: every finding names a file and line the diff shows, and every unit
