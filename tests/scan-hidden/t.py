@@ -367,6 +367,8 @@ rc, out = fc_case("above.md", "line one\nline two\nline three\n" + OPEN + "x -" 
 check("a line added above a construct is reported whole (plain text can make an indented block's comment live)", rc == 1, (rc, out))
 rc, out = fc_case("removed.md", "x\ny\n" + OPEN + "z -" + "->\n" + "w\n", "x\n" + OPEN + "z -" + "->\n" + "w\n")
 check("a removed line in a file with a construct is reported (the removal can change a render)", rc == 1, (rc, out))
+rc, out = fc_case("src.py", "x = 1\n# " + OPEN + "z -" + "->\n", "x = 2\n# " + OPEN + "z -" + "->\n")
+check("a source file (never rendered as Markdown) with a comment in it is not reported whole", rc == 0 and (out or {}).get("count", 0) == 0, (rc, out))
 rc, out = fc_case("fence.md", "keep\n" + OPEN + "z -" + "->\n", "~" * 3 + "\n" + "keep\n" + OPEN + "z -" + "->\n")
 check("an added fence line above a construct is reported (it can make the construct live)", rc == 1, (rc, out))
 

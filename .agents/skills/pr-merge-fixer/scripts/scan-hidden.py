@@ -413,6 +413,12 @@ def scan_diff(base, head, verdict_re):
 
 
 CONSTRUCT_KINDS = ("html-comment", "details", "invisible-html")
+# Source and data files are shown by GitHub as code or text, never rendered: a comment in them is visible, so the
+# whole-file rule is for files that GitHub may render as Markdown (PR 67 pass 3, N3: source files flooded the report).
+PLAIN_EXTENSIONS = (".py", ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".go", ".rb",
+                    ".rs", ".java", ".kt", ".swift", ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".php", ".pl",
+                    ".lua", ".r", ".sql", ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".csv", ".log",
+                    ".txt", ".css", ".scss", ".xml")
 
 
 def changed_file_hits(head, verdict_re, info, seen):
@@ -421,7 +427,7 @@ def changed_file_hits(head, verdict_re, info, seen):
     A change to a file with no construct is not reported here (the added-line scan covers its added text)."""
     out = []
     for p, inf in info.items():
-        if p is None:
+        if p is None or p.lower().endswith(PLAIN_EXTENSIONS):
             continue
         if subprocess.run(["git", "cat-file", "-e", head + ":" + p], capture_output=True).returncode != 0:
             continue  # deleted at the head: no text is left to hide anything
