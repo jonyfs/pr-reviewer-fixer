@@ -1322,6 +1322,38 @@ BSD="$(head -n 1 "$W/bs.out" 2>/dev/null)"
 check "base-scanner: prints a folder with the scanner, the script and the gate (exit 0)" eval '[ $r = 0 ] && [ -f "$BSD/scan-hidden.py" ] && [ -f "$BSD/review-cycle.sh" ] && [ -f "$BSD/gate-pr-review-state.py" ]'
 (cd "$BS" && "$RCABS" base-scanner no-such-base >/dev/null 2>&1); r=$?
 check "base-scanner: a base that is not fetched is refused (exit 1)" eval '[ $r = 1 ]'
+# delta (item 6): with no earlier verdict the pass is a full review, said plainly
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+"$RC" delta 7 >"$W/delta.out" 2>&1; r=$?
+check "delta: no earlier verdict -> a full review, exit 0" eval '[ $r = 0 ] && grep -q "a full pass" "$W/delta.out"'
+
+# delta (PR 62 W1, W3): a marker from a login that is not listed is refused, not read; a listed one is read
+reset '{"number":7,"headRefOid":"'$D'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:passed"}],"comments":[]}'
+sethead $D
+REVIEW_MARKER_AUTHORS= "$RC" delta 7 >"$W/delta-no-allow.out" 2>&1; r=$?
+check "delta: with no trusted login, a delta is refused (exit 1)" eval '[ $r = 1 ] && grep -q "REFUSED" "$W/delta-no-allow.out"'
+# delta in a real scratch repository (PR 62 pass 2, W3): a linear range prints; a merge between, a head that does not
+# descend, an absent verdict head and an absent head each give a full pass or a refusal, never a range
+DR="$W/delta-repo"; rm -rf "$DR"; mkdir -p "$DR"
+dg() { git -C "$DR" -c user.name=t -c user.email=t@example.com "$@"; }
+dg init -q -b main
+echo a > "$DR/f.md"; dg add -A; dg commit -q -m c1; C1=$(dg rev-parse HEAD)
+echo b >> "$DR/f.md"; dg commit -qam c2; C2=$(dg rev-parse HEAD)
+dg checkout -q -b side "$C1"; echo s > "$DR/s.md"; dg add -A; dg commit -qm side
+dg checkout -q main; dg merge -q --no-ff side -m merge; C3=$(dg rev-parse HEAD)
+dg checkout -q --detach "$C1"; echo x > "$DR/x.md"; dg add -A; dg commit -qm other; CO=$(dg rev-parse HEAD)
+dg checkout -q main
+dlrow() { reset '{"number":7,"headRefOid":"'"$1"'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:passed"}],"comments":['"$(mc github-actions "<!-- adversarial-review: sha=$2 verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"']}'; }
+dlrow "$C2" "$C1"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-lin.out" 2>&1); r=$?
+check "delta: a linear range prints the file list (f.md) and exits 0" eval '[ $r = 0 ] && grep -q "f.md" "$W/dl-lin.out"'
+dlrow "$C3" "$C1"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-merge.out" 2>&1); r=$?
+check "delta: a merge between the heads gives a full pass, not a range" eval '[ $r = 0 ] && grep -q "merge sits" "$W/dl-merge.out" && ! grep -q "delta " "$W/dl-merge.out"'
+dlrow "$C2" "$CO"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-desc.out" 2>&1); r=$?
+check "delta: a head that does not descend from the verdict gives a full pass" eval '[ $r = 0 ] && grep -q "does not descend" "$W/dl-desc.out"'
+dlrow "$(printf 'f%.0s' $(seq 1 40))" "$C1"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-nohead.out" 2>&1); r=$?
+check "delta: a head not in this checkout is refused with a fetch instruction (exit 1)" eval '[ $r = 1 ] && grep -q "fetch it" "$W/dl-nohead.out"'
+dlrow "$C2" "$(printf '1%.0s' $(seq 1 40))"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-noverd.out" 2>&1); r=$?
+check "delta: a verdict head not in this checkout gives a full pass" eval '[ $r = 0 ] && grep -q "not in this checkout" "$W/dl-noverd.out"'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

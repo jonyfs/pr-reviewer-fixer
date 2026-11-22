@@ -53,6 +53,10 @@ After a push the loop agent made itself, GitHub reports the new head a few secon
 `review-cycle.sh wait-head <pr>` first: it polls the head every two seconds, for at most two minutes,
 until it is the commit you pushed, and exits 3 if it never is. Then say so and run `stale` anyway.
 
+`review-cycle.sh delta <pr>` (read-only) shows what changed since the last verdict's head. A pass may review only that
+range when it prints one: a head that descends from the verdict's head with no merge between them. Otherwise, or with
+no earlier verdict, the pass is a full review, and the command says which.
+
 An optional Claude Code Stop hook can run `review-cycle.sh debt` and refuse to end a turn while a
 review is owed. It is a convenience. The rule above is the portable trigger.
 
