@@ -90,15 +90,22 @@ names=(); pids=()
 # RUN_ONLY (or --only <words>) runs just the suites whose name holds one of the comma-separated words, for
 # iteration on one change. It is never a substitute for the full run: a PASSED verdict or a merge needs the full
 # run with no filter. Unset, every suite runs.
-if [ "${1:-}" = "--only" ]; then RUN_ONLY="${2:?--only needs a word}"; shift 2; fi
+# The filter comes from the command line only, never from the caller's environment, as the other settings here do.
+unset RUN_ONLY
+if [ "${1:-}" = "--only" ]; then
+  RUN_ONLY="${2:-}"; shift 2
+  case "$RUN_ONLY" in ''|,*|*,|*,,*) echo "run-all: --only needs comma-separated words, none of them empty" >&2; exit 2 ;; esac
+fi
+started=0
 start() {
-  local n="$1" pat keep=""
+  local n="$1" pat keep="" words
   shift
   if [ -n "${RUN_ONLY:-}" ]; then
     IFS=',' read -ra words <<<"$RUN_ONLY"
     for pat in "${words[@]}"; do case "$n" in *"$pat"*) keep=1 ;; esac; done
     [ -n "$keep" ] || return 0
   fi
+  started=$((started + 1))
   names+=("$n"); ( t0=$(date +%s); "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc"; echo $(( $(date +%s) - t0 )) >"$OUT/${#names[@]}.secs" ) & pids+=($!); }
 run_t0=$(date +%s)
 # The shared scripts run once, from the reviewer's copy: the cmp checks below fail when the fixer's
@@ -119,7 +126,10 @@ start "check-version.sh"                         env TEST_TAG="${P}rev" bash "$H
 start "release.sh"                                env TEST_TAG="${P}run" bash "$HERE/release/run.sh"
 start "update.sh"                                 env TEST_TAG="${P}rev" bash "$HERE/update/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts" "$ROOT/install.sh"
 start "model-key scan"                            env TEST_TAG="${P}run" bash "$HERE/scan/run.sh"
-wait "${pids[@]}"
+wait ${pids[@]+"${pids[@]}"}
+if [ -n "${RUN_ONLY:-}" ] && [ "$started" = 0 ]; then
+  echo "run-all: --only $RUN_ONLY matches no suite; nothing ran" >&2; exit 1
+fi
 echo "== all suites: $(( $(date +%s) - run_t0 ))s wall${RUN_ONLY:+ (only: $RUN_ONLY: NOT the full run; a PASSED verdict or a merge needs the full run)}"
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]} ($(cat "$OUT/$n.secs" 2>/dev/null || echo ?)s)"; tail -n 3 "$OUT/$n.log"
