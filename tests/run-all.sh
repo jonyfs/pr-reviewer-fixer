@@ -87,7 +87,29 @@ export PATH="$OUT/python:$PATH"
 names=(); pids=()
 # Each suite records its own wall time in seconds, so a slow one is named in the log (the suites run together,
 # so the total is the slowest one, not the sum).
-start() { local n="$1"; shift; names+=("$n"); ( t0=$(date +%s); "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc"; echo $(( $(date +%s) - t0 )) >"$OUT/${#names[@]}.secs" ) & pids+=($!); }
+# --only <words> runs just the suites whose name holds one of the comma-separated words, for iteration on one
+# change. It is never a substitute for the full run: a PASSED verdict or a merge needs the full
+# run with no filter. Unset, every suite runs.
+# The filter comes from the command line only, never from the caller's environment, as the other settings here do.
+unset RUN_ONLY
+if [ "${1:-}" = "--only" ]; then
+  RUN_ONLY="${2:-}"; shift 2
+  case "$RUN_ONLY" in ''|,*|*,|*,,*) echo "run-all: --only needs comma-separated words, none of them empty" >&2; exit 2 ;; esac
+fi
+started=0
+start() {
+  local n="$1" pat keep="" words
+  shift
+  if [ -n "${RUN_ONLY:-}" ]; then
+    IFS=',' read -ra words <<<"$RUN_ONLY"
+    for pat in "${words[@]}"; do case "$n" in *"$pat"*) keep=1 ;; esac; done
+    [ -n "$keep" ] || return 0
+  fi
+  started=$((started + 1))
+  # A nested call (the refusals suite calls this file) never starts a suite: it refuses here, so a broken
+  # refusal above cannot make the run call itself without end (PR 60 pass 3, W3).
+  if [ -n "${RUN_ALL_NESTED:-}" ]; then echo "run-all: a nested run starts no suite" >&2; exit 3; fi
+  names+=("$n"); ( t0=$(date +%s); "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc"; echo $(( $(date +%s) - t0 )) >"$OUT/${#names[@]}.secs" ) & pids+=($!); }
 run_t0=$(date +%s)
 # The shared scripts run once, from the reviewer's copy: the cmp checks below fail when the fixer's
 # copy differs by one byte, so a second run of the same bytes adds time and no coverage.
@@ -100,6 +122,7 @@ start "install.sh"                                env TEST_TAG="${P}run" bash "$
 start "install-remote.sh"                         env TEST_TAG="${P}run" bash "$HERE/remote/run.sh"
 start "remote-review.sh"                          env TEST_TAG="${P}run" bash "$HERE/remote-review/run.sh"
 start "preflight (scratch repositories)"         env TEST_TAG="${P}run" bash "$HERE/preflight/run.sh"
+start "run-all --only refusals"                env TEST_TAG="${P}run" bash "$HERE/run-only/run.sh"
 start "mutation check (guards)"                 env TEST_TAG="${P}run" bash "$HERE/mutation/run.sh"
 start "cycle budget and extend"                  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "scan-hidden.py"                           env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
@@ -107,8 +130,11 @@ start "check-version.sh"                         env TEST_TAG="${P}rev" bash "$H
 start "release.sh"                                env TEST_TAG="${P}run" bash "$HERE/release/run.sh"
 start "update.sh"                                 env TEST_TAG="${P}rev" bash "$HERE/update/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts" "$ROOT/install.sh"
 start "model-key scan"                            env TEST_TAG="${P}run" bash "$HERE/scan/run.sh"
-wait "${pids[@]}"
-echo "== all suites: $(( $(date +%s) - run_t0 ))s wall"
+wait ${pids[@]+"${pids[@]}"}
+if [ -n "${RUN_ONLY:-}" ] && [ "$started" = 0 ]; then
+  echo "run-all: --only $RUN_ONLY matches no suite; nothing ran" >&2; exit 1
+fi
+echo "== all suites: $(( $(date +%s) - run_t0 ))s wall${RUN_ONLY:+ (only: $RUN_ONLY: NOT the full run; a PASSED verdict or a merge needs the full run)}"
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]} ($(cat "$OUT/$n.secs" 2>/dev/null || echo ?)s)"; tail -n 3 "$OUT/$n.log"
   [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -eq 0 ] || fail=1
