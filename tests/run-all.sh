@@ -87,8 +87,8 @@ export PATH="$OUT/python:$PATH"
 names=(); pids=()
 # Each suite records its own wall time in seconds, so a slow one is named in the log (the suites run together,
 # so the total is the slowest one, not the sum).
-# RUN_ONLY (or --only <words>) runs just the suites whose name holds one of the comma-separated words, for
-# iteration on one change. It is never a substitute for the full run: a PASSED verdict or a merge needs the full
+# --only <words> runs just the suites whose name holds one of the comma-separated words, for iteration on one
+# change. It is never a substitute for the full run: a PASSED verdict or a merge needs the full
 # run with no filter. Unset, every suite runs.
 # The filter comes from the command line only, never from the caller's environment, as the other settings here do.
 unset RUN_ONLY
@@ -119,6 +119,7 @@ start "install.sh"                                env TEST_TAG="${P}run" bash "$
 start "install-remote.sh"                         env TEST_TAG="${P}run" bash "$HERE/remote/run.sh"
 start "remote-review.sh"                          env TEST_TAG="${P}run" bash "$HERE/remote-review/run.sh"
 start "preflight (scratch repositories)"         env TEST_TAG="${P}run" bash "$HERE/preflight/run.sh"
+start "run-all --only refusals"                env TEST_TAG="${P}run" bash "$HERE/run-only/run.sh"
 start "mutation check (guards)"                 env TEST_TAG="${P}run" bash "$HERE/mutation/run.sh"
 start "cycle budget and extend"                  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "scan-hidden.py"                           env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
