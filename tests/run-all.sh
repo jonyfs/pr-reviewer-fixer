@@ -87,7 +87,19 @@ export PATH="$OUT/python:$PATH"
 names=(); pids=()
 # Each suite records its own wall time in seconds, so a slow one is named in the log (the suites run together,
 # so the total is the slowest one, not the sum).
-start() { local n="$1"; shift; names+=("$n"); ( t0=$(date +%s); "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc"; echo $(( $(date +%s) - t0 )) >"$OUT/${#names[@]}.secs" ) & pids+=($!); }
+# RUN_ONLY (or --only <words>) runs just the suites whose name holds one of the comma-separated words, for
+# iteration on one change. It is never a substitute for the full run: a PASSED verdict or a merge needs the full
+# run with no filter. Unset, every suite runs.
+if [ "${1:-}" = "--only" ]; then RUN_ONLY="${2:?--only needs a word}"; shift 2; fi
+start() {
+  local n="$1" pat keep=""
+  shift
+  if [ -n "${RUN_ONLY:-}" ]; then
+    IFS=',' read -ra words <<<"$RUN_ONLY"
+    for pat in "${words[@]}"; do case "$n" in *"$pat"*) keep=1 ;; esac; done
+    [ -n "$keep" ] || return 0
+  fi
+  names+=("$n"); ( t0=$(date +%s); "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc"; echo $(( $(date +%s) - t0 )) >"$OUT/${#names[@]}.secs" ) & pids+=($!); }
 run_t0=$(date +%s)
 # The shared scripts run once, from the reviewer's copy: the cmp checks below fail when the fixer's
 # copy differs by one byte, so a second run of the same bytes adds time and no coverage.
@@ -108,7 +120,7 @@ start "release.sh"                                env TEST_TAG="${P}run" bash "$
 start "update.sh"                                 env TEST_TAG="${P}rev" bash "$HERE/update/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts" "$ROOT/install.sh"
 start "model-key scan"                            env TEST_TAG="${P}run" bash "$HERE/scan/run.sh"
 wait "${pids[@]}"
-echo "== all suites: $(( $(date +%s) - run_t0 ))s wall"
+echo "== all suites: $(( $(date +%s) - run_t0 ))s wall${RUN_ONLY:+ (only: $RUN_ONLY: NOT the full run; a PASSED verdict or a merge needs the full run)}"
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]} ($(cat "$OUT/$n.secs" 2>/dev/null || echo ?)s)"; tail -n 3 "$OUT/$n.log"
   [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -eq 0 ] || fail=1
