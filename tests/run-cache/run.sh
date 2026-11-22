@@ -35,5 +35,21 @@ bash "$R/tests/run-all.sh" --bogus >/dev/null 2>&1; r=$?
 check "an unknown option exits 2 before any suite starts" [ "$r" = 2 ]
 bash "$R/tests/run-all.sh" --only zzz-none >/dev/null 2>&1; r=$?
 check "a filter that matches no suite exits 1" [ "$r" = 1 ]
+# The cache's skip, its --fresh bypass, its write gate and the --only guard (PR 65 pass 3, W4). The scratch repository has
+# no suites, so a full run fails at once, and no suite runs here. XDG_CACHE_HOME is a scratch folder.
+export XDG_CACHE_HOME="$W/xdg"; CD="$XDG_CACHE_HOME/pr-reviewer-fixer/run-all"
+rm -rf "$XDG_CACHE_HOME"; mkdir -p "$CD"
+KEYNOW="$(key)"
+: >"$CD/$KEYNOW"
+out="$(bash "$R/tests/run-all.sh" 2>&1)"; r=$?
+check "a key already written for this tree skips the run (nothing re-run, exit 0)" eval '[ $r = 0 ] && printf %s "$out" | grep -q "nothing re-run"'
+out="$(bash "$R/tests/run-all.sh" --fresh 2>&1)"; r=$?
+check "--fresh runs even when the key is written (no skip message)" eval '! printf %s "$out" | grep -q "nothing re-run"'
+out="$(bash "$R/tests/run-all.sh" --only zzz-none 2>&1)"; r=$?
+check "--only never skips on a written key (it refuses a filter that matches nothing, exit 1)" eval '[ $r = 1 ] && ! printf %s "$out" | grep -q "nothing re-run"'
+rm -f "$CD/$KEYNOW"
+out="$(bash "$R/tests/run-all.sh" 2>&1)"; r=$?
+check "a run with a failing suite does not write the key (the write gate)" eval '[ $r -ne 0 ] && [ ! -e "$CD/$KEYNOW" ]'
+unset XDG_CACHE_HOME
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
