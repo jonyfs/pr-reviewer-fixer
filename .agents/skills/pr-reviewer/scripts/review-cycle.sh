@@ -2358,6 +2358,44 @@ PY
   return $rc
 }
 
+# Waits until the pull request's head is the commit this checkout pushed, so a `stale` or `start` right after
+# a push reads the new head and not the old one. It polls every REVIEW_WAIT_STEP seconds (default 2) for at
+# most REVIEW_WAIT_SECONDS (default 120). Exit 0 when the head matches, 3 when it never does: then say so and
+# run `stale` anyway. Read-only.
+cmd_wait_head() {
+  local n="${1:-}" want="${2:-}" limit="${REVIEW_WAIT_SECONDS:-120}" step="${REVIEW_WAIT_STEP:-2}" got
+  positivo "$limit" || die "review-cycle: REVIEW_WAIT_SECONDS must be a positive number"
+  positivo "$step" || die "review-cycle: REVIEW_WAIT_STEP must be a positive number"
+  local call="${REVIEW_WAIT_CALL_SECONDS:-20}"
+  positivo "$call" || die "review-cycle: REVIEW_WAIT_CALL_SECONDS must be a positive number"
+  call=$((10#$call))
+  # Base 10 on purpose: a value such as 08 is an invalid octal number to the shell.
+  limit=$((10#$limit)); step=$((10#$step))
+  [ -n "$n" ] || die "review-cycle: wait-head needs a pull request number"
+  [ -n "$want" ] || want="$(git rev-parse HEAD 2>/dev/null)" || die "review-cycle: no commit to wait for"
+  # A commit to match is 7 to 40 lowercase hex digits. Anything else (a 0, an uppercase letter, a word) is
+  # refused before any poll, so a bad value can never read as a match.
+  case "$want" in ''|*[!0-9a-f]*) die "review-cycle: wait-head needs a commit of 7 to 40 lowercase hex digits, got '$want'" ;; esac
+  [ "${#want}" -ge 7 ] && [ "${#want}" -le 40 ] || die "review-cycle: wait-head needs a commit of 7 to 40 hex digits, got ${#want}"
+  # The limit is measured on the clock. A call that hangs is cut at its own timeout, so the wait can pass the
+  # limit by at most one call timeout plus one step.
+  local t0 now
+  t0=$SECONDS
+  while :; do
+    # Each gh call has its own timeout, REVIEW_WAIT_CALL_SECONDS (default 20). It is not the poll step: a call slower
+    # than the step would never match (PR 56 pass 3, W2).
+    got="$(run_with_timeout "$call" gh pr view "$n" --json headRefOid --jq .headRefOid 2>/dev/null)" || got=""
+    if [ -n "$got" ] && [ "${got:0:${#want}}" = "$want" ]; then
+      echo "#$n head is ${want:0:12} (after $((SECONDS - t0))s)"; return 0
+    fi
+    now=$((SECONDS - t0))
+    [ "$now" -ge "$limit" ] && break
+    sleep "$step"
+  done
+  echo "review-cycle: #$n head is still ${got:0:12} after ${limit}s, not ${want:0:12}: say so and run stale" >&2
+  return 3
+}
+
 # Read-only. Prints the one next step for a pull request, from its label and the head its verdict
 # covers. It moves no label and posts nothing, so it is safe to run at any time.
 cmd_next() {
@@ -2421,6 +2459,7 @@ case "${1:-status}" in
   debt)    shift || true; cmd_debt    "${1:-}" ;;
   start)   shift || true; cmd_start   "$@" ;;
   next)    shift || true; cmd_next    "${1:-}" ;;
+  wait-head) shift || true; cmd_wait_head "$@" ;;
   fix)     shift || true; cmd_fix     "${1:-}" ;;
   halt)    shift || true; cmd_halt    "$@" ;;
   budget)  shift || true; cmd_budget  "${1:-}" ;;
@@ -2433,6 +2472,6 @@ case "${1:-status}" in
   findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|next|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels} [pr]; wait-head takes <pr> [sha]" ;;
 esac
 fi

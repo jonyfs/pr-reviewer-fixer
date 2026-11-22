@@ -49,10 +49,9 @@ leave exactly one state. The fixer runs it after its own push; nothing on GitHub
 outside a session, so until the next loop the label is stale while the gate already fails.
 
 After a push the loop agent made itself, GitHub reports the new head a few seconds later, and
-`stale` run before that compares the marker with the old head and changes nothing. Wait first, at
-most two minutes, until
-`gh pr view <pr> --json headRefOid --jq .headRefOid` prints the commit you pushed (`git rev-parse
-HEAD`). If it never does, say so and run `stale` anyway.
+`stale` run before that compares the marker with the old head and changes nothing. Run
+`review-cycle.sh wait-head <pr>` first: it polls the head every two seconds, for at most two minutes,
+until it is the commit you pushed, and exits 3 if it never is. Then say so and run `stale` anyway.
 
 An optional Claude Code Stop hook can run `review-cycle.sh debt` and refuse to end a turn while a
 review is owed. It is a convenience. The rule above is the portable trigger.
