@@ -2,6 +2,15 @@
 
 This file provides guidance to AI coding agents when working with code in this repository.
 
+
+## Scanner noise in the documentation (declared debt)
+
+The hidden-text scanner reports every comment opener, details tag and hidden element in a Markdown file that a
+change touches (PR 67, fail closed). The reference files list the review markers as examples, so an edit to one of
+those files reports them. This is accepted: the report is noise, never a missed hidden comment. Rewriting the
+examples so the raw text holds no opener is the follow-up, and it needs each jq and grep snippet tested against the
+real script first (see the notes of PR 67).
+
 ## What this repository is
 
 Three Agent Skills, `pr-reviewer`, `pr-fixer` and `pr-merge-fixer` (the last one resolves merge conflicts with the base), plus the scripts that enforce their protocol. The skills live in `.agents/skills/` and nowhere else. Do not add copies or symlinks under `.claude/skills/`. Almost everything is prose (`SKILL.md` and `references/*.md`) read by a model at run time. The only executable code is a few shell and Python scripts, one gate workflow and one release workflow (whose logic is `.github/scripts/release.sh`). `README.md` is the short entry point; `docs/SKILLS-REFERENCE.md` has the tables and `docs/REFERENCE.md` the full previous README with install details and caveats.
