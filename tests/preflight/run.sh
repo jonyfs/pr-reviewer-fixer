@@ -22,17 +22,20 @@ check "a commit with a hidden comment is refused (exit 1)" [ "$r" = 1 ]
 check "the refusal names the hidden-text scan" grep -q "hidden-text scan" "$W/hidden.out"
 ( cd "$R" && "$RC" preflight no-such-base >"$W/nobase.out" 2>&1 ); r=$?
 check "a base that is not fetched is refused (exit 1)" [ "$r" = 1 ]
-# A secret-screen refusal: a fake token in the shape the screen knows (not a real credential)
+# A secret-screen refusal: a fake token in the shape the screen knows (not a real credential). It starts from a
+# clean commit, so the only thing preflight can refuse it for is the token.
+g reset -q --hard HEAD~1
 printf 'token ghp_%s\n' "$(printf 'A%.0s' $(seq 1 36))" > "$R/c.md"; g add -A; g commit -qm "fake token"
 ( cd "$R" && "$RC" preflight main >"$W/token.out" 2>&1 ); r=$?
 check "a commit with a token-shaped secret is refused (exit 1)" [ "$r" = 1 ]
 check "the refusal names the secret screen" grep -q "secret screen" "$W/token.out"
-# With the scanner missing, preflight cannot report clean
+# With the scanner missing, preflight cannot report clean. It runs from a copy of the scripts in this run's own
+# folder, so the tracked scan-hidden.py is never moved (another suite reads it at the same time).
 g reset -q --hard HEAD~1
 printf 'plain again\n' > "$R/d.md"; g add -A; g commit -qm "plain"
-mv "$ROOT/.agents/skills/pr-reviewer/scripts/scan-hidden.py" "$W/scan-hidden.py.moved"
-( cd "$R" && "$RC" preflight main >"$W/noscan.out" 2>&1 ); r=$?
-mv "$W/scan-hidden.py.moved" "$ROOT/.agents/skills/pr-reviewer/scripts/scan-hidden.py"
+mkdir -p "$W/scripts"; cp "$ROOT/.agents/skills/pr-reviewer/scripts/review-cycle.sh" "$W/scripts/"
+cp "$ROOT/.agents/skills/pr-reviewer/scripts/gate-pr-review-state.py" "$W/scripts/" 2>/dev/null
+( cd "$R" && "$W/scripts/review-cycle.sh" preflight main >"$W/noscan.out" 2>&1 ); r=$?
 check "with scan-hidden.py missing, preflight does not report clean (exit 1)" [ "$r" = 1 ]
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
