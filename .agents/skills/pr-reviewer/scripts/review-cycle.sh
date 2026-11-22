@@ -2363,7 +2363,7 @@ PY
 # most REVIEW_WAIT_SECONDS (default 120). Exit 0 when the head matches, 3 when it never does: then say so and
 # run `stale` anyway. Read-only.
 cmd_wait_head() {
-  local n="${1:-}" want="${2:-}" limit="${REVIEW_WAIT_SECONDS:-120}" step="${REVIEW_WAIT_STEP:-2}" waited=0 got
+  local n="${1:-}" want="${2:-}" limit="${REVIEW_WAIT_SECONDS:-120}" step="${REVIEW_WAIT_STEP:-2}" got
   positivo "$limit" || die "review-cycle: REVIEW_WAIT_SECONDS must be a positive number"
   positivo "$step" || die "review-cycle: REVIEW_WAIT_STEP must be a positive number"
   # Base 10 on purpose: a value such as 08 is an invalid octal number to the shell.
@@ -2374,13 +2374,18 @@ cmd_wait_head() {
   # refused before any poll, so a bad value can never read as a match.
   case "$want" in ''|*[!0-9a-f]*) die "review-cycle: wait-head needs a commit of 7 to 40 lowercase hex digits, got '$want'" ;; esac
   [ "${#want}" -ge 7 ] && [ "${#want}" -le 40 ] || die "review-cycle: wait-head needs a commit of 7 to 40 hex digits, got ${#want}"
+  # The limit is measured on the clock, and every gh call has its own timeout (run_with_timeout), so a slow or
+  # hung call cannot carry the wait past the limit by more than one step.
+  local t0 now
+  t0=$SECONDS
   while :; do
-    got="$(gh pr view "$n" --json headRefOid --jq .headRefOid 2>/dev/null)" || got=""
+    got="$(run_with_timeout "$step" gh pr view "$n" --json headRefOid --jq .headRefOid 2>/dev/null)" || got=""
     if [ -n "$got" ] && [ "${got:0:${#want}}" = "$want" ]; then
-      echo "#$n head is ${want:0:12} (after ${waited}s)"; return 0
+      echo "#$n head is ${want:0:12} (after $((SECONDS - t0))s)"; return 0
     fi
-    [ "$waited" -ge "$limit" ] && break
-    sleep "$step"; waited=$((waited + step))
+    now=$((SECONDS - t0))
+    [ "$now" -ge "$limit" ] && break
+    sleep "$step"
   done
   echo "review-cycle: #$n head is still ${got:0:12} after ${limit}s, not ${want:0:12}: say so and run stale" >&2
   return 3
