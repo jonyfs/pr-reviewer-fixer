@@ -1334,15 +1334,15 @@ dg checkout -q main; dg merge -q --no-ff side -m merge; C3=$(dg rev-parse HEAD)
 dg checkout -q --detach "$C1"; echo x > "$DR/x.md"; dg add -A; dg commit -qm other; CO=$(dg rev-parse HEAD)
 dg checkout -q main
 dlrow() { reset '{"number":7,"headRefOid":"'"$1"'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:passed"}],"comments":['"$(mc github-actions "<!-- adversarial-review: sha=$2 verdict=PASSED pass=1 critical=0 warning=0 note=0 -->")"']}'; }
-dlrow "$C2" "$C1"; (cd "$DR" && "$RC" delta 7 >"$W/dl-lin.out" 2>&1); r=$?
+dlrow "$C2" "$C1"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-lin.out" 2>&1); r=$?
 check "delta: a linear range prints the file list (f.md) and exits 0" eval '[ $r = 0 ] && grep -q "f.md" "$W/dl-lin.out"'
-dlrow "$C3" "$C1"; (cd "$DR" && "$RC" delta 7 >"$W/dl-merge.out" 2>&1); r=$?
+dlrow "$C3" "$C1"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-merge.out" 2>&1); r=$?
 check "delta: a merge between the heads gives a full pass, not a range" eval '[ $r = 0 ] && grep -q "merge sits" "$W/dl-merge.out" && ! grep -q "delta " "$W/dl-merge.out"'
-dlrow "$C2" "$CO"; (cd "$DR" && "$RC" delta 7 >"$W/dl-desc.out" 2>&1); r=$?
+dlrow "$C2" "$CO"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-desc.out" 2>&1); r=$?
 check "delta: a head that does not descend from the verdict gives a full pass" eval '[ $r = 0 ] && grep -q "does not descend" "$W/dl-desc.out"'
-dlrow "$(printf 'f%.0s' $(seq 1 40))" "$C1"; (cd "$DR" && "$RC" delta 7 >"$W/dl-nohead.out" 2>&1); r=$?
+dlrow "$(printf 'f%.0s' $(seq 1 40))" "$C1"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-nohead.out" 2>&1); r=$?
 check "delta: a head not in this checkout is refused with a fetch instruction (exit 1)" eval '[ $r = 1 ] && grep -q "fetch it" "$W/dl-nohead.out"'
-dlrow "$C2" "$(printf '1%.0s' $(seq 1 40))"; (cd "$DR" && "$RC" delta 7 >"$W/dl-noverd.out" 2>&1); r=$?
+dlrow "$C2" "$(printf '1%.0s' $(seq 1 40))"; (cd "$DR" && "$RCABS" delta 7 >"$W/dl-noverd.out" 2>&1); r=$?
 check "delta: a verdict head not in this checkout gives a full pass" eval '[ $r = 0 ] && grep -q "not in this checkout" "$W/dl-noverd.out"'
 
 printf '%s\n' "${ROWS[@]}"
