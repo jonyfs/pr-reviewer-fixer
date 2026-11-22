@@ -123,6 +123,7 @@ start "install-remote.sh"                         env TEST_TAG="${P}run" bash "$
 start "remote-review.sh"                          env TEST_TAG="${P}run" bash "$HERE/remote-review/run.sh"
 start "preflight (scratch repositories)"         env TEST_TAG="${P}run" bash "$HERE/preflight/run.sh"
 start "run-all --only refusals"                env TEST_TAG="${P}run" bash "$HERE/run-only/run.sh"
+start "merge conflict end to end (preflight)"    env TEST_TAG="${P}run" bash "$HERE/merge-integration/run.sh"
 start "mutation check (guards)"                 env TEST_TAG="${P}run" bash "$HERE/mutation/run.sh"
 start "cycle budget and extend"                  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "scan-hidden.py"                           env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
