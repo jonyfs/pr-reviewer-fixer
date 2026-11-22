@@ -154,6 +154,8 @@ if args[:2] == ["pr", "view"]:
     pr = with_ids(load())
     f = os.path.join(d, "files.json")
     if "changedFiles" not in pr and os.path.exists(f): pr["changedFiles"] = len(json.load(open(f)))
+    # --jq answers the filter's value, as gh does; without it the whole object is printed.
+    if _opt("--jq") is not None: _jq(_opt("--jq"), pr); sys.exit(0)
     sys.stdout.write(_colour_json(json.dumps(pr))); sys.exit(0)
 if args[:2] == ["api", "user"]:
     if os.path.exists(os.path.join(d, "user-fail")): sys.exit(1)  # a token with no user behind it

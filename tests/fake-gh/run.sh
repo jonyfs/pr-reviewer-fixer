@@ -1273,6 +1273,15 @@ reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","la
 timeout 20 "$RC" start --bogus 7 >/dev/null 2>&1; r=$?
 check "start with an unknown option -> refused" eval '[ $r = 1 ] && hasnt review:running'
 
+# wait-head: the head that matches returns at once; one that never matches exits 3 at the limit (PR 55 follow-up)
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+"$RC" wait-head 7 $C >"$W/wh.out" 2>&1; r=$?
+check "wait-head: the head already matches -> 0, no waiting" eval '[ $r = 0 ] && grep -q "head is cccccccccccc" "$W/wh.out"'
+REVIEW_WAIT_SECONDS=2 REVIEW_WAIT_STEP=1 "$RC" wait-head 7 $A >"$W/wh2.out" 2>&1; r=$?
+check "wait-head: a head that never comes -> 3 at the limit, and says so" eval '[ $r = 3 ] && grep -q "not aaaaaaaaaaaa" "$W/wh2.out"'
+REVIEW_WAIT_SECONDS=x "$RC" wait-head 7 $C >/dev/null 2>&1; r=$?
+check "wait-head: a non-numeric limit -> refused" eval '[ $r = 1 ]'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
