@@ -98,6 +98,7 @@ while [ $# -gt 0 ]; do
     --only) RUN_ONLY="${2:-}"; shift 2
       case "$RUN_ONLY" in ''|,*|*,|*,,*) echo "run-all: --only needs comma-separated words, none of them empty" >&2; exit 2 ;; esac ;;
     --fresh) FRESH=1; shift ;;
+    --print-key) PRINT_KEY=1; shift ;;
     *) echo "run-all: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -107,10 +108,26 @@ done
 # the user's cache folder and is only as good as this key: a change anywhere in the tree changes it.
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME:-}/.cache}/pr-reviewer-fixer/run-all"
 tree_key() {
-  { git -C "$ROOT" rev-parse HEAD 2>/dev/null; git -C "$ROOT" diff HEAD 2>/dev/null
-    git -C "$ROOT" ls-files -o --exclude-standard -- . ':!.claude' 2>/dev/null | while read -r f; do cat "$ROOT/$f" 2>/dev/null; done; } \
-    | shasum -a 256 2>/dev/null | cut -d' ' -f1
+  # Every input a suite can read: the commit, the tracked changes (git diff carries mode changes too), and each
+  # untracked file by NAME, MODE and CONTENT. A symbolic link is keyed by its target, never followed (a link to a
+  # device or a huge file would hang the key). Names are NUL-separated: spaces, tabs and non-ASCII names are kept.
+  # The toolchain is part of the key: a different git, shell or python is a different run.
+  {
+    git -C "$ROOT" rev-parse HEAD 2>/dev/null
+    git -C "$ROOT" -c core.quotePath=false diff --no-ext-diff --text HEAD -- 2>/dev/null
+    git -C "$ROOT" ls-files -o --exclude-standard -z -- . ':!.claude' 2>/dev/null | while IFS= read -r -d '' f; do
+      printf 'untracked %s\0' "$f"
+      if [ -L "$ROOT/$f" ]; then printf 'link %s\0' "$(readlink "$ROOT/$f" 2>/dev/null)"
+      elif [ -f "$ROOT/$f" ]; then
+        if [ -x "$ROOT/$f" ]; then printf 'mode x\0'; else printf 'mode -\0'; fi
+        git -C "$ROOT" hash-object --no-filters -- "$f" 2>/dev/null
+      else printf 'other\0'; fi
+    done
+    printf 'toolchain %s | %s | %s | %s\n' "$(git --version 2>/dev/null)" "$(bash --version 2>/dev/null | head -n 1)" \
+      "$(python3 -V 2>&1)" "$(uname -sm 2>/dev/null)"
+  } | shasum -a 256 2>/dev/null | cut -d' ' -f1
 }
+if [ "${PRINT_KEY:-0}" = 1 ]; then tree_key; exit 0; fi
 KEY=""
 if [ -z "${RUN_ONLY:-}" ]; then
   KEY="$(tree_key)"   # computed on every full run: a --fresh run writes the key too
@@ -146,6 +163,7 @@ start "install-remote.sh"                         env TEST_TAG="${P}run" bash "$
 start "remote-review.sh"                          env TEST_TAG="${P}run" bash "$HERE/remote-review/run.sh"
 start "preflight (scratch repositories)"         env TEST_TAG="${P}run" bash "$HERE/preflight/run.sh"
 start "run-all --only refusals"                env TEST_TAG="${P}run" bash "$HERE/run-only/run.sh"
+start "run-all cache key and refusals"             env TEST_TAG="${P}run" bash "$HERE/run-cache/run.sh"
 start "mutation check (guards)"                 env TEST_TAG="${P}run" bash "$HERE/mutation/run.sh"
 start "cycle budget and extend"                  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "scan-hidden.py"                           env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
