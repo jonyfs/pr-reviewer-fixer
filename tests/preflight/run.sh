@@ -37,5 +37,16 @@ mkdir -p "$W/scripts"; cp "$ROOT/.agents/skills/pr-reviewer/scripts/review-cycle
 cp "$ROOT/.agents/skills/pr-reviewer/scripts/gate-pr-review-state.py" "$W/scripts/" 2>/dev/null
 ( cd "$R" && "$W/scripts/review-cycle.sh" preflight main >"$W/noscan.out" 2>&1 ); r=$?
 check "with scan-hidden.py missing, preflight does not report clean (exit 1)" [ "$r" = 1 ]
+# A merge that stopped on a conflict: the change adds conflict markers, and preflight refuses it (item 2 of the plan)
+g reset -q --hard HEAD~1 2>/dev/null
+printf 'before\n<%s<<<<<< HEAD\nours\n=======\ntheirs\n>%s>>>>>>> origin/main\n' '<' '>' > "$R/merge.md"; g add -A; g commit -qm "a conflicted merge"
+( cd "$R" && "$RC" preflight main >"$W/conflict.out" 2>&1 ); r=$?
+check "a change that adds conflict markers is refused (exit 1)" [ "$r" = 1 ]
+check "the refusal names the conflict markers" grep -q "conflict markers" "$W/conflict.out"
+# A large change whose conflict marker is the first line: a pipe into grep -q under pipefail once reported it clean (PR 64 W1)
+g reset -q --hard HEAD~1 2>/dev/null
+printf '%s HEAD\n' '<<<<<<<' > "$R/big.md"; seq 1 40000 | sed 's/^/line /' >> "$R/big.md"; g add -A; g commit -qm "a large conflicted merge"
+( cd "$R" && "$RC" preflight main >"$W/big.out" 2>&1 ); r=$?
+check "a large change with a conflict marker on its first line is refused (exit 1)" [ "$r" = 1 ]
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
