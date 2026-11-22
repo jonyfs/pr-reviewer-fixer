@@ -107,7 +107,13 @@ done
 # already passed is not run again: the key is written only after a green full run, and a filtered run never reads or
 # writes it. --fresh runs everything; the run before a PASSED verdict or a merge is always --fresh. The cache lives in
 # the user's cache folder and is only as good as this key: a change anywhere in the tree changes it.
-CACHE_DIR="${XDG_CACHE_HOME:-${HOME:-}/.cache}/pr-reviewer-fixer/run-all"
+# With neither XDG_CACHE_HOME nor HOME set there is no per-user folder: the cache is off, rather than a /.cache that
+# every user of the machine would share.
+if [ -n "${XDG_CACHE_HOME:-}" ]; then CACHE_DIR="$XDG_CACHE_HOME/pr-reviewer-fixer/run-all"
+elif [ -n "${HOME:-}" ]; then CACHE_DIR="$HOME/.cache/pr-reviewer-fixer/run-all"
+else CACHE_DIR=""; fi
+# sha256sum where it exists (the header names it), shasum -a 256 otherwise: the same digest either way.
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 tree_key() {
   # Every input a suite can read: the commit, the tracked changes (git diff carries mode changes too), and each
   # untracked file by NAME, MODE and CONTENT. A symbolic link is keyed by its target, never followed (a link to a
@@ -115,7 +121,7 @@ tree_key() {
   # The toolchain is part of the key: a different git, shell or python is a different run.
   {
     git -C "$ROOT" rev-parse HEAD 2>/dev/null
-    git -C "$ROOT" -c core.quotePath=false diff --no-ext-diff --text HEAD -- 2>/dev/null
+    git -C "$ROOT" -c core.quotePath=false diff --no-ext-diff --no-textconv --text HEAD -- 2>/dev/null
     git -C "$ROOT" ls-files -o --exclude-standard -z -- . ':!.claude' 2>/dev/null | while IFS= read -r -d '' f; do
       printf 'untracked %s\0' "$f"
       if [ -L "$ROOT/$f" ]; then printf 'link %s\0' "$(readlink "$ROOT/$f" 2>/dev/null)"
@@ -127,14 +133,17 @@ tree_key() {
     printf 'toolchain %s | %s | %s | %s | %s | %s | %s\n' "$(git --version 2>/dev/null)" "$(bash --version 2>/dev/null | head -n 1)" \
       "$(python3 -V 2>&1)" "$(uname -sm 2>/dev/null)" "$(node -v 2>/dev/null)" "$(jq --version 2>/dev/null)" \
       "$(curl --version 2>/dev/null | head -n 1)"
-    # the user's global git configuration changes what git diff and git hash-object produce: its digest is part of the key
-    shasum -a 256 "${HOME:-/dev/null}/.gitconfig" "${XDG_CONFIG_HOME:-${HOME:-/dev/null}/.config}/git/config" \
+    # the user's global git configuration changes what git diff and git hash-object produce: its digest is part of the key.
+    # The system configuration (git config --system) is not keyed: a change there needs --fresh.
+    sha256 "${HOME:-/dev/null}/.gitconfig" "${XDG_CONFIG_HOME:-${HOME:-/dev/null}/.config}/git/config" \
       "${GIT_CONFIG_GLOBAL:-/dev/null}" 2>/dev/null
-  } | shasum -a 256 2>/dev/null | cut -d' ' -f1
+  } | sha256 2>/dev/null | cut -d' ' -f1
 }
 if [ "${PRINT_KEY:-0}" = 1 ]; then tree_key; exit 0; fi
 KEY=""
-if [ -z "${RUN_ONLY:-}" ]; then
+if [ -z "${RUN_ONLY:-}" ] && [ -z "$CACHE_DIR" ]; then
+  echo "== run-all: HOME and XDG_CACHE_HOME are unset, so there is no per-user cache folder; the suite cache is off."
+elif [ -z "${RUN_ONLY:-}" ]; then
   KEY="$(tree_key)"   # computed on every full run: a --fresh run writes the key too
   if [ "$FRESH" = 0 ] && [ -n "$KEY" ] && [ -f "$CACHE_DIR/$KEY" ]; then
     echo "== run-all: this exact tree already passed a full run (key ${KEY:0:12}); nothing re-run. Pass --fresh to run every suite."
@@ -400,8 +409,9 @@ cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.gith
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
 # The model-key scan runs here, last: see model_key_scan, defined near the top.
 model_key_scan
-# Only a green full run is written to the cache (see the cache note above).
-if [ "$fail" = 0 ] && [ -z "${RUN_ONLY:-}" ] && [ -n "${KEY:-}" ]; then
+# Only a green full run is written to the cache (see the cache note above), and only when the tree is still the one
+# the key was taken from: a file changed during the run would otherwise be recorded as passed without being run.
+if [ "$fail" = 0 ] && [ -z "${RUN_ONLY:-}" ] && [ -n "${KEY:-}" ] && [ -n "$CACHE_DIR" ] && [ "$(tree_key)" = "$KEY" ]; then
   mkdir -p "$CACHE_DIR" 2>/dev/null && : >"$CACHE_DIR/$KEY" 2>/dev/null
 fi
 exit $fail

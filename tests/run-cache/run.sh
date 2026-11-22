@@ -74,5 +74,21 @@ KC1="$(GIT_CONFIG_GLOBAL="$W/gcg.config" bash "$R/tests/run-all.sh" --print-key 
 printf '[user]\n\tname = two\n' > "$W/gcg.config"
 KC2="$(GIT_CONFIG_GLOBAL="$W/gcg.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
 check "changing the file GIT_CONFIG_GLOBAL names changes the key" eval '[ -n "$KC1" ] && [ "$KC1" != "$KC2" ]'
+# The declared debt of PR 65 (N1-N3)
+# N2: a textconv driver must not hide a change: two contents a driver renders alike still give two keys.
+printf '#!/bin/sh\necho same\n' > "$W/same.sh"; chmod +x "$W/same.sh"
+g config diff.same.textconv "$W/same.sh"; printf 'a.md diff=same\n' > "$R/.git/info/attributes"
+printf 'one\n' > "$R/a.md"; KT1="$(key)"; printf 'two\n' > "$R/a.md"; KT2="$(key)"
+check "a textconv driver does not hide a change to a tracked file (--no-textconv)" eval '[ -n "$KT1" ] && [ "$KT1" != "$KT2" ]'
+g checkout -q -- a.md; rm -f "$R/.git/info/attributes"
+# N1: sha256sum is used where it exists (a stub that prints a fixed digest makes the key that digest).
+mkdir -p "$W/shabin"; printf '#!/bin/sh\ncat >/dev/null; echo "stubdigest  -"\n' > "$W/shabin/sha256sum"; chmod +x "$W/shabin/sha256sum"
+KS="$(PATH="$W/shabin:$PATH" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+check "the key is made with sha256sum when it is on PATH" [ "$KS" = stubdigest ]
+# N3: with HOME and XDG_CACHE_HOME both unset there is no per-user folder, so the cache is off (no shared /.cache).
+out="$(env -u HOME -u XDG_CACHE_HOME bash "$R/tests/run-all.sh" 2>&1)"
+check "HOME and XDG_CACHE_HOME unset: the cache is off, said plainly" eval 'printf %s "$out" | grep -q "the suite cache is off"'
+out="$(env -u HOME XDG_CACHE_HOME= bash "$R/tests/run-all.sh" 2>&1)"
+check "HOME unset and XDG_CACHE_HOME empty: the cache is off too" eval 'printf %s "$out" | grep -q "the suite cache is off"'
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
