@@ -1296,6 +1296,10 @@ check "wait-head: a step of zero -> refused before any poll" eval '[ $r = 1 ]'
 REVIEW_WAIT_STEP=08 REVIEW_WAIT_SECONDS=1 "$RC" wait-head 7 $A >/dev/null 2>&1; r=$?
 check "wait-head: a step written 08 is read as 8 and the wait ends at the limit (3)" eval '[ $r = 3 ]'
 
+# wait-head: a call timeout that is not the step (PR 56 pass 3, W2): a bad call timeout is refused
+REVIEW_WAIT_CALL_SECONDS=x "$RC" wait-head 7 $C >/dev/null 2>&1; r=$?
+check "wait-head: a non-numeric call timeout -> refused" eval '[ $r = 1 ]'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

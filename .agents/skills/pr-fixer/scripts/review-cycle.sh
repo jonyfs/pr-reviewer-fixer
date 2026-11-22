@@ -2366,6 +2366,9 @@ cmd_wait_head() {
   local n="${1:-}" want="${2:-}" limit="${REVIEW_WAIT_SECONDS:-120}" step="${REVIEW_WAIT_STEP:-2}" got
   positivo "$limit" || die "review-cycle: REVIEW_WAIT_SECONDS must be a positive number"
   positivo "$step" || die "review-cycle: REVIEW_WAIT_STEP must be a positive number"
+  local call="${REVIEW_WAIT_CALL_SECONDS:-20}"
+  positivo "$call" || die "review-cycle: REVIEW_WAIT_CALL_SECONDS must be a positive number"
+  call=$((10#$call))
   # Base 10 on purpose: a value such as 08 is an invalid octal number to the shell.
   limit=$((10#$limit)); step=$((10#$step))
   [ -n "$n" ] || die "review-cycle: wait-head needs a pull request number"
@@ -2374,12 +2377,14 @@ cmd_wait_head() {
   # refused before any poll, so a bad value can never read as a match.
   case "$want" in ''|*[!0-9a-f]*) die "review-cycle: wait-head needs a commit of 7 to 40 lowercase hex digits, got '$want'" ;; esac
   [ "${#want}" -ge 7 ] && [ "${#want}" -le 40 ] || die "review-cycle: wait-head needs a commit of 7 to 40 hex digits, got ${#want}"
-  # The limit is measured on the clock, and every gh call has its own timeout (run_with_timeout), so a slow or
-  # hung call cannot carry the wait past the limit by more than one step.
+  # The limit is measured on the clock. A call that hangs is cut at its own timeout, so the wait can pass the
+  # limit by at most one call timeout plus one step.
   local t0 now
   t0=$SECONDS
   while :; do
-    got="$(run_with_timeout "$step" gh pr view "$n" --json headRefOid --jq .headRefOid 2>/dev/null)" || got=""
+    # Each gh call has its own timeout, REVIEW_WAIT_CALL_SECONDS (default 20). It is not the poll step: a call slower
+    # than the step would never match (PR 56 pass 3, W2).
+    got="$(run_with_timeout "$call" gh pr view "$n" --json headRefOid --jq .headRefOid 2>/dev/null)" || got=""
     if [ -n "$got" ] && [ "${got:0:${#want}}" = "$want" ]; then
       echo "#$n head is ${want:0:12} (after $((SECONDS - t0))s)"; return 0
     fi
