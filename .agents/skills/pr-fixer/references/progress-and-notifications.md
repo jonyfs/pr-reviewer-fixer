@@ -39,7 +39,7 @@ Rules:
 2. **PR status comment**: at most one per run. Create it at start with the start line and the
    lane roster with tier and any substitution in force, keep its id, and edit it in place at finish
    (`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id>`). Marker
-   `<!-- pr-skill-status: skill=pr-fixer run=C head=<sha12> state=started|finished -->`. This is
+   `<!-[-] pr-skill-status: skill=pr-fixer run=C head=<sha12> state=started|finished -->`. This is
    neither the verdict marker nor the closure marker. Never edit another author's comment.
 3. **Closure comment**: one per cycle, with the `pr-fixer-closure` marker, carrying the finish line
    as its first visible line and then the closure report. There is no separate finish comment.

@@ -144,7 +144,7 @@ sequenceDiagram
   read in depth.
 - Takes the hits of `scripts/scan-hidden.py` (zero-width and bidi characters, Unicode tag
   characters, blank fillers, runs of variation selectors, HTML comments other than the protocol's
-  markers, link reference definitions that hide text, `<details>` blocks, invisible HTML)
+  markers, link reference definitions that hide text, a `details` tag blocks, invisible HTML)
   in the added lines, the pull request text, its comments and the commit messages, and judges each
   as a candidate CRITICAL prompt-injection finding. The scanner strips nothing.
 - Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each
@@ -240,9 +240,9 @@ flowchart LR
 | Artifact | Written by | Purpose |
 |---|---|---|
 | Label `review:*` | `review-cycle.sh` only | State at a glance in the PR list |
-| Verdict comment with `<!-- adversarial-review: sha=... -->` | reviewer, through the script | The authority. The label is its projection |
+| Verdict comment with `<!-[-] adversarial-review: sha=... -->` | reviewer, through the script | The authority. The label is its projection |
 | `findings` block at the end of the verdict | reviewer | The fixer's work list |
-| Closure comment with `<!-- pr-fixer-closure: ... -->` | fixer, after `review-cycle.sh screen` passes it | Reproduction, test, red, fix, green, suite counts per finding |
+| Closure comment with `<!-[-] pr-fixer-closure: ... -->` | fixer, after `review-cycle.sh screen` passes it | Reproduction, test, red, fix, green, suite counts per finding |
 | `pr-debt` block in the PR body | fixer, after `review-cycle.sh screen` passes it | Owner for every warning and note |
 | Extension answer (`state=granted` or `state=halted`) | `review-cycle.sh extend` or `halt`, after a person answered in the session | Continue or stop after the cycle budget |
 

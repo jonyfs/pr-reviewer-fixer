@@ -186,7 +186,7 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
 8. **Close the loop.** Pushing moves the head, and `scripts/review-cycle.sh stale` (run it right
    after the push) retires the label to `review:pending`; the fixer never sets a
    label past `review:fixing`. Post **one closure comment** for the cycle with the marker
-   `<!-- pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->` and the
+   `<!-[-] pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->` and the
    closure report ([references/falsify-and-prove.md](references/falsify-and-prove.md)): per finding
    id the reproduction, test, red, fix, green and suite counts; per refusal the evidence. It is the
    finish message; there is no separate one. It is plain text (no headings, tables, bold, bullets,

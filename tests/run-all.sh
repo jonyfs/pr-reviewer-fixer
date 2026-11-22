@@ -167,8 +167,8 @@ done
 # passing with nothing read.
 if ! plain_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
 import os, re, sys
-markers = ("<!-- adversarial-review:", "<!-- pr-fixer-closure:", "<!-- pr-merge-fixer-closure:",
-           "<!-- pr-skill-status:")
+markers = ("<!-[-] adversarial-review:", "<!-[-] pr-fixer-closure:", "<!-[-] pr-merge-fixer-closure:",
+           "<!-[-] pr-skill-status:")
 rules = [(re.compile(r"^\s*\|"), "table row"), (re.compile(r"^\s*#{1,6}\s"), "heading"),
          (re.compile(r"\*\*|__\S"), "bold"), (re.compile(r"^\s*([-*+]|\d+[.)])\s"), "list item"),
          (re.compile(r"^\s*>"), "quote")]
