@@ -53,6 +53,10 @@ After a push the loop agent made itself, GitHub reports the new head a few secon
 `review-cycle.sh wait-head <pr>` first: it polls the head every two seconds, for at most two minutes,
 until it is the commit you pushed, and exits 3 if it never is. Then say so and run `stale` anyway.
 
+`review-cycle.sh base-scanner [base]` prints a folder under the system temp with the pr-reviewer scripts as they are on
+`origin/<base>` (default `main`). A pass on a change that touches the scripts scans with that copy, so the change cannot
+excuse itself by editing the scanner it is checked with.
+
 `review-cycle.sh delta <pr>` (read-only) shows what changed since the last verdict's head. A pass may review only that
 range when it prints one: a head that descends from the verdict's head with no merge between them. Otherwise, or with
 no earlier verdict, the pass is a full review, and the command says which.

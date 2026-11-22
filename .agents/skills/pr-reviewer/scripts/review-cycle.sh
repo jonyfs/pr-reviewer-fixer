@@ -2465,14 +2465,21 @@ cmd_delta() {
 # by changing the scanner it is checked with. Read-only: it writes only the folder it prints, under the system temp
 # folder, and the path is the last line of output.
 cmd_base_scanner() {
-  local base="${1:-main}" dir f
+  local base="${1:-main}" dir mode type sha name
   git rev-parse --verify -q "origin/$base^{commit}" >/dev/null || die "review-cycle: origin/$base is not fetched: git fetch origin $base"
   dir="$(mktemp -d "${TMPDIR:-/tmp}/base-scanner-XXXXXXXX")" || die "review-cycle: cannot make a folder"
   mkdir -p "$dir/scripts"
-  for f in scan-hidden.py review-cycle.sh gate-pr-review-state.py; do
-    git show "origin/$base:.agents/skills/pr-reviewer/scripts/$f" >"$dir/scripts/$f" 2>/dev/null \
-      || die "review-cycle: origin/$base has no $f: the base cannot be read"
-  done
+  # Every file of the base's scripts folder, with its mode: the helpers (pr-json.py, path-floor.sh) and the execute bit
+  # the scripts run with are part of the copy. Any file that cannot be read refuses the whole copy.
+  while read -r mode type sha name; do
+    [ "$type" = blob ] || continue
+    name="${name##*/}"
+    git cat-file blob "$sha" >"$dir/scripts/$name" 2>/dev/null \
+      || die "review-cycle: origin/$base: $name cannot be read; no copy printed (the partial folder $dir is left to the system)"
+    [ "$mode" = 100755 ] && chmod 755 "$dir/scripts/$name"
+  done < <(git ls-tree "origin/$base" .agents/skills/pr-reviewer/scripts/ 2>/dev/null)
+  [ -f "$dir/scripts/scan-hidden.py" ] && [ -f "$dir/scripts/review-cycle.sh" ] \
+    || die "review-cycle: origin/$base has no pr-reviewer scripts folder to copy"
   echo "$dir/scripts"
 }
 
@@ -2555,6 +2562,6 @@ case "${1:-status}" in
   findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight|delta} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
+  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight|delta|base-scanner} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
 esac
 fi

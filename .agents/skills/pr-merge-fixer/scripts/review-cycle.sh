@@ -2460,6 +2460,29 @@ cmd_delta() {
   return 0
 }
 
+# Prints a folder that holds the scanner and the review script as they are on <base> (default main), for a pass whose
+# change touches the scripts: the pass must scan with the base's copy, so a pull request cannot excuse itself
+# by changing the scanner it is checked with. Read-only: it writes only the folder it prints, under the system temp
+# folder, and the path is the last line of output.
+cmd_base_scanner() {
+  local base="${1:-main}" dir mode type sha name
+  git rev-parse --verify -q "origin/$base^{commit}" >/dev/null || die "review-cycle: origin/$base is not fetched: git fetch origin $base"
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/base-scanner-XXXXXXXX")" || die "review-cycle: cannot make a folder"
+  mkdir -p "$dir/scripts"
+  # Every file of the base's scripts folder, with its mode: the helpers (pr-json.py, path-floor.sh) and the execute bit
+  # the scripts run with are part of the copy. Any file that cannot be read refuses the whole copy.
+  while read -r mode type sha name; do
+    [ "$type" = blob ] || continue
+    name="${name##*/}"
+    git cat-file blob "$sha" >"$dir/scripts/$name" 2>/dev/null \
+      || die "review-cycle: origin/$base: $name cannot be read; no copy printed (the partial folder $dir is left to the system)"
+    [ "$mode" = 100755 ] && chmod 755 "$dir/scripts/$name"
+  done < <(git ls-tree "origin/$base" .agents/skills/pr-reviewer/scripts/ 2>/dev/null)
+  [ -f "$dir/scripts/scan-hidden.py" ] && [ -f "$dir/scripts/review-cycle.sh" ] \
+    || die "review-cycle: origin/$base has no pr-reviewer scripts folder to copy"
+  echo "$dir/scripts"
+}
+
 # Read-only. Prints the one next step for a pull request, from its label and the head its verdict
 # covers. It moves no label and posts nothing, so it is safe to run at any time.
 cmd_next() {
@@ -2526,6 +2549,7 @@ case "${1:-status}" in
   wait-head) shift || true; cmd_wait_head "$@" ;;
   preflight) shift || true; cmd_preflight "${1:-main}" ;;
   delta)   shift || true; cmd_delta   "${1:-}" ;;
+  base-scanner) shift || true; cmd_base_scanner "${1:-main}" ;;
   fix)     shift || true; cmd_fix     "${1:-}" ;;
   halt)    shift || true; cmd_halt    "$@" ;;
   budget)  shift || true; cmd_budget  "${1:-}" ;;
@@ -2538,6 +2562,6 @@ case "${1:-status}" in
   findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight|delta} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
+  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight|delta|base-scanner} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
 esac
 fi
