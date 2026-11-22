@@ -2477,7 +2477,7 @@ cmd_base_scanner() {
     git cat-file blob "$sha" >"$dir/scripts/$name" 2>/dev/null \
       || die "review-cycle: origin/$base: $name cannot be read; no copy printed (the partial folder $dir is left to the system)"
     [ "$mode" = 100755 ] && chmod 755 "$dir/scripts/$name"
-  done < <(git ls-tree "origin/$base" .agents/skills/pr-reviewer/scripts/ 2>/dev/null)
+  done < <(git ls-tree --full-tree "origin/$base" .agents/skills/pr-reviewer/scripts/ 2>/dev/null)
   [ -f "$dir/scripts/scan-hidden.py" ] && [ -f "$dir/scripts/review-cycle.sh" ] \
     || die "review-cycle: origin/$base has no pr-reviewer scripts folder to copy"
   echo "$dir/scripts"

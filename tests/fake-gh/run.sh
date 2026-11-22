@@ -1322,6 +1322,8 @@ BSD="$(head -n 1 "$W/bs.out" 2>/dev/null)"
 check "base-scanner: prints a folder with the scanner, the script and the gate (exit 0)" eval '[ $r = 0 ] && [ -f "$BSD/scan-hidden.py" ] && [ -f "$BSD/review-cycle.sh" ] && [ -f "$BSD/gate-pr-review-state.py" ]'
 (cd "$BS" && "$RCABS" base-scanner no-such-base >/dev/null 2>&1); r=$?
 check "base-scanner: a base that is not fetched is refused (exit 1)" eval '[ $r = 1 ]'
+(cd "$BS/.agents" && "$RCABS" base-scanner main >"$W/bs-sub.out" 2>&1); r=$?
+check "base-scanner: run from a subfolder still finds the base's scripts (exit 0)" eval '[ $r = 0 ] && [ -f "$(head -n 1 "$W/bs-sub.out")/scan-hidden.py" ]'
 # delta (item 6): with no earlier verdict the pass is a full review, said plainly
 reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
 "$RC" delta 7 >"$W/delta.out" 2>&1; r=$?
