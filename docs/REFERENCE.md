@@ -144,7 +144,7 @@ sequenceDiagram
   read in depth.
 - Takes the hits of `scripts/scan-hidden.py` (zero-width and bidi characters, Unicode tag
   characters, blank fillers, runs of variation selectors, HTML comments other than the protocol's
-  markers, link reference definitions that hide text, a `details` tag blocks, invisible HTML)
+  markers, link reference definitions that hide text, `details` blocks, invisible HTML)
   in the added lines, the pull request text, its comments and the commit messages, and judges each
   as a candidate CRITICAL prompt-injection finding. The scanner strips nothing.
 - Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each

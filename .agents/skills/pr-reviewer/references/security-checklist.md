@@ -124,7 +124,7 @@ BOMs, bidi overrides (Trojan Source) and marks, Unicode tag characters, blank fi
 Hangul filler), runs of variation selectors (bytes smuggled after one visible character), HTML
 comments other than the protocol's own markers, Markdown link reference definitions that point at
 `#` or `<>` (`[//]: # (text)`, which GitHub renders as nothing) or carry a `#fragment` or a title
-under a label no link uses, a `details` tag blocks and invisibly styled HTML,
+under a label no link uses, `details` blocks and invisibly styled HTML,
 in the diff's added lines, the PR title, body and issue comments, and the commit messages. It does
 not read review-thread comments or review bodies: the fixer scans those with `--feedback-json`. The loop hands its JSON over; a review run
 without the loop runs it with `--pr <n> --diff <base> <head> --commits <base> <head>`.

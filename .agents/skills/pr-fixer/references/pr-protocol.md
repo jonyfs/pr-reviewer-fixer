@@ -25,6 +25,10 @@ and check with `cmp`.
 | Status comment | The skill run that is in progress | People watching the PR | `<!-[-] pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
 | Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-[-] pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-[-] pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then one human-readable line | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling, and `extend` removes `review:needs-human`. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
 
+> Written here with a bracket inside the opener, a form that a regex reads as the plain opener, so the scanner does not take the examples for
+> live comments. A marker an agent writes uses the plain form, the opener without the brackets, never the bracket form.
+
+
 ## Comment layout and legend (all three skills)
 
 Every comment an agent posts is plain text. Markdown is for the pull request description only. A
@@ -49,7 +53,7 @@ escalated for a merged file; lockfile, rename, textual, semantic, vendored and s
 conflict class. A login is written without the `@`, so it notifies nobody.
 
 Formatting that the scripts and the scanner reject, so never write it into an agent comment:
-a `details` tag blocks, HTML comments other than the protocol's markers, invisible HTML, and emoji with a
+`details` blocks, HTML comments other than the protocol's markers, invisible HTML, and emoji with a
 variation selector (`⚠️`, `✔️`, `ℹ️`, `➡️`). `scan-hidden.py` flags each one as a candidate finding.
 `tests/run-all.sh` fails when a comment template in the skills holds a table row, a heading, bold,
 a bullet or a fenced block other than `findings`.
@@ -345,7 +349,7 @@ python3 -I - body.md debt.md <<'PY'
 import sys
 body = open(sys.argv[1]).read()
 debt = open(sys.argv[2]).read().strip("\n")
-start, end = "<!-[-] pr-debt:start -->", "<!-[-] pr-debt:end -->"
+start, end = "<" + "!-- pr-debt:start -->", "<" + "!-- pr-debt:end -->"
 block = start + "\n" + debt + "\n" + end
 if start in body and end in body:
     head, rest = body.split(start, 1)
