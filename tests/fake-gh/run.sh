@@ -1317,6 +1317,11 @@ reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","la
 "$RC" delta 7 >"$W/delta.out" 2>&1; r=$?
 check "delta: no earlier verdict -> a full review, exit 0" eval '[ $r = 0 ] && grep -q "a full pass" "$W/delta.out"'
 
+# delta (PR 62 W1, W3): a marker from a login that is not listed is refused, not read; a listed one is read
+reset '{"number":7,"headRefOid":"'$D'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:passed"}],"comments":[]}'
+sethead $D
+REVIEW_MARKER_AUTHORS= "$RC" delta 7 >"$W/delta-no-allow.out" 2>&1; r=$?
+check "delta: with no trusted login, a delta is refused (exit 1)" eval '[ $r = 1 ] && grep -q "REFUSED" "$W/delta-no-allow.out"'
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
