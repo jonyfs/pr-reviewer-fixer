@@ -2432,9 +2432,13 @@ cmd_delta() {
   if [ -z "${MARKER_SHA:-}" ]; then
     echo "#$NUMBER: no earlier verdict. Review the whole change: a full pass."; return 0
   fi
-  # Both commits are checked as 40-digit hex before git sees them, so a value that starts with "-" is never an option.
+  # Both commits are checked as hex before git sees them, so a value that starts with "-" is never an option.
   case "$MARKER_SHA" in *[!0-9a-f]*|"") echo "#$NUMBER: the verdict's head is not a commit id. Review the whole change."; return 0 ;; esac
   case "$HEAD" in *[!0-9a-f]*|"") echo "#$NUMBER: the head is not a commit id. Review the whole change."; return 0 ;; esac
+  # The head must be in this checkout before anything else: an absent head is a fetch, not a rebase (PR 62 pass 2, N4).
+  if ! git rev-parse --verify -q "$HEAD^{commit}" >/dev/null; then
+    echo "review-cycle: #$NUMBER's head ${HEAD:0:12} is not in this checkout: fetch it, then run delta again" >&2; return 1
+  fi
   if ! git rev-parse --verify -q "$MARKER_SHA^{commit}" >/dev/null; then
     echo "#$NUMBER: the verdict's head ${MARKER_SHA:0:12} is not in this checkout (fetch it). Review the whole change."; return 0
   fi
@@ -2444,12 +2448,11 @@ cmd_delta() {
   if ! git merge-base --is-ancestor "$MARKER_SHA" "$HEAD" 2>/dev/null; then
     echo "#$NUMBER: the head does not descend from the verdict's head ${MARKER_SHA:0:12} (a rebase or a reset). Review the whole change."; return 0
   fi
-  if [ -n "$(git rev-list --merges "$MARKER_SHA..$HEAD" 2>/dev/null)" ]; then
+  # A failing rev-list is not "no merge": it is refused, never read as a clean range (PR 62 pass 2, N5).
+  local merges
+  merges="$(git rev-list --merges "$MARKER_SHA..$HEAD" 2>/dev/null)" || { echo "review-cycle: git could not list the merges between ${MARKER_SHA:0:12} and the head; no delta" >&2; return 1; }
+  if [ -n "$merges" ]; then
     echo "#$NUMBER: a merge sits between ${MARKER_SHA:0:12} and the head. A merge can hide a change the base made. Review the whole change."; return 0
-  fi
-  # The pull request head must be in this checkout too; a range against a commit that is not here prints nothing useful.
-  if ! git rev-parse --verify -q "$HEAD^{commit}" >/dev/null; then
-    echo "review-cycle: #$NUMBER's head ${HEAD:0:12} is not in this checkout: fetch it, then run delta again" >&2; return 1
   fi
   echo "#$NUMBER: delta ${MARKER_SHA:0:12}..${HEAD:0:12} (the verdict's head to the head now):"
   # --name-only: the file list is what a reviewer needs; --stat shortens long paths.
