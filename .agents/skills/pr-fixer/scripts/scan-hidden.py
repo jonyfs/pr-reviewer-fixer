@@ -388,11 +388,6 @@ def scan_diff(base, head, verdict_re):
                 if path is not None:
                     p = path
                     hits += scan_text(raw[1:], verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), line_offset=n - 1)
-                    # An added line that can change how text BELOW it renders (a backtick, a tilde, an angle bracket,
-                    # or an indented block) makes the file risky: the construct below may become live (PR 67 W1).
-                    text_line = raw[1:]
-                    if re.search(r"[`~<>]", text_line) or text_line.startswith(("\t", "    ")):
-                        info.setdefault(path, {"removed": False, "touch": 0, "risky": False})["risky"] = True
                 n += 1
             elif raw.startswith("-"):
                 rem_old -= 1
@@ -410,7 +405,7 @@ def scan_diff(base, head, verdict_re):
             n = int(h.group(2))
             rem_new = int(h.group(3)) if h.group(3) is not None else 1
             if path is not None:
-                inf = info.setdefault(path, {"removed": False, "touch": 0, "risky": False})
+                inf = info.setdefault(path, {"removed": False, "touch": 0})
                 if rem_old > 0:
                     inf["removed"] = True
                 inf["touch"] = max(inf["touch"], n + rem_new - 1 if rem_new > 0 else n)
@@ -421,10 +416,9 @@ CONSTRUCT_KINDS = ("html-comment", "details", "invisible-html")
 
 
 def changed_file_hits(head, verdict_re, info, seen):
-    """Fail closed: a changed file that holds a construct (a comment, a details tag, a hidden element) is reported
-    whole when its change removes or changes a line, or adds a line at or after the construct's first line. Only a
-    change wholly above every construct is passed without a report, because only then can it not alter how the
-    construct renders. The base's copy is not compared: a count of hits let a second copy, or an edited body, hide."""
+    """Fail closed: a changed file that holds a construct (a comment, a details tag, a hidden element) is reported whole,
+    whatever the change. The base's copy is not compared: a count of hits let a second copy, or an edited body, hide.
+    A change to a file with no construct is not reported here (the added-line scan covers its added text)."""
     out = []
     for p, inf in info.items():
         if p is None:
@@ -438,9 +432,10 @@ def changed_file_hits(head, verdict_re, info, seen):
         openers = [h for h in whole if h["kind"] in CONSTRUCT_KINDS]
         if not openers:
             continue
-        first = min(h["line"] for h in openers)
-        if inf["removed"] or inf.get("risky") or inf["touch"] >= first:
-            out += [h for h in whole if h["location"] not in seen]
+        # Any change to a file that holds a construct is reported whole. No exemption: plain text above an indented code
+        # block can make a comment in it live (PR 67 pass 2, W2), and no list of characters catches every such case. The
+        # cost is the noise on an edit to a document that holds examples; the rewrite of the examples removes that noise.
+        out += [h for h in whole if h["location"] not in seen]
     return out
 
 
