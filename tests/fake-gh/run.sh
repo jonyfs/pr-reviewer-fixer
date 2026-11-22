@@ -1282,6 +1282,20 @@ check "wait-head: a head that never comes -> 3 at the limit, and says so" eval '
 REVIEW_WAIT_SECONDS=x "$RC" wait-head 7 $C >/dev/null 2>&1; r=$?
 check "wait-head: a non-numeric limit -> refused" eval '[ $r = 1 ]'
 
+# wait-head input checks (PR 56 pass 1 W1 and its notes): a short, uppercase or non-hex commit, a step of
+# zero, and a step written 08 (octal to the shell) are handled before any poll
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+"$RC" wait-head 7 ccccc >/dev/null 2>&1; r=$?
+check "wait-head: a commit shorter than 7 digits -> refused" eval '[ $r = 1 ]'
+"$RC" wait-head 7 CCCCCCC >/dev/null 2>&1; r=$?
+check "wait-head: an uppercase commit -> refused" eval '[ $r = 1 ]'
+"$RC" wait-head 7 0 >/dev/null 2>&1; r=$?
+check "wait-head: a zero-length commit -> refused" eval '[ $r = 1 ]'
+REVIEW_WAIT_STEP=0 "$RC" wait-head 7 $C >/dev/null 2>&1; r=$?
+check "wait-head: a step of zero -> refused before any poll" eval '[ $r = 1 ]'
+REVIEW_WAIT_STEP=08 REVIEW_WAIT_SECONDS=1 "$RC" wait-head 7 $A >/dev/null 2>&1; r=$?
+check "wait-head: a step written 08 is read as 8 and the wait ends at the limit (3)" eval '[ $r = 3 ]'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

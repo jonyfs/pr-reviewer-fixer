@@ -2366,8 +2366,14 @@ cmd_wait_head() {
   local n="${1:-}" want="${2:-}" limit="${REVIEW_WAIT_SECONDS:-120}" step="${REVIEW_WAIT_STEP:-2}" waited=0 got
   positivo "$limit" || die "review-cycle: REVIEW_WAIT_SECONDS must be a positive number"
   positivo "$step" || die "review-cycle: REVIEW_WAIT_STEP must be a positive number"
+  # Base 10 on purpose: a value such as 08 is an invalid octal number to the shell.
+  limit=$((10#$limit)); step=$((10#$step))
   [ -n "$n" ] || die "review-cycle: wait-head needs a pull request number"
   [ -n "$want" ] || want="$(git rev-parse HEAD 2>/dev/null)" || die "review-cycle: no commit to wait for"
+  # A commit to match is 7 to 40 lowercase hex digits. Anything else (a 0, an uppercase letter, a word) is
+  # refused before any poll, so a bad value can never read as a match.
+  case "$want" in ''|*[!0-9a-f]*) die "review-cycle: wait-head needs a commit of 7 to 40 lowercase hex digits, got '$want'" ;; esac
+  [ "${#want}" -ge 7 ] && [ "${#want}" -le 40 ] || die "review-cycle: wait-head needs a commit of 7 to 40 hex digits, got ${#want}"
   while :; do
     got="$(gh pr view "$n" --json headRefOid --jq .headRefOid 2>/dev/null)" || got=""
     if [ -n "$got" ] && [ "${got:0:${#want}}" = "$want" ]; then
@@ -2456,6 +2462,6 @@ case "${1:-status}" in
   findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels} [pr]" ;;
+  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels} [pr]; wait-head takes <pr> [sha]" ;;
 esac
 fi
