@@ -85,7 +85,10 @@ PYEXE="$(python3 -I -c 'import sys; print(sys.executable if sys.prefix == sys.ba
   && [ -n "$PYEXE" ] && [ -x "$PYEXE" ] && ln -sf "$PYEXE" "$OUT/python/python3"
 export PATH="$OUT/python:$PATH"
 names=(); pids=()
-start() { local n="$1"; shift; names+=("$n"); ( "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc" ) & pids+=($!); }
+# Each suite records its own wall time in seconds, so a slow one is named in the log (the suites run together,
+# so the total is the slowest one, not the sum).
+start() { local n="$1"; shift; names+=("$n"); ( t0=$(date +%s); "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc"; echo $(( $(date +%s) - t0 )) >"$OUT/${#names[@]}.secs" ) & pids+=($!); }
+run_t0=$(date +%s)
 # The shared scripts run once, from the reviewer's copy: the cmp checks below fail when the fixer's
 # copy differs by one byte, so a second run of the same bytes adds time and no coverage.
 start "review-cycle.sh and gate"                 env TEST_TAG="${P}rev" bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
@@ -104,8 +107,9 @@ start "release.sh"                                env TEST_TAG="${P}run" bash "$
 start "update.sh"                                 env TEST_TAG="${P}rev" bash "$HERE/update/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts" "$ROOT/install.sh"
 start "model-key scan"                            env TEST_TAG="${P}run" bash "$HERE/scan/run.sh"
 wait "${pids[@]}"
+echo "== all suites: $(( $(date +%s) - run_t0 ))s wall"
 for i in "${!names[@]}"; do
-  n=$((i + 1)); echo "== ${names[$i]}"; tail -n 3 "$OUT/$n.log"
+  n=$((i + 1)); echo "== ${names[$i]} ($(cat "$OUT/$n.secs" 2>/dev/null || echo ?)s)"; tail -n 3 "$OUT/$n.log"
   [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -eq 0 ] || fail=1
 done
 # Every skill states the summary shape, so the three reports read the same way to a person: the
