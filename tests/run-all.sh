@@ -92,6 +92,7 @@ names=(); pids=()
 # run with no filter. Unset, every suite runs.
 # The filter comes from the command line only, never from the caller's environment, as the other settings here do.
 unset RUN_ONLY
+unset PRINT_KEY
 FRESH=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -123,8 +124,11 @@ tree_key() {
         git -C "$ROOT" hash-object --no-filters -- "$f" 2>/dev/null
       else printf 'other\0'; fi
     done
-    printf 'toolchain %s | %s | %s | %s\n' "$(git --version 2>/dev/null)" "$(bash --version 2>/dev/null | head -n 1)" \
-      "$(python3 -V 2>&1)" "$(uname -sm 2>/dev/null)"
+    printf 'toolchain %s | %s | %s | %s | %s | %s | %s\n' "$(git --version 2>/dev/null)" "$(bash --version 2>/dev/null | head -n 1)" \
+      "$(python3 -V 2>&1)" "$(uname -sm 2>/dev/null)" "$(node -v 2>/dev/null)" "$(jq --version 2>/dev/null)" \
+      "$(curl --version 2>/dev/null | head -n 1)"
+    # the user's global git configuration changes what git diff and git hash-object produce: its digest is part of the key
+    shasum -a 256 "${HOME:-/dev/null}/.gitconfig" 2>/dev/null
   } | shasum -a 256 2>/dev/null | cut -d' ' -f1
 }
 if [ "${PRINT_KEY:-0}" = 1 ]; then tree_key; exit 0; fi
