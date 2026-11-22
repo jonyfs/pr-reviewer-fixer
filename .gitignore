@@ -25,3 +25,4 @@ tests/release/work-*/
 tests/update/state-*/
 tests/scan/work-*/
 tests/preflight/work-*/
+tests/merge-integration/work-*/
