@@ -1312,6 +1312,17 @@ check "wait-head: a step written 08 is read as 8 and the wait ends at the limit 
 REVIEW_WAIT_CALL_SECONDS=x "$RC" wait-head 7 $C >/dev/null 2>&1; r=$?
 check "wait-head: a non-numeric call timeout -> refused" eval '[ $r = 1 ]'
 
+# base-scanner: prints a folder with the base's scanner, script and gate; a base that is not fetched is refused
+BS="$W/bs-repo"; rm -rf "$BS"; mkdir -p "$BS/.agents/skills/pr-reviewer/scripts"
+git -C "$BS" init -q -b main
+for f in scan-hidden.py review-cycle.sh gate-pr-review-state.py; do cp "$(dirname "$RCABS")/$f" "$BS/.agents/skills/pr-reviewer/scripts/"; done
+git -C "$BS" add -A && git -C "$BS" -c user.name=t -c user.email=t@example.com commit -q -m "the scripts" && git -C "$BS" update-ref refs/remotes/origin/main HEAD
+(cd "$BS" && "$RCABS" base-scanner main >"$W/bs.out" 2>&1); r=$?
+BSD="$(head -n 1 "$W/bs.out" 2>/dev/null)"
+check "base-scanner: prints a folder with the scanner, the script and the gate (exit 0)" eval '[ $r = 0 ] && [ -f "$BSD/scan-hidden.py" ] && [ -f "$BSD/review-cycle.sh" ] && [ -f "$BSD/gate-pr-review-state.py" ]'
+(cd "$BS" && "$RCABS" base-scanner no-such-base >/dev/null 2>&1); r=$?
+check "base-scanner: a base that is not fetched is refused (exit 1)" eval '[ $r = 1 ]'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

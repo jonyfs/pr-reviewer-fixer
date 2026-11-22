@@ -2420,6 +2420,62 @@ cmd_preflight() {
   return "$rc"
 }
 
+# Read-only. For a pull request already reviewed, prints the change since the head the last verdict covers
+# (MARKER_SHA..HEAD): a pass can review that range only, carrying the open findings forward. With no earlier
+# verdict, or a verdict whose head is not in this checkout, it says so and the pass is a full review.
+cmd_delta() {
+  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read"
+  # The same trust as status and stale: a marker counts only from a listed login, and only if no one else edited it.
+  marker_authors_ready || die "review-cycle: REFUSED. $NOT_READY_MSG"
+  parse "$json"
+  [ "${MARKER_FOREIGN_EDIT:--}" = - ] || die "review-cycle: REFUSED on #$NUMBER: $(foreign_msg). No delta is printed from it."
+  if [ -z "${MARKER_SHA:-}" ]; then
+    echo "#$NUMBER: no earlier verdict. Review the whole change: a full pass."; return 0
+  fi
+  # Both commits are checked as hex before git sees them, so a value that starts with "-" is never an option.
+  case "$MARKER_SHA" in *[!0-9a-f]*|"") echo "#$NUMBER: the verdict's head is not a commit id. Review the whole change."; return 0 ;; esac
+  case "$HEAD" in *[!0-9a-f]*|"") echo "#$NUMBER: the head is not a commit id. Review the whole change."; return 0 ;; esac
+  # The head must be in this checkout before anything else: an absent head is a fetch, not a rebase (PR 62 pass 2, N4).
+  if ! git rev-parse --verify -q "$HEAD^{commit}" >/dev/null; then
+    echo "review-cycle: #$NUMBER's head ${HEAD:0:12} is not in this checkout: fetch it, then run delta again" >&2; return 1
+  fi
+  if ! git rev-parse --verify -q "$MARKER_SHA^{commit}" >/dev/null; then
+    echo "#$NUMBER: the verdict's head ${MARKER_SHA:0:12} is not in this checkout (fetch it). Review the whole change."; return 0
+  fi
+  # A range is printed only when the head descends from the verdict's head with no merge between them. A merge
+  # of the base branch can keep the pull request's own version of a file that the base changed, so the range would
+  # hide that file. Anything else is a full pass.
+  if ! git merge-base --is-ancestor "$MARKER_SHA" "$HEAD" 2>/dev/null; then
+    echo "#$NUMBER: the head does not descend from the verdict's head ${MARKER_SHA:0:12} (a rebase or a reset). Review the whole change."; return 0
+  fi
+  # A failing rev-list is not "no merge": it is refused, never read as a clean range (PR 62 pass 2, N5).
+  local merges
+  merges="$(git rev-list --merges "$MARKER_SHA..$HEAD" 2>/dev/null)" || { echo "review-cycle: git could not list the merges between ${MARKER_SHA:0:12} and the head; no delta" >&2; return 1; }
+  if [ -n "$merges" ]; then
+    echo "#$NUMBER: a merge sits between ${MARKER_SHA:0:12} and the head. A merge can hide a change the base made. Review the whole change."; return 0
+  fi
+  echo "#$NUMBER: delta ${MARKER_SHA:0:12}..${HEAD:0:12} (the verdict's head to the head now):"
+  # --name-only: the file list is what a reviewer needs; --stat shortens long paths.
+  git diff --name-only "$MARKER_SHA" "$HEAD" -- || { echo "review-cycle: git could not diff ${MARKER_SHA:0:12}..${HEAD:0:12}" >&2; return 1; }
+  return 0
+}
+
+# Prints a folder that holds the scanner and the review script as they are on <base> (default main), for a pass whose
+# change touches the scripts: the pass must scan with the base's copy, so a pull request cannot excuse itself
+# by changing the scanner it is checked with. Read-only: it writes only the folder it prints, under the system temp
+# folder, and the path is the last line of output.
+cmd_base_scanner() {
+  local base="${1:-main}" dir f
+  git rev-parse --verify -q "origin/$base^{commit}" >/dev/null || die "review-cycle: origin/$base is not fetched: git fetch origin $base"
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/base-scanner-XXXXXXXX")" || die "review-cycle: cannot make a folder"
+  mkdir -p "$dir/scripts"
+  for f in scan-hidden.py review-cycle.sh gate-pr-review-state.py; do
+    git show "origin/$base:.agents/skills/pr-reviewer/scripts/$f" >"$dir/scripts/$f" 2>/dev/null \
+      || die "review-cycle: origin/$base has no $f: the base cannot be read"
+  done
+  echo "$dir/scripts"
+}
+
 # Read-only. Prints the one next step for a pull request, from its label and the head its verdict
 # covers. It moves no label and posts nothing, so it is safe to run at any time.
 cmd_next() {
@@ -2485,6 +2541,8 @@ case "${1:-status}" in
   next)    shift || true; cmd_next    "${1:-}" ;;
   wait-head) shift || true; cmd_wait_head "$@" ;;
   preflight) shift || true; cmd_preflight "${1:-main}" ;;
+  delta)   shift || true; cmd_delta   "${1:-}" ;;
+  base-scanner) shift || true; cmd_base_scanner "${1:-main}" ;;
   fix)     shift || true; cmd_fix     "${1:-}" ;;
   halt)    shift || true; cmd_halt    "$@" ;;
   budget)  shift || true; cmd_budget  "${1:-}" ;;
@@ -2497,6 +2555,6 @@ case "${1:-status}" in
   findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
+  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight|delta} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
 esac
 fi
