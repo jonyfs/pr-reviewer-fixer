@@ -92,9 +92,32 @@ names=(); pids=()
 # run with no filter. Unset, every suite runs.
 # The filter comes from the command line only, never from the caller's environment, as the other settings here do.
 unset RUN_ONLY
-if [ "${1:-}" = "--only" ]; then
-  RUN_ONLY="${2:-}"; shift 2
-  case "$RUN_ONLY" in ''|,*|*,|*,,*) echo "run-all: --only needs comma-separated words, none of them empty" >&2; exit 2 ;; esac
+FRESH=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only) RUN_ONLY="${2:-}"; shift 2
+      case "$RUN_ONLY" in ''|,*|*,|*,,*) echo "run-all: --only needs comma-separated words, none of them empty" >&2; exit 2 ;; esac ;;
+    --fresh) FRESH=1; shift ;;
+    *) echo "run-all: unknown option $1" >&2; exit 2 ;;
+  esac
+done
+# THE SUITE CACHE. A full run of an identical tree (the commit, its uncommitted changes, and the untracked files) that
+# already passed is not run again: the key is written only after a green full run, and a filtered run never reads or
+# writes it. --fresh runs everything; the run before a PASSED verdict or a merge is always --fresh. The cache lives in
+# the user's cache folder and is only as good as this key: a change anywhere in the tree changes it.
+CACHE_DIR="${XDG_CACHE_HOME:-${HOME:-}/.cache}/pr-reviewer-fixer/run-all"
+tree_key() {
+  { git -C "$ROOT" rev-parse HEAD 2>/dev/null; git -C "$ROOT" diff HEAD 2>/dev/null
+    git -C "$ROOT" ls-files -o --exclude-standard -- . ':!.claude' 2>/dev/null | while read -r f; do cat "$ROOT/$f" 2>/dev/null; done; } \
+    | shasum -a 256 2>/dev/null | cut -d' ' -f1
+}
+KEY=""
+if [ -z "${RUN_ONLY:-}" ]; then
+  KEY="$(tree_key)"   # computed on every full run: a --fresh run writes the key too
+  if [ "$FRESH" = 0 ] && [ -n "$KEY" ] && [ -f "$CACHE_DIR/$KEY" ]; then
+    echo "== run-all: this exact tree already passed a full run (key ${KEY:0:12}); nothing re-run. Pass --fresh to run every suite."
+    exit 0
+  fi
 fi
 started=0
 start() {
@@ -353,4 +376,8 @@ cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.gith
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
 # The model-key scan runs here, last: see model_key_scan, defined near the top.
 model_key_scan
+# Only a green full run is written to the cache (see the cache note above).
+if [ "$fail" = 0 ] && [ -z "${RUN_ONLY:-}" ] && [ -n "${KEY:-}" ]; then
+  mkdir -p "$CACHE_DIR" 2>/dev/null && : >"$CACHE_DIR/$KEY" 2>/dev/null
+fi
 exit $fail
