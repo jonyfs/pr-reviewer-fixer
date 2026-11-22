@@ -14,5 +14,9 @@ case "$1 $2" in
   "api repos/{owner}/{repo}/commits/"*)
     [ -f "$D/head-commit.json" ] || exit 1
     cat "$D/head-commit.json" ;;
+  "api repos/{owner}/{repo}/git/ref/heads/"*)
+    # The live tip of the base branch, from $FAKE_DIR/base-tip (already in --jq output form).
+    [ -f "$D/base-tip" ] || exit 1
+    cat "$D/base-tip" ;;
   *) echo "fake gh: unhandled $*" >&2; exit 1 ;;
 esac

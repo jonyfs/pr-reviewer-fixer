@@ -189,7 +189,10 @@ sequenceDiagram
   not a fast-forward and a commit that touches a file no finding names. A merge commit counts the
   files it changes beyond git's automatic merge of its parents (a conflict resolution, or an edit
   slipped into the merge), which needs git 2.38 or later; commits the base already holds are not
-  checked. It also screens the lines those commits add, reading a file git treats as binary as
+  checked. "The base" is both the pull request's `baseRefOid` and the base branch's tip as GitHub
+  reports it now, since `baseRefOid` still names the old base until the first push after the base
+  moved. A local ref is never trusted for this, and the live tip is read only for a plain base name
+  (letters, digits, `.`, `_`, `/`, `-`, no `..`); any other name excludes `baseRefOid` alone. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
   `.github/scripts/**`, CI files outside GitHub (`.gitlab-ci.yml`, `.circleci/**`, a `Jenkinsfile`
