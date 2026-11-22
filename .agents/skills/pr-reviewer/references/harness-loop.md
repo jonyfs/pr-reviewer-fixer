@@ -57,9 +57,6 @@ until it is the commit you pushed, and exits 3 if it never is. Then say so and r
 `origin/<base>` (default `main`). A pass on a change that touches the scripts scans with that copy, so the change cannot
 excuse itself by editing the scanner it is checked with.
 
-The full test run before a `PASSED` verdict or a merge is `bash tests/run-all.sh --fresh`: `--fresh` ignores the
-suite cache, which skips a tree that already passed a full run (PR 65). Filtered runs (`--only`) never use it.
-
 `review-cycle.sh delta <pr>` (read-only) shows what changed since the last verdict's head. A pass may review only that
 range when it prints one: a head that descends from the verdict's head with no merge between them. Otherwise, or with
 no earlier verdict, the pass is a full review, and the command says which.
