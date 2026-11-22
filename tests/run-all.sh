@@ -106,6 +106,9 @@ start() {
     [ -n "$keep" ] || return 0
   fi
   started=$((started + 1))
+  # A nested call (the refusals suite calls this file) never starts a suite: it refuses here, so a broken
+  # refusal above cannot make the run call itself without end (PR 60 pass 3, W3).
+  if [ -n "${RUN_ALL_NESTED:-}" ]; then echo "run-all: a nested run starts no suite" >&2; exit 3; fi
   names+=("$n"); ( t0=$(date +%s); "$@" >"$OUT/${#names[@]}.log" 2>&1; echo $? >"$OUT/${#names[@]}.rc"; echo $(( $(date +%s) - t0 )) >"$OUT/${#names[@]}.secs" ) & pids+=($!); }
 run_t0=$(date +%s)
 # The shared scripts run once, from the reviewer's copy: the cmp checks below fail when the fixer's
