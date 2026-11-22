@@ -47,6 +47,6 @@ check "the refusal names the conflict markers" grep -q "conflict markers" "$W/co
 g reset -q --hard HEAD~1 2>/dev/null
 printf '%s HEAD\n' '<<<<<<<' > "$R/big.md"; seq 1 40000 | sed 's/^/line /' >> "$R/big.md"; g add -A; g commit -qm "a large conflicted merge"
 ( cd "$R" && "$RC" preflight main >"$W/big.out" 2>&1 ); r=$?
-check "a large change with a conflict marker at its end is refused (exit 1)" [ "$r" = 1 ]
+check "a large change with a conflict marker on its first line is refused (exit 1)" [ "$r" = 1 ]
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
