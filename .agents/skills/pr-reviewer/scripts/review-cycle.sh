@@ -2420,6 +2420,23 @@ cmd_preflight() {
   return "$rc"
 }
 
+# Read-only. For a pull request already reviewed, prints the change since the head the last verdict covers
+# (MARKER_SHA..HEAD): a pass can review that range only, carrying the open findings forward. With no earlier
+# verdict, or a verdict whose head is not in this checkout, it says so and the pass is a full review.
+cmd_delta() {
+  local json; json="$(pr_json "${1:-}")"; [ -n "$json" ] || die "review-cycle: no pull request to read"
+  parse "$json"
+  if [ -z "${MARKER_SHA:-}" ]; then
+    echo "#$NUMBER: no earlier verdict. Review the whole change: a full pass."; return 0
+  fi
+  if ! git rev-parse --verify -q "$MARKER_SHA^{commit}" >/dev/null; then
+    echo "#$NUMBER: the verdict's head ${MARKER_SHA:0:12} is not in this checkout (fetch it). Review the whole change."; return 0
+  fi
+  echo "#$NUMBER: delta ${MARKER_SHA:0:12}..${HEAD:0:12} (the verdict's head to the head now):"
+  git diff --stat "$MARKER_SHA" "$HEAD" 2>/dev/null || return 1
+  return 0
+}
+
 # Read-only. Prints the one next step for a pull request, from its label and the head its verdict
 # covers. It moves no label and posts nothing, so it is safe to run at any time.
 cmd_next() {
@@ -2485,6 +2502,7 @@ case "${1:-status}" in
   next)    shift || true; cmd_next    "${1:-}" ;;
   wait-head) shift || true; cmd_wait_head "$@" ;;
   preflight) shift || true; cmd_preflight "${1:-main}" ;;
+  delta)   shift || true; cmd_delta   "${1:-}" ;;
   fix)     shift || true; cmd_fix     "${1:-}" ;;
   halt)    shift || true; cmd_halt    "$@" ;;
   budget)  shift || true; cmd_budget  "${1:-}" ;;
@@ -2497,6 +2515,6 @@ case "${1:-status}" in
   findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
+  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight|delta} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
 esac
 fi

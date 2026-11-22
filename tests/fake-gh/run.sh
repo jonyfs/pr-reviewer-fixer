@@ -1312,6 +1312,11 @@ check "wait-head: a step written 08 is read as 8 and the wait ends at the limit 
 REVIEW_WAIT_CALL_SECONDS=x "$RC" wait-head 7 $C >/dev/null 2>&1; r=$?
 check "wait-head: a non-numeric call timeout -> refused" eval '[ $r = 1 ]'
 
+# delta (item 6): with no earlier verdict the pass is a full review, said plainly
+reset '{"number":7,"headRefOid":"'$C'","headRefName":"feat/x","state":"OPEN","labels":[{"name":"review:pending"}],"comments":[]}'
+"$RC" delta 7 >"$W/delta.out" 2>&1; r=$?
+check "delta: no earlier verdict -> a full review, exit 0" eval '[ $r = 0 ] && grep -q "a full pass" "$W/delta.out"'
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
