@@ -52,6 +52,7 @@ security, effort max: run.
 dependencies, effort standard: run.
 privacy: not applicable, no privacy path in the diff.
 Declined to judge: none.
+Review mode: separate agents | single session.
 
 Prior findings (pass 2 and later, one line per earlier blocking finding):
 C0 verified: the closure's test fails on the old head and passes on this one.

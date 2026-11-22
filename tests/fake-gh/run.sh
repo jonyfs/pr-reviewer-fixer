@@ -604,7 +604,7 @@ DIFF
 # The floor of PR 7 is its API file list (path-floor.sh --pr); a --diff row passes an empty one.
 printf '[{"filename":"src/a.ts","status":"modified"},{"filename":"old.txt","status":"removed"}]' >"$FAKE_DIR/files.json"
 NOF="$W/nofloor.z"; : >"$NOF"
-lr() { printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: %s, warning: 0, note: 0}\nfindings:\n  - id: C1\n    severity: CRITICAL\n    file: %s\n    line: %s\n    claim: "x"\n```\n' "$1" "$2" "$3" >"$W/lr.md"; }
+lr() { printf '## Review\n\nDeclined to judge: none\nReview mode: single session\n\n```findings\nversion: 1\ncounts: {critical: %s, warning: 0, note: 0}\nfindings:\n  - id: C1\n    severity: CRITICAL\n    file: %s\n    line: %s\n    claim: "x"\n```\n' "$1" "$2" "$3" >"$W/lr.md"; }
 lr 1 src/a.ts 11; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report anchored finding -> 0" eval '[ $r = 0 ] && grep -q "ok. 1 finding" "$W/out"'
 lr 1 src/b.ts 11; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
@@ -615,7 +615,12 @@ lr 0 src/a.ts 11; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report counts line disagrees with entries -> 1" eval '[ $r = 1 ] && grep -q "counts line says" "$W/out"'
 lr 1 old.txt 1; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report finding on a deleted file -> 0" eq "$r" 0
-printf 'Declined to judge: none\nno block here\n' >"$W/lr.md"; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
+printf 'Declined to judge: none\nReview mode: single session\nno block here\n' >"$W/lr.md"
+# Independence (item 7): a report without a Review mode line is refused by the lint; with one it is not
+printf 'Declined to judge: none\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/lr-nomode.md"
+"$RC" lint-report 7 --report "$W/lr-nomode.md" >"$W/out-nomode" 2>&1; r=$?
+check "lint: a report with no Review mode line is refused" eval '[ $r -ne 0 ] && grep -q "Review mode" "$W/out-nomode"'
+"$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report no findings block -> 1" eq "$r" 1
 lr 1 src/a.ts 11; sed -i.bak '/Declined to judge/d' "$W/lr.md"; "$RC" lint-report 7 --report "$W/lr.md" >"$W/out" 2>&1; r=$?
 check "lint-report no Declined to judge line -> 1" eval '[ $r = 1 ] && grep -q "Declined to judge" "$W/out"'
@@ -745,7 +750,7 @@ check "gate: block_at mismatch on a marker the head left behind -> the stale pas
 reset "$(mk 7 $A '[{"name":"review:blocked"}]' "[$WBA]" OPEN)"
 b="$("$RC" budget 7 2>/dev/null)"
 check "budget: block_at mismatch on a marker the head left behind -> none for no verdict at the head, not the mismatch" eval 'printf "%s" "$b" | grep -q "^B_NEXT=.\?none" && printf "%s" "$b" | grep -q "^B_WHY=.no trusted verdict marker at the head.$"'
-printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 1, note: 0}\nfindings:\n  - id: W1\n    severity: WARNING\n    file: src/a.ts\n    line: 11\n    claim: "x"\n```\n' >"$W/lw.md"
+printf '## Review\n\nDeclined to judge: none\nReview mode: single session\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 1, note: 0}\nfindings:\n  - id: W1\n    severity: WARNING\n    file: src/a.ts\n    line: 11\n    claim: "x"\n```\n' >"$W/lw.md"
 printf 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -10,2 +10,3 @@\n x\n+y\n z\n' >"$W/lw.patch"
 "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" --files "$NOF" >"$W/out" 2>&1; r0=$?
 REVIEW_BLOCK_AT=warning "$RC" lint-report --report "$W/lw.md" --diff "$W/lw.patch" --files "$NOF" >"$W/out" 2>&1; r1=$?
@@ -776,7 +781,7 @@ printf '## findings\n//registry:_authToken=npm_%s\n' "$(printf 'b%.0s' $(seq 1 3
 check "report with an npm token -> refused" eval '[ $r = 1 ] && grep -q "npm token" "$W/out" && [ $(ncomments) = 0 ]'
 printf '## findings\ntoken glpat-%s\n' "$(printf 'c%.0s' $(seq 1 24))" >"$SEC"; r=$(pubr "$SEC")
 check "report with a GitLab token -> refused" eval '[ $r = 1 ] && grep -q "GitLab token" "$W/out" && [ $(ncomments) = 0 ]'
-printf '## findings\nstray %s\n\n```findings\ncounts: { critical: 0, warning: 0, note: 0 }\n```\nDeclined to judge: none\n' "$gh_tok" >"$W/lrs.md"
+printf '## findings\nstray %s\n\n```findings\ncounts: { critical: 0, warning: 0, note: 0 }\n```\nDeclined to judge: none\nReview mode: single session\n' "$gh_tok" >"$W/lrs.md"
 printf 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n' >"$W/lrs.patch"
 "$RC" lint-report --report "$W/lrs.md" --diff "$W/lrs.patch" --files "$NOF" >"$W/out" 2>&1; r=$?
 check "lint-report fails a report with a secret and does not print it" eval '[ $r = 1 ] && grep -q "GitHub token" "$W/out" && ! grep -q "$gh_tok" "$W/out"'
@@ -1137,7 +1142,7 @@ printf 'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n--- a/
 nul .github/workflows/ci.yml package.json >"$W/fl.z"
 MU_OK='mandatory_units:\n  - {unit: security, effort: max, status: run}\n  - {unit: dependencies, effort: standard, status: run}\n'
 # lf <prose before Declined to judge> <block fields after counts>: a report whose finding is anchored.
-lf() { printf '## Review\n\n### Coverage note\n%bDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 1}\n%bfindings:\n  - id: N1\n    severity: NOTE\n    file: package.json\n    line: 2\n    claim: "x"\n```\n' "$1" "${2:-}" >"$W/lf.md"; }
+lf() { printf '## Review\n\n### Coverage note\n%bDeclined to judge: none\nReview mode: single session\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 1}\n%bfindings:\n  - id: N1\n    severity: NOTE\n    file: package.json\n    line: 2\n    claim: "x"\n```\n' "$1" "${2:-}" >"$W/lf.md"; }
 lfrun() { lf "$@"; "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" --files "$W/fl.z" >"$W/out" 2>&1; }
 lfrun '' ''; r=$?
 check "lint-report: a workflow and a manifest in the change, no mandatory_units field -> 1, it names both (I50)" \
@@ -1175,9 +1180,9 @@ check "lint-report: an empty floor -> a malformed field still fails (1), an abse
 # W9 (PR #29): fences inside list items fooled the old fence tracker into reading quoted prose. Prose is
 # no longer read, so the reviewer's reports L and RA (a quoted run line, no field) fail.
 FB='```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n'
-printf '## Review\n\n### Coverage note\n\nDeclined to judge: none\n\n- The PR text says:\n\n    ```text\n    Mandatory units: security (max): run; dependencies: run\n    ```\n\n'"$FB" >"$W/lf.md"
+printf '## Review\n\n### Coverage note\n\nDeclined to judge: none\nReview mode: single session\n\n- The PR text says:\n\n    ```text\n    Mandatory units: security (max): run; dependencies: run\n    ```\n\n'"$FB" >"$W/lf.md"
 "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" --files "$W/fl.z" >"$W/out" 2>&1; r=$?
-printf '## Review\n\n- ```md\n  ### Coverage note\n  Mandatory units: security (max): run; dependencies: run\n  ```\n\nCoverage note\n-------------\n\nMandatory units: security (max): skipped; dependencies: run\nDeclined to judge: none\n\n'"$FB" >"$W/lf.md"
+printf '## Review\n\n- ```md\n  ### Coverage note\n  Mandatory units: security (max): run; dependencies: run\n  ```\n\nCoverage note\n-------------\n\nMandatory units: security (max): skipped; dependencies: run\nDeclined to judge: none\nReview mode: single session\n\n'"$FB" >"$W/lf.md"
 "$RC" lint-report --report "$W/lf.md" --diff "$W/fl.patch" --files "$W/fl.z" >"$W/out2" 2>&1; r2=$?
 check "lint-report: W9 reports L (quoted run line in a list-item fence) and RA (- \`\`\`md quote) -> 1, no field (W9, PR #29)" \
   eval '[ $r = 1 ] && [ $r2 = 1 ] && grep -q "no .mandatory_units:. field" "$W/out" && grep -q "no .mandatory_units:. field" "$W/out2"'
@@ -1186,7 +1191,7 @@ check "lint-report: W9 reports L (quoted run line in a list-item fence) and RA (
 E="$(printf '\033')"
 { printf '%s[1mdiff --git a/docs/a.md b/docs/b.md%s[m\nsimilarity index 100%%\nrename from docs/a.md\nrename to docs/b.md\n' "$E" "$E"
   printf '%s[1mdiff --git a/.github/workflows/evil.yml b/.github/workflows/evil.yml%s[m\n%s[1m--- /dev/null%s[m\n%s[1m+++ b/.github/workflows/evil.yml%s[m\n@@ -0,0 +1 @@\n%s[32m+on: push%s[m\n' "$E" "$E" "$E" "$E" "$E" "$E" "$E" "$E"; } >"$W/col.patch"
-printf '## Review\n\n### Coverage note\nDeclined to judge: none\n\n'"$FB" >"$W/le.md"
+printf '## Review\n\n### Coverage note\nDeclined to judge: none\nReview mode: single session\n\n'"$FB" >"$W/le.md"
 nul docs/a.md docs/b.md .github/workflows/evil.yml >"$W/col.z"
 "$RC" lint-report --report "$W/le.md" --diff "$W/col.patch" --files "$W/col.z" >"$W/out" 2>&1; r=$?
 "$RC" lint-report --report "$W/le.md" --diff "$W/col.patch" >"$W/out2" 2>&1; r2=$?
@@ -1214,7 +1219,7 @@ check "lint-report <pr> --files: a pull request's floor is its API list, not a l
 # non-blank line that is exactly ```.
 fbk() { "$RC" findings-block --report "$1" >"$W/fb.json" 2>"$W/fb.err"; }
 lfb() { "$RC" lint-report --report "$1" --diff "$W/fl.patch" --files "$W/fl.z" >"$W/out" 2>&1; }
-printf '## Review\n\nThe contract example:\n\n````markdown\n```findings\nversion: 1\nfindings:\n  - id: C1\n    severity: CRITICAL\n    file: src/auth/session.ts\n    line: 47\n```\n````\n\n### Coverage note\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 1, warning: 0, note: 0}\n'"$MU_OK"'findings:\n  - id: C9\n    severity: CRITICAL\n    file: package.json\n    line: 2\n    claim: "x"\n```\n' >"$W/r1.md"
+printf '## Review\n\nThe contract example:\n\n````markdown\n```findings\nversion: 1\nfindings:\n  - id: C1\n    severity: CRITICAL\n    file: src/auth/session.ts\n    line: 47\n```\n````\n\n### Coverage note\nDeclined to judge: none\nReview mode: single session\n\n```findings\nversion: 1\ncounts: {critical: 1, warning: 0, note: 0}\n'"$MU_OK"'findings:\n  - id: C9\n    severity: CRITICAL\n    file: package.json\n    line: 2\n    claim: "x"\n```\n' >"$W/r1.md"
 fbk "$W/r1.md"; r=$?; lfb "$W/r1.md"; r2=$?
 check "findings-block: W10's report R1 (a quoted example with its own \`\`\`findings line) -> 1 in the reader and in lint-report (W10, PR #29)" \
   eval '[ $r = 1 ] && grep -q "2 lines that are exactly" "$W/fb.err" && [ $r2 = 1 ] && grep -q "no valid .findings. block" "$W/out"'
@@ -1228,18 +1233,18 @@ PY
 fbk "$W/r1q.md"; r=$?; lfb "$W/r1q.md"; r2=$?
 check "findings-block: the same quote without an exact \`\`\`findings line -> the last block, C9 package.json, and lint-report agrees (0) (W10)" \
   eval '[ $r = 0 ] && [ $r2 = 0 ] && python3 -I -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if [e[\"file\"] for e in d[\"entries\"]] == [\"package.json\"] else 1)" "$W/fb.json"'
-printf '## Review\n\nDeclined to judge: none\n\n'"$FB"'\n### Summary\nprose after the block\n' >"$W/fb1.md"
+printf '## Review\n\nDeclined to judge: none\nReview mode: single session\n\n'"$FB"'\n### Summary\nprose after the block\n' >"$W/fb1.md"
 fbk "$W/fb1.md"; r=$?; lfb "$W/fb1.md"; r2=$?
 check "findings-block: a block that is not at the end of the report -> 1, and lint-report 1" eval '[ $r = 1 ] && grep -q "does not end with the .findings. block" "$W/fb.err" && [ $r2 = 1 ]'
-printf '## Review\n\nDeclined to judge: none\n\n~~~findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n~~~\n' >"$W/fb2.md"
-printf '## Review\n\nDeclined to judge: none\n\n```findings \nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/fb3.md"
+printf '## Review\n\nDeclined to judge: none\nReview mode: single session\n\n~~~findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n~~~\n' >"$W/fb2.md"
+printf '## Review\n\nDeclined to judge: none\nReview mode: single session\n\n```findings \nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n```\n' >"$W/fb3.md"
 fbk "$W/fb2.md"; r=$?; fbk "$W/fb3.md"; r2=$?
 check "findings-block: a ~~~findings opener and a \`\`\`findings opener with a trailing space are no block -> 1 (W10's other shapes)" eval '[ $r = 1 ] && [ $r2 = 1 ]'
-printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\n```\nfindings: []\n```\n' >"$W/fb4.md"
-printf '## Review\n\nDeclined to judge: none\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n' >"$W/fb5.md"
+printf '## Review\n\nDeclined to judge: none\nReview mode: single session\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\n```\nfindings: []\n```\n' >"$W/fb4.md"
+printf '## Review\n\nDeclined to judge: none\nReview mode: single session\n\n```findings\nversion: 1\ncounts: {critical: 0, warning: 0, note: 0}\nfindings: []\n' >"$W/fb5.md"
 fbk "$W/fb4.md"; r=$?; grep -q "close it early" "$W/fb.err"; g=$?; fbk "$W/fb5.md"; r2=$?
 check "findings-block: a \`\`\` line inside the block -> 1; a block never closed -> 1" eval '[ $r = 1 ] && [ $g = 0 ] && [ $r2 = 1 ]'
-printf '## Review\r\n\r\nDeclined to judge: none\r\n\r\n```findings\r\nversion: 1\r\ncounts: {critical: 0, warning: 0, note: 0}\r\n'"$(printf "$MU_OK" | sed 's/$/\r/')"'\nfindings: []\r\n```\r\n\r\n\r\n' >"$W/fb6.md"
+printf '## Review\r\n\r\nDeclined to judge: none\nReview mode: single session\r\n\r\n```findings\r\nversion: 1\r\ncounts: {critical: 0, warning: 0, note: 0}\r\n'"$(printf "$MU_OK" | sed 's/$/\r/')"'\nfindings: []\r\n```\r\n\r\n\r\n' >"$W/fb6.md"
 fbk "$W/fb6.md"; r=$?
 check "findings-block: CRLF lines and blank lines after the closer -> the block, mandatory_units read" \
   eval '[ $r = 0 ] && python3 -I -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if len(d[\"mandatory_units\"]) == 2 and d[\"counts\"] == {\"critical\":0,\"warning\":0,\"note\":0} else 1)" "$W/fb.json"'
