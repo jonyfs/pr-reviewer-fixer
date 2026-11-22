@@ -2418,9 +2418,17 @@ cmd_preflight() {
   fi
   # A merge that stopped on a conflict leaves markers in the files. They are not a finding the scanners know, so they
   # are refused here: a push of a conflicted merge would be reviewed as if the conflict were content.
-  if git diff -U0 "origin/$base" "$head" 2>/dev/null | grep -qE '^\+(<{7}( |$)|>{7}( |$)|={7}$)'; then
+  # The change is read to a file with the same options as the screen (text, no textconv, three dots): a pipe into
+  # grep -q under pipefail reported a large diff as clean (PR 64 pass 1, W1), and a two-dot diff blames a branch for
+  # lines main removed later (W3).
+  local cpf
+  cpf="$(mktemp)" || { echo "preflight: cannot make a file to read the change" >&2; return 1; }
+  git -c core.quotePath=false diff --text --no-textconv --no-color --no-ext-diff --no-renames -U0 "origin/$base...$head" -- >"$cpf" 2>/dev/null \
+    || { rm -f "$cpf"; echo "preflight: git could not read origin/$base...${head:0:12}" >&2; return 1; }
+  if grep -qE '^\+(<{7}( |$)|>{7}( |$)|={7}$)' "$cpf"; then
     echo "preflight: the change adds conflict markers (<<<<<<< / ======= / >>>>>>>) on origin/$base..${head:0:12}: finish the merge first" >&2; rc=1
   fi
+  rm -f "$cpf"
   [ "$rc" = 0 ] && echo "preflight: clean at ${head:0:12} against origin/$base"
   return "$rc"
 }
