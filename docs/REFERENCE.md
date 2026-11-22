@@ -722,7 +722,9 @@ purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 ## Tests
 
 ```bash
-bash tests/run-all.sh
+bash tests/run-all.sh          # the full run; an identical tree that already passed is not run again
+bash tests/run-all.sh --fresh  # the full run, every suite: the one before a PASSED verdict or a merge
+bash tests/run-all.sh --only words  # the suites whose name holds one of the words: for iteration only
 ```
 
 The suite needs no network, only bash, python3, node, jq, git, curl, tar and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
