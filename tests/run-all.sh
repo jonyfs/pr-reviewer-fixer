@@ -99,6 +99,7 @@ start "review eval scorer"                       env TEST_TAG="${P}run" bash "$H
 start "install.sh"                                env TEST_TAG="${P}run" bash "$HERE/install/run.sh" "$ROOT/install.sh"
 start "install-remote.sh"                         env TEST_TAG="${P}run" bash "$HERE/remote/run.sh"
 start "remote-review.sh"                          env TEST_TAG="${P}run" bash "$HERE/remote-review/run.sh"
+start "preflight (scratch repositories)"         env TEST_TAG="${P}run" bash "$HERE/preflight/run.sh"
 start "mutation check (guards)"                 env TEST_TAG="${P}run" bash "$HERE/mutation/run.sh"
 start "cycle budget and extend"                  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "scan-hidden.py"                           env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"

@@ -2396,6 +2396,25 @@ cmd_wait_head() {
   return 3
 }
 
+# Runs before a push, on this checkout: the secret screen and the hidden-text scan over the commits a push
+# would publish (origin/<base>..HEAD). It moves no label and posts nothing. A pass that is about to be
+# published on a head that fails here would be refused or blocked for the same reason, so the check
+# costs seconds instead of a review pass (PR 54 and 55 each took several passes for scanner churn).
+# Exit 0 when both are clean, 1 when either finds something.
+cmd_preflight() {
+  local base="${1:-main}" head rc=0
+  head="$(git rev-parse HEAD 2>/dev/null)" || die "review-cycle: no commit to check"
+  git rev-parse --verify -q "origin/$base^{commit}" >/dev/null || die "review-cycle: origin/$base is not fetched: git fetch origin $base"
+  if ! "$0" screen --diff "origin/$base" "$head" >/dev/null 2>&1; then
+    echo "preflight: the secret screen finds something on origin/$base..${head:0:12}: run review-cycle.sh screen --diff origin/$base $head" >&2; rc=1
+  fi
+  if ! python3 "$(dirname "$0")/scan-hidden.py" --diff "origin/$base" "$head" --commits "origin/$base" "$head" >/dev/null 2>&1; then
+    echo "preflight: the hidden-text scan finds something on origin/$base..${head:0:12}: run scan-hidden.py --diff origin/$base $head --commits origin/$base $head" >&2; rc=1
+  fi
+  [ "$rc" = 0 ] && echo "preflight: clean at ${head:0:12} against origin/$base"
+  return "$rc"
+}
+
 # Read-only. Prints the one next step for a pull request, from its label and the head its verdict
 # covers. It moves no label and posts nothing, so it is safe to run at any time.
 cmd_next() {
@@ -2460,6 +2479,7 @@ case "${1:-status}" in
   start)   shift || true; cmd_start   "$@" ;;
   next)    shift || true; cmd_next    "${1:-}" ;;
   wait-head) shift || true; cmd_wait_head "$@" ;;
+  preflight) shift || true; cmd_preflight "${1:-main}" ;;
   fix)     shift || true; cmd_fix     "${1:-}" ;;
   halt)    shift || true; cmd_halt    "$@" ;;
   budget)  shift || true; cmd_budget  "${1:-}" ;;
@@ -2472,6 +2492,6 @@ case "${1:-status}" in
   findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels} [pr]; wait-head takes <pr> [sha]" ;;
+  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
 esac
 fi
