@@ -312,6 +312,10 @@ for check in \
   "pr-merge-fixer/SKILL.md|The merge fixer does not review its own merge|the merge is never reviewed in the context that wrote it (PR 83 N5)" \
   "pr-merge-fixer/SKILL.md|A run that stopped after the push still owes the pass|a stop after the push still starts the loop (PR 83 W1)" \
   "pr-merge-fixer/SKILL.md|A fresh-context sub-agent never takes the loop role|a sub-agent never runs a second loop (PR 83 N1)" \
+  "pr-merge-fixer/SKILL.md|harness can start a fresh-context sub-agent; when it cannot, do not run \`start\`|the direct run checks for a sub-agent before start (PR 83 N8)" \
+  "pr-reviewer/references/harness-loop.md|directly and it pushed a merge, the session's agent takes the loop agent's role|the direct handover is keyed on the push (PR 83 W2)" \
+  "pr-reviewer/references/harness-loop.md|once the merge run ends (after its closure comment, or after the step that stopped it)|a stop after the push still hands the loop over (PR 83 W2)" \
+  "pr-reviewer/references/harness-loop.md|not an escalation: the head moved, so go on to step 1|step 0 goes on after a stop past the push (PR 83 N9)" \
   "pr-reviewer/references/harness-loop.md|the \`pr-merge-fixer\` skill finishes a merge push|a merge push triggers the loop"; do
   rel="${check%%|*}"; rest="${check#*|}"; phrase="${rest%%|*}"; why="${rest#*|}"
   grep -qF "$phrase" "$ROOT/.agents/skills/$rel" \
