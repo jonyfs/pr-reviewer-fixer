@@ -23,6 +23,9 @@ not decide a conflict, the skill stops, leaves the branch untouched, and names t
 person must make.
 
 After any push of a merge, the reviewer runs again on the new head and reads the whole diff. The
+skill starts that review itself: when the review loop dispatched it, the loop goes on from its first
+step; when a person ran `/pr-merge-fixer` directly, the session takes the loop's role and dispatches a
+fresh reviewer, so a merge never ends unreviewed. The
 merge closure comment lists the hunks the reviewer should read first. The rules are in
 [`pr-merge-fixer/SKILL.md`](../.agents/skills/pr-merge-fixer/SKILL.md) and
 [`orchestration.md`](../.agents/skills/pr-merge-fixer/references/orchestration.md).

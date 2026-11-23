@@ -34,6 +34,8 @@ Run the loop, without being asked, when any of these happens in the session:
 
 - the agent opens a pull request (`gh pr create`);
 - the agent pushes new commits to the branch of an open pull request;
+- the `pr-merge-fixer` skill finishes a merge push, whether the loop agent dispatched it or a person
+  invoked it directly (then the session's agent runs the loop itself, from step 1);
 - a person asks for a review or a correction of a pull request.
 
 Do not wait for CI, a bot or a person to start it. If the session ends before the loop does, the

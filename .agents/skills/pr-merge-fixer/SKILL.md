@@ -106,7 +106,10 @@ flowchart TD
     J -->|no| G
     I -->|pass| K[Commit, push-guard, push]
     K --> L[review-cycle.sh stale]
-    L --> M[Closure comment, then pr-reviewer pass P+1]
+    L --> M[Closure comment]
+    M --> N{Dispatched by the review loop agent?}
+    N -->|yes| O[Return: the loop agent starts again at step 1]
+    N -->|no| P[Run the review loop from step 1: a fresh pr-reviewer on the new head]
 ```
 
 1. **Run the guard on every pull request.** `scripts/review-cycle.sh fix <pr>` before the first write, with
@@ -131,7 +134,20 @@ flowchart TD
    the push, which goes ahead only on exit 0 with the `push-guard: ok.` line.
 8. **Stale the label**: `scripts/review-cycle.sh stale` right after the push.
 9. **Close the loop.** Write the closure comment to a file, run `scripts/review-cycle.sh screen --file <file>`, and post it with `gh pr comment` only on exit 0, as pr-fixer does (format below). The head moved, so the reviewer runs
-   again on it. That pass is owed; the merge fixer does not wait for it.
+   again on it. That pass is owed.
+10. **Start the review loop again.** A merge push always owes a review, so the run never ends with
+    that pass left to chance:
+    - **Dispatched by the review loop agent** (the brief says so): stop here. The loop agent starts
+      again at step 1 of [references/harness-loop.md](references/harness-loop.md) on its own.
+    - **Invoked directly by a person**, with no loop agent behind it: the session's agent now takes the
+      review loop agent's role and runs [references/harness-loop.md](references/harness-loop.md) from
+      step 1 on the new head: `review-cycle.sh wait-head <pr> <sha>`, `stale`, `status`, `start`, the
+      screens, then a fresh-context `pr-reviewer` sub-agent for the next pass, and on through the
+      budget table. The merge fixer does not review its own merge: when the harness cannot start a
+      fresh-context sub-agent, say in the session that the pass is owed and was not run, rather than
+      reviewing in the same context.
+    - **Escalated or stopped**: nothing was pushed, so there is no new head to review; the loop is not
+      started, and the decision for a person is the next step.
 
 ## Closure comment
 
@@ -190,6 +206,7 @@ closure comment with `escalated` rows.
 - [ ] `bash -p scripts/push-guard.sh` exits 0 with its `push-guard: ok.` line, with `--allow` for every resolved file
 - [ ] The closure comment is plain text and carries the banner, one line per file and the reviewer's focus hunks
 - [ ] The next pass is stated as owed, never as done
+- [ ] After a merge push, the review loop starts again: by the loop agent when it dispatched this run, or by this session from step 1 of the loop when a person invoked the skill directly
 
 ## References
 

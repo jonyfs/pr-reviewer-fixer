@@ -306,7 +306,10 @@ for check in \
   "pr-reviewer/references/harness-loop.md|json mergeable,mergeStateStatus|read both fields (N1)" \
   "pr-merge-fixer/references/conflicts.md|Stage the resolved files, then run|the staged screen runs before the commit (N9)" \
   "pr-merge-fixer/SKILL.md|screen --file <file>|the closure is screened before posting (N10)" \
-  "pr-merge-fixer/SKILL.md|Never set \`PUSH_GUARD_ALLOW_SENSITIVE\` yourself|the merge fixer never sets the allow variable (N11)"; do
+  "pr-merge-fixer/SKILL.md|Never set \`PUSH_GUARD_ALLOW_SENSITIVE\` yourself|the merge fixer never sets the allow variable (N11)" \
+  "pr-merge-fixer/SKILL.md|**Start the review loop again.**|the merge fixer starts the review loop after a merge push" \
+  "pr-merge-fixer/SKILL.md|runs [references/harness-loop.md](references/harness-loop.md) from|a direct run takes the loop agent's role" \
+  "pr-reviewer/references/harness-loop.md|the \`pr-merge-fixer\` skill finishes a merge push|a merge push triggers the loop"; do
   rel="${check%%|*}"; rest="${check#*|}"; phrase="${rest%%|*}"; why="${rest#*|}"
   grep -qF "$phrase" "$ROOT/.agents/skills/$rel" \
     && echo "== $why" || { echo "== MISSING from $rel: $why"; fail=1; }
