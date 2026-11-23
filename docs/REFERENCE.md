@@ -192,9 +192,11 @@ sequenceDiagram
   slipped into the merge), which needs git 2.38 or later; commits the base already holds are not
   checked. "The base" is both the pull request's `baseRefOid` and the base branch's tip as GitHub
   reports it now, since `baseRefOid` still names the old base until the first push after the base
-  moved. A local ref is never trusted for this, and the live tip is read only for a plain base name
-  (ASCII letters, digits, `.`, `_`, `/`, `-`, no `..`, and accepted by `git check-ref-format`); any
-  other name excludes `baseRefOid` alone, and the guard prints a line saying so. It also screens the lines those commits add, reading a file git treats as binary as
+  moved. A local ref is never trusted for this. The live tip is the pull request's own base ref, read
+  through GraphQL in the repository and on the host the pull request's `url` names, so the branch name
+  never goes into a URL; it is used only when GitHub's `baseRefName` equals the base name, the commit
+  id is 40 lower-case hex digits and the clone holds that commit. Otherwise only `baseRefOid` is
+  excluded, and the guard prints a line saying why. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
   `.github/scripts/**`, CI files outside GitHub (`.gitlab-ci.yml`, `.circleci/**`, a `Jenkinsfile`
