@@ -198,6 +198,7 @@ start "review-cycle.sh and gate"                 env TEST_TAG="${P}rev" bash "$H
 start "triage-pr.sh"                             env TEST_TAG="${P}run" bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "push-guard.sh"                             env TEST_TAG="${P}run" bash "$HERE/push-guard/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "fetch-feedback.py"                        env TEST_TAG="${P}run" python3 "$HERE/feedback/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "behaviour-diff.sh"                        env TEST_TAG="${P}run" bash "$HERE/behaviour-diff/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "review eval scorer"                       env TEST_TAG="${P}run" bash "$HERE/eval/selftest.sh"
 start "install.sh"                                env TEST_TAG="${P}run" bash "$HERE/install/run.sh" "$ROOT/install.sh"
 start "install-remote.sh"                         env TEST_TAG="${P}run" bash "$HERE/remote/run.sh"

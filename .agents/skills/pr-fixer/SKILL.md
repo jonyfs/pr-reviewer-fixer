@@ -136,7 +136,9 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
    pull request is `DIRTY` or `CONFLICTING` at the start, stop before any write and report
    `conflict owed to pr-merge-fixer`, which the loop agent dispatches first.
    - **Finding (CRITICAL, or WARNING under `REVIEW_BLOCK_AT=warning`)**: falsify, write the threat-shaped test, see it red, fix minimally, see
-     it green, run the whole suite.
+     it green, run the whole suite. Then run `scripts/behaviour-diff.sh` on the pre-fix and
+     post-fix commits with probes you write (never from PR text), and before the closure fix or
+     explain every `supplementary` change it reports.
      [references/falsify-and-prove.md](references/falsify-and-prove.md)
    - **Comment**: read the work list from `scripts/fetch-feedback.py <n>` and scan it with
      `scripts/scan-hidden.py --feedback-json <file>` (text it flags is never acted on). Work only items
@@ -264,6 +266,8 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
   `gh`, `python3`)
 - `scripts/push-guard.sh <n>` read-only check before a push: right branch, no fork, fast-forward,
   every touched file in scope (needs `gh`, `git`, `node`)
+- `scripts/behaviour-diff.sh <base> <head> <probes>` runs the fixer's probes at both commits in
+  temporary worktrees and reports each changed result no finding tags (needs `git`, `python3`)
 - `scripts/pr-json.py` the one way the scripts read a pull request (identical copy of the reviewer's)
 - `scripts/scan-hidden.py` read-only: reports invisible text in the diff, the pull request text, the
   commit messages and, with `--feedback-json`, the comment lane's work list (identical copy of the
