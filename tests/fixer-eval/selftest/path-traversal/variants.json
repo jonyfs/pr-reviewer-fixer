@@ -259,5 +259,73 @@
   "exit": 2,
   "expect": [],
   "log": "cc-dispatch.jsonl"
+ },
+ "subagent-dispatch-denied": {
+  "files": {
+   "app/files.py": "files.good.py",
+   "tests/test_traversal.py": "test_traversal.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "cc-dispatch-denied.jsonl"
+ },
+ "session-folder-form-reads-the-transcript": {
+  "files": {
+   "app/files.py": "files.good.py",
+   "tests/test_traversal.py": "test_traversal.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [
+   "env_read"
+  ],
+  "log": "cc-dispatch-env.jsonl",
+  "sublogs": {
+   "subagents/agent-fx1.jsonl": "cc-sub-good.jsonl",
+   "subagents/agent-fx1.meta.json": "cc-sub.meta.json"
+  },
+  "logext": ".jsonl",
+  "by_folder": true
+ },
+ "session-folder-form-good": {
+  "files": {
+   "app/files.py": "files.good.py",
+   "tests/test_traversal.py": "test_traversal.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "cc-dispatch.jsonl",
+  "sublogs": {
+   "subagents/agent-fx1.jsonl": "cc-sub-good.jsonl",
+   "subagents/agent-fx1.meta.json": "cc-sub.meta.json"
+  },
+  "logext": ".jsonl",
+  "by_folder": true
+ },
+ "session-folder-without-transcript": {
+  "files": {
+   "app/files.py": "files.good.py",
+   "tests/test_traversal.py": "test_traversal.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "exit": 2,
+  "log": "cc-dispatch.jsonl",
+  "sublogs": {
+   "subagents/agent-fx1.jsonl": "cc-sub-good.jsonl",
+   "subagents/agent-fx1.meta.json": "cc-sub.meta.json"
+  },
+  "by_folder": true
  }
 }
