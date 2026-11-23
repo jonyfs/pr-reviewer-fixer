@@ -192,6 +192,11 @@ tree, re-runs all entries or a seeded sample (`--sample N --seed S`) in a fresh 
 and exits 0 when every re-run matches, 1 on a mismatch and 2 when it could not check. Whoever carries
 a closure's result forward runs it first.
 
+Whoever checks picks the seed, after the closure is posted. With no `--seed` the checker draws a
+random one and prints it (`sample seed <s>`), so the prover cannot know which entries a sample will
+skip; pass the printed seed to repeat that run. A seed known in advance lets a prover put a false
+entry where the sample never looks.
+
 The commands are untrusted text from a pull request comment. The checker runs none of them unless
 the person who runs it has configured an allowlist of command prefixes (`PROOF_CHECK_ALLOW`, or
 `--allow-file`, one prefix per line such as `bash tests/`). An entry is a prefix: a command may add

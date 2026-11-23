@@ -11,7 +11,9 @@
 #   --head SHA          the head the proofs must belong to (default: the PR's head with --pr, else the
 #                       head= of the closure marker when the text has one)
 #   --sample N          re-run N entries, not all of them (default: all)
-#   --seed S            the seed that picks the sample (default 0); the same seed picks the same entries
+#   --seed S            the seed that picks the sample; the same seed picks the same entries. Default:
+#                       a random seed the checker draws and prints, so the prover cannot know in
+#                       advance which entries a sample skips; pass the printed seed to repeat a run
 #   --check-output      also compare output_sha256
 #   --allow-file FILE   permitted command prefixes, one per line (# starts a comment)
 #   --timeout SECS      per command (default 600)
@@ -61,7 +63,7 @@ command -v python3 >/dev/null 2>&1 || { echo "proof-check: python3 is not instal
 command -v git >/dev/null 2>&1 || { echo "proof-check: git is not installed, cannot check" >&2; exit 2; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROOF_CHECK_HERE="$HERE" exec python3 -I - "$@" <<'PY'
-import hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile, time
+import hashlib, json, os, re, secrets, shutil, signal, subprocess, sys, tempfile, time
 
 def say(msg): print("proof-check: " + msg, flush=True)
 def cannot(msg):
@@ -85,7 +87,7 @@ USAGE = ("usage: proof-check.sh (--file FILE | --pr N [--cycle C]) [--repo DIR] 
          "[--sample N] [--seed S] [--check-output] [--allow-file FILE] [--timeout SECS]")
 args = sys.argv[1:]
 opt = {"file": None, "pr": None, "cycle": None, "repo": ".", "head": None, "sample": None,
-       "seed": "0", "check_output": False, "allow_file": None, "timeout": "600"}
+       "seed": None, "check_output": False, "allow_file": None, "timeout": "600"}
 i = 0
 while i < len(args):
     a = args[i]
@@ -105,6 +107,8 @@ for k in ("pr", "cycle", "sample", "timeout"):
         cannot("--%s needs a whole number" % k)
 if opt["sample"] is not None and int(opt["sample"]) < 1:
     cannot("--sample needs a number of 1 or more")
+if opt["seed"] is None:
+    opt["seed"] = secrets.token_hex(8)
 if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", opt["seed"]):
     cannot("--seed takes letters, digits, dot, underscore and dash only")
 HEX = re.compile(r"[0-9a-f]{40}([0-9a-f]{24})?")
@@ -288,6 +292,7 @@ if opt["head"] is None:
 # ---- the sample ------------------------------------------------------------------------------
 if opt["sample"] is not None and int(opt["sample"]) < len(entries):
     order = sorted(entries, key=lambda x: hashlib.sha256(("%s:%d" % (opt["seed"], x[0])).encode()).hexdigest())
+    say("sample seed %s (repeat this pick with --seed %s)" % (opt["seed"], opt["seed"]))
     picked = {n for n, _ in order[:int(opt["sample"])]}
     entries = [x for x in entries if x[0] in picked]
 say("re-running %d of %d entries: %s" % (len(entries), len(data), " ".join(str(n) for n, _ in entries)))
