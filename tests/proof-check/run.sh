@@ -27,6 +27,11 @@ printf 'echo hello\nexit 0\n' >"$W/repo/tests/pass.sh"
 printf 'echo broken >&2\nexit 3\n' >"$W/repo/tests/fail.sh"
 printf 'echo "$1"\n' >"$W/repo/tests/echo.sh"
 printf 'exit 0\n' >"$W/repo/other/x.sh"
+# W2: children a command leaves behind. TOK makes their sleeps findable by pgrep and by nothing else.
+TOK="$$$(date +%s | tail -c 5)"
+printf 'sleep 21.%s &\necho started\nexit 0\n' "$TOK" >"$W/repo/tests/bg.sh"
+printf 'sleep 22.%s\nexit 0\n' "$TOK" >"$W/repo/tests/fg.sh"
+printf 'head -c 70000000 /dev/zero\nexit 0\n' >"$W/repo/tests/big.sh"
 g add -A; g commit -q -m base
 BASE="$(g rev-parse HEAD)"; BASE_TREE="$(g rev-parse HEAD^{tree})"
 printf 'echo fixed\nexit 0\n' >"$W/repo/tests/fail.sh"; g commit -q -am fix
@@ -102,6 +107,18 @@ r=$( (cd "$W/repo" && bash "$PC" --file "$W/one.md") </dev/null >"$W/out" 2>&1; 
 check "no allowlist at all -> 2, nothing run" eval '[ $r = 2 ] && has "no allowlist is configured" && ! has "re-running"'
 r=$( (cd "$W/repo" && PROOF_CHECK_ALLOW='bash tests/pass.sh' bash "$PC" --file "$W/one.md") </dev/null >"$W/out" 2>&1; echo $?)
 check "PROOF_CHECK_ALLOW naming the exact command -> 0" eq "$r" 0
+
+# W2 (pass 1): each command runs in its own process group, which is stopped when it ends or times out.
+gone() { local k; for k in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "slee[p] $1.$TOK" >/dev/null || return 0; sleep 0.2; done; return 1; }
+closure "$W/bg.md" "[$(entry 'bash tests/bg.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$(run "$W/bg.md" --timeout 5); check "a command that exits 0 and leaves a background child -> 0, the child is stopped" \
+  eval '[ $r = 0 ] && has "all match" && gone 21'
+closure "$W/fg.md" "[$(entry 'bash tests/fg.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$(run "$W/fg.md" --timeout 1); check "a timed-out command -> 2, and its child (the sleep) is stopped too" \
+  eval '[ $r = 2 ] && has "timed out after 1 s" && gone 22'
+pkill -f "slee[p] 2[12].$TOK" 2>/dev/null
+closure "$W/big.md" "[$(entry 'bash tests/big.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$(run "$W/big.md"); check "output past the 64 MiB cap -> 2 (N4)" eval '[ $r = 2 ] && has "MiB"'
 
 # Malformed input: exit 2, never 0.
 printf '```proofs\n[{"command": "bash tests/pass.sh",\n```\n' >"$W/bad.md"
