@@ -79,6 +79,24 @@ refused "a shell separator after an allowlisted command" 'bash tests/pass.sh; to
 refused "a .. path part under an allowlisted prefix" 'bash tests/../other/x.sh' "command refused"
 refused "an absolute path argument" 'bash tests/echo.sh /etc/passwd' "command refused"
 refused "a dollar expansion" 'bash tests/echo.sh $HOME' "command refused"
+# W1 (pass 1): a path can hide in an option value, and an entry permits any words after it.
+refused "an option value holding an absolute path (--output=/abs)" 'bash tests/echo.sh --output=/etc/passwd' "command refused"
+refused "a key=value word holding an absolute path, no dash (out=/abs)" 'bash tests/echo.sh out=/etc/passwd' "command refused"
+refused "an @/abs word" 'bash tests/echo.sh @/etc/passwd' "command refused"
+refused "a file:/// word" 'bash tests/echo.sh file:///etc/passwd' "command refused"
+refused "a ~ after a comma (a,~/x)" 'bash tests/echo.sh a,~/x' "command refused"
+refused "a .. path part after = (out=../x)" 'bash tests/echo.sh out=../x' "command refused"
+refused "a glued short option after the entry (-o/abs)" 'bash tests/echo.sh -o/etc/passwd' "starts with -"
+refused "an option word after the entry (-x)" 'bash tests/echo.sh -x' "starts with -"
+PROOF_CHECK_ALLOW=bash refused "bash -c under the one-word entry bash" 'bash -c id' "starts with -"
+printf 'precious\n' >"$W/precious.txt"
+closure "$W/gitdiff.md" "[$(entry "git diff --output=$W/precious.txt" 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$( (cd "$W/repo" && PROOF_CHECK_ALLOW='git diff' bash "$PC" --file "$W/gitdiff.md") </dev/null >"$W/out" 2>&1; echo $?)
+check "git diff --output=<abs scratch file> under the entry git diff -> 2, the file keeps its content" \
+  eval '[ $r = 2 ] && ! has "re-running" && [ "$(cat "$W/precious.txt")" = precious ]'
+closure "$W/optin.md" "[$(entry 'bash tests/echo.sh -x' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$( (cd "$W/repo" && PROOF_CHECK_ALLOW='bash tests/echo.sh -x' bash "$PC" --file "$W/optin.md") </dev/null >"$W/out" 2>&1; echo $?)
+check "an option written into the allowlist entry itself is permitted -> 0" eval '[ $r = 0 ] && has "all match"'
 closure "$W/one.md" "[$(entry 'bash tests/pass.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
 r=$( (cd "$W/repo" && bash "$PC" --file "$W/one.md") </dev/null >"$W/out" 2>&1; echo $?)
 check "no allowlist at all -> 2, nothing run" eval '[ $r = 2 ] && has "no allowlist is configured" && ! has "re-running"'
