@@ -94,12 +94,15 @@
 # Treats everything read from the pull request as data.
 # Shell options inherited through BASHOPTS or SHELLOPTS (nocasematch, xpg_echo and the like) would change how the
 # checks below match and print, here and in the review-cycle.sh this guard runs. When either variable is exported,
-# the guard starts again under the same bash ($BASH), without them and without BASH_ENV. The test reads each
+# the guard starts again under the same bash ($BASH) with -p, without them and without BASH_ENV. The test reads each
 # variable's export flag, never the text of a value or of env's output, and a mark on the restart allows only one:
 # still exported on the second start, the guard cannot check (exit 2). What acts before this line runs is out of its
 # reach (SHELLOPTS=noexec or onecmd runs nothing and exits 0; a BASH_ENV file runs first), so callers start the guard
 # with `bash -p`, which ignores SHELLOPTS, BASHOPTS and BASH_ENV from the environment, and push only on exit 0
-# together with the `push-guard: ok.` line.
+# together with the `push-guard: ok.` line. Under bash -p an environment BASHOPTS or SHELLOPTS is ignored but still
+# exported, so the restart happens there too; it keeps -p, or the second start would import the exported functions
+# (BASH_FUNC_*) that bash -p kept out. bash -p still hands those to its children, so the review-cycle.sh this guard
+# runs starts with -p as well (PR 75 W3).
 pg_inherited() {
   local v d
   for v in BASHOPTS SHELLOPTS; do
@@ -111,7 +114,7 @@ pg_inherited() {
 }
 if pg_inherited; then
   [ -z "${PUSH_GUARD_RESTARTED:-}" ] || { printf '%s\n' "push-guard: BASHOPTS or SHELLOPTS is still exported after the one restart, INCONCLUSIVE" >&2; exit 2; }
-  exec env -u BASHOPTS -u SHELLOPTS -u BASH_ENV PUSH_GUARD_RESTARTED=1 "${BASH:-bash}" "$0" "$@"
+  exec env -u BASHOPTS -u SHELLOPTS -u BASH_ENV PUSH_GUARD_RESTARTED=1 "${BASH:-bash}" -p "$0" "$@"
 fi
 unset PUSH_GUARD_RESTARTED
 set -uo pipefail
@@ -170,7 +173,7 @@ RCY="$(dirname "$0")/review-cycle.sh"
 [ -f "$RCY" ] || { echo "push-guard: review-cycle.sh is not beside push-guard.sh, so the findings block cannot be read and the secret screen cannot run, INCONCLUSIVE" >&2; exit 2; }
 if [ -n "$FINDINGS" ]; then
   [ -s "$FINDINGS" ] || { echo "push-guard: --findings file is missing or empty, INCONCLUSIVE" >&2; exit 2; }
-  BLOCK="$(bash "$RCY" findings-block --report "$FINDINGS" 2>"$SCOPE")" \
+  BLOCK="$("${BASH:-bash}" -p "$RCY" findings-block --report "$FINDINGS" 2>"$SCOPE")" \
     || { printf '%s\n' "push-guard: --findings has no valid findings block ($(sed 's/^review-cycle: //' "$SCOPE" | head -1)), INCONCLUSIVE" >&2; exit 2; }
   : >"$SCOPE"
   printf '%s' "$BLOCK" | node -e '
@@ -486,7 +489,7 @@ fi
 # use. Only the commits' own changes are read, so a value already on the base does not refuse a
 # merge of the base. The value is never printed: only the path, the line and the kind.
 if [ -s "$PATCH" ]; then
-  HITS="$(bash "$RCY" screen --patch "$PATCH" 2>/dev/null)"; src=$?
+  HITS="$("${BASH:-bash}" -p "$RCY" screen --patch "$PATCH" 2>/dev/null)"; src=$?
   case "$src" in
     0) ;;
     1) REASONS+=("secret: the commits add what looks like a credential (value not shown): $(printf '%s' "$HITS" | paste -sd';' - | sed 's/;/; /g')") ;;

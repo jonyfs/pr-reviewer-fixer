@@ -171,6 +171,15 @@ r=$(runenv SHELLOPTS=noexec --findings "$W/rep.md")
 check "SHELLOPTS=noexec, plain start -> exit 0 with no ok line: exit 0 alone is not a pass (W2 of #75)" eval '[ $r = 0 ] && ! grep -q "push-guard: ok" "$W/out"'
 r=$( (cd "$W/repo" && env SHELLOPTS=noexec bash -p "$PG" 7 --findings "$W/rep.md") >"$W/out" 2>&1; echo $?)
 check "SHELLOPTS=noexec, started with bash -p -> the guard runs and refuses src/q.ts (W2 of #75)" eval '[ $r = 1 ] && grep -q "src/q.ts" "$W/out"'
+# PR 75 W3: under bash -p an environment BASHOPTS or SHELLOPTS is ignored but still exported, so the guard restarts.
+# The restart keeps -p, so an exported function bash -p kept out (here a git that hides every commit's changes) is
+# still kept out on the second start, and the refusal stands.
+GF='() { case "$*" in *diff-tree*|*merge-tree*) return 0 ;; *) command git "$@" ;; esac; }'
+for e in BASHOPTS=nocasematch SHELLOPTS=xtrace; do
+  r=$(bnd 20 env "BASH_FUNC_git%%=$GF" "$e" bash -p "$PG" 7 --findings "$W/rep.md")
+  check "bash -p, $e and an exported git function -> the restart keeps -p, src/q.ts still refused (W3 of #75)" \
+    eval '[ $r = 1 ] && grep -q "src/q.ts" "$W/out" && ! grep -q "^push-guard: ok" "$W/out"'
+done
 # Every caller text starts the guard with bash -p and pushes only on exit 0 with the ok line.
 ROOT="$(cd "$T/../.." && pwd)"; docs_ok=0
 for f in .agents/skills/pr-fixer/SKILL.md .agents/skills/pr-merge-fixer/SKILL.md .agents/skills/pr-merge-fixer/references/conflicts.md; do
@@ -255,6 +264,12 @@ g checkout -q -b feat/s "$HEAD_OID"; mkdir -p "$W/repo/tests"; printf 'const t =
 prjson OPEN feat/s "$HEAD_OID" false
 r=$(run --findings "$W/rep.md"); check "a pushed commit adds a GitHub token in an in-scope test file -> refused, path:line and kind named, value not shown (I53)" \
   eval '[ $r = 1 ] && grep -q "secret:" "$W/out" && grep -q "tests/s.test.ts:1 GitHub token" "$W/out" && ! grep -q "$TOK" "$W/out"'
+# PR 75 W3: bash -p keeps exported functions out of the guard but still hands them to its children, so the
+# review-cycle.sh it runs starts with -p too. Here an exported python3 skips the screen of a patch and runs the rest.
+PF='() { if [ "${X_MODE:-}" = patch ]; then cat >/dev/null; return 0; fi; command python3 "$@"; }'
+r=$(bnd 20 env "BASH_FUNC_python3%%=$PF" bash -p "$PG" 7 --findings "$W/rep.md")
+check "bash -p and an exported python3 that skips the patch screen -> review-cycle.sh starts with -p, still refused, secret (W3 of #75)" \
+  eval '[ $r = 1 ] && grep -q "tests/s.test.ts:1 GitHub token" "$W/out" && ! grep -q "^push-guard: ok" "$W/out"'
 g rm -q tests/s.test.ts; g commit -q -m "drop the token"
 r=$(run --findings "$W/rep.md"); check "a later commit removes it: the commit that added it is still pushed -> refused (I53)" eval '[ $r = 1 ] && grep -q "secret:" "$W/out"'
 g checkout -q -b feat/k "$HEAD_OID"; printf -- '-----BEGIN %s PRIVATE KEY-----\n' EC >>"$W/repo/src/a.ts"; g commit -q -am "key"
