@@ -122,6 +122,33 @@ r=$(run "$BASE" "$WIDE" "$W/p-typo.json")
 check "a typo in argv[0] (bsah) across a real change -> 2 inconclusive, never same and 0" \
   eval '[ $r = 2 ] && has "inconclusive  greet finding=-: could not start at both commits" && ! has "same          greet" && clean'
 
+# 8. Stated controls (W2), each with a row that a copy without it turns red.
+# K1: the probe's process group is killed after a normal exit too, so a background child dies.
+# K3: stderr is part of the observable result. K6: a probe reads /dev/null, never the caller's stdin
+# (the caller here feeds live lines; a probe that got one would exit 3).
+printf '{"probes": [{"id": "bg", "argv": ["bash", "-c", "sleep 300 & echo $! >>\\"$0\\"", "%s"]},\n {"id": "erronly", "argv": ["bash", "-c", "bash src/clamp.sh 11 >&2"]},\n {"id": "stdin", "argv": ["bash", "-c", "read -r x && exit 3; exit 0"]}]}\n' "$W/pids-bg" >"$W/p-ctl.json"
+: >"$W/pids-bg"
+r=$(printf 'leak\nleak\nleak\n' | run "$BASE" "$FIX" "$W/p-ctl.json")
+alive=0; while read -r p; do kill -0 "$p" 2>/dev/null && { alive=1; kill -KILL "$p"; }; done <"$W/pids-bg"
+check "a background child of a probe that exits normally is dead after the run (killpg after every run)" \
+  eval '[ "$(wc -l <"$W/pids-bg" | tr -d " ")" = 2 ] && [ $alive = 0 ] && has "same          bg finding=-: exit 0" && clean'
+check "a probe that differs only on stderr -> 1, reported as a stderr difference" \
+  eval '[ $r = 1 ] && has "supplementary erronly finding=-: stderr " && ! grep -q "erronly.*\(stdout\|exit\) " "$W/out"'
+check "a probe that reads stdin gets EOF at once, though the caller's stdin has lines" eval 'has "same          stdin finding=-: exit 0"'
+# K2: git hooks are off at worktree add, even a committed post-checkout under a relative core.hooksPath.
+H="$W/hrepo"; mkdir -p "$H/.husky"
+hg() { git -C "$H" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false "$@"; }
+hg init -q .
+printf '#!/bin/sh\necho ran >>"$HOOK_MARK"\n' >"$H/.husky/post-checkout"; chmod +x "$H/.husky/post-checkout"
+echo one >"$H/f"; hg add -A; hg commit -q -m one; H1="$(hg rev-parse HEAD)"
+echo two >"$H/f"; hg commit -q -am two; H2="$(hg rev-parse HEAD)"
+hg config core.hooksPath .husky
+echo '{"probes": [{"id": "t", "argv": ["true"]}]}' >"$W/p-true.json"
+: >"$W/hook-mark"
+r=$(HOOK_MARK="$W/hook-mark" run --repo "$H" "$H1" "$H2" "$W/p-true.json")
+check "a committed post-checkout hook under a relative core.hooksPath never runs" \
+  eval '[ $r = 0 ] && [ ! -s "$W/hook-mark" ] && has "same          t finding=-" && [ "$(hg worktree list | wc -l | tr -d " ")" = 1 ] && clean'
+
 # 7. Stopped from outside (W1): a TERM, INT or HUP to the script's process group (what `timeout`
 # and Ctrl-C send), or a TERM to the script alone, kills the running probe before the script exits.
 # The signal is sent only once the probe has written its pid, so the row cannot pass by arriving early.
