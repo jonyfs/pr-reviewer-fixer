@@ -727,7 +727,8 @@ bash tests/run-all.sh --fresh  # the full run, every suite: the one before a PAS
 bash tests/run-all.sh --only words  # the suites whose name holds one of the words: for iteration only
 ```
 
-The cache lives in `$XDG_CACHE_HOME` or `~/.cache` and is off when neither is set. Its key covers the commit, the
+The cache lives in `$XDG_CACHE_HOME` or `~/.cache` and is off when neither is set, and also when its folder
+is a link, has another owner, or is writable by others (it is created with mode 700). Its key covers the commit, the
 uncommitted and untracked files, the toolchain and the user's git configuration, but not the system git
 configuration, the repository's own `.git/config` or `.git/info/attributes`: after a change there (a clean filter,
 for example), run `--fresh`. A tree that changed during the run is not recorded as passed, and the run says so.

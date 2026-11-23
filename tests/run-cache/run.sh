@@ -82,7 +82,7 @@ printf 'one\n' > "$R/a.md"; KT1="$(key)"; printf 'two\n' > "$R/a.md"; KT2="$(key
 check "a textconv driver does not hide a change to a tracked file (--no-textconv)" eval '[ -n "$KT1" ] && [ "$KT1" != "$KT2" ]'
 g checkout -q -- a.md; rm -f "$R/.git/info/attributes"
 # N1: sha256sum is used where it exists (a stub that prints a fixed digest makes the key that digest).
-mkdir -p "$W/shabin"; printf '#!/bin/sh\ncat >/dev/null; echo "stubdigest  -"\n' > "$W/shabin/sha256sum"; chmod +x "$W/shabin/sha256sum"
+mkdir -p "$W/shabin"; printf '#!/bin/sh\n[ $# -gt 0 ] || cat >/dev/null; echo "stubdigest  -"\n' > "$W/shabin/sha256sum"; chmod +x "$W/shabin/sha256sum"
 KS="$(PATH="$W/shabin:$PATH" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
 check "the key is made with sha256sum when it is on PATH" [ "$KS" = stubdigest ]
 # N3: with HOME and XDG_CACHE_HOME both unset there is no per-user folder, so the cache is off (no shared /.cache).
@@ -115,6 +115,18 @@ check "a green full run whose tree changed says it was not recorded" eval 'print
 g2 checkout -q -- a.md
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "the same green full run with no edit writes the key" eval '[ $r = 0 ] && [ -e "$CD2/$KG" ]'
+# PR 71 debt N3: the cache folder must be this user's alone. It is created with mode 700; a folder others can write
+# to, or a link, turns the cache off even when a key file for this tree is in it.
+check "the cache folder is created with mode 700" eval '[ "$(stat -f %Lp "$CD2" 2>/dev/null || stat -c %a "$CD2")" = 700 ]'
+chmod g+w "$CD2"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a group-writable cache folder with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
+chmod g-w "$CD2"; mv "$CD2" "$CD2.real"; ln -s "$CD2.real" "$CD2"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a cache folder that is a symbolic link: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
+rm -f "$CD2"; mv "$CD2.real" "$CD2"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "the folder restored to the user's alone: the key skips the run again" eval '[ $r = 0 ] && printf %s "$out" | grep -q "nothing re-run"'
 unset XDG_CACHE_HOME
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
