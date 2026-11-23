@@ -38,7 +38,8 @@ check "a filter that matches no suite exits 1" [ "$r" = 1 ]
 # The cache's skip, its --fresh bypass, its write gate and the --only guard (PR 65 pass 3, W4). The scratch repository has
 # no suites, so a full run fails at once, and no suite runs here. XDG_CACHE_HOME is a scratch folder.
 export XDG_CACHE_HOME="$W/xdg"; CD="$XDG_CACHE_HOME/pr-reviewer-fixer/run-all"
-rm -rf "$XDG_CACHE_HOME"; mkdir -p "$CD"
+# The folder is made as run-all.sh makes it (mode 700): under a umask of 002 a plain mkdir gives 775, which turns the cache off.
+rm -rf "$XDG_CACHE_HOME"; (umask 077; mkdir -p "$CD")
 KEYNOW="$(key)"
 : >"$CD/$KEYNOW"
 out="$(bash "$R/tests/run-all.sh" 2>&1)"; r=$?
