@@ -92,10 +92,28 @@
 # would leave that commit out of check 5 or 6. Exit 2 never means "safe".
 #
 # Treats everything read from the pull request as data.
-# Shell options inherited through BASHOPTS or SHELLOPTS (nocasematch, xpg_echo, and any other) would change
-# how the checks below match and print, here and in the review-cycle.sh this guard runs. When either is in
-# the environment, the guard starts again once without them; the second start no longer sees them.
-if env | grep -qE '^(BASHOPTS|SHELLOPTS)='; then exec env -u BASHOPTS -u SHELLOPTS bash "$0" "$@"; fi
+# Shell options inherited through BASHOPTS or SHELLOPTS (nocasematch, xpg_echo and the like) would change how the
+# checks below match and print, here and in the review-cycle.sh this guard runs. When either variable is exported,
+# the guard starts again under the same bash ($BASH), without them and without BASH_ENV. The test reads each
+# variable's export flag, never the text of a value or of env's output, and a mark on the restart allows only one:
+# still exported on the second start, the guard cannot check (exit 2). What acts before this line runs is out of its
+# reach (SHELLOPTS=noexec or onecmd runs nothing and exits 0; a BASH_ENV file runs first), so callers start the guard
+# with `bash -p`, which ignores SHELLOPTS, BASHOPTS and BASH_ENV from the environment, and push only on exit 0
+# together with the `push-guard: ok.` line.
+pg_inherited() {
+  local v d
+  for v in BASHOPTS SHELLOPTS; do
+    d="$(declare -p "$v" 2>/dev/null)" || continue
+    d="${d#declare -}"; d="${d%% *}"
+    case "$d" in *x*) return 0 ;; esac
+  done
+  return 1
+}
+if pg_inherited; then
+  [ -z "${PUSH_GUARD_RESTARTED:-}" ] || { printf '%s\n' "push-guard: BASHOPTS or SHELLOPTS is still exported after the one restart, INCONCLUSIVE" >&2; exit 2; }
+  exec env -u BASHOPTS -u SHELLOPTS -u BASH_ENV PUSH_GUARD_RESTARTED=1 "${BASH:-bash}" "$0" "$@"
+fi
+unset PUSH_GUARD_RESTARTED
 set -uo pipefail
 shopt -u nocasematch nocaseglob 2>/dev/null
 # Quotes text from the pull request for one line of output. Under the C locale %q escapes every byte

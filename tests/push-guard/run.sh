@@ -21,7 +21,9 @@ run() { (cd "$W/repo" && "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
 # BASHOPTS is readonly in this shell, so an assignment before a function call never reaches the guard: env passes it.
 # bash -O sets a shell option on the command line, not through the environment, so the guard keeps it: this is how
 # the printf lines are checked under xpg_echo (an inherited BASHOPTS makes the guard restart without it).
-runopt() { local o="$1"; shift; (cd "$W/repo" && bash -O "$o" "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
+# PR 75 N7: a runner that exports BASHOPTS or SHELLOPTS would make the guard restart without the -O option, so the
+# rows built on runopt could not fail there; env drops both first.
+runopt() { local o="$1"; shift; (cd "$W/repo" && env -u BASHOPTS -u SHELLOPTS bash -O "$o" "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
 runenv() { local e="$1"; shift; (cd "$W/repo" && env "$e" "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
 
 # The locale rows need a UTF-8 locale; without one bash falls back to C and those rows could not fail, so the table says so.
@@ -133,9 +135,49 @@ check "no baseRefOid and a name not plain: the skip line says no baseRefOid was 
 prjson OPEN feat/m "$HEAD_OID" false
 r=$(runopt xpg_echo --findings "$W/rep.md" --allow '../x\nsrc/fake: ok')
 check "xpg_echo on: an --allow value cannot forge a line" eval '[ $r = 1 ] && ! grep -q "^src/fake: ok" "$W/out"'
-# N3: SHELLOPTS from the environment is dropped too (xtrace would print the guard's own commands).
+# N3: SHELLOPTS from the environment is dropped too (xtrace would print the guard's own commands). The restart test
+# itself runs traced before the restart; nothing after it is (PR 75 N3: the row also asserts the guard ran to its end).
 r=$(runenv SHELLOPTS=xtrace --findings "$W/rep.md" --allow src/q.ts)
-check "SHELLOPTS=xtrace from the environment: no trace lines, the guard restarts without it" eval '! grep -q "^+* *shopt -u nocasematch" "$W/out"'
+check "SHELLOPTS=xtrace from the environment: the guard restarts without it, ends in ok, no trace after the restart" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && ! grep -q "^+* *shopt -u nocasematch" "$W/out"'
+# PR 75 W1: the restart decides on the variables, not on lines of env output, and happens at most once. Each run is
+# bounded by a watchdog that kills it after 20 seconds, so a loop ends the row as a failure (status 137) instead of
+# hanging the suite. Not an alarm: bash clears a pending alarm when it starts, so an exec loop of bash outlives one.
+bnd() { local s="$1" p k rc; shift
+  (cd "$W/repo" && exec "$@") >"$W/out" 2>&1 </dev/null & p=$!
+  (sleep "$s"; kill -9 "$p") >/dev/null 2>&1 & k=$!
+  wait "$p"; rc=$?; kill "$k" 2>/dev/null; wait "$k" 2>/dev/null; echo "$rc"; }
+runb() { local e="$1"; shift; bnd 20 env "$e" "$PG" 7 "$@"; }
+r=$(runb "FOO=x"$'\n'"BASHOPTS=y" --findings "$W/rep.md" --allow src/q.ts)
+check "a value holding a newline then BASHOPTS= -> no restart loop, the guard ends in ok (W1 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
+r=$(runb "FOO=x"$'\n'"SHELLOPTS=y" --findings "$W/rep.md" --allow src/q.ts)
+check "a value holding a newline then SHELLOPTS= -> no restart loop, the guard ends in ok (W1 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
+r=$(runb GREP_OPTIONS=-v --findings "$W/rep.md" --allow src/q.ts)
+check "GREP_OPTIONS=-v -> no restart loop, the guard ends in ok (W1 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
+# The once-only mark is never a way around the restart: inherited together with BASHOPTS, the guard cannot check (2).
+r=$(bnd 20 env PUSH_GUARD_RESTARTED=1 BASHOPTS=nocasematch "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
+check "restart mark inherited with BASHOPTS -> 2 INCONCLUSIVE, never a pass with the option on (W1 of #75)" eval '[ $r = 2 ] && grep -q "INCONCLUSIVE" "$W/out"'
+# PR 75 N1: the restart runs the bash that started the guard ($BASH), not the first bash on PATH.
+mkdir -p "$W/fakebash"; RB="$(command -v bash)"
+printf '#!/bin/sh\nprintf "%%s\\n" "$1" >>"%s/fakebash/log"\nexec "%s" "$@"\n' "$W" "$RB" >"$W/fakebash/bash"; chmod +x "$W/fakebash/bash"; : >"$W/fakebash/log"
+r=$(bnd 20 env PATH="$W/fakebash:$PATH" BASHOPTS=nocasematch "$RB" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
+check "the restart runs \$BASH, not the bash first on PATH (N1 of #75)" eval '[ $r = 0 ] && ! grep -q "push-guard.sh$" "$W/fakebash/log"'
+# PR 75 N7: BASH_ENV is dropped on the restart, so the second start does not read it again.
+printf 'echo x >>"%s/bashenv.log"\n' "$W" >"$W/bashenv.sh"; : >"$W/bashenv.log"
+r=$(bnd 20 env BASHOPTS=nocasematch BASH_ENV="$W/bashenv.sh" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
+check "BASH_ENV is not read again after the restart (N7 of #75)" eval '[ $r = 0 ] && [ "$(wc -l <"$W/bashenv.log" | tr -d " ")" = 1 ]'
+# PR 75 W2: SHELLOPTS=noexec acts before the guard's first line, so it exits 0 having checked nothing. Started with
+# bash -p, bash ignores SHELLOPTS, BASHOPTS and BASH_ENV from the environment, so the guard runs and refuses.
+r=$(runenv SHELLOPTS=noexec --findings "$W/rep.md")
+check "SHELLOPTS=noexec, plain start -> exit 0 with no ok line: exit 0 alone is not a pass (W2 of #75)" eval '[ $r = 0 ] && ! grep -q "push-guard: ok" "$W/out"'
+r=$( (cd "$W/repo" && env SHELLOPTS=noexec bash -p "$PG" 7 --findings "$W/rep.md") >"$W/out" 2>&1; echo $?)
+check "SHELLOPTS=noexec, started with bash -p -> the guard runs and refuses src/q.ts (W2 of #75)" eval '[ $r = 1 ] && grep -q "src/q.ts" "$W/out"'
+# Every caller text starts the guard with bash -p and pushes only on exit 0 with the ok line.
+ROOT="$(cd "$T/../.." && pwd)"; docs_ok=0
+for f in .agents/skills/pr-fixer/SKILL.md .agents/skills/pr-merge-fixer/SKILL.md .agents/skills/pr-merge-fixer/references/conflicts.md; do
+  grep -qF 'bash -p scripts/push-guard.sh' "$ROOT/$f" && grep -qF '`push-guard: ok.`' "$ROOT/$f" || { docs_ok=1; echo "caller text without bash -p or the ok line: $f" >&2; }
+done
+check "the callers start the guard with bash -p and require the push-guard: ok. line (W2 of #75)" eq "$docs_ok" 0
+check "the restart comment no longer claims every inherited option is covered (W2 of #75)" eval '! grep -q "and any other" "$PG"'
 # N1: a touched path with U+2028 in its name is printed quoted in the refusal list.
 U28="$(printf '\342\200\250')"
 g checkout -q -b feat/u28 "$HEAD_OID"; echo t >"$W/repo/src/a${U28}b.ts"; g add -A; g commit -q -m u28
