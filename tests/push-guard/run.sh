@@ -82,12 +82,23 @@ r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live 
 grep -q '^gh api repos/{owner}/{repo}/git/ref/heads/main --jq ' "$FAKE_DIR/calls.log"; check "the live base tip is read by the base branch's name" eq "$?" 0
 # A base name gh would not send as written (a # fragment, a %-escape, a {placeholder}, a ..) names
 # another ref: the live tip is not read at all, so only baseRefOid is excluded and the push is refused.
-for b in 'sprint#4' 'zz/%2e%2e/main' '{branch}' 'a..b' 'a b'; do
+# PR 70 debt: an empty or dot-leading segment GitHub normalizes (N4), a name git check-ref-format refuses, and a
+# non-ASCII letter under a UTF-8 locale (N5) are not plain either; each skip says why on the output (N7).
+for b in 'sprint#4' 'zz/%2e%2e/main' '{branch}' 'a..b' 'a b' './main' '/main' 'a//b' 'main/' 'x/.hidden' 'main.lock' 'mañana'; do
   prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" "$b"; : >"$FAKE_DIR/calls.log"
-  r=$(run --findings "$W/rep.md" --allow src/q.ts); check "base name '$b' -> live tip not read, refused" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log"'
+  r=$(LC_ALL=en_US.UTF-8 run --findings "$W/rep.md" --allow src/q.ts); check "base name '$b' -> live tip not read, refused, the skip said" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log" && grep -q "is not plain, so its live tip was not read" "$W/out"'
 done
+# N5: bash 3.2 (macOS /bin/bash) lets a UTF-8 locale widen a range such as A-Z to ñ; where /bin/bash is 3.2 the
+# guard runs under it, elsewhere under the default bash.
+B32=bash; case "$(/bin/bash -c 'echo $BASH_VERSION' 2>/dev/null)" in 3.*) B32=/bin/bash ;; esac
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'mañana'; : >"$FAKE_DIR/calls.log"
+r=$( (cd "$W/repo" && LC_ALL=en_US.UTF-8 "$B32" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts) >"$W/out" 2>&1; echo $?)
+check "base name 'mañana' under $B32 and a UTF-8 locale -> live tip not read, refused" eval '[ $r = 1 ] && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log"'
+# A control character in the name is quoted in the skip line, so it cannot forge a line of the output.
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'x\nsrc/fake: ok'; r=$(run --findings "$W/rep.md" --allow src/q.ts)
+check "a newline in the base name is quoted in the skip line" eval '[ $r = 1 ] && ! grep -q "^src/fake: ok" "$W/out"' 
 prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'release/v1.2_rc-3'; : >"$FAKE_DIR/calls.log"
-r=$(run --findings "$W/rep.md" --allow src/q.ts); check "plain base name with / . _ - -> live tip read, ok" eval '[ $r = 0 ] && grep -q "git/ref/heads/release/v1.2_rc-3 " "$FAKE_DIR/calls.log"'
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "plain base name with / . _ - -> live tip read, ok, no skip line" eval '[ $r = 0 ] && grep -q "git/ref/heads/release/v1.2_rc-3 " "$FAKE_DIR/calls.log" && ! grep -q "is not plain" "$W/out"'
 prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"
 echo 0123456789abcdef0123456789abcdef01234567 >"$FAKE_DIR/base-tip"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "live base tip not in this clone -> refused" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
