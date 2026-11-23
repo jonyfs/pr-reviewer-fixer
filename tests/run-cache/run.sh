@@ -124,6 +124,9 @@ check "the cache folder is created with mode 700 (a setgid bit from the folder a
 chmod g+w "$CD2"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "a group-writable cache folder with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
+# PR 73 debt N8: cache_dir_ok refuses a group-writable folder too, and the line says so.
+OUT_DIR_LINE="$(printf %s "$out" | grep "the suite cache is off")"
+check "the refusal line names a folder writable by its group, not only by others" eval 'printf %s "$OUT_DIR_LINE" | grep -q "writable by its group or others"'
 chmod g-w "$CD2"; mv "$CD2" "$CD2.real"; ln -s "$CD2.real" "$CD2"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "a cache folder that is a symbolic link: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
@@ -145,6 +148,35 @@ chmod o+w "${CD2%/*}"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "the folder above the cache folder writable by others: no skip, the cache is off, and the line says how to fix it" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "chmod 700 both folders"'
 chmod o-w "${CD2%/*}"
+# PR 73 debt N10: the cache root (XDG_CACHE_HOME here) is checked too. Writable by others with no sticky bit, it would
+# let them rename pr-reviewer-fixer away and put their own in its place: the cache is off. With the sticky bit (as /tmp
+# has) it is allowed, whoever owns it. The modes are restored after.
+chmod o+w "$XDG_CACHE_HOME"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+OUT_ROOT_LINE="$(printf %s "$out" | grep "the suite cache is off")"
+check "a cache root writable by others with no sticky bit: no skip, the cache is off, said plainly" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$OUT_ROOT_LINE" | grep -q "cache root .* no sticky bit"'
+chmod +t "$XDG_CACHE_HOME"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "the same root with the sticky bit (as /tmp): the key skips the run" eval '[ $r = 0 ] && printf %s "$out" | grep -q "nothing re-run"'
+chmod o-w,-t "$XDG_CACHE_HOME"
+# PR 76 pass 1, N1: a root writable by its group (not only by others) with no sticky bit turns the cache off too.
+chmod g+w "$XDG_CACHE_HOME"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a cache root writable by its group with no sticky bit: no skip, the cache is off, said plainly" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "cache root .* no sticky bit"'
+chmod g-w "$XDG_CACHE_HOME"
+# N1: the write gate checks the root too. With no cache folder yet the read gate has nothing to refuse, so only the
+# write gate stands between a bad root and a key file: a green run under a root writable by others writes no key.
+rm -rf "${CD2%/*}"; chmod o+w "$XDG_CACHE_HOME"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+chmod o-w "$XDG_CACHE_HOME"
+check "no cache folder yet under a root writable by others: a green run writes no key and says it is not recorded" eval '[ $r = 0 ] && [ ! -e "$CD2/$KG" ] && [ -z "$(ls -A "$CD2" 2>/dev/null)" ] && printf %s "$out" | grep -q "cache root is writable by its group or others and has no sticky bit"'
+# PR 73 debt N11: docs/REFERENCE.md and the run's refusal lines carry the same remedies. The docs paragraph is joined
+# into one line and its backticks dropped, so a re-wrap does not break the match.
+DOC_CACHE="$(awk '/^The cache lives in/{p=1} p&&/^$/{exit} p' "$T/../../docs/REFERENCE.md" | tr '\n' ' ' | tr -d '`')"
+same_remedy() { local t; for t in "$DOC_CACHE" "$OUT_DIR_LINE"; do printf %s "$t" | grep -q "chmod 700" && printf %s "$t" | grep -q "both folders" && printf %s "$t" | grep -q "remov" && printf %s "$t" | grep -q "its group or others" || return 1; done
+  printf %s "$DOC_CACHE" | grep -q "is writable by its group or others (it is created with mode 700)" || return 1   # the folder sentence, not the root one
+  for t in "$DOC_CACHE" "$OUT_ROOT_LINE"; do printf %s "$t" | grep -q "chmod go-w" && printf %s "$t" | grep -q "chmod +t" && printf %s "$t" | grep -q "no sticky bit" || return 1; done; }
+check "docs/REFERENCE.md and the refusal lines give the same remedies (chmod 700 both folders or remove them; chmod go-w or +t on the root)" same_remedy
 # N3: a green run whose key cannot be written says so. The folder above is a plain file, so mkdir -p of the cache
 # folder fails for every user; a read-only mode would not, since root writes through it (PR 73 pass 3, W3).
 rm -rf "${CD2%/*}"; : > "${CD2%/*}"
