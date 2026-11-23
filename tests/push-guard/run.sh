@@ -18,6 +18,8 @@ g() { git -C "$W/repo" -c user.name=t -c user.email=t@example.com "$@"; }
 prjson() { # state head_ref head_oid cross [base_oid] [base_ref]
   printf '{"state":"%s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","baseRefOid":"%s","isCrossRepository":%s}' "$1" "$2" "$3" "${6:-main}" "${5:-$BASE_OID}" "$4" >"$FAKE_DIR/pr.json"; }
 run() { (cd "$W/repo" && "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
+# BASHOPTS is readonly in this shell, so an assignment before a function call never reaches the guard: env passes it.
+runenv() { local e="$1"; shift; (cd "$W/repo" && env "$e" "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
 
 g init -q -b main . 2>/dev/null || { git -C "$W/repo" init -q; g checkout -q -b main; }
 mkdir -p "$W/repo/src" "$W/repo/tests"
@@ -96,7 +98,27 @@ r=$( (cd "$W/repo" && LC_ALL=en_US.UTF-8 "$B32" "$PG" 7 --findings "$W/rep.md" -
 check "base name 'mañana' under $B32 and a UTF-8 locale -> live tip not read, refused" eval '[ $r = 1 ] && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log"'
 # A control character in the name is quoted in the skip line, so it cannot forge a line of the output.
 prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'x\nsrc/fake: ok'; r=$(run --findings "$W/rep.md" --allow src/q.ts)
-check "a newline in the base name is quoted in the skip line" eval '[ $r = 1 ] && ! grep -q "^src/fake: ok" "$W/out"' 
+check "a newline in the base name is quoted in the skip line" eval '[ $r = 1 ] && ! grep -q "^src/fake: ok" "$W/out" && grep -qF "\$'"'"'x\\nsrc/fake: ok'"'"'" "$W/out"'
+# PR 72 debt. N2: with echo's escapes turned on (xpg_echo from BASHOPTS), the quoted newline still cannot forge a line.
+r=$(runenv BASHOPTS=xpg_echo --findings "$W/rep.md" --allow src/q.ts)
+check "xpg_echo on: a newline in the base name still cannot forge a line (printf, not echo)" eval '[ $r = 1 ] && ! grep -q "^src/fake: ok" "$W/out"'
+# N1: a Unicode line separator (U+2028) in the name is escaped under a UTF-8 locale too.
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" "x$(printf '\342\200\250')y"
+r=$(LC_ALL=en_US.UTF-8 run --findings "$W/rep.md" --allow src/q.ts)
+check "U+2028 in the base name is escaped in the skip line" eval '[ $r = 1 ] && ! grep -q "$(printf '"'"'\342\200\250'"'"')" "$W/out" && grep -qF "\\342\\200\\250" "$W/out"'
+# N6: with baseRefOid not in the clone either, the skip line says no base commit is excluded.
+prjson OPEN feat/m "$HEAD_OID" false 0123456789abcdef0123456789abcdef01234567 'sprint#4'
+r=$(run --findings "$W/rep.md" --allow src/q.ts)
+check "baseRefOid absent and a name not plain: the skip line says no base commit is excluded" eval '[ $r = 1 ] && grep -q "no base commit is excluded" "$W/out"'
+# N3: nocasematch from BASHOPTS would make *_test.* match A_TEST.ts and wave a source file through as a test.
+g checkout -q -b feat/nc "$HEAD_OID"; echo t >"$W/repo/src/A_TEST.ts"; g add -A; g commit -q -m upper
+prjson OPEN feat/nc "$HEAD_OID" false
+r=$(runenv BASHOPTS=nocasematch --findings "$W/rep.md")
+check "nocasematch from BASHOPTS is turned off: src/A_TEST.ts is not a test file, refused" eval '[ $r = 1 ] && grep -q "src/A_TEST.ts" "$W/out"'
+g checkout -q feat/m
+# N8: the bash 3.2 row runs only where /bin/bash is 3.x; on every system the gate must spell its letters out.
+grep -q 'case "$BASE_REF" in' "$PG" && grep -A1 'case "$BASE_REF" in' "$PG" | grep -q '\[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\._/-\]'
+check "the plain-name gate spells its letters out (no range a locale can widen)" eq "$?" 0
 prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'release/v1.2_rc-3'; : >"$FAKE_DIR/calls.log"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "plain base name with / . _ - -> live tip read, ok, no skip line" eval '[ $r = 0 ] && grep -q "git/ref/heads/release/v1.2_rc-3 " "$FAKE_DIR/calls.log" && ! grep -q "is not plain" "$W/out"'
 prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"

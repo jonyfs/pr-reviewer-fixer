@@ -93,6 +93,12 @@
 #
 # Treats everything read from the pull request as data.
 set -uo pipefail
+# A BASHOPTS in the environment can turn nocasematch on, and then every case check below would match
+# letters in either case; this guard's checks are written for exact matching.
+shopt -u nocasematch nocaseglob 2>/dev/null
+# Quotes text from the pull request for one line of output. Under the C locale %q escapes every byte
+# outside ASCII too, so a Unicode line or paragraph separator (U+2028, U+2029) cannot pass raw.
+q() { (LC_ALL=C; printf '%q' "$1"); }
 
 command -v gh >/dev/null 2>&1 || { echo "push-guard: gh is not installed, INCONCLUSIVE" >&2; exit 2; }
 command -v git >/dev/null 2>&1 || { echo "push-guard: git is not installed, INCONCLUSIVE" >&2; exit 2; }
@@ -283,7 +289,7 @@ SENS_OK=","
 # newline would otherwise never be looked at, and an unknown one never refused.
 _allowed=$'a-z, \t'
 if (LC_ALL=C; case "${PUSH_GUARD_ALLOW_SENSITIVE:-}" in *[!$_allowed]*) exit 0 ;; *) exit 1 ;; esac); then
-  echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE is $(printf '%q' "$PUSH_GUARD_ALLOW_SENSITIVE"); it may hold only class names (workflows, actions, codeowners, skills, claude, mcp, instructions), commas, spaces and tabs, REFUSED" >&2; exit 1
+  printf '%s\n' "push-guard: PUSH_GUARD_ALLOW_SENSITIVE is $(q "$PUSH_GUARD_ALLOW_SENSITIVE"); it may hold only class names (workflows, actions, codeowners, skills, claude, mcp, instructions), commas, spaces and tabs, REFUSED" >&2; exit 1
 fi
 IFS=',' read -r -a _sens <<<"${PUSH_GUARD_ALLOW_SENSITIVE:-}"
 for _c in "${_sens[@]+"${_sens[@]}"}"; do
@@ -301,7 +307,7 @@ for a in "${ALLOW[@]+"${ALLOW[@]}"}"; do
   a="${a#./}"
   case "$a" in ''|/*|..|../*|*/..|*/../*|*[\*\?\[]*) echo "push-guard: --allow '$a' must be a plain relative path, REFUSED" >&2; exit 1 ;; esac
   if (LC_ALL=C; case "$a" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then
-    echo "push-guard: --allow $(printf '%q' "$a") holds a control character, REFUSED" >&2; exit 1
+    printf '%s\n' "push-guard: --allow $(q "$a") holds a control character, REFUSED" >&2; exit 1
   fi
   printf '%s\n' "$a" >>"$SCOPE"
 done
@@ -343,12 +349,16 @@ case "$BASE_REF" in
   *) BASE_PLAIN=1; git check-ref-format "refs/heads/$BASE_REF" 2>/dev/null || BASE_PLAIN=0 ;;
 esac
 if [ "$BASE_PLAIN" = 1 ]; then
+  # {owner}/{repo} is the repository gh resolves from this clone's remotes, the same one gh pr view read above.
   LIVE_BASE="$(gh api "repos/{owner}/{repo}/git/ref/heads/$BASE_REF" --jq .object.sha 2>/dev/null)" || LIVE_BASE=""
 elif [ -n "$BASE_REF" ]; then
-  # The name is the pull request's text: printf %q quotes a control character that could forge a line.
-  echo "push-guard: the base branch name $(printf '%q' "$BASE_REF") is not plain, so its live tip was not read; only baseRefOid is excluded, and base commits newer than it count as this push's own" >&2
+  # The name is the pull request's text: q quotes a control character or a Unicode line break that could
+  # forge a line, and printf, unlike echo, never expands the backslashes q writes.
+  if [ "${#EXCL[@]}" -gt 0 ]; then _skip="only baseRefOid is excluded, and base commits newer than it count as this push's own"
+  else _skip="baseRefOid is not in this clone either, so no base commit is excluded and every base commit counts as this push's own"; fi
+  printf '%s\n' "push-guard: the base branch name $(q "$BASE_REF") is not plain, so its live tip was not read; $_skip" >&2
 fi
-case "$LIVE_BASE" in *[!0-9a-f]*) LIVE_BASE="" ;; esac
+case "$LIVE_BASE" in *[!0123456789abcdef]*) LIVE_BASE="" ;; esac
 if [ "${#LIVE_BASE}" -eq 40 ] && [ "$LIVE_BASE" != "$BASE_OID" ] && git cat-file -e "$LIVE_BASE^{commit}" 2>/dev/null; then
   EXCL+=("$LIVE_BASE")
 fi
@@ -428,15 +438,15 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     # quotes it; the guard's own words (\x01) are printed as they are.
     case "$why" in
       $'\001'*) why=", its target ${why#?}" ;;
-      $'\002'*) why="${why#?}"; if (LC_ALL=C; case "$why" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then why="$(printf '%q' "$why")"; fi; why=", its target $why" ;;
+      $'\002'*) why="${why#?}"; if (LC_ALL=C; case "$why" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then why="$(q "$why")"; fi; why=", its target $why" ;;
     esac
-    if (LC_ALL=C; case "$L" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then L="$(printf '%q' "$L")"; fi
+    if (LC_ALL=C; case "$L" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then L="$(q "$L")"; fi
     for k in $cls; do
       case "$SENS_OK" in *",$k,"*) ;; *) SENS+=("$L ($kind over $cls$why)"); break ;; esac
     done
   done <"$C5L"
   while IFS= read -r -d '' f && IFS= read -r -d '' cls; do
-    if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(printf '%q' "$f")"); continue; fi
+    if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(q "$f")"); continue; fi
     if [ -n "$cls" ]; then
       case "$SENS_OK" in *",$cls,"*) ;; *) SENS+=("$f ($cls)"); continue ;; esac
     fi
@@ -468,7 +478,7 @@ fi
 
 if [ "${#REASONS[@]}" -gt 0 ]; then
   echo "push-guard: REFUSED. Do not push #$PR:" >&2
-  for r in "${REASONS[@]}"; do echo "  - $r" >&2; done
+  for r in "${REASONS[@]}"; do printf '  - %s\n' "$r" >&2; done
   exit 1
 fi
 echo "push-guard: ok. #$PR, branch $HEAD_REF, fast-forward from ${HEAD_OID:0:12}, every touched file in scope."
