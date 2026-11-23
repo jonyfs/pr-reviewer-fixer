@@ -177,7 +177,7 @@ printf '{"timeout": 60, "probes": [{"id": "slow", "argv": ["bash", "-c", "echo $
 sigrow() { # name signal group|script
   local sp pp="" alive=1 rc i=0
   : >"$W/pids-sig"
-  (cd "$W/repo" && exec perl -e '$SIG{INT}="DEFAULT"; $SIG{HUP}="DEFAULT"; setpgrp(0,0); exec @ARGV' \
+  (cd "$W/repo" && exec perl -e '$SIG{$_}="DEFAULT" for qw(HUP INT QUIT TERM); setpgrp(0,0); exec @ARGV' \
     bash "$BD" "$BASE" "$FIX" "$W/p-sig.json") >"$W/out" 2>"$W/err" </dev/null &
   sp=$!
   while [ $i -lt 100 ] && [ ! -s "$W/pids-sig" ]; do sleep 0.1; i=$((i+1)); done
@@ -192,12 +192,27 @@ sigrow() { # name signal group|script
   i=0; while [ $i -lt 100 ] && kill -0 "$sp" 2>/dev/null; do sleep 0.1; i=$((i+1)); done
   kill -0 "$sp" 2>/dev/null && kill -KILL -- -"$sp" 2>/dev/null
   wait "$sp"; rc=$?
+  # A broken copy may have gone on to start the next probe in its own session: kill every one.
+  while read -r i; do kill -KILL "$i" 2>/dev/null; done <"$W/pids-sig"
   check "$1" eval '[ -n "$pp" ] && [ $alive = 0 ] && [ $rc = 2 ] && clean'
 }
 sigrow "TERM to the process group (an outer timeout) -> 2, the running probe is dead, worktree removed" TERM group
 sigrow "INT to the process group (Ctrl-C) -> 2, the running probe is dead, worktree removed" INT group
 sigrow "HUP to the process group -> 2, the running probe is dead, worktree removed" HUP group
 sigrow "TERM to the script alone -> 2, the running probe is dead, worktree removed" TERM script
+sigrow "QUIT to the process group (Ctrl-backslash) -> 2, the running probe is dead, worktree removed" QUIT group
+# A probe sees the signal dispositions the caller gave the script, as when the runner ran in the
+# foreground: none ignored from a plain caller, HUP ignored under a nohup-like caller. Exit is a
+# bitmask of the ignored ones: HUP 1, INT 2, QUIT 4, TERM 8.
+cat >"$W/p-disp.json" <<'EOF'
+{"probes": [{"id": "disp", "argv": ["python3", "-I", "-c", "import signal, sys; sys.exit(sum(b for n, b in (('SIGHUP', 1), ('SIGINT', 2), ('SIGQUIT', 4), ('SIGTERM', 8)) if signal.getsignal(getattr(signal, n)) == signal.SIG_IGN))"]}]}
+EOF
+disp() { (cd "$W/repo" && exec perl -e '$SIG{$_}="DEFAULT" for qw(HUP INT QUIT TERM); $SIG{HUP}="IGNORE" if shift; alarm 60; exec @ARGV' \
+  "$1" bash "$BD" "$BASE" "$FIX" "$W/p-disp.json") >"$W/out" 2>"$W/err" </dev/null; echo $?; }
+r=$(disp 0)
+check "a probe inherits no ignored signal from a plain caller (HUP, INT, QUIT, TERM at default)" eval '[ $r = 0 ] && has "same          disp finding=-: exit 0" && clean'
+r=$(disp 1)
+check "a probe inherits an ignored HUP from a nohup-like caller, and nothing else" eval '[ $r = 0 ] && has "same          disp finding=-: exit 1" && clean'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

@@ -31,8 +31,9 @@
 # With "stdout": true the report also shows the two stdout texts, escaped and cut to 200 characters.
 # "timeout" is seconds per run (default 10, at most 600), at the file or the probe level; a probe
 # that runs out is killed with its whole process group, and so is every probe after it exits. A
-# HUP, INT or TERM, to the script or to its process group, kills the running probe's group too,
-# removes the worktree and exits 2.
+# HUP, INT, QUIT or TERM, to the script or to its process group, kills the running probe's group
+# too, removes the worktree and exits 2. A probe inherits the caller's signal dispositions (a signal
+# the caller ignores, such as HUP under nohup, stays ignored in the probe; the others are default).
 #
 # Report: one line per probe, then a summary line.
 #   same              the result is identical at both commits
@@ -79,12 +80,12 @@ cleanup() {
 }
 PYPID=""
 stop() { # a stop from outside: the python runner kills its running probe's group, then we exit
-  trap '' HUP INT TERM
+  trap '' HUP INT QUIT TERM
   if [ -n "$PYPID" ]; then kill -TERM "$PYPID" 2>/dev/null; wait "$PYPID" 2>/dev/null; fi
   exit 2
 }
 trap cleanup EXIT
-trap stop HUP INT TERM
+trap stop HUP INT QUIT TERM
 
 cat >"$PY" <<'PYEOF'
 import hashlib, json, os, re, signal, subprocess, sys, time
@@ -93,6 +94,7 @@ ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 MAX_PROBES = 500
 LONG = 4096
 STOP = []  # the signal that asked the runner to stop, if any; checked between and during probes
+SIGNALS = ("SIGHUP", "SIGINT", "SIGQUIT", "SIGTERM")
 
 
 def on_signal(signum, frame):
@@ -254,7 +256,11 @@ def digest(b):
 
 
 def main():
-    mode, probe_file = sys.argv[1], sys.argv[2]
+    mode = sys.argv[1]
+    if mode == "ignored":  # run in the foreground, so it sees the dispositions the caller gave
+        print(" ".join(n for n in SIGNALS if signal.getsignal(getattr(signal, n)) == signal.SIG_IGN))
+        return 0
+    probe_file = sys.argv[2]
     probes = expand(probe_file)
     if mode == "list":
         for p in probes:
@@ -263,8 +269,12 @@ def main():
         print("behaviour-diff: %d probes" % len(probes))
         return 0
     wt, scratch, side, results = sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6]
-    for s in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
-        signal.signal(s, on_signal)
+    # This runner is a background job, which bash starts with INT and QUIT ignored. A signal the
+    # caller ignored stays ignored (and so reaches the probe ignored); every other one gets the
+    # handler, which exec turns back into the default in the probe.
+    ignored = set(sys.argv[8].split())
+    for n in SIGNALS:
+        signal.signal(getattr(signal, n), signal.SIG_IGN if n in ignored else on_signal)
     rows = []
     for p in probes:
         if STOP:
@@ -334,6 +344,7 @@ PYEOF
 if [ "$LIST" = 1 ]; then python3 -I "$PY" list "$PROBES"; rc=$?; [ "$rc" -le 2 ] || rc=2; exit "$rc"; fi
 # Validate the probe file before any worktree is made.
 python3 -I "$PY" list "$PROBES" >/dev/null || exit 2
+IGNORED="$(python3 -I "$PY" ignored)" || die "cannot read the signal dispositions"
 TOP="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null)" || die "$REPO is not inside a git repository"
 resolve() {
   case "$1" in -*) die "a commit may not start with -: $1" ;; esac
@@ -350,7 +361,7 @@ side() { # side commit
     || die "git cannot make a worktree at $2 (${1})"
   # In the background, so a signal to this script runs stop at once instead of after the probe;
   # stdin is passed on explicitly (a background job would get /dev/null), the probe gets /dev/null.
-  python3 -I "$PY" run "$PROBES" "$WT/tree" "$WT/scratch" "$1" "$WT/$1.json" "$WT/base.json" <&0 &
+  python3 -I "$PY" run "$PROBES" "$WT/tree" "$WT/scratch" "$1" "$WT/$1.json" "$WT/base.json" "$IGNORED" <&0 &
   PYPID=$!; wait "$PYPID"; rc=$?; PYPID=""
   git -C "$TOP" worktree remove --force "$WT/tree" >/dev/null 2>&1 || die "git cannot remove the worktree of $1"
   return "$rc"
