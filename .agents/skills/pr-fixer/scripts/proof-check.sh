@@ -43,9 +43,13 @@
 # /dev/null, in a fresh clone checked out at its head_sha, with HOME set to an empty scratch folder,
 # an environment holding only PATH (its absolute elements), HOME, TMPDIR, LANG and LC_ALL,
 # in a process group of its own whose every member is killed when the command exits, times out or
-# prints more than 64 MiB (output goes to a file, never held in memory).
+# prints more than 64 MiB (output goes to a file, never held in memory). A member that moves itself
+# into another process group or session (setsid, set -m) escapes that kill. When the checker itself
+# gets SIGTERM, SIGHUP or SIGINT, it kills the group, deletes its work folder and exits 2.
 # The allowlist limits WHICH command runs, not WHAT it does: the checkout is the pull request's code,
-# so permit only commands you would run on that code anyway.
+# so permit only commands you would run on that code anyway. The .. and / rules check a word's text,
+# not where it leads: a relative path can still leave the checkout through a symlink the pull request
+# commits.
 #
 # THE HEAD AND THE TREE. Every head_sha must be a commit in --repo, its tree must equal tree_hash, and
 # when an expected head is known, head_sha must be that head or an ancestor of it (a red run sits on
@@ -70,20 +74,43 @@ import hashlib, json, os, re, secrets, shutil, signal, subprocess, sys, tempfile
 def say(msg): print("proof-check: " + msg, flush=True)
 def cannot(msg):
     say(msg + ", cannot check"); sys.exit(2)
-LIVE = {"group": None, "work": None}   # what a crash must still stop and delete
+LIVE = {"group": None, "child": None, "work": None}   # what a crash or a signal must stop and delete
 def stop_group(pgid):
     try:
         os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):   # gone already (macOS may say EPERM for zombies)
         pass
-# An error nobody foresaw is "cannot check" (2), never a mismatch (1).
-def _crash(kind, value, tb):
+def _cleanup():
     if LIVE["group"]:
         stop_group(LIVE["group"])
+    if LIVE["child"]:   # a git clone or checkout writing into the work folder
+        try:
+            os.kill(LIVE["child"], signal.SIGKILL); os.waitpid(LIVE["child"], 0)
+        except OSError:
+            pass
     if LIVE["work"]:
         shutil.rmtree(LIVE["work"], ignore_errors=True)
-    say("internal error (%s), cannot check" % kind.__name__); os._exit(2)
+# An error nobody foresaw is "cannot check" (2), never a mismatch (1).
+def _crash(kind, value, tb):
+    _cleanup(); say("internal error (%s), cannot check" % kind.__name__); os._exit(2)
 sys.excepthook = _crash
+# The command runs in a session of its own, so a signal to the checker (an outer timeout's SIGTERM, a
+# closed terminal's SIGHUP, Ctrl-C) never reaches it: the checker stops its group, deletes the work
+# folder and exits 2. Inside held(), between starting a process and recording it, a signal waits.
+HOLD = {"on": False, "sig": None}
+def _on_signal(signum, frame):
+    if HOLD["on"]:
+        HOLD["sig"] = HOLD["sig"] or signum; return
+    _cleanup(); say("stopped by signal %s, cannot check" % signal.Signals(signum).name); os._exit(2)
+class held:
+    def __enter__(self):
+        HOLD["on"] = True
+    def __exit__(self, *exc):
+        HOLD["on"] = False
+        if HOLD["sig"]:
+            _on_signal(HOLD["sig"], None)
+for _s in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+    signal.signal(_s, _on_signal)
 
 USAGE = ("usage: proof-check.sh (--file FILE | --pr N [--cycle C]) [--repo DIR] [--head SHA] "
          "[--sample N] [--seed S] [--check-output] [--allow-file FILE] [--timeout SECS]")
@@ -119,9 +146,13 @@ if opt["head"] is not None and not HEX.fullmatch(opt["head"]):
     cannot("--head needs a full lowercase commit sha")
 
 def git(*a, cwd=None):
-    r = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", *a], cwd=cwd or opt["repo"],
-                       stdin=subprocess.DEVNULL, capture_output=True, text=True)
-    return r.returncode, r.stdout.strip()
+    with held():
+        p = subprocess.Popen(["git", "-c", "core.hooksPath=/dev/null", *a], cwd=cwd or opt["repo"],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        LIVE["child"] = p.pid
+    out, _ = p.communicate()
+    LIVE["child"] = None
+    return p.returncode, out.strip()
 
 rc, top = git("rev-parse", "--show-toplevel")
 if rc != 0:
@@ -306,8 +337,9 @@ say("re-running %d of %d entries: %s" % (len(entries), len(data), " ".join(str(n
 
 # ---- run -----------------------------------------------------------------------------------------
 OUT_CAP = 64 * 1024 * 1024
-work = tempfile.mkdtemp(prefix="proof-check-")
-LIVE["work"] = work
+with held():
+    work = tempfile.mkdtemp(prefix="proof-check-")
+    LIVE["work"] = work
 clones, mismatch, failed = {}, 0, None
 try:
     for n, e in entries:
@@ -328,16 +360,20 @@ try:
         env = {k: v for k, v in env.items() if v}
         # Its own process group (session), output to a file: a child left in the background neither
         # holds the run open nor outlives it, and the whole group is killed when the command exits,
-        # times out or prints past the cap. A child that starts a new session of its own escapes this.
+        # times out or prints past the cap. A child that moves itself into a new process group or
+        # session of its own (setsid, set -m) escapes this; the pull request's code can always do that.
         outp = os.path.join(work, "out-%d" % n)
         over = None
         with open(outp, "wb") as fo:
-            try:
-                p = subprocess.Popen(e["command"].split(), cwd=clones[h], env=env, stdin=subprocess.DEVNULL,
-                                     stdout=fo, stderr=subprocess.STDOUT, start_new_session=True)
-            except OSError as x:
-                failed = "entry %d: %s could not start (%s)" % (n, e["command"], x.strerror); break
-            LIVE["group"] = p.pid
+            with held():
+                try:
+                    p = subprocess.Popen(e["command"].split(), cwd=clones[h], env=env, stdin=subprocess.DEVNULL,
+                                         stdout=fo, stderr=subprocess.STDOUT, start_new_session=True)
+                    LIVE["group"] = p.pid
+                except OSError as x:
+                    p, why = None, x.strerror
+            if p is None:
+                failed = "entry %d: %s could not start (%s)" % (n, e["command"], why); break
             deadline = time.monotonic() + int(opt["timeout"])
             while p.poll() is None:
                 if time.monotonic() >= deadline:
