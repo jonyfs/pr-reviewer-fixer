@@ -165,9 +165,10 @@ you ran as proof (each red, each green, each suite run, each mutation):
 Field rules:
 
 - `command`: what you ran from the repository root, words separated by spaces, with no shell syntax:
-  no quote, `$`, `;`, `|`, `&`, redirection, backtick, glob, `..` path part, or word starting with
-  `/` or `~`. `proof-check.sh` refuses anything else. A proof that needs a pipeline goes in a test
-  script, and the block names the script.
+  no quote, `$`, `;`, `|`, `&`, redirection, backtick, glob or `..` path part, and no `/` or `~`
+  at the start of a word or after `=`, `:`, `,`, `@`, `+` or `%` inside one (`--output=/x` is
+  refused like `/x`). `proof-check.sh` refuses anything else. A proof that needs a pipeline goes in
+  a test script, and the block names the script.
 - `exit_code`: the exit status, 0 to 255. A red is a non-zero code, recorded as it came.
 - `head_sha` and `tree_hash`: the commit checked out when it ran, and that commit's tree. Run proofs
   on a clean tree, so the commit is what ran. A red recorded before the fix names the commit before
@@ -193,7 +194,10 @@ a closure's result forward runs it first.
 
 The commands are untrusted text from a pull request comment. The checker runs none of them unless
 the person who runs it has configured an allowlist of command prefixes (`PROOF_CHECK_ALLOW`, or
-`--allow-file`, one prefix per line such as `bash tests/`). It validates every entry before any
+`--allow-file`, one prefix per line such as `bash tests/`). An entry is a prefix: a command may add
+words after it, and those go to the program, so a word after the entry that starts with `-` is
+refused (`git diff` does not permit `git diff --output=x`). To permit an option, write it into the
+entry, as in `bash tests/run-all.sh --fresh`. It validates every entry before any
 runs, splits each command on spaces and runs it as an argument list, never through `eval` or a
 shell, with stdin from `/dev/null` and an empty scratch `HOME`. The allowlist limits which command
 runs, not what it does: the checkout is the pull request's code, so permit only commands you would

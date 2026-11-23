@@ -27,12 +27,16 @@
 #   - an allowlist is configured: PROOF_CHECK_ALLOW (entries separated by newlines or commas) or
 #     --allow-file. No allowlist refuses every command. The person sets it; an agent never does.
 #   - the command uses only letters, digits, space and . _ / = : , + @ % - (no quote, no $, no ;, no |,
-#     no &, no redirection, no backtick, no glob, no newline), has no `..` path part, and no word that
-#     starts with / or ~.
+#     no &, no redirection, no backtick, no glob, no newline), has no `..` path part, and no / or ~
+#     at the start of a word or right after = : , @ + % inside one (`--output=/x`, `@/x` and
+#     `file:///x` are refused like `/x`).
 #   - its words start with the words of one allowlist entry: every entry word but the last must equal
 #     the command word; the last must equal it too, unless it ends with /, in which case it is a
 #     prefix of the command word (`bash tests/` permits `bash tests/a/run.sh`, not `bashx` nor
 #     `bash testsx/`).
+#   - an entry is a prefix, and the words after it are passed to the program, so none of them may
+#     start with - (`git diff` does not permit `git diff --output=x`, `bash` does not permit
+#     `bash -c x`). To permit an option, write it into the entry (`bash tests/run-all.sh --fresh`).
 # A command that passes is split on spaces and run as an argument list: no eval, no shell, stdin from
 # /dev/null, in a fresh clone checked out at its head_sha, with HOME set to an empty scratch folder.
 # The allowlist limits WHICH command runs, not WHAT it does: the checkout is the pull request's code,
@@ -181,10 +185,12 @@ def words_ok(s):
     if not w:
         return "it is empty"
     for x in w:
-        if re.search(r"(^|/)\.\.(/|$)", x):
+        # A path hides in an option value too (--output=/x, @/x, file:///x, a,../x), so the rules
+        # apply after = : , @ + % as well as at the start of a word and after /.
+        if re.search(r"(^|[/=:,@+%])\.\.([/=:,@+%]|$)", x):
             return "a word has a .. path part"
-        if x.startswith(("/", "~")):
-            return "a word starts with / or ~"
+        if re.search(r"(^|[=:,@+%])[/~]", x):
+            return "a word starts with / or ~, or holds one after = : , @ + %"
     return None
 raw = []
 for part in re.split(r"[\n,]", os.environ.get("PROOF_CHECK_ALLOW", "")):
@@ -205,14 +211,21 @@ for e in raw:
     allow.append(e.split())
 if not allow:
     cannot("no allowlist is configured (PROOF_CHECK_ALLOW or --allow-file), so every command is refused")
+# An entry is a prefix: the command may add words after it. Those words are passed to the program,
+# so one that starts with - would be an option the person never permitted (git diff --output=x,
+# bash -c x). They are refused; a person who wants an option writes it into the entry itself.
 def allowed(w):
+    why = "it is not on the allowlist"
     for a in allow:
         if len(w) < len(a) or w[:len(a) - 1] != a[:-1]:
             continue
         last, cw = a[-1], w[len(a) - 1]
         if cw == last or (last.endswith("/") and cw.startswith(last) and len(cw) > len(last)):
-            return True
-    return False
+            if any(x.startswith("-") for x in w[len(a):]):
+                why = "a word after the allowlist entry %r starts with -" % " ".join(a)
+                continue
+            return None
+    return why
 
 # ---- validate every entry before any runs ------------------------------------------------------
 FIELDS = ("command", "exit_code", "head_sha", "tree_hash", "tool_versions", "output_sha256")
@@ -239,8 +252,9 @@ for n, e in enumerate(data, 1):
     why = words_ok(cmd)
     if why:
         cannot("entry %d: command refused (%s); nothing was run" % (n, why))
-    if not allowed(cmd.split()):
-        cannot("entry %d: command %r is not on the allowlist; nothing was run" % (n, cmd))
+    why = allowed(cmd.split())
+    if why:
+        cannot("entry %d: command %r refused (%s); nothing was run" % (n, cmd, why))
     entries.append((n, e))
 
 # ---- the head and the tree ---------------------------------------------------------------------
