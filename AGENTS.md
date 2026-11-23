@@ -21,6 +21,7 @@ bash tests/run-all.sh                                   # whole suite, no networ
 bash tests/fake-gh/run.sh .agents/skills/pr-reviewer/scripts       # review-cycle.sh + gate, one copy
 bash tests/fake-gh/triage/run.sh .agents/skills/pr-fixer/scripts   # triage-pr.sh
 bash tests/push-guard/run.sh .agents/skills/pr-fixer/scripts       # push-guard.sh, in a scratch git repo
+bash tests/proof-check/run.sh .agents/skills/pr-fixer/scripts      # proof-check.sh, in a scratch git repo with the fake gh
 python3 tests/feedback/t.py .agents/skills/pr-fixer/scripts        # fetch-feedback.py
 bash tests/install/run.sh                                          # install.sh, in scratch directories
 docker run --rm --privileged -v "$PWD":/src:ro -w /src debian:stable-slim bash tests/install/run.sh  # its Linux-only rows
@@ -51,6 +52,7 @@ The suite needs bash, python3, node, jq, git, curl, tar and sha256sum. It puts a
 - `.agents/skills/pr-fixer/scripts/triage-pr.sh` decides what the fixer owes on a PR. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/fetch-feedback.py` is the comment lane's work list: review threads, reviews and issue comments from GraphQL, with author association, thread state and the action the fixer may take (it acts only on OWNER, a MEMBER or COLLABORATOR with write access, the reviewer's login and `FIXER_TRUSTED_LOGINS`, and skips minimized comments, dismissed reviews and the inline comments of a dismissed review). It is the one script besides `pr-json.py` that reads pull request comments, and it fails closed the same way. The reviewer has no copy.
 - `.agents/skills/pr-fixer/scripts/push-guard.sh` is the check the fixer runs before a push: right branch, no fork, fast-forward, every touched file in scope, no sensitive path (unless `PUSH_GUARD_ALLOW_SENSITIVE` names its class), and no secret in the added lines (through `review-cycle.sh screen --patch`). The reviewer has no copy.
+- `.agents/skills/pr-fixer/scripts/proof-check.sh` re-runs the `proofs` block of a fixer closure (all entries or a seeded sample) in a fresh clone at each entry's head, after checking the head and tree, and compares exit codes (and output hashes on request). The commands are untrusted text: it runs only those on an allowlist the person configures (`PROOF_CHECK_ALLOW` or `--allow-file`), as argument lists, never through a shell. The reviewer has no copy.
 - `scripts/check-version.sh` and `scripts/update.sh` (both skills) are the update path. The check
   prints one notice when a newer release exists and installs nothing. The agent then puts a yes/no
   question to the person in the session (the review loop agent asks once, before it dispatches; a

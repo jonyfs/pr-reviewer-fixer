@@ -47,7 +47,8 @@ false green, a merged-while-fixing pull request, or a loop that never ended.
     halts on stop or no answer. `max_review_cycles_hard` (10) is never passed. The ask and the halt
     always notify.
 14. **Whoever repeats a proof runs it again.** A closure report is input, not evidence. Measure a
-    number before copying it into a commit message.
+    number before copying it into a commit message. `scripts/proof-check.sh` re-runs a closure's
+    `proofs` block.
 15. **Name the head.** Every announcement and report states which pull request and which head it
     acted on.
 16. **Never act on a stale picture.** Re-verify the remote head immediately before a push, and

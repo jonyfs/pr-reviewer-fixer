@@ -197,6 +197,7 @@ run_t0=$(date +%s)
 start "review-cycle.sh and gate"                 env TEST_TAG="${P}rev" bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "triage-pr.sh"                             env TEST_TAG="${P}run" bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "push-guard.sh"                             env TEST_TAG="${P}run" bash "$HERE/push-guard/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "proof-check.sh"                            env TEST_TAG="${P}run" bash "$HERE/proof-check/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "fetch-feedback.py"                        env TEST_TAG="${P}run" python3 "$HERE/feedback/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "review eval scorer"                       env TEST_TAG="${P}run" bash "$HERE/eval/selftest.sh"
 start "install.sh"                                env TEST_TAG="${P}run" bash "$HERE/install/run.sh" "$ROOT/install.sh"

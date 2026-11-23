@@ -115,6 +115,7 @@ All scripts live in each skill's `scripts/` folder.
 | `review-cycle.sh extend <pr> --n N` | Grants more cycles after your answer |
 | `review-cycle.sh halt <pr> --reason …` | Stops the loop and asks for a person |
 | `push-guard.sh <pr>` | Checks a push before it happens (fixer and merge fixer) |
+| `proof-check.sh --pr <pr>` | Re-runs the proofs a fixer closure claims and compares exit codes (fixer; needs an allowlist you set) |
 | `check-version.sh` | Prints a notice when a newer release exists. It never installs |
 | `update.sh --yes --version X` | Updates the installed skills after you say yes |
 
