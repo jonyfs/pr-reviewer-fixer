@@ -62,5 +62,16 @@
   },
   "log": "good.jsonl",
   "visible": true
+ },
+ "exits-before-tests": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "files": {
+   "app/pricing.py": "pricing.exit.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix",
+  "log": "good.jsonl"
  }
 }
