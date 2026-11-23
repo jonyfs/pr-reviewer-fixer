@@ -159,6 +159,17 @@ chmod +t "$XDG_CACHE_HOME"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "the same root with the sticky bit (as /tmp): the key skips the run" eval '[ $r = 0 ] && printf %s "$out" | grep -q "nothing re-run"'
 chmod o-w,-t "$XDG_CACHE_HOME"
+# PR 76 pass 1, N1: a root writable by its group (not only by others) with no sticky bit turns the cache off too.
+chmod g+w "$XDG_CACHE_HOME"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a cache root writable by its group with no sticky bit: no skip, the cache is off, said plainly" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "cache root .* no sticky bit"'
+chmod g-w "$XDG_CACHE_HOME"
+# N1: the write gate checks the root too. With no cache folder yet the read gate has nothing to refuse, so only the
+# write gate stands between a bad root and a key file: a green run under a root writable by others writes no key.
+rm -rf "${CD2%/*}"; chmod o+w "$XDG_CACHE_HOME"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+chmod o-w "$XDG_CACHE_HOME"
+check "no cache folder yet under a root writable by others: a green run writes no key and says it is not recorded" eval '[ $r = 0 ] && [ ! -e "$CD2/$KG" ] && [ -z "$(ls -A "$CD2" 2>/dev/null)" ] && printf %s "$out" | grep -q "cache root is writable by its group or others and has no sticky bit"'
 # PR 73 debt N11: docs/REFERENCE.md and the run's refusal lines carry the same remedies. The docs paragraph is joined
 # into one line and its backticks dropped, so a re-wrap does not break the match.
 DOC_CACHE="$(awk '/^The cache lives in/{p=1} p&&/^$/{exit} p' "$T/../../docs/REFERENCE.md" | tr '\n' ' ' | tr -d '`')"

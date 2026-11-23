@@ -118,7 +118,8 @@ else CACHE_DIR=""; fi
 # the folder for another between the check and the read. The cache root above them (XDG_CACHE_HOME or ~/.cache) is
 # checked by cache_root_ok: any owner, and a link is followed, but a root that its group or others can write is
 # refused unless it has the sticky bit (as /tmp has), since without it they could rename pr-reviewer-fixer away and
-# put their own in its place. find printing the path means OK, so an unreadable root refuses too.
+# put their own in its place. find printing the path means OK, so an unreadable root refuses too. The trust boundary
+# is the root: its owner and the folders above it are trusted and not checked.
 cache_dir_ok() {
   local d
   for d in "$CACHE_DIR" "${CACHE_DIR%/*}"; do
@@ -441,7 +442,7 @@ model_key_scan
 if [ "$fail" = 0 ] && [ -z "${RUN_ONLY:-}" ] && [ -n "${KEY:-}" ] && [ -n "$CACHE_DIR" ]; then
   if [ "$(tree_key)" = "$KEY" ]; then
     if ! { (umask 077; mkdir -p "$CACHE_DIR") 2>/dev/null && cache_root_ok && cache_dir_ok && : >"$CACHE_DIR/$KEY" 2>/dev/null; }; then
-      echo "== run-all: the cache folder $CACHE_DIR could not be made or written, or it or its cache root is not this user's alone, so this green run is not recorded in the suite cache."
+      echo "== run-all: the cache folder $CACHE_DIR could not be made or written, or it is not this user's alone, or its cache root is writable by its group or others and has no sticky bit, so this green run is not recorded in the suite cache."
     fi
   else
     echo "== run-all: the tree changed during the run (a suite or an edit touched a file), so this green run is not recorded in the suite cache."
