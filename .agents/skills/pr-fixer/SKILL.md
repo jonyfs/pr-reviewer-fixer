@@ -262,6 +262,7 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
 - `scripts/fetch-feedback.py <n>` read-only: every review thread, review body and issue comment as
   one JSON list of work items with author association, thread state and the action allowed (needs
   `gh`, `python3`)
+- `scripts/fix-ledger.sh` appends each pull request's accepted-fix and false-refusal numbers to a local ledger, read-only on GitHub ([references/fix-ledger.md](references/fix-ledger.md))
 - `scripts/push-guard.sh <n>` read-only check before a push: right branch, no fork, fast-forward,
   every touched file in scope (needs `gh`, `git`, `node`)
 - `scripts/pr-json.py` the one way the scripts read a pull request (identical copy of the reviewer's)

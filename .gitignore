@@ -15,6 +15,7 @@ docs/designs/*.review.*/
 tests/fake-gh/err
 tests/fake-gh/work-*/
 tests/budget/state-*/
+tests/fix-ledger/work-*/
 tests/scan-hidden/work-*/
 tests/feedback/state-*/
 tests/fake-gh/triage/state-*/
