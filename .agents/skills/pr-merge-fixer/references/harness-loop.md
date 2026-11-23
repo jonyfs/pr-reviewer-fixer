@@ -205,7 +205,7 @@ outside the pull request; the person says yes to it knowingly or does not.
    It reports zero-width characters, BOMs, bidi overrides and marks, Unicode tag characters, blank
    fillers (soft hyphen, Hangul filler), runs of variation selectors, HTML comments other than the
    protocol's own markers, Markdown link reference definitions that point at `#` or `<>`
-   (`[//]: # (text)`) or carry a `#fragment` or a title under a label no link uses, `<details>`
+   (`[//]: # (text)`) or carry a `#fragment` or a title under a label no link uses, details
    blocks and invisibly styled HTML, in the added lines, the
    PR title, body and issue comments, and the commit messages, as JSON. It strips nothing. `--pr`
    does not read review-thread comments or review bodies; the fixer scans those itself (step 5).
