@@ -729,8 +729,10 @@ bash tests/run-all.sh --only words  # the suites whose name holds one of the wor
 
 The cache lives in `$XDG_CACHE_HOME` or `~/.cache` and is off when neither is set, and also when its folder
 (`pr-reviewer-fixer/run-all`) or the folder above it (`pr-reviewer-fixer`) is a link, has another owner, or is
-writable by others (it is created with mode 700); the run says so, and `chmod 700` on both folders, or removing them,
-turns it back on. Its key covers the commit, the
+writable by its group or others (it is created with mode 700); the run says so, and `chmod 700` on both folders, or
+removing them, turns it back on. It is off too when the cache root itself (`$XDG_CACHE_HOME` or `~/.cache`, whoever
+owns it) is writable by its group or others and has no sticky bit (a sticky root such as `/tmp` is allowed); the run
+says so, and `chmod go-w` or `chmod +t` on the root turns it back on. Its key covers the commit, the
 uncommitted and untracked files, the toolchain and the user's git configuration, but not the system git
 configuration, the repository's own `.git/config` or `.git/info/attributes`: after a change there (a clean filter,
 for example), run `--fresh`. A tree that changed during the run is not recorded as passed, and the run says so.
