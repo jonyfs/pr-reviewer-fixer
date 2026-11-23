@@ -158,13 +158,13 @@ def expand(path):
         if unknown:
             fail("%s: unknown key(s): %s" % (where, ", ".join(sorted(unknown))))
         pid = p.get("id")
-        if not isinstance(pid, str) or not ID_RE.match(pid):
+        if not isinstance(pid, str) or not ID_RE.fullmatch(pid):
             fail("%s: id must match %s" % (where, ID_RE.pattern))
         if pid in ids:
             fail("%s: id %s is used twice" % (where, pid))
         ids.add(pid)
         finding = p.get("finding")
-        if finding is not None and (not isinstance(finding, str) or not ID_RE.match(finding)):
+        if finding is not None and (not isinstance(finding, str) or not ID_RE.fullmatch(finding)):
             fail("%s: finding must match %s" % (pid, ID_RE.pattern))
         argv = p.get("argv")
         if not isinstance(argv, list) or not argv:

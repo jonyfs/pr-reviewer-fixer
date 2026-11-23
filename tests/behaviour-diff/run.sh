@@ -122,6 +122,27 @@ r=$(run "$BASE" "$WIDE" "$W/p-typo.json")
 check "a typo in argv[0] (bsah) across a real change -> 2 inconclusive, never same and 0" \
   eval '[ $r = 2 ] && has "inconclusive  greet finding=-: could not start at both commits" && ! has "same          greet" && clean'
 
+# 9. Input validation (N3): each rule has a row, checked with --list so nothing runs.
+lrow() { # name expected-exit grep-in-stderr-or-out probe-json
+  printf '%s\n' "$4" >"$W/p-v.json"
+  local r want="$2" pat="$3"; r=$(run --list "$BASE" "$FIX" "$W/p-v.json")
+  check "$1" eval '[ $r = $want ] && grep -qF -- "$pat" "$W/err" "$W/out"'
+}
+lrow "an id with a trailing newline -> 2 (the id pattern matches the whole id)" 2 "id must match" '{"probes": [{"id": "a\n", "argv": ["true"]}]}'
+lrow "an id used twice -> 2" 2 "is used twice" '{"probes": [{"id": "x", "argv": ["true"]}, {"id": "x", "argv": ["false"]}]}'
+lrow "an unknown probe key -> 2" 2 "unknown key(s): stdin" '{"probes": [{"id": "x", "argv": ["true"], "stdin": "y"}]}'
+lrow "a NUL byte in an argv element -> 2" 2 "holds a NUL byte" '{"probes": [{"id": "x", "argv": ["true", "a\u0000b"]}]}'
+lrow "a timeout of 600 s is accepted" 0 "1 probes" '{"timeout": 600, "probes": [{"id": "x", "argv": ["true"]}]}'
+lrow "a timeout above 600 s -> 2" 2 "at most 600" '{"probes": [{"id": "x", "argv": ["true"], "timeout": 601}]}'
+vals() { python3 -I -c 'import json,sys; print(json.dumps({"probes": [{"id": "x", "argv": ["echo", "{}"], "values": [str(i) for i in range(int(sys.argv[1]))]}]}))' "$1"; }
+lrow "a probe file that expands to 500 probes is accepted" 0 "500 probes" "$(vals 500)"
+lrow "a probe file that expands to 501 probes -> 2" 2 "more than 500 probes" "$(vals 501)"
+# The stdout text in the report is cut to 200 characters, with the full length named.
+echo '{"probes": [{"id": "wide", "argv": ["bash", "-c", "printf %0300d 0; bash src/clamp.sh 11"], "stdout": true}]}' >"$W/p-wide.json"
+r=$(run "$BASE" "$FIX" "$W/p-wide.json")
+check "a stdout text over 200 characters is cut in the report, its length named" \
+  eval '[ $r = 1 ] && has "...(303 chars)" && [ "$(grep -c "^  head stdout: \"0\{200\}\.\.\.(303 chars)\"$" "$W/out")" = 1 ] && clean'
+
 # 8. Stated controls (W2), each with a row that a copy without it turns red.
 # K1: the probe's process group is killed after a normal exit too, so a background child dies.
 # K3: stderr is part of the observable result. K6: a probe reads /dev/null, never the caller's stdin
