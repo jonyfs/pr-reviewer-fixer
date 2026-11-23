@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs every test against fake `gh` binaries. No network and no GitHub access needed.
-# Needs: bash, python3, node, jq, git, curl, tar and sha256sum.
+# Needs: bash, python3, node, jq, git, curl, tar, sha256sum and GNU timeout.
 set -u
 # A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what the scripts refuse, so
 # every suite starts without them; a row that needs one sets it itself.

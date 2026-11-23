@@ -134,9 +134,9 @@ pkill -f "slee[p] 2[12].$TOK" 2>/dev/null
 # group and deletes its work folder. TMPDIR points the work folder at a scratch place this row lists.
 SIGTMP="$W/tmp-sig"; mkdir -p "$SIGTMP"; rm -f "$W"/started-*
 closure "$W/term.md" "[$(entry 'bash tests/sig.sh term 3' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
-r=$( (cd "$W/repo" && TMPDIR="$SIGTMP" timeout -s TERM "${PC_TERM_AFTER:-12}" bash "$PC" --file "$W/term.md" --allow-file "$ALLOW" --timeout 600) </dev/null >"$W/out" 2>&1; echo $?)
+r=$( (cd "$W/repo" && TMPDIR="$SIGTMP" timeout --preserve-status -s TERM "${PC_TERM_AFTER:-12}" bash "$PC" --file "$W/term.md" --allow-file "$ALLOW" --timeout 600) </dev/null >"$W/out" 2>&1; echo $?)
 check "proof-check under timeout -s TERM (W5) -> exit 2, the command's sleep is stopped, no work folder left" \
-  eval '[ -e "$W/started-term" ] && has "stopped by signal SIGTERM" && gone 23 && [ -z "$(ls -A "$SIGTMP")" ]'
+  eval '[ -e "$W/started-term" ] && [ $r = 2 ] && has "stopped by signal SIGTERM" && gone 23 && [ -z "$(ls -A "$SIGTMP")" ]'
 pkill -f "slee[p] 23.$TOK" 2>/dev/null; rm -rf "$SIGTMP"; mkdir -p "$SIGTMP"
 closure "$W/hup.md" "[$(entry 'bash tests/sig.sh hup 4' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
 (cd "$W/repo" && TMPDIR="$SIGTMP" exec bash "$PC" --file "$W/hup.md" --allow-file "$ALLOW" --timeout 600) </dev/null >"$W/out" 2>&1 &
