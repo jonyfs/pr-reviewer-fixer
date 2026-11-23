@@ -38,7 +38,9 @@
 #     start with - (`git diff` does not permit `git diff --output=x`, `bash` does not permit
 #     `bash -c x`). To permit an option, write it into the entry (`bash tests/run-all.sh --fresh`).
 # A command that passes is split on spaces and run as an argument list: no eval, no shell, stdin from
-# /dev/null, in a fresh clone checked out at its head_sha, with HOME set to an empty scratch folder.
+# /dev/null, in a fresh clone checked out at its head_sha, with HOME set to an empty scratch folder,
+# in a process group of its own whose every member is killed when the command exits, times out or
+# prints more than 64 MiB (output goes to a file, never held in memory).
 # The allowlist limits WHICH command runs, not WHAT it does: the checkout is the pull request's code,
 # so permit only commands you would run on that code anyway.
 #
@@ -50,7 +52,7 @@
 # output hash with --check-output); a mismatch wins over a later failure to check. 2 nothing could be
 # checked: bad usage, no block, two blocks, malformed JSON, an empty array, a missing or malformed
 # field, a refused command, no allowlist, a wrong head or tree, a clone or checkout that failed, a
-# timeout, or a pull request that could not be read. Exit 2 never means "proved"; it means nobody
+# timeout, output past 64 MiB, or a pull request that could not be read. Exit 2 never means "proved"; it means nobody
 # could look. Every entry is validated before any entry runs.
 #
 # Needs bash, git and python3 (3.9+); --pr also needs gh, through pr-json.py.
@@ -59,13 +61,23 @@ command -v python3 >/dev/null 2>&1 || { echo "proof-check: python3 is not instal
 command -v git >/dev/null 2>&1 || { echo "proof-check: git is not installed, cannot check" >&2; exit 2; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROOF_CHECK_HERE="$HERE" exec python3 -I - "$@" <<'PY'
-import hashlib, json, os, re, shutil, subprocess, sys, tempfile
+import hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile, time
 
 def say(msg): print("proof-check: " + msg, flush=True)
 def cannot(msg):
     say(msg + ", cannot check"); sys.exit(2)
+LIVE = {"group": None, "work": None}   # what a crash must still stop and delete
+def stop_group(pgid):
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):   # gone already (macOS may say EPERM for zombies)
+        pass
 # An error nobody foresaw is "cannot check" (2), never a mismatch (1).
 def _crash(kind, value, tb):
+    if LIVE["group"]:
+        stop_group(LIVE["group"])
+    if LIVE["work"]:
+        shutil.rmtree(LIVE["work"], ignore_errors=True)
     say("internal error (%s), cannot check" % kind.__name__); os._exit(2)
 sys.excepthook = _crash
 
@@ -281,7 +293,9 @@ if opt["sample"] is not None and int(opt["sample"]) < len(entries):
 say("re-running %d of %d entries: %s" % (len(entries), len(data), " ".join(str(n) for n, _ in entries)))
 
 # ---- run -----------------------------------------------------------------------------------------
+OUT_CAP = 64 * 1024 * 1024
 work = tempfile.mkdtemp(prefix="proof-check-")
+LIVE["work"] = work
 clones, mismatch, failed = {}, 0, None
 try:
     for n, e in entries:
@@ -297,14 +311,39 @@ try:
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "TMPDIR": home,
                "LANG": os.environ.get("LANG", "C"), "LC_ALL": os.environ.get("LC_ALL", "")}
         env = {k: v for k, v in env.items() if v}
-        try:
-            r = subprocess.run(e["command"].split(), cwd=clones[h], env=env, stdin=subprocess.DEVNULL,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=int(opt["timeout"]))
-        except subprocess.TimeoutExpired:
-            failed = "entry %d: %s timed out after %s s" % (n, e["command"], opt["timeout"]); break
-        except OSError as x:
-            failed = "entry %d: %s could not start (%s)" % (n, e["command"], x.strerror); break
-        got_hash = hashlib.sha256(r.stdout).hexdigest()
+        # Its own process group (session), output to a file: a child left in the background neither
+        # holds the run open nor outlives it, and the whole group is killed when the command exits,
+        # times out or prints past the cap. A child that starts a new session of its own escapes this.
+        outp = os.path.join(work, "out-%d" % n)
+        over = None
+        with open(outp, "wb") as fo:
+            try:
+                p = subprocess.Popen(e["command"].split(), cwd=clones[h], env=env, stdin=subprocess.DEVNULL,
+                                     stdout=fo, stderr=subprocess.STDOUT, start_new_session=True)
+            except OSError as x:
+                failed = "entry %d: %s could not start (%s)" % (n, e["command"], x.strerror); break
+            LIVE["group"] = p.pid
+            deadline = time.monotonic() + int(opt["timeout"])
+            while p.poll() is None:
+                if time.monotonic() >= deadline:
+                    over = "timed out after %s s" % opt["timeout"]; break
+                if os.path.getsize(outp) > OUT_CAP:
+                    over = "printed more than %d MiB" % (OUT_CAP >> 20); break
+                time.sleep(0.05)
+            stop_group(p.pid)
+            p.wait()
+            LIVE["group"] = None
+        if over is None and os.path.getsize(outp) > OUT_CAP:
+            over = "printed more than %d MiB" % (OUT_CAP >> 20)
+        if over:
+            failed = "entry %d: %s %s" % (n, e["command"], over); break
+        hs = hashlib.sha256()
+        with open(outp, "rb") as fi:
+            for chunk in iter(lambda: fi.read(1 << 20), b""):
+                hs.update(chunk)
+        os.unlink(outp)
+        r = p
+        got_hash = hs.hexdigest()
         tv = ", ".join("%s %s" % kv for kv in sorted(e["tool_versions"].items())) or "none"
         bad = []
         if r.returncode != e["exit_code"]:
