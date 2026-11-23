@@ -22,7 +22,8 @@
 # cycle that only refused pushes nothing, so its head equals the verdict's and it has no commit.
 # Every other commit of the pull request counts as a person's (the author's own work, a commit
 # pushed outside a fix cycle, or a commit whose closure was not trusted). A merge commit is never
-# judged as a later commit.
+# judged as a later commit, and one inside a fixer range is not a fixer commit. A pure rename by a
+# person removes every line of the old path (renames are not followed), so it overwrites them.
 #
 # KEPT, OVERWRITTEN, REVERTED. For every later non-fixer commit H with one parent, the lines H
 # removes or replaces are blamed at H's parent. Lines that blame names a fixer commit C for count as
@@ -31,7 +32,9 @@
 # (from `git diff --numstat`), and `kept` otherwise. A commit that added no line is kept unless it
 # was reverted. The accepted-fix rate is kept / (kept + overwritten + reverted), over the pull
 # requests whose row is complete. When the local clone lacks a commit of the pull request, its
-# fixer commits are `unknown` and leave the rate. Nothing is fetched: fetch the pull request heads
+# fixer commits are `unknown` and leave the rate, and so do its refused findings that no later pass
+# re-raised: they are recorded with `human_fix_checked: false` and `false_refusal: null`, and the
+# audit prints them as not judged. Nothing is fetched: fetch the pull request heads
 # first if they are not on a local branch (`git fetch origin 'refs/pull/*/head:refs/remotes/origin/pr/*'`).
 #
 # FINDINGS. closed and refused are the sums of the trusted closure markers' `closed=` and
@@ -98,9 +101,12 @@ def load_gate():
         spec = importlib.util.spec_from_file_location("gate_pr_review_state", path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod
     except Exception as e:  # missing or broken gate: no trust rule to apply
         die("cannot load the trust rules from %s (%s)" % (path, type(e).__name__))
+    missing = [a for a in ("MARKER", "allowlist", "marker_author_allowed") if not hasattr(mod, a)]
+    if missing:  # a renamed name would otherwise be a traceback and exit 1
+        die("cannot load the trust rules from %s (no %s)" % (path, ", ".join(missing)))
+    return mod
 
 
 def run(cmd, timeout=120):
@@ -343,6 +349,13 @@ def record_pr(n, gate):
     removed_ids, over, reverted, added = {}, collections.Counter(), set(), {}
     reasons_git = "ok"
     if git_ok:
+        # A merge commit inside a fixer range is not a fix: it leaves the range, and a merge is never
+        # judged as a later commit either.
+        for s in [s for s in fixer if len(parents(s) or ()) > 1]:
+            del fixer[s]
+            for cyc in cycles:
+                if s in cyc["fixer_commits"]:
+                    cyc["fixer_commits"].remove(s)
         for s in fixer:
             ps = parents(s)
             added[s] = lines_added(s, ps[0]) if ps else 0
@@ -410,10 +423,13 @@ def record_pr(n, gate):
                         if key in removed_ids.get(h, ()):
                             fixed_by = h
                             break
+            # Without the commits a person's fix cannot be seen: a refusal no pass re-raised is then
+            # not judged (null), never held.
+            false = True if (reraised or fixed_by) else (False if git_ok else None)
             refused_rows.append({"id": fid, "cycle": c, "file": path, "line": line,
                                  "reviewer_status": next((e.get("status") for e in after if e.get("id") == fid), None),
                                  "reraised_at_pass": reraised, "human_fix": fixed_by,
-                                 "false_refusal": bool(reraised or fixed_by)})
+                                 "human_fix_checked": git_ok, "false_refusal": false})
 
     newest = closures[max(closures)] if closures else None
     count = collections.Counter(r["status"] for r in fixer_rows)
@@ -503,18 +519,24 @@ def audit(rows, o):
     picked.sort(key=lambda x: (str(x[0].get("repo")), x[0]["pr"], x[1].get("cycle") or 0, str(x[1].get("id"))))
     print("fix-ledger audit: %d refused finding(s) in %d complete pull request(s), %d sampled (seed %d)" % (
         len(pool), sum(1 for r in rows if r.get("complete")), n, o["seed"]))
-    false = 0
+    false = unjudged = 0
     for r, f in picked:
         where = "%s:%s" % (f.get("file"), f.get("line")) if f.get("file") else "no file cited"
         if f.get("reraised_at_pass"):
             what = "false refusal: re-raised as open at pass %d" % f["reraised_at_pass"]
         elif f.get("human_fix"):
             what = "false refusal: a later commit %s changed the cited line" % f["human_fix"][:7]
+        elif f.get("false_refusal") is None:
+            what = "not judged: the commits were not in the local clone"
+            unjudged += 1
         else:
             what = "held"
         false += bool(f.get("reraised_at_pass") or f.get("human_fix"))
         print("#%s %s (cycle %s, %s): %s" % (r["pr"], f.get("id"), f.get("cycle"), where, what))
-    print("false-refusal rate: " + rate(false, n))
+    print("false-refusal rate: " + rate(false, n - unjudged))
+    if unjudged:
+        print("%d refused finding(s) not judged and left out of the rate: their commits were not in the "
+              "local clone; fetch them and record again" % unjudged)
 
 
 # ---- main ---------------------------------------------------------------------------------------
@@ -532,10 +554,10 @@ def main():
         die("REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. "
             "Set it to the login the harness publishes as: gh api user --jq .login")
     rc, top = git("rev-parse", "--show-toplevel")
-    parent = os.path.realpath(os.path.dirname(path))
+    target = os.path.realpath(path)  # the file itself: a symlink to a file in the repository is in it
     if rc == 0 and top.strip() and not o["in_repo"]:
         root = os.path.realpath(top.strip())
-        if parent == root or parent.startswith(root + os.sep):
+        if target == root or target.startswith(root + os.sep):
             die("the ledger %s is inside the repository %s; pick a file outside it, or pass --allow-in-repo" % (path, root))
     prs = o["prs"]
     if prs is None:

@@ -67,9 +67,23 @@ git checkout -q -b p6 main
 A6=$(printf -- '-- header\na\nb\nc\n' >"h q.sql" && git add "h q.sql" && ci "author: sql")
 F6=$(setl "h q.sql" 4 "fixed c" && ci "fix C2")
 H6=$(printf 'a\nb\nperson c\n' >"h q.sql" && ci "person: sql")
+git checkout -q -b p12 main
+A12=$(setl f.txt 8 bug8 && ci "author: work")
+F12=$(setl f.txt 8 $'fix8\nfix8b' && ci "fix C1")
+H12=$(setl f.txt 8 person8 && ci "person: one of the two lines")
+git checkout -q -b s13a main
+setl g.txt 3 side3 && git commit -qam "side a"
+git checkout -q -b s13b main
+setl g.txt 7 side7 && git commit -qam "side b"
+git checkout -q -b p13 main
+A13=$(setl f.txt 9 bug9 && ci "author: work")
+git merge -q --no-ff --no-edit s13a >/dev/null && M13A=$(git rev-parse HEAD)
+F13=$(setl f.txt 9 fix9 && ci "fix C1")
+git merge -q --no-ff --no-commit s13b >/dev/null 2>&1; setl f.txt 9 evil9 && git add f.txt \
+  && git commit -qm "person: merge b, rewriting line 9 in the merge" && M13B=$(git rev-parse HEAD)
 git checkout -q main
-export A1 F1 A2 F2A F2B H2A H2B A3 F3 H3 A4 M4 A5 F5 F5B H5 A6 F6 H6
-for v in A1 F1 A2 F2A F2B H2A H2B A3 F3 H3 A4 M4 A5 F5 F5B H5 A6 F6 H6; do
+export A1 F1 A2 F2A F2B H2A H2B A3 F3 H3 A4 M4 A5 F5 F5B H5 A6 F6 H6 A12 F12 H12 A13 M13A F13 M13B
+for v in A1 F1 A2 F2A F2B H2A H2B A3 F3 H3 A4 M4 A5 F5 F5B H5 A6 F6 H6 A12 F12 H12 A13 M13A F13 M13B; do
   [ -n "${!v}" ] || { echo "the scratch repository is missing commit $v"; exit 1; }
 done
 
@@ -99,7 +113,7 @@ def status(who):
     return {"author": {"login": who}, "body": O + "pr-skill-status: skill=pr-fixer run=1 head=abc state=finished -->\nfinished"}
 
 
-def pr(n, commits, comments, state="MERGED", edited=None):
+def pr(n, commits, comments, state="MERGED", edited=None, deleted=None):
     obj = {"number": n, "state": state, "isDraft": False, "title": "t", "body": "", "author": {"login": "alice"},
            "isCrossRepository": False, "labels": [], "headRefOid": commits[-1], "commits": [{"oid": x} for x in commits],
            "mergeCommit": {"oid": "f" * 40} if state == "MERGED" else None,
@@ -107,6 +121,7 @@ def pr(n, commits, comments, state="MERGED", edited=None):
     for i, c in enumerate(comments):
         c["id"] = "IC_%d_%d" % (n, i)
     obj["edited"] = {"IC_%d_%d" % (n, i): who for i, who in (edited or {}).items()}
+    obj["deleted"] = deleted or []
     json.dump(obj, open(os.path.join(d, "pr-%d.json" % n), "w"))
 
 
@@ -151,6 +166,32 @@ pr(6, [E["A6"], E["F6"], E["H6"]], [
     closure("rev-bot", 2, E["F6"], 1, 0, 0, "C2 closed: fixed.\n"),
     verdict("rev-bot", E["F6"], "PASSED", 3, [("C1", "CRITICAL", "refused-accepted", Q, 2), ("C2", "CRITICAL", "verified", Q, 4)])])
 json.dump([{"number": 1}, {"number": 2}], open(os.path.join(d, "list.json"), "w"))
+
+
+# PRs 7 to 10 are PR 1 with one trust event each; every one of them must change the row on its own.
+def one():
+    return [verdict("rev-bot", E["A1"], "BLOCKED", 1, [C1], c=1), status("rev-bot"),
+            closure("rev-bot", 1, E["F1"], 1, 0, 1, "C1 closed: fixed.\n"),
+            verdict("rev-bot", E["F1"], "PASSED", 2, [("C1", "CRITICAL", "verified", "f.txt", 2)])]
+
+
+pr(7, [E["A1"], E["F1"]], one(),  # one trusted comment deleted by another login, one by its own author
+   deleted=[{"author": "rev-bot", "actor": "mallory"}, {"author": "rev-bot", "actor": "rev-bot"}])
+pr(8, [E["A1"], E["F1"]], one(), edited={1: "mallory"})  # a trusted comment with no marker, edited by another login
+pr(9, [E["A1"], E["F1"]], one(), edited={3: "rev-bot"})  # the last verdict, edited by its own author
+quoted = closure("rev-bot", 1, E["F1"], 9, 9, 9)  # a trusted comment quoting a closure after its first line
+pr(10, [E["A1"], E["F1"]], one() + [{"author": {"login": "rev-bot"}, "body": "Quoting it:\n" + quoted["body"]}])
+pr(11, [E["A1"]], [verdict("rev-bot", E["A1"], "BLOCKED", 1, [C1], c=1),  # refused, no pass 2 yet
+                   closure("rev-bot", 1, E["A1"], 0, 1, 0, "C1 refused: does not reproduce.\n")], state="OPEN")
+pr(12, [E["A12"], E["F12"], E["H12"]], [
+    verdict("rev-bot", E["A12"], "BLOCKED", 1, [("C1", "CRITICAL", "open", "f.txt", 8)], c=1),
+    closure("rev-bot", 1, E["F12"], 1, 0, 0),
+    verdict("rev-bot", E["F12"], "BLOCKED", 2, [("C1", "CRITICAL", "verified", "f.txt", 8),
+                                               ("W8", "WARNING", "open", "f.txt", 1), ("W9", "WARNING", "verified", "f.txt", 1)], w=1)])
+pr(13, [E["A13"], E["M13A"], E["F13"], E["M13B"]], [
+    verdict("rev-bot", E["A13"], "BLOCKED", 1, [("C1", "CRITICAL", "open", "f.txt", 9)], c=1),
+    closure("rev-bot", 1, E["F13"], 1, 0, 0),
+    verdict("rev-bot", E["F13"], "PASSED", 2, [("C1", "CRITICAL", "verified", "f.txt", 9)])])
 PY
 
 # ---- rows ----------------------------------------------------------------------------------------
@@ -245,6 +286,52 @@ if grep -vE '^gh (pr view [0-9]+ --json|api graphql |pr list --state merged )' "
   row "read-only: gh is only asked to read" bad "$(grep -vE '^gh (pr view|api graphql|pr list)' "$FAKE_DIR/calls.log" | head -n 3)"
 else row "read-only: gh is only asked to read" ok; fi
 [ -z "$(git -C "$R" status --porcelain --untracked-files=no)" ] && row "the git repository is left as it was" ok || row "the git repository is left as it was" bad "$(git -C "$R" status --short)"
+
+# ---- trust events, one per pull request, each the only reason (PR 79 W1) --------------------------
+# ql <ledger> <name> <pr> <jq>: q over another ledger.
+ql() { local L="$1"; shift; q "$@"; }
+M="$W/more.jsonl"
+out=$(bash "$FL" --prs 7,8,9,10,11,12,13 --ledger "$M" 2>&1); rc=$?
+[ "$rc" = 0 ] && row "record 7-13: exit 0" ok || row "record 7-13: exit 0" bad "exit $rc: $out"
+ONE='(.complete | not) and (.incomplete_reasons | length) == 1'
+ql "$M" "PR 7: a trusted comment deleted by another login makes the row incomplete; its author's own deletion does not" 7 "$ONE"' and .ignored.deleted_trusted == 1'
+ql "$M" "PR 8: a trusted comment with no marker, edited by another login, makes the row incomplete" 8 "$ONE"' and .ignored.edited_trusted == 1'
+ql "$M" "PR 9: a trusted verdict edited by its own author makes the row incomplete" 9 "$ONE"' and .ignored.edited_trusted == 1'
+ql "$M" "PR 10: a closure marker quoted after the first line of a trusted comment is not read" 10 '.complete and .findings == {"closed":1,"refused":0,"escalated":0,"debt":1} and [.cycles[].cycle] == [1]'
+ql "$M" "PR 11: a refusal labelled only in the closure, with no later pass, is a refused finding" 11 '[.refused_findings[].id] == ["C1"]'
+ql "$M" "PR 12: one of two added lines overwritten is half, so the commit is overwritten" 12 '.fixer_commits[0] | .status == "overwritten" and .lines_added == 2 and .lines_overwritten == 1'
+ql "$M" "PR 12: a new id with a status other than open is not a new finding" 12 '.cycles[0].new_warning == 1'
+ql "$M" "PR 13: a merge commit inside the fixer range is not a fixer commit (N2)" 13 '[.fixer_commits[].sha] == ["'"$F13"'"]'
+ql "$M" "PR 13: a later merge that rewrites a fixer line is not judged" 13 '.fixer_commits[0].status == "kept"'
+
+# ---- a clone that lacks the pull request's commits (PR 79 W2) -------------------------------------
+O2="$W/other"
+git init -q "$O2" && git -C "$O2" commit -q --allow-empty -m other
+NG="$W/nogit.jsonl"
+out=$(cd "$O2" && bash "$FL" --prs 3 --ledger "$NG" 2>&1); rc=$?
+[ "$rc" = 0 ] && row "record 3 from a clone without its commits: exit 0" ok || row "record 3 from a clone without its commits: exit 0" bad "exit $rc: $out"
+ql "$NG" "no commits locally: the fixer commit is unknown, not kept" 3 '.git == "a commit of the pull request is not in the local clone" and .fixer_commits[0].status == "unknown" and .commits.unknown == 1'
+ql "$NG" "no commits locally: an unre-raised refusal is not judged, not held" 3 '(.refused_findings[] | select(.id == "C4")) | .human_fix_checked == false and .false_refusal == null'
+ql "$NG" "no commits locally: a re-raised refusal is still a false refusal" 3 '(.refused_findings[] | select(.id == "C2")) | .false_refusal == true'
+out=$(bash "$FL" audit --ledger "$NG" 2>&1)
+has "audit without the commits: C4 is not judged" "#3 C4 (cycle 1, g.txt:2): not judged: the commits were not in the local clone" "$out"
+has "audit without the commits: the rate counts only judged refusals" "false-refusal rate: 1/1 (100.0%)" "$out"
+has "audit without the commits: says how many were left out" "2 refused finding(s) not judged" "$out"
+
+# ---- notes (PR 79 N3, N4, N6) ---------------------------------------------------------------------
+ln -s "$R/linked.jsonl" "$W/link.jsonl"
+out=$(bash "$FL" --prs 1 --ledger "$W/link.jsonl" 2>&1); rc=$?
+[ "$rc" = 2 ] && [ ! -e "$R/linked.jsonl" ] && row "a ledger symlinked into the repository is refused" ok \
+  || row "a ledger symlinked into the repository is refused" bad "exit $rc: $out"
+out=$(bash "$FL" --since 2026-11-01 --limit 2 --ledger "$W/lim.jsonl" 2>&1)
+has "--limit reached: says there may be more" "raise --limit" "$out"
+out=$(bash "$FL" --since 2026-11-01 --limit 3 --ledger "$W/lim.jsonl" 2>&1)
+case "$out" in *"raise --limit"*) row "--limit not reached: no warning" bad "$out" ;; *) row "--limit not reached: no warning" ok ;; esac
+G="$W/gate-renamed"; mkdir -p "$G" && cp "$SRC"/*.sh "$SRC"/*.py "$G"/
+python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(s.replace("def marker_author_allowed(", "def marker_author_allowed_renamed(", 1))' "$G/gate-pr-review-state.py"
+out=$(bash "$G/fix-ledger.sh" --prs 1 --ledger "$W/gate.jsonl" 2>&1); rc=$?
+[ "$rc" = 2 ] && [ ! -e "$W/gate.jsonl" ] && grep -q 'def marker_author_allowed_renamed(' "$G/gate-pr-review-state.py" \
+  && row "a gate without one of the names it imports: exit 2, no ledger" ok || row "a gate without one of the names it imports: exit 2, no ledger" bad "exit $rc: $out"
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
