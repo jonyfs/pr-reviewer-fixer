@@ -62,5 +62,18 @@
   },
   "log": "good.jsonl",
   "visible": true
+ },
+ "good-key-keeps-keyword-order": {
+  "expect": [],
+  "files": {
+   "app/cache.py": "cache.ordered.py",
+   "tests/test_cache_key.py": "test_cache_key.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "log": "good.jsonl",
+  "visible": true
  }
 }
