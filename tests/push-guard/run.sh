@@ -27,7 +27,10 @@ runopt() { local o="$1"; shift; (cd "$W/repo" && env -u BASHOPTS -u SHELLOPTS ba
 runenv() { local e="$1"; shift; (cd "$W/repo" && env "$e" "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
 
 # The locale rows need a UTF-8 locale; without one bash falls back to C and those rows could not fail, so the table says so.
-UL="$(locale -a 2>/dev/null | grep -iE '^(en_US|C)\.utf-?8$' | head -n 1)"
+# PR 75 N2: en_US or C UTF-8 first, else any UTF-8 locale the host lists.
+pick_ul() { local all; all="$(cat)"
+  printf '%s\n' "$all" | grep -iE '^(en_US|C)\.utf-?8$' | head -n 1 | grep . || printf '%s\n' "$all" | grep -iE 'utf-?8' | head -n 1; }
+UL="$(locale -a 2>/dev/null | pick_ul)"
 [ -n "$UL" ] || { UL=C; ROWS+=("SKIP | no UTF-8 locale on this host: the U+2028, mañana and bash 3.2 rows cannot fail here"); }
 g init -q -b main . 2>/dev/null || { git -C "$W/repo" init -q; g checkout -q -b main; }
 mkdir -p "$W/repo/src" "$W/repo/tests"
@@ -182,7 +185,9 @@ for e in BASHOPTS=nocasematch SHELLOPTS=xtrace; do
 done
 # Every caller text starts the guard with bash -p and pushes only on exit 0 with the ok line.
 ROOT="$(cd "$T/../.." && pwd)"; docs_ok=0
-for f in .agents/skills/pr-fixer/SKILL.md .agents/skills/pr-merge-fixer/SKILL.md .agents/skills/pr-merge-fixer/references/conflicts.md; do
+# PR 75 N9: the reference and the two docs that describe the guard's run say the same.
+for f in .agents/skills/pr-fixer/SKILL.md .agents/skills/pr-merge-fixer/SKILL.md .agents/skills/pr-merge-fixer/references/conflicts.md \
+  .agents/skills/pr-fixer/references/cycles-and-races.md docs/HOW-IT-WORKS.md docs/REFERENCE.md; do
   grep -qF 'bash -p scripts/push-guard.sh' "$ROOT/$f" && grep -qF '`push-guard: ok.`' "$ROOT/$f" || { docs_ok=1; echo "caller text without bash -p or the ok line: $f" >&2; }
 done
 check "the callers start the guard with bash -p and require the push-guard: ok. line (W2 of #75)" eq "$docs_ok" 0
@@ -665,6 +670,54 @@ r=$(run --findings "$W/rep.md" --allow src/gone.ts)
 check "a commit whose added blob is missing -> 2 INCONCLUSIVE, not a pass of the secret screen (N9 of #27)" \
   eval '[ $r = 2 ] && grep -q "could not be read for the secret screen" "$W/out"'
 g checkout -q -f feat/x 2>/dev/null; g branch -q -D feat/gone 2>/dev/null
+
+# PR 75 debt, pass 2. N2: the locale probe takes any UTF-8 locale when en_US and C UTF-8 are absent.
+check "the locale probe falls back to any UTF-8 locale (N2 of #75)" eq "$(printf 'POSIX\nC\nde_DE.UTF-8\n' | pick_ul)" de_DE.UTF-8
+# N4: a name that is not valid UTF-8 made sort -u fail on macOS under a UTF-8 locale, so the lists printed no name.
+# The names go in through the index: APFS refuses to create them on disk.
+g checkout -q -f -B feat/ff "$HEAD_OID"; prjson OPEN feat/ff "$HEAD_OID" false
+iadd 100644 "src/x$(printf '\377')y.ts" x; iadd 100644 ".claude/x$(printf '\377')" x; g commit -q -m "invalid UTF-8 names"
+r=$(LC_ALL="$UL" run --findings "$W/rep.md")
+check "a name that is not valid UTF-8, under a UTF-8 locale -> still listed, out of scope and sensitive (N4 of #75)" \
+  eval '[ $r = 1 ] && LC_ALL=C grep -q "files outside the findings. scope: .*src/x" "$W/out" && LC_ALL=C grep -q "sensitive-path: .*\.claude/x" "$W/out"'
+g checkout -q -f feat/x 2>/dev/null
+# N5: the secret reason prints each path through shown(), so U+2028 in a file name is escaped. A test name keeps the
+# file out of the scope list, so the escape is the secret line's own.
+g checkout -q -f -B feat/s28 "$HEAD_OID"; mkdir -p "$W/repo/tests"; printf 'const t = "%s";\n' "$TOK" >"$W/repo/tests/a${U28}b.test.ts"; g add -A; g commit -q -m s28
+prjson OPEN feat/s28 "$HEAD_OID" false
+r=$(LC_ALL="$UL" run --findings "$W/rep.md"); E5="\\342\\200\\250b.test.ts':1 GitHub token"
+check "a secret in a file whose name holds U+2028 -> the secret line escapes the name (N5 of #75)" \
+  eval '[ $r = 1 ] && grep -q "secret:" "$W/out" && ! grep -q "$U28" "$W/out" && grep -qF "$E5" "$W/out" && ! grep -q "$TOK" "$W/out"'
+g checkout -q -f feat/x
+# N6: the head branch name is printed through shown() and printf, in the ok line and in the refusals.
+B6="feat/b${U28}x"; g checkout -q -f -B "$B6" "$HEAD_OID"; prjson OPEN "$B6" "$HEAD_OID" false
+r=$(LC_ALL="$UL" run --findings "$W/rep.md")
+check "a head branch name holding U+2028 -> escaped in the ok line (N6 of #75)" \
+  eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && ! grep -q "$U28" "$W/out" && grep -qF "feat/b\\342\\200\\250x" "$W/out"'
+r=$(LC_ALL="$UL" runopt xpg_echo --findings "$W/rep.md")
+check "the same with xpg_echo on -> the ok line still escapes it (printf, not echo) (N6 of #75)" \
+  eval '[ $r = 0 ] && ! grep -q "$U28" "$W/out" && grep -qF "feat/b\\342\\200\\250x" "$W/out"'
+prjson OPEN "feat/b${U28}y" "$HEAD_OID" false
+r=$(LC_ALL="$UL" run --findings "$W/rep.md")
+check "a head branch name holding U+2028 that is not checked out -> escaped in the refusal (N6 of #75)" \
+  eval '[ $r = 1 ] && grep -q "checked-out branch" "$W/out" && ! grep -q "$U28" "$W/out"'
+g checkout -q -f feat/x
+# N10: after bash -p, the guard restarts without the exported functions (BASH_FUNC_*), so none of its children (git,
+# gh, node, python3, sed) receives one. A git shim logs how many it sees; it must have run and seen none.
+g checkout -q -f -B feat/fn "$HEAD_OID"; prjson OPEN feat/fn "$HEAD_OID" false
+mkdir -p "$W/fnshim"; RG="$(command -v git)"
+printf '#!/bin/sh\nenv | grep -c "^BASH_FUNC_" >>"%s/fnshim/log"\nexec "%s" "$@"\n' "$W" "$RG" >"$W/fnshim/git"; chmod +x "$W/fnshim/git"
+for e in X_N10=1 BASHOPTS=nocasematch; do
+  : >"$W/fnshim/log"
+  r=$(bnd 20 env PATH="$W/fnshim:$PATH" "BASH_FUNC_probe%%=() { :; }" "$e" bash -p "$PG" 7 --findings "$W/rep.md")
+  check "bash -p, $e and an exported function -> no child of the guard receives it, ok (N10 of #75)" \
+    eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && [ -s "$W/fnshim/log" ] && ! grep -qv "^ *0$" "$W/fnshim/log"'
+done
+r=$(bnd 20 env "FOO=x"$'\n'"BASH_FUNC_y%%=z" bash -p "$PG" 7 --findings "$W/rep.md")
+check "a value holding a newline then BASH_FUNC_y%%= -> no restart loop, ok (N10 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
+r=$(bnd 20 env PUSH_GUARD_RESTARTED=1 "BASH_FUNC_probe%%=() { :; }" bash -p "$PG" 7 --findings "$W/rep.md")
+check "restart mark inherited with an exported function -> 2 INCONCLUSIVE (N10 of #75)" eval '[ $r = 2 ] && grep -q "INCONCLUSIVE" "$W/out"'
+g checkout -q -f feat/x
 
 for opt in --findings --allow; do
   (cd "$W/repo" && perl -e 'alarm shift; exec @ARGV' 5 "$PG" 7 "$opt") >"$W/out" 2>&1; r=$?

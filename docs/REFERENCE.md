@@ -185,7 +185,8 @@ sequenceDiagram
   never force-pushing over other people's commits. See `.agents/skills/pr-fixer/references/conflicts.md`.
 - Classifies failing CI as transient, pre-existing on the base branch, or genuine, and reruns only
   what a rerun can fix. See `.agents/skills/pr-fixer/references/ci-failures.md`.
-- Runs `scripts/push-guard.sh` before every push. It refuses a wrong branch, a fork, a push that is
+- Runs `bash -p scripts/push-guard.sh` before every push, and pushes only on exit 0 together with
+  the `push-guard: ok.` line. It refuses a wrong branch, a fork, a push that is
   not a fast-forward and a commit that touches a file no finding names. A merge commit counts the
   files it changes beyond git's automatic merge of its parents (a conflict resolution, or an edit
   slipped into the merge), which needs git 2.38 or later; commits the base already holds are not

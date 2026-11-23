@@ -290,7 +290,8 @@ flowchart TD
    not declared. When the verdict is `PASSED` with leftover debt, the fixer does only this step: no
    code edits, no commits, no label change.
 6. **Push guard.** Before a push it re-checks the remote head and runs
-   `push-guard.sh <pr> --findings FILE`. The guard refuses when the checked-out branch is not the
+   `bash -p scripts/push-guard.sh <pr> --findings FILE`, and pushes only on exit 0 together with
+   the `push-guard: ok.` line. The guard refuses when the checked-out branch is not the
    pull request's head, the head is on a fork, the pull request is closed, the push would not be a
    fast-forward, or a commit touches a file no finding names (test files and explicit `--allow`
    paths are exempt). A merge commit is checked by the files where it differs from the merge git

@@ -102,7 +102,14 @@
 # together with the `push-guard: ok.` line. Under bash -p an environment BASHOPTS or SHELLOPTS is ignored but still
 # exported, so the restart happens there too; it keeps -p, or the second start would import the exported functions
 # (BASH_FUNC_*) that bash -p kept out. bash -p still hands those to its children, so the review-cycle.sh this guard
-# runs starts with -p as well (PR 75 W3).
+# runs starts with -p as well (PR 75 W3), and an exported function in the environment is a reason to restart too:
+# the restart drops every BASH_FUNC_ variable by its exact name, as node lists the environment's names (never a line
+# of env's output), so no child of the guard (git, gh, node, python3, sed) receives one (PR 75 N10). The same mark
+# allows one restart for both: a function still exported on the second start makes the guard INCONCLUSIVE (exit 2).
+pg_funcs() {
+  command -v node >/dev/null 2>&1 || return 0
+  node -e 'for (const k of Object.keys(process.env)) if (k.startsWith("BASH_FUNC_")) process.stdout.write(k + "\0")' 2>/dev/null
+}
 pg_inherited() {
   local v d
   for v in BASHOPTS SHELLOPTS; do
@@ -112,10 +119,13 @@ pg_inherited() {
   done
   return 1
 }
-if pg_inherited; then
-  [ -z "${PUSH_GUARD_RESTARTED:-}" ] || { printf '%s\n' "push-guard: BASHOPTS or SHELLOPTS is still exported after the one restart, INCONCLUSIVE" >&2; exit 2; }
-  exec env -u BASHOPTS -u SHELLOPTS -u BASH_ENV PUSH_GUARD_RESTARTED=1 "${BASH:-bash}" -p "$0" "$@"
+PG_UNSET=()
+while IFS= read -r -d '' _f; do PG_UNSET+=(-u "$_f"); done < <(pg_funcs)
+if pg_inherited || [ "${#PG_UNSET[@]}" -gt 0 ]; then
+  [ -z "${PUSH_GUARD_RESTARTED:-}" ] || { printf '%s\n' "push-guard: BASHOPTS, SHELLOPTS or an exported function is still in the environment after the one restart, INCONCLUSIVE" >&2; exit 2; }
+  exec env -u BASHOPTS -u SHELLOPTS -u BASH_ENV ${PG_UNSET[@]+"${PG_UNSET[@]}"} PUSH_GUARD_RESTARTED=1 "${BASH:-bash}" -p "$0" "$@"
 fi
+unset PG_UNSET _f
 unset PUSH_GUARD_RESTARTED
 set -uo pipefail
 shopt -u nocasematch nocaseglob 2>/dev/null
@@ -153,15 +163,17 @@ field() { printf '%s' "$JSON" | node -e 'let s="";process.stdin.on("data",d=>s+=
 STATE="$(field state)"; HEAD_REF="$(field headRefName)"; HEAD_OID="$(field headRefOid)"
 BASE_REF="$(field baseRefName)"; BASE_OID="$(field baseRefOid)"; CROSS="$(field isCrossRepository)"
 [ -n "$HEAD_REF" ] && [ -n "$HEAD_OID" ] || { echo "push-guard: the PR payload had no head, INCONCLUSIVE" >&2; exit 2; }
+# The head branch name is the pull request's text: printed through shown() and printf, like every other name (PR 75 N6).
+HEAD_SHOWN="$(shown "$HEAD_REF")"
 git cat-file -e "$HEAD_OID^{commit}" 2>/dev/null \
-  || { echo "push-guard: the PR head ${HEAD_OID:0:12} is not in this clone; fetch $HEAD_REF first, INCONCLUSIVE" >&2; exit 2; }
+  || { printf '%s\n' "push-guard: the PR head ${HEAD_OID:0:12} is not in this clone; fetch $HEAD_SHOWN first, INCONCLUSIVE" >&2; exit 2; }
 
 REASONS=()
-[ "$STATE" = OPEN ] || REASONS+=("the pull request is $STATE, not OPEN")
+[ "$STATE" = OPEN ] || REASONS+=("the pull request is $(shown "$STATE"), not OPEN")
 [ "$CROSS" != true ] || REASONS+=("the head is on a fork; the fixer does not push to forks")
 CUR="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
-[ "$CUR" = "$HEAD_REF" ] || REASONS+=("the checked-out branch is '$CUR' but the pull request head is '$HEAD_REF'")
-[ "$HEAD_REF" != "$BASE_REF" ] || REASONS+=("the head branch '$HEAD_REF' is the base branch")
+[ "$CUR" = "$HEAD_REF" ] || REASONS+=("the checked-out branch is '$(shown "$CUR")' but the pull request head is '$HEAD_SHOWN'")
+[ "$HEAD_REF" != "$BASE_REF" ] || REASONS+=("the head branch '$HEAD_SHOWN' is the base branch")
 git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null \
   || REASONS+=("local HEAD does not contain the pull request head ${HEAD_OID:0:12}: a push would not be a fast-forward")
 
@@ -492,18 +504,29 @@ if [ -s "$PATCH" ]; then
   HITS="$("${BASH:-bash}" -p "$RCY" screen --patch "$PATCH" 2>/dev/null)"; src=$?
   case "$src" in
     0) ;;
-    1) REASONS+=("secret: the commits add what looks like a credential (value not shown): $(printf '%s' "$HITS" | paste -sd';' - | sed 's/;/; /g')") ;;
+    # Each hit is `path:line kind`; the path is the pull request's text, so it goes through shown() (PR 75 N5). The
+    # split is at the last `:<digits> `, so a colon in the path stays in the path. Joined in bash: no sed or paste
+    # meets a byte that is not valid UTF-8.
+    1) _hl=""
+       while IFS= read -r _h; do
+         [ -n "$_h" ] || continue
+         if [[ "$_h" =~ ^(.*)(:[0-9]+\ .*)$ ]]; then _h="$(shown "${BASH_REMATCH[1]}")${BASH_REMATCH[2]}"; else _h="$(shown "$_h")"; fi
+         _hl="${_hl:+$_hl; }$_h"
+       done <<<"$HITS"
+       REASONS+=("secret: the commits add what looks like a credential (value not shown): $_hl") ;;
     *) echo "push-guard: the secret screen could not read the commits, INCONCLUSIVE" >&2; exit 2 ;;
   esac
 fi
 if [ "${#SENS[@]}" -gt 0 ]; then
-  REASONS+=("sensitive-path: $(printf '%s\n' "${SENS[@]}" | sort -u | awk 'NR > 1 { printf ", " } { printf "%s", $0 }'). These files run or judge the automation, so the fixer does not push them even when a finding names them: escalate to a person (who may set PUSH_GUARD_ALLOW_SENSITIVE=<class>)")
+  # The lists are sorted and joined under the C locale: a name that is not valid UTF-8 makes sort fail on macOS under a
+  # UTF-8 locale, and the list would print no name (PR 75 N4).
+  REASONS+=("sensitive-path: $(printf '%s\n' "${SENS[@]}" | LC_ALL=C sort -u | LC_ALL=C awk 'NR > 1 { printf ", " } { printf "%s", $0 }'). These files run or judge the automation, so the fixer does not push them even when a finding names them: escalate to a person (who may set PUSH_GUARD_ALLOW_SENSITIVE=<class>)")
 fi
 if [ "${#BADNAME[@]}" -gt 0 ]; then
   REASONS+=("touched paths with a control character in the name, never pushed: ${BADNAME[*]}")
 fi
 if [ "${#OUT[@]}" -gt 0 ]; then
-  REASONS+=("files outside the findings' scope: $(printf '%s\n' "${OUT[@]}" | sort -u | paste -sd' ' -)")
+  REASONS+=("files outside the findings' scope: $(printf '%s\n' "${OUT[@]}" | LC_ALL=C sort -u | LC_ALL=C paste -sd' ' -)")
 fi
 
 if [ "${#REASONS[@]}" -gt 0 ]; then
@@ -511,5 +534,5 @@ if [ "${#REASONS[@]}" -gt 0 ]; then
   for r in "${REASONS[@]}"; do printf '  - %s\n' "$r" >&2; done
   exit 1
 fi
-echo "push-guard: ok. #$PR, branch $HEAD_REF, fast-forward from ${HEAD_OID:0:12}, every touched file in scope."
+printf '%s\n' "push-guard: ok. #$PR, branch $HEAD_SHOWN, fast-forward from ${HEAD_OID:0:12}, every touched file in scope."
 exit 0
