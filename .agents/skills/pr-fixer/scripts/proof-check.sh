@@ -45,7 +45,8 @@
 # in a process group of its own whose every member is killed when the command exits, times out or
 # prints more than 64 MiB (output goes to a file, never held in memory). A member that moves itself
 # into another process group or session (setsid, set -m) escapes that kill. When the checker itself
-# gets SIGTERM, SIGHUP or SIGINT, it kills the group, deletes its work folder and exits 2.
+# gets SIGTERM, SIGHUP or SIGINT (one it was not started ignoring, as under nohup), it kills the
+# group, deletes its work folder and exits 2.
 # The allowlist limits WHICH command runs, not WHAT it does: the checkout is the pull request's code,
 # so permit only commands you would run on that code anyway. The .. and / rules check a word's text,
 # not where it leads: a relative path can still leave the checkout through a symlink the pull request
@@ -92,7 +93,10 @@ def _cleanup():
         shutil.rmtree(LIVE["work"], ignore_errors=True)
 # An error nobody foresaw is "cannot check" (2), never a mismatch (1).
 def _crash(kind, value, tb):
-    _cleanup(); say("internal error (%s), cannot check" % kind.__name__); os._exit(2)
+    try:   # a closed stdout must not turn exit 2 into Python's 1
+        _cleanup(); say("internal error (%s), cannot check" % kind.__name__)
+    finally:
+        os._exit(2)
 sys.excepthook = _crash
 # The command runs in a session of its own, so a signal to the checker (an outer timeout's SIGTERM, a
 # closed terminal's SIGHUP, Ctrl-C) never reaches it: the checker stops its group, deletes the work
@@ -101,7 +105,10 @@ HOLD = {"on": False, "sig": None}
 def _on_signal(signum, frame):
     if HOLD["on"]:
         HOLD["sig"] = HOLD["sig"] or signum; return
-    _cleanup(); say("stopped by signal %s, cannot check" % signal.Signals(signum).name); os._exit(2)
+    try:
+        _cleanup(); say("stopped by signal %s, cannot check" % signal.Signals(signum).name)
+    finally:
+        os._exit(2)
 class held:
     def __enter__(self):
         HOLD["on"] = True
@@ -110,7 +117,8 @@ class held:
         if HOLD["sig"]:
             _on_signal(HOLD["sig"], None)
 for _s in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
-    signal.signal(_s, _on_signal)
+    if signal.getsignal(_s) is not signal.SIG_IGN:   # nohup and background jobs keep their ignore
+        signal.signal(_s, _on_signal)
 
 USAGE = ("usage: proof-check.sh (--file FILE | --pr N [--cycle C]) [--repo DIR] [--head SHA] "
          "[--sample N] [--seed S] [--check-output] [--allow-file FILE] [--timeout SECS]")
