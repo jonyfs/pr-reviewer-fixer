@@ -126,6 +126,16 @@ chmod g-w "$CD2"; mv "$CD2" "$CD2.real"; ln -s "$CD2.real" "$CD2"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "a cache folder that is a symbolic link: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
 rm -f "$CD2"; mv "$CD2.real" "$CD2"
+# PR 73 pass 1, W2: the other two checks of cache_dir_ok each have a row, a folder writable by others and a folder
+# with another owner. The owner row puts an id stub first on PATH that gives another uid for -u, so -user misses.
+chmod o+w "$CD2"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a cache folder writable by others with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
+chmod o-w "$CD2"
+REAL_ID="$(command -v id)"; OTHER_UID=$(( $(id -u) + 1 )); mkdir -p "$W/idbin"
+printf '#!/bin/sh\nif [ "$*" = -u ]; then echo %s; else exec %s "$@"; fi\n' "$OTHER_UID" "$REAL_ID" > "$W/idbin/id"; chmod +x "$W/idbin/id"
+out="$(PATH="$W/idbin:$PATH" bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a cache folder with another owner (id -u gives another uid) with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "the folder restored to the user's alone: the key skips the run again" eval '[ $r = 0 ] && printf %s "$out" | grep -q "nothing re-run"'
 unset XDG_CACHE_HOME
