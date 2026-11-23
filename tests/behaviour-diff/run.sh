@@ -114,7 +114,13 @@ r=$( (cd "$W/tmp" && perl -e 'alarm shift; exec @ARGV' 60 bash "$BD" "$BASE" "$F
 check "run outside any repository -> 2" eval '[ $r = 2 ] && grep -q "not inside a git repository" "$W/err" && clean'
 echo '{"probes": [{"id": "nope", "argv": ["./no-such-program"]}]}' >"$W/p-nocmd.json"
 r=$(run "$BASE" "$FIX" "$W/p-nocmd.json")
-check "a program that cannot start at either commit -> same, 0 (not an internal error)" eval '[ $r = 0 ] && has "same          nope finding=-: exit cannot-start" && clean'
+check "a program that cannot start at either commit -> 2 inconclusive (nothing was compared), not an internal error" \
+  eval '[ $r = 2 ] && has "inconclusive  nope finding=-: could not start at both commits" && has "same 0, expected 0, supplementary 0, not-changed 0, inconclusive 1" && clean'
+# W3, in the finding's form: a typo in argv[0] across a change that does move greet must not read as "same".
+echo '{"probes": [{"id": "greet", "argv": ["bsah", "src/greet.sh"]}]}' >"$W/p-typo.json"
+r=$(run "$BASE" "$WIDE" "$W/p-typo.json")
+check "a typo in argv[0] (bsah) across a real change -> 2 inconclusive, never same and 0" \
+  eval '[ $r = 2 ] && has "inconclusive  greet finding=-: could not start at both commits" && ! has "same          greet" && clean'
 
 # 7. Stopped from outside (W1): a TERM, INT or HUP to the script's process group (what `timeout`
 # and Ctrl-C send), or a TERM to the script alone, kills the running probe before the script exits.

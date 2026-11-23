@@ -100,8 +100,9 @@ scripts/behaviour-diff.sh <pre-fix-sha> <post-fix-sha> probes.json
   difference no finding names. Do not hide it by tagging the probe. Either the fix went too wide
   (narrow it, then run again) or the change is needed; then say so in the closure comment, as
   `<id> supplementary: <probe> <what changed>, why it is needed`, for the reviewer to judge.
-  Exit 2: it could not run (a commit, the probe file, or a probe timed out at both commits); fix
-  the cause, or write in the closure that the behavioural diff was not reached and why.
+  Exit 2: it could not run (a commit, the probe file, or a probe that timed out or could not start
+  at both commits, such as a typo in `argv[0]`); fix the cause, or write in the closure that the
+  behavioural diff was not reached and why.
 - A `not-changed` line means a tagged probe did not move: the probe does not show the finding, or
   the fix does not fix it. Look before you close the finding.
 - Limits: it sees only what the probes call (exit code, stdout, stderr), a tag on a template

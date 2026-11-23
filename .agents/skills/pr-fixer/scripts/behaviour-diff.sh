@@ -41,11 +41,12 @@
 #                     reviewer to judge (the fix changed behaviour nobody asked it to change)
 #   not-changed       tagged with a finding, but identical at both commits (a note: the probe does
 #                     not show the fix, or the fix does not change what the finding names)
-#   inconclusive      it timed out at both commits, so nothing was compared
+#   inconclusive      it timed out at both commits, or could not start at both commits (a program
+#                     that is not there, a typo in argv[0]), so nothing was compared
 #
 # Exit: 0 no unexplained difference; 1 at least one supplementary change (it wins over an
 # inconclusive probe); 2 cannot run: bad arguments, a commit that does not resolve, a worktree git
-# cannot make, an invalid probe file, a probe inconclusive at both commits, or any internal error.
+# cannot make, an invalid probe file, an inconclusive probe, a stop from outside, or any internal error.
 #
 # Needs: bash, git, python3 3.9+. Writes nothing in the repository except the temporary worktree,
 # which it removes on every exit path.
@@ -281,8 +282,8 @@ def main():
         fail("internal: %d base results for %d probes" % (len(base_rows), len(rows)))
     counts = {"same": 0, "expected": 0, "supplementary": 0, "not-changed": 0, "inconclusive": 0}
     for p, b, h in zip(probes, base_rows, rows):
-        if b["rc"] == "timeout" and h["rc"] == "timeout":
-            kind = "inconclusive"
+        if b["rc"] == h["rc"] and b["rc"] in ("timeout", "cannot-start"):
+            kind = "inconclusive"  # nothing ran to the end at either commit, so nothing was compared
         elif b == h:
             kind = "not-changed" if p["finding"] else "same"
         else:
@@ -296,8 +297,10 @@ def main():
         if b["err"] != h["err"]:
             what.append("stderr %s -> %s" % (b["err"], h["err"]))
         line = "%-13s %s finding=%s" % (kind, p["id"], p["finding"] or "-")
-        if kind == "inconclusive":
+        if kind == "inconclusive" and h["rc"] == "timeout":
             line += ": timed out at both commits after %ss" % p["timeout"]
+        elif kind == "inconclusive":
+            line += ": could not start at both commits"
         elif what:
             line += ": " + ", ".join(what)
         else:
