@@ -196,5 +196,44 @@
    "isolation"
   ],
   "log": "iso-code-tool.jsonl"
+ },
+ "good-cd-in-a-subshell": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "good-subshell-cd.jsonl",
+  "visible": true
+ },
+ "good-cd-in-an-earlier-call": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "good-cd-earlier-call.jsonl"
+ },
+ "git-in-sh-c-after-a-subshell-cd": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [
+   "isolation"
+  ],
+  "log": "iso-subshell-sh-c-git.jsonl"
  }
 }

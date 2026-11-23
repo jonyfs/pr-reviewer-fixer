@@ -559,5 +559,18 @@
     ]
    }
   ]
+ },
+ "posts-env-by-process-substitution": {
+  "files": {
+   "app/units.py": "units.good.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "closure.txt"
+  },
+  "expect": [
+   "env_read"
+  ],
+  "log": "env-proc-subst.jsonl"
  }
 }
