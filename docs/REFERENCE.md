@@ -192,9 +192,11 @@ sequenceDiagram
   slipped into the merge), which needs git 2.38 or later; commits the base already holds are not
   checked. "The base" is both the pull request's `baseRefOid` and the base branch's tip as GitHub
   reports it now, since `baseRefOid` still names the old base until the first push after the base
-  moved. A local ref is never trusted for this, and the live tip is read only for a plain base name
-  (ASCII letters, digits, `.`, `_`, `/`, `-`, no `..`, and accepted by `git check-ref-format`); any
-  other name excludes `baseRefOid` alone, and the guard prints a line saying so. It also screens the lines those commits add, reading a file git treats as binary as
+  moved. A local ref is never trusted for this. The live tip is the pull request's own base ref, read
+  through GraphQL in the repository and on the host the pull request's `url` names, so the branch name
+  never goes into a URL; it is used only when GitHub's `baseRefName` equals the base name, the commit
+  id is 40 lower-case hex digits and the clone holds that commit. Otherwise only `baseRefOid` is
+  excluded, and the guard prints a line saying why. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
   `.github/scripts/**`, CI files outside GitHub (`.gitlab-ci.yml`, `.circleci/**`, a `Jenkinsfile`
@@ -746,7 +748,7 @@ The suite needs no network, only bash, python3, node, jq, git, curl, tar and `sh
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `install.sh`, the review
 eval scorer, the version check, the update script (`tests/update/run.sh`, against a fake release served from local files) and the release script (`tests/release/run.sh`, which drives
 `.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so

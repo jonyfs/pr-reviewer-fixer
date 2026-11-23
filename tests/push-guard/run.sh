@@ -15,8 +15,15 @@ row() { if [ "$2" = ok ]; then PASS=$((PASS+1)); ROWS+=("PASS | $1"); else FAIL=
 eq() { [ "$1" = "$2" ]; }
 check() { local name="$1"; shift; if "$@"; then row "$name" ok; else row "$name" bad "assert failed"; fi; }
 g() { git -C "$W/repo" -c user.name=t -c user.email=t@example.com "$@"; }
-prjson() { # state head_ref head_oid cross [base_oid] [base_ref]
-  printf '{"state":"%s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","baseRefOid":"%s","isCrossRepository":%s}' "$1" "$2" "$3" "${6:-main}" "${5:-$BASE_OID}" "$4" >"$FAKE_DIR/pr.json"; }
+prjson() { # state head_ref head_oid cross [base_oid] [base_ref] [url]
+  printf '{"state":"%s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","baseRefOid":"%s","isCrossRepository":%s,"url":"%s"}' "$1" "$2" "$3" "${6:-main}" "${5:-$BASE_OID}" "$4" "${7-https://github.com/o/r/pull/7}" >"$FAKE_DIR/pr.json"; }
+# The live base tip as GitHub reports it: tip OID [baseRefName] [gql path] writes the GraphQL answer for the pull
+# request (by default o/r #7 on github.com, the url prjson writes) and the REST ref the guard before PR 70 N1 read,
+# so a row that only the GraphQL read passes is red on that guard. gqlraw writes the GraphQL answer as given.
+gqlraw() { mkdir -p "$(dirname "$FAKE_DIR/gql/$2")"; printf '%s' "$1" >"$FAKE_DIR/gql/$2"; }
+tip() { printf '%s\n' "$1" >"$FAKE_DIR/base-tip"; rm -rf "$FAKE_DIR/gql"
+  gqlraw "$(node -e 'process.stdout.write(JSON.stringify({data:{repository:{pullRequest:{baseRefName:process.argv[2],baseRef:{target:{oid:process.argv[1]}}}}}}))' -- "$1" "${2:-main}")" "${3:-github.com/o/r/7.json}"; }
+notip() { rm -rf "$FAKE_DIR/base-tip" "$FAKE_DIR/gql"; }
 run() { (cd "$W/repo" && "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
 # BASHOPTS is readonly in this shell, so an assignment before a function call never reaches the guard: env passes it.
 # bash -O sets a shell option on the command line, not through the environment, so the guard keeps it: this is how
@@ -90,23 +97,59 @@ r=$(run --findings "$W/rep.md" --allow src/q.ts); check "merge commit from the b
 # (PR 65): the live tip of the base branch, read from GitHub, keeps the base's commits out of scope.
 prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live base tip unreadable -> refused, the base's file counts" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
-g rev-parse main >"$FAKE_DIR/base-tip"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live base tip unreadable -> the skip line says why" eval '[ $r = 1 ] && grep -q "live tip of the base branch main was not used (GitHub could not be asked for it)" "$W/out"'
+tip "$(g rev-parse main)"; : >"$FAKE_DIR/calls.log"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live base tip from GitHub -> ok" eq "$r" 0
-grep -q '^gh api repos/{owner}/{repo}/git/ref/heads/main --jq ' "$FAKE_DIR/calls.log"; check "the live base tip is read by the base branch's name" eq "$?" 0
-# A base name gh would not send as written (a # fragment, a %-escape, a {placeholder}, a ..) names
-# another ref: the live tip is not read at all, so only baseRefOid is excluded and the push is refused.
-# PR 70 debt: an empty or dot-leading segment GitHub normalizes (N4), a name git check-ref-format refuses, and a
-# non-ASCII letter under a UTF-8 locale (N5) are not plain either; each skip says why on the output (N7).
+# PR 70 N1: the tip is the pull request's own base ref, asked through GraphQL in the repository and on the host the
+# pull request's url names, so no branch name goes into a URL and gh's {owner}/{repo} plays no part.
+grep -qF 'gh api graphql --hostname github.com -f owner=o -f name=r -F number=7 -f query=' "$FAKE_DIR/calls.log" && ! grep -q 'git/ref/heads/' "$FAKE_DIR/calls.log"
+check "the live base tip is the pull request's baseRef through GraphQL, never the REST ref by name (N1 of #70)" eq "$?" 0
+# Before N1 the name went into a URL path, so a #, a %-escape, a {placeholder}, a .., an empty or dot-leading segment,
+# a name git check-ref-format refuses or a non-ASCII letter kept the tip unread. The name now only has to equal the
+# baseRefName GitHub answers, so each of these reads the tip, and the push of the merge of the base passes.
 for b in 'sprint#4' 'zz/%2e%2e/main' '{branch}' 'a..b' 'a b' './main' '/main' 'a//b' 'main/' 'x/.hidden' 'main.lock' 'mañana'; do
-  prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" "$b"; : >"$FAKE_DIR/calls.log"
-  r=$(LC_ALL="$UL" run --findings "$W/rep.md" --allow src/q.ts); check "base name '$b' -> live tip not read, refused, the skip said" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log" && grep -q "is not plain, so its live tip was not read" "$W/out"'
+  prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" "$b"; tip "$(g rev-parse main)" "$b"; : >"$FAKE_DIR/calls.log"
+  r=$(LC_ALL="$UL" run --findings "$W/rep.md" --allow src/q.ts); check "base name '$b' -> live tip read through GraphQL, ok, no skip line (N1 of #70)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log" && ! grep -q "was not used" "$W/out"'
 done
-# N5: bash 3.2 (macOS /bin/bash) lets a UTF-8 locale widen a range such as A-Z to ñ; where /bin/bash is 3.2 the
-# guard runs under it, elsewhere under the default bash.
+# N5 of #70: bash 3.2 (macOS /bin/bash) lets a UTF-8 locale widen a range such as A-Z to ñ; where /bin/bash is 3.2 the
+# guard runs under it, elsewhere under the default bash. The name is compared in node, so it reads the tip there too.
 B32=bash; case "$(/bin/bash -c 'echo $BASH_VERSION' 2>/dev/null)" in 3.*) B32=/bin/bash ;; esac
-prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'mañana'; : >"$FAKE_DIR/calls.log"
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'mañana'; tip "$(g rev-parse main)" 'mañana'; : >"$FAKE_DIR/calls.log"
 r=$( (cd "$W/repo" && LC_ALL="$UL" "$B32" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts) >"$W/out" 2>&1; echo $?)
-check "base name 'mañana' under $B32 and a UTF-8 locale -> live tip not read, refused" eval '[ $r = 1 ] && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log"'
+check "base name 'mañana' under $B32 and a UTF-8 locale -> live tip read through GraphQL, ok (N1 of #70)" eval '[ $r = 0 ] && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log"'
+# The tip is used only for the same base branch, as 40 lower-case hex digits. The REST ref holds the right tip in each
+# of these rows, so the guard before N1 passes them; this one refuses, and says why.
+MAINTIP="$(g rev-parse main)"; prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"
+tip "$MAINTIP" other
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "GraphQL baseRefName differs from the PR's base -> tip not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && grep -q "did not give a commit id for the same base branch" "$W/out"'
+tip "$MAINTIP" 'main '
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "GraphQL baseRefName 'main ' (a trailing space) -> tip not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
+UPTIP="$(printf '%s' "$MAINTIP" | tr abcdef ABCDEF)"
+for bad in "$UPTIP" "$MAINTIP x" "${MAINTIP:0:39}" "${MAINTIP}0" "x$MAINTIP"; do
+  tip "$MAINTIP"; gqlraw "{\"data\":{\"repository\":{\"pullRequest\":{\"baseRefName\":\"main\",\"baseRef\":{\"target\":{\"oid\":\"$bad\"}}}}}}" github.com/o/r/7.json
+  r=$(run --findings "$W/rep.md" --allow src/q.ts); check "GraphQL oid '$bad' (not 40 lower-case hex) -> not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
+done
+for raw in '{"data":{"repository":{"pullRequest":{"baseRefName":"main","baseRef":null}}}}' \
+  '{"data":{"repository":{"pullRequest":{"baseRefName":"main","baseRef":{"target":{}}}}}}' \
+  '{"data":{"repository":{"pullRequest":{"baseRefName":"main","baseRef":{"target":{"oid":1}}}}}}' \
+  '{"data":{"repository":null},"errors":[{"message":"x"}]}' 'not json'; do
+  tip "$MAINTIP"; gqlraw "$raw" github.com/o/r/7.json
+  r=$(run --findings "$W/rep.md" --allow src/q.ts); check "GraphQL answer without a usable oid ($raw) -> not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && grep -q "was not used" "$W/out"'
+done
+# The repository and host asked are the ones the pull request's url names, not the ones gh resolves from the clone's
+# remotes (gh 2.33 and older may pick another): only that repository's answer exists, and the REST ref does not.
+notip; prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" main https://ghe.example.com/acme/widgets/pull/7
+tip "$MAINTIP" main ghe.example.com/acme/widgets/7.json; rm -f "$FAKE_DIR/base-tip"; : >"$FAKE_DIR/calls.log"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "owner, name and host come from the PR's url -> tip read, ok (N1 of #70)" eval '[ $r = 0 ] && grep -qF "gh api graphql --hostname ghe.example.com -f owner=acme -f name=widgets -F number=7 " "$FAKE_DIR/calls.log"'
+# A url that does not name this pull request in a repository (another number, no url, a path that is not a pull
+# request, a segment with a character a GitHub name cannot hold) is not asked about; the REST ref still holds the tip.
+for u in https://github.com/o/r/pull/8 '' https://github.com/o/r/issues/7 'https://github.com/o/r?x=1/pull/7' 'https://github.com/{owner}/r/pull/7' http://github.com/o/r/pull/7; do
+  prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" main "$u"; tip "$MAINTIP"
+  for k in github.com/o/r/8.json; do gqlraw "$(cat "$FAKE_DIR/gql/github.com/o/r/7.json")" "$k"; done
+  : >"$FAKE_DIR/calls.log"
+  r=$(run --findings "$W/rep.md" --allow src/q.ts); check "PR url '$u' -> GitHub not asked, tip not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && ! grep -q "api graphql" "$FAKE_DIR/calls.log" && grep -q "url does not name its repository" "$W/out"'
+done
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"; tip "$MAINTIP"
 # A control character in the name is quoted in the skip line, so it cannot forge a line of the output.
 prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'x\nsrc/fake: ok'; r=$(run --findings "$W/rep.md" --allow src/q.ts)
 check "a newline in the base name is quoted in the skip line" eval '[ $r = 1 ] && ! grep -q "^src/fake: ok" "$W/out" && grep -qF "\$'"'"'x\\nsrc/fake: ok'"'"'" "$W/out"'
@@ -127,11 +170,12 @@ prjson OPEN feat/nc "$HEAD_OID" false
 r=$(runenv BASHOPTS=nocasematch --findings "$W/rep.md")
 check "nocasematch from BASHOPTS is turned off: src/A_TEST.ts is not a test file, refused" eval '[ $r = 1 ] && grep -q "src/A_TEST.ts" "$W/out"'
 g checkout -q feat/m
-# N8: the bash 3.2 row runs only where /bin/bash is 3.x; on every system the gate must spell its letters out.
-grep -q 'case "$BASE_REF" in' "$PG" && grep -A1 'case "$BASE_REF" in' "$PG" | grep -q '\[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\._/-\]'
-check "the plain-name gate spells its letters out (no range a locale can widen)" eq "$?" 0
+# N8 of #70 checked that the plain-name gate spelled its letters out. N1 of #70 removed the gate: the base name never
+# goes into a URL, so no branch name is matched against a letter range at all.
+! grep -q 'git/ref/heads' "$PG"
+check "the guard reads no ref by name through a REST URL (N1 of #70)" eq "$?" 0
 # PR 74 debt. N4: a payload with no baseRefOid at all names that cause in the skip line.
-printf '{"state":"OPEN","headRefName":"feat/m","headRefOid":"%s","baseRefName":"sprint#4","baseRefOid":"","isCrossRepository":false}' "$HEAD_OID" >"$FAKE_DIR/pr.json"
+printf '{"state":"OPEN","headRefName":"feat/m","headRefOid":"%s","baseRefName":"sprint#4","baseRefOid":"","isCrossRepository":false,"url":"https://github.com/o/r/pull/7"}' "$HEAD_OID" >"$FAKE_DIR/pr.json"
 r=$(run --findings "$W/rep.md" --allow src/q.ts)
 check "no baseRefOid and a name not plain: the skip line says no baseRefOid was given" eval '[ $r = 1 ] && grep -q "gave no baseRefOid" "$W/out"'
 # N2: an --allow value and the findings-block error are printed with printf, so xpg_echo cannot forge a line.
@@ -200,17 +244,18 @@ r=$(LC_ALL="$UL" run --findings "$W/rep.md")
 check "U+2028 in a touched path is escaped in the refusal list" eval '[ $r = 1 ] && ! grep -q "$U28" "$W/out" && grep -qF "\\342\\200\\250" "$W/out"'
 g checkout -q feat/m
 prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'release/v1.2_rc-3'; : >"$FAKE_DIR/calls.log"
-r=$(run --findings "$W/rep.md" --allow src/q.ts); check "plain base name with / . _ - -> live tip read, ok, no skip line" eval '[ $r = 0 ] && grep -q "git/ref/heads/release/v1.2_rc-3 " "$FAKE_DIR/calls.log" && ! grep -q "is not plain" "$W/out"'
+tip "$(g rev-parse main)" 'release/v1.2_rc-3'
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "plain base name with / . _ - -> live tip read, ok, no skip line" eval '[ $r = 0 ] && grep -q "api graphql" "$FAKE_DIR/calls.log" && ! grep -q "was not used" "$W/out"'
 prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"
-echo 0123456789abcdef0123456789abcdef01234567 >"$FAKE_DIR/base-tip"
-r=$(run --findings "$W/rep.md" --allow src/q.ts); check "live base tip not in this clone -> refused" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
-echo "$(g rev-parse main) x" >"$FAKE_DIR/base-tip"
+tip 0123456789abcdef0123456789abcdef01234567
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "live base tip not in this clone -> refused, the skip line says fetch" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && grep -q "does not hold 0123456789ab; fetch the base first" "$W/out"'
+tip "$(g rev-parse main) x"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "live base tip not a commit id -> refused" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
 # A commit on the local base that GitHub's base does not hold is the pushing agent's own.
 LIVE="$(g rev-parse main)"; g checkout -q main; echo v >"$W/repo/src/v.ts"; g add -A; g commit -q -m "local base only"
-g checkout -q feat/m; g merge -q --no-edit main >/dev/null 2>&1; echo "$LIVE" >"$FAKE_DIR/base-tip"
+g checkout -q feat/m; g merge -q --no-edit main >/dev/null 2>&1; tip "$LIVE"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "a local base commit the live base lacks -> refused" eval '[ $r = 1 ] && grep -q "src/v.ts" "$W/out"'
-g reset -q --hard HEAD~1; g branch -q -f main "$LIVE"; rm -f "$FAKE_DIR/base-tip"
+g reset -q --hard HEAD~1; g branch -q -f main "$LIVE"; notip
 
 # S4: a merge commit is checked by what it changes beyond the automatic merge of its parents.
 g checkout -q -b feat/e "$HEAD_OID"; g checkout -q main; echo w >"$W/repo/src/w.ts"; g add -A; g commit -q -m "main moves again"

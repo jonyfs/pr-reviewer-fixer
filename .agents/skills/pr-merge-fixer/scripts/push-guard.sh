@@ -159,7 +159,7 @@ while [ $# -gt 0 ]; do
 done
 case "$PR" in ''|*[!0-9]*) echo "push-guard: usage: push-guard.sh <pr-number> [--findings FILE] [--allow PATH]..." >&2; exit 2 ;; esac
 
-JSON="$(gh pr view "$PR" --json state,headRefName,headRefOid,baseRefName,baseRefOid,isCrossRepository 2>/dev/null)" \
+JSON="$(gh pr view "$PR" --json state,headRefName,headRefOid,baseRefName,baseRefOid,isCrossRepository,url 2>/dev/null)" \
   && [ -n "$JSON" ] || { echo "push-guard: gh could not read PR #$PR, INCONCLUSIVE" >&2; exit 2; }
 field() { printf '%s' "$JSON" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const v=JSON.parse(s)[process.argv[1]];process.stdout.write(String(v===undefined?"":v))}catch(e){}})' "$1"; }
 STATE="$(field state)"; HEAD_REF="$(field headRefName)"; HEAD_OID="$(field headRefOid)"
@@ -380,31 +380,49 @@ if [ -n "$BASE_OID" ] && git cat-file -e "$BASE_OID^{commit}" 2>/dev/null; then 
 # GitHub refreshes baseRefOid only when the pull request is synchronized, so before the first push of
 # a merge of a base that moved it still names the old base, and every newer base commit would count
 # as this push's own. The live tip of the base branch is excluded too. It is read from GitHub, never
-# from a local ref the pushing agent could move, and only when this clone holds that commit. When it
-# cannot be read, only baseRefOid is excluded, which refuses more, not less. The name goes into a URL
-# path unescaped, so it is read only when it is plain: a #, a %-escape or a {placeholder} gh fills in
-# would make gh read another ref and exclude that ref's history instead, and GitHub normalizes an empty
-# or dot-leading segment (./main, a//b) to another ref too, which git check-ref-format refuses. Plain is
-# spelled out letter by letter, since bash 3.2 lets the locale widen a range such as A-Z to letters like ñ.
-LIVE_BASE=""
-case "$BASE_REF" in
-  ''|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/-]*|*..*) BASE_PLAIN=0 ;;
-  *) BASE_PLAIN=1; git check-ref-format "refs/heads/$BASE_REF" 2>/dev/null || BASE_PLAIN=0 ;;
-esac
-if [ "$BASE_PLAIN" = 1 ]; then
-  # {owner}/{repo} is the repository gh resolves from this clone's remotes, the same one gh pr view read above.
-  LIVE_BASE="$(gh api "repos/{owner}/{repo}/git/ref/heads/$BASE_REF" --jq .object.sha 2>/dev/null)" || LIVE_BASE=""
-elif [ -n "$BASE_REF" ]; then
+# from a local ref the pushing agent could move, and only when this clone holds that commit. GitHub is
+# asked through GraphQL for this pull request's own base ref, in the repository and on the host its url
+# names (the url comes from the gh pr view payload above, so gh's own {owner}/{repo} resolution, which
+# gh 2.33 and older may do differently, plays no part), so the branch name never goes into a URL: it is
+# only compared with the baseRefName GitHub answers, and the oid is used only when the two are equal and
+# it is 40 lower-case hex digits. owner and name go with -f, as strings: -F would turn a number-like
+# owner into an integer, read a value starting with @ as a file, and fill in {owner}. When the tip
+# cannot be used, only baseRefOid is excluded, which refuses more, not less, and a line says why.
+LIVE_BASE="" LIVE_WHY=""
+PR_LOC="$(node -e '
+  const m = /^https:\/\/([A-Za-z0-9.-]+)\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)\/pull\/([0-9]+)$/.exec(process.argv[1]);
+  if (m && Number(m[4]) === Number(process.argv[2])) process.stdout.write(m[1] + " " + m[2] + " " + m[3] + " " + m[4]);
+' -- "$(field url)" "$PR" 2>/dev/null)"
+if [ -z "$BASE_REF" ]; then LIVE_WHY="the pull request gave no base branch name"
+elif [ -z "$PR_LOC" ]; then LIVE_WHY="the pull request's url does not name its repository"
+else
+  read -r PG_HOST PG_OWNER PG_NAME PG_NUM <<<"$PR_LOC"
+  GQL="$(gh api graphql --hostname "$PG_HOST" -f owner="$PG_OWNER" -f name="$PG_NAME" -F number="$PG_NUM" \
+    -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){baseRefName baseRef{target{oid}}}}}' 2>/dev/null)" || GQL=""
+  LIVE_BASE="$(printf '%s' "$GQL" | node -e '
+    let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      try {
+        const p = JSON.parse(s).data.repository.pullRequest, o = p.baseRef.target.oid;
+        if (p.baseRefName === process.argv[1] && typeof o === "string" && /^[0-9a-f]{40}$/.test(o)) process.stdout.write(o);
+      } catch (e) {}
+    });
+  ' -- "$BASE_REF" 2>/dev/null)"
+  case "$LIVE_BASE" in *[!0123456789abcdef]*) LIVE_BASE="" ;; esac
+  [ "${#LIVE_BASE}" -eq 40 ] || LIVE_BASE=""
+  if [ -z "$GQL" ]; then LIVE_WHY="GitHub could not be asked for it"
+  elif [ -z "$LIVE_BASE" ]; then LIVE_WHY="GitHub's answer did not give a commit id for the same base branch"
+  elif ! git cat-file -e "$LIVE_BASE^{commit}" 2>/dev/null; then LIVE_WHY="this clone does not hold ${LIVE_BASE:0:12}; fetch the base first"; LIVE_BASE=""
+  fi
+fi
+if [ -n "$LIVE_BASE" ]; then
+  [ "$LIVE_BASE" = "$BASE_OID" ] || EXCL+=("$LIVE_BASE")
+else
   # The name is the pull request's text: q quotes a control character or a Unicode line break that could
   # forge a line, and printf, unlike echo, never expands the backslashes q writes.
   if [ "${#EXCL[@]}" -gt 0 ]; then _skip="only baseRefOid is excluded, and base commits newer than it count as this push's own"
   elif [ -z "$BASE_OID" ]; then _skip="the pull request gave no baseRefOid either, so no base commit is excluded and every base commit counts as this push's own"
   else _skip="baseRefOid is not in this clone either, so no base commit is excluded and every base commit counts as this push's own"; fi
-  printf '%s\n' "push-guard: the base branch name $(q "$BASE_REF") is not plain, so its live tip was not read; $_skip" >&2
-fi
-case "$LIVE_BASE" in *[!0123456789abcdef]*) LIVE_BASE="" ;; esac
-if [ "${#LIVE_BASE}" -eq 40 ] && [ "$LIVE_BASE" != "$BASE_OID" ] && git cat-file -e "$LIVE_BASE^{commit}" 2>/dev/null; then
-  EXCL+=("$LIVE_BASE")
+  printf '%s\n' "push-guard: the live tip of the base branch $(q "$BASE_REF") was not used ($LIVE_WHY); $_skip" >&2
 fi
 # One --not before all of them: a second --not would flip the rest back to included.
 [ "${#EXCL[@]}" -eq 0 ] || EXCL=(--not "${EXCL[@]}")
