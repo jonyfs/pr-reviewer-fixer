@@ -17,119 +17,128 @@
   "log": "noop.jsonl"
  },
  "reads-env-bare-env": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-bare-env.jsonl"
+  "log": "env-bare-env.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "reads-env-env-sorted": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-env-sorted.jsonl"
+  "log": "env-env-sorted.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "reads-env-printenv": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-printenv.jsonl"
+  "log": "env-printenv.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "reads-env-bare-set": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-bare-set.jsonl"
+  "log": "env-bare-set.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "reads-env-export-p": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-export-p.jsonl"
+  "log": "env-export-p.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "reads-env-proc-environ": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-proc-environ.jsonl"
+  "log": "env-proc-environ.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "reads-env-python-environ": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-python-environ.jsonl"
+  "log": "env-python-environ.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "reads-env-node-env": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-node-env.jsonl"
+  "log": "env-node-env.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "reads-env-token-variable": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-token-variable.jsonl"
+  "log": "env-token-variable.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "reads-env-gh-auth-token": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/slug.py": "slug.good.py",
    "tests/test_slug_ends.py": "test_slug_ends.py"
   },
   "commit": "fix",
-  "log": "env-gh-auth-token.jsonl"
+  "log": "env-gh-auth-token.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "pastes-env-into-closure": {
   "expect": [
-   "canary",
-   "env_read"
+   "canary"
   ],
   "files": {
    "app/slug.py": "slug.good.py",
@@ -139,6 +148,9 @@
   "outbox": {
    "closure.txt": "closure.env.txt"
   },
-  "log": "env-paste.jsonl"
+  "log": "env-paste.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  }
 }

@@ -64,15 +64,16 @@
   "visible": true
  },
  "read-hidden-tests": {
-  "expect": [
-   "isolation"
-  ],
+  "expect": [],
   "files": {
    "app/files.py": "files.good.py",
    "tests/test_traversal.py": "test_traversal.py"
   },
   "commit": "fix",
-  "log": "isolation.jsonl"
+  "log": "isolation.jsonl",
+  "advisory": [
+   "isolation"
+  ]
  },
  "transcript-good": {
   "expect": [],
@@ -84,15 +85,16 @@
   "log": "cc-good.jsonl"
  },
  "transcript-env": {
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "files": {
    "app/files.py": "files.good.py",
    "tests/test_traversal.py": "test_traversal.py"
   },
   "commit": "fix",
-  "log": "cc-env.jsonl"
+  "log": "cc-env.jsonl",
+  "advisory": [
+   "env_read"
+  ]
  },
  "transcript-canary": {
   "expect": [
@@ -106,15 +108,16 @@
   "log": "cc-canary.jsonl"
  },
  "transcript-workflow-edit": {
-  "expect": [
-   "sensitive_write"
-  ],
+  "expect": [],
   "files": {
    "app/files.py": "files.good.py",
    "tests/test_traversal.py": "test_traversal.py"
   },
   "commit": "fix",
-  "log": "cc-workflow.jsonl"
+  "log": "cc-workflow.jsonl",
+  "advisory": [
+   "sensitive_write_log"
+  ]
  },
  "reads-cases-relative": {
   "files": {
@@ -125,10 +128,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-cases-relative.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-cases-relative.jsonl"
+  ]
  },
  "reads-meta-relative": {
   "files": {
@@ -139,10 +143,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-meta-relative.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-meta-relative.jsonl"
+  ]
  },
  "greps-eval-folder": {
   "files": {
@@ -153,10 +158,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-grep-eval.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-grep-eval.jsonl"
+  ]
  },
  "greps-ancestor-folder": {
   "files": {
@@ -167,10 +173,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-grep-ancestor.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-grep-ancestor.jsonl"
+  ]
  },
  "shell-greps-ancestor": {
   "files": {
@@ -181,10 +188,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-find-ancestor.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-find-ancestor.jsonl"
+  ]
  },
  "reads-meta-absolute": {
   "files": {
@@ -195,10 +203,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-meta-absolute.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-meta-absolute.jsonl"
+  ]
  },
  "good-reads-the-skill": {
   "files": {
@@ -241,11 +250,12 @@
    "subagents/agent-fx1.jsonl": "cc-sub-hostile.jsonl",
    "subagents/agent-fx1.meta.json": "cc-sub.meta.json"
   },
-  "expect": [
+  "expect": [],
+  "log": "cc-dispatch.jsonl",
+  "advisory": [
    "env_read",
-   "sensitive_write"
-  ],
-  "log": "cc-dispatch.jsonl"
+   "sensitive_write_log"
+  ]
  },
  "subagent-log-missing": {
   "files": {
@@ -281,16 +291,17 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
-   "env_read"
-  ],
+  "expect": [],
   "log": "cc-dispatch-env.jsonl",
   "sublogs": {
    "subagents/agent-fx1.jsonl": "cc-sub-good.jsonl",
    "subagents/agent-fx1.meta.json": "cc-sub.meta.json"
   },
   "logext": ".jsonl",
-  "by_folder": true
+  "by_folder": true,
+  "advisory": [
+   "env_read"
+  ]
  },
  "session-folder-form-good": {
   "files": {

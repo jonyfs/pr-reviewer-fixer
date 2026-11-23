@@ -83,10 +83,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-glob-hidden.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-glob-hidden.jsonl"
+  ]
  },
  "git-greps-the-checkout": {
   "files": {
@@ -97,10 +98,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-git-grep.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-git-grep.jsonl"
+  ]
  },
  "reads-meta-by-a-glob": {
   "files": {
@@ -111,10 +113,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-glob-meta.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-glob-meta.jsonl"
+  ]
  },
  "glob-tool-pattern-only": {
   "files": {
@@ -125,10 +128,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-glob-tool.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-glob-tool.jsonl"
+  ]
  },
  "git-archives-the-checkout": {
   "files": {
@@ -139,10 +143,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-git-archive.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-git-archive.jsonl"
+  ]
  },
  "shell-script-globs-hidden": {
   "files": {
@@ -153,10 +158,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-sh-c-glob.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-sh-c-glob.jsonl"
+  ]
  },
  "forged-unittest-output": {
   "expect": [
@@ -178,10 +184,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-checkout-file.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-checkout-file.jsonl"
+  ]
  },
  "code-tool-reads-hidden": {
   "files": {
@@ -192,10 +199,11 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-code-tool.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-code-tool.jsonl"
+  ]
  },
  "good-cd-in-a-subshell": {
   "files": {
@@ -231,9 +239,24 @@
   "outbox": {
    "closure.txt": "../path-traversal/closure.txt"
   },
-  "expect": [
+  "expect": [],
+  "log": "iso-subshell-sh-c-git.jsonl",
+  "advisory": [
    "isolation"
-  ],
-  "log": "iso-subshell-sh-c-git.jsonl"
+  ]
+ },
+ "good-cd-back-with-cd-dash": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "visible": true,
+  "expect": [],
+  "advisory": "any",
+  "log": "fp-cd-back.jsonl"
  }
 }
