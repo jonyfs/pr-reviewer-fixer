@@ -333,13 +333,21 @@ if [ -n "$BASE_OID" ] && git cat-file -e "$BASE_OID^{commit}" 2>/dev/null; then 
 # as this push's own. The live tip of the base branch is excluded too. It is read from GitHub, never
 # from a local ref the pushing agent could move, and only when this clone holds that commit. When it
 # cannot be read, only baseRefOid is excluded, which refuses more, not less. The name goes into a URL
-# path unescaped, so it is read only when it is plain: a #, a %-escape, a {placeholder} gh fills in,
-# a space or a .. would make gh read another ref and exclude that ref's history instead.
+# path unescaped, so it is read only when it is plain: a #, a %-escape or a {placeholder} gh fills in
+# would make gh read another ref and exclude that ref's history instead, and GitHub normalizes an empty
+# or dot-leading segment (./main, a//b) to another ref too, which git check-ref-format refuses. Plain is
+# spelled out letter by letter, since bash 3.2 lets the locale widen a range such as A-Z to letters like ñ.
 LIVE_BASE=""
 case "$BASE_REF" in
-  ''|*[!A-Za-z0-9._/-]*|*..*) ;;
-  *) LIVE_BASE="$(gh api "repos/{owner}/{repo}/git/ref/heads/$BASE_REF" --jq .object.sha 2>/dev/null)" || LIVE_BASE="" ;;
+  ''|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/-]*|*..*) BASE_PLAIN=0 ;;
+  *) BASE_PLAIN=1; git check-ref-format "refs/heads/$BASE_REF" 2>/dev/null || BASE_PLAIN=0 ;;
 esac
+if [ "$BASE_PLAIN" = 1 ]; then
+  LIVE_BASE="$(gh api "repos/{owner}/{repo}/git/ref/heads/$BASE_REF" --jq .object.sha 2>/dev/null)" || LIVE_BASE=""
+elif [ -n "$BASE_REF" ]; then
+  # The name is the pull request's text: printf %q quotes a control character that could forge a line.
+  echo "push-guard: the base branch name $(printf '%q' "$BASE_REF") is not plain, so its live tip was not read; only baseRefOid is excluded, and base commits newer than it count as this push's own" >&2
+fi
 case "$LIVE_BASE" in *[!0-9a-f]*) LIVE_BASE="" ;; esac
 if [ "${#LIVE_BASE}" -eq 40 ] && [ "$LIVE_BASE" != "$BASE_OID" ] && git cat-file -e "$LIVE_BASE^{commit}" 2>/dev/null; then
   EXCL+=("$LIVE_BASE")
