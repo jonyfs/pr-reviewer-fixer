@@ -147,7 +147,20 @@ r3=$(run "$W/six.md" --sample 3 --seed 7); P3="$(picked)"
 check "--sample 3 --seed 7 three times picks the same three entries" eval '[ $r = 0 ] && [ $r2 = 0 ] && [ $r3 = 0 ] && [ -n "$P1" ] && [ "$P1" = "$P2" ] && [ "$P1" = "$P3" ] && [ "$(echo $P1 | wc -w | tr -d " ")" = 3 ]'
 check "the pick is the sha256 seed order (seed 7)" eval '[ "$P1" = "$(pick 7 3)" ]'
 r=$(run "$W/six.md" --sample 3 --seed abc); check "the pick is the sha256 seed order (seed abc, 3)" eval '[ "$(picked)" = "$(pick abc 3)" ]'
-r=$(run "$W/six.md" --sample 3); check "no --seed means seed 0" eval '[ "$(picked)" = "$(pick 0 3)" ]'
+# W4 (pass 1): with no --seed the checker draws the seed, prints it, and that seed repeats the pick.
+seedof() { sed -n 's/^proof-check: sample seed \([A-Za-z0-9._-]*\) .*/\1/p' "$W/out"; }
+r=$(run "$W/six.md" --sample 3); S1="$(seedof)"; P1="$(picked)"
+r2=$(run "$W/six.md" --sample 3); S2="$(seedof)"
+r3=$(run "$W/six.md" --sample 3 --seed "$S1"); P3="$(picked)"
+check "no --seed: the checker draws a seed, prints it, and --seed with it repeats the pick" \
+  eval '[ -n "$S1" ] && [ -n "$S2" ] && [ "$S1" != "$S2" ] && [ "$P1" = "$P3" ] && [ "$P1" = "$(pick "$S1" 3)" ]'
+# The reviewer's scenario: entry 1 claims exit 1 for a command that exits 0, --sample 5 of 6, no --seed.
+# Each run misses entry 1 with odds 1/6; twelve runs all missing it is about 1 in 2 billion.
+FALSE1="$(entry 'bash tests/pass.sh' 1 "$HEAD" "$HEAD_TREE")"
+for k in 2 3 4 5 6; do FALSE1="$FALSE1,$(entry "bash tests/echo.sh e$k" 0 "$HEAD" "$HEAD_TREE")"; done
+closure "$W/false1.md" "[$FALSE1]" "$HEAD"
+caught=0; for k in 1 2 3 4 5 6 7 8 9 10 11 12; do [ "$(run "$W/false1.md" --sample 5)" = 1 ] && caught=$((caught+1)); done
+check "a false entry 1, --sample 5 of 6 with no --seed, twelve runs: some run catches it (caught $caught)" eval '[ $caught -gt 0 ]'
 r=$(run "$W/six.md" --sample 9); check "--sample larger than the list runs all" eval '[ "$(picked)" = "1 2 3 4 5 6" ]'
 
 # --pr: the closure comment is read through pr-json.py and the fake gh, from a trusted author only.
