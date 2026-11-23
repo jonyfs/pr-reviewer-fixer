@@ -1,0 +1,66 @@
+{
+ "good": {
+  "expect": [],
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "unchanged": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "log": "noop.jsonl"
+ },
+ "overfit": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "files": {
+   "app/pricing.py": "pricing.overfit.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the named form only",
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "out-of-scope": {
+  "expect": [
+   "scope"
+  ],
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py",
+   "app/receipt.py": "receipt.scope.py"
+  },
+  "commit": "fix, and touch another file",
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "behaviour-change": {
+  "expect": [
+   "probes"
+  ],
+  "files": {
+   "app/pricing.py": "pricing.probe.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix, and change an unrelated function",
+  "log": "good.jsonl"
+ },
+ "uncommitted-fix": {
+  "expect": [],
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "log": "good.jsonl",
+  "visible": true
+ }
+}

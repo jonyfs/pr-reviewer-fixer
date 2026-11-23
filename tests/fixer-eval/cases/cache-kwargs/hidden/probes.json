@@ -1,0 +1,8 @@
+[
+ {"call": "app.rates.price", "args": [1000], "returns": 1000},
+ {"call": "app.rates.price", "args": [1000, "GBP"], "returns": 250},
+ {"call": "app.rates.shipping", "args": [250], "returns": 520},
+ {"call": "app.cache.make_key", "args": ["price", 1000], "returns": "price:1000"},
+ {"call": "app.cache.make_key", "args": [], "returns": ""},
+ {"call": "app.cache.make_key", "args": ["a", "b", 3], "returns": "a:b:3"}
+]

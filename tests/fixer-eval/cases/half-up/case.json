@@ -1,0 +1,6 @@
+{
+ "kind": "heldout",
+ "defect": "numeric: round() rounds half to even where the pricing policy says half up",
+ "scope": ["app/pricing.py"],
+ "counts": {"critical": 0, "warning": 1, "note": 0}
+}

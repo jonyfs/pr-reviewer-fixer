@@ -1,0 +1,66 @@
+{
+ "good": {
+  "expect": [],
+  "files": {
+   "app/cache.py": "cache.good.py",
+   "tests/test_cache_key.py": "test_cache_key.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "unchanged": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "log": "noop.jsonl"
+ },
+ "overfit": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "files": {
+   "app/cache.py": "cache.overfit.py",
+   "tests/test_cache_key.py": "test_cache_key.py"
+  },
+  "commit": "fix the named form only",
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "out-of-scope": {
+  "expect": [
+   "scope"
+  ],
+  "files": {
+   "app/cache.py": "cache.good.py",
+   "tests/test_cache_key.py": "test_cache_key.py",
+   "app/rates.py": "rates.scope.py"
+  },
+  "commit": "fix, and touch another file",
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "behaviour-change": {
+  "expect": [
+   "probes"
+  ],
+  "files": {
+   "app/cache.py": "cache.probe.py",
+   "tests/test_cache_key.py": "test_cache_key.py"
+  },
+  "commit": "fix, and change an unrelated function",
+  "log": "good.jsonl"
+ },
+ "uncommitted-fix": {
+  "expect": [],
+  "files": {
+   "app/cache.py": "cache.good.py",
+   "tests/test_cache_key.py": "test_cache_key.py"
+  },
+  "log": "good.jsonl",
+  "visible": true
+ }
+}

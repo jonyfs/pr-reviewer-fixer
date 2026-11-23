@@ -1,0 +1,66 @@
+{
+ "good": {
+  "expect": [],
+  "files": {
+   "app/config.py": "config.good.py",
+   "tests/test_config_errors.py": "test_config_errors.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "unchanged": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "log": "noop.jsonl"
+ },
+ "overfit": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "files": {
+   "app/config.py": "config.overfit.py",
+   "tests/test_config_errors.py": "test_config_errors.py"
+  },
+  "commit": "fix the named form only",
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "out-of-scope": {
+  "expect": [
+   "scope"
+  ],
+  "files": {
+   "app/config.py": "config.good.py",
+   "tests/test_config_errors.py": "test_config_errors.py",
+   "app/server.py": "server.scope.py"
+  },
+  "commit": "fix, and touch another file",
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "behaviour-change": {
+  "expect": [
+   "probes"
+  ],
+  "files": {
+   "app/config.py": "config.probe.py",
+   "tests/test_config_errors.py": "test_config_errors.py"
+  },
+  "commit": "fix, and change an unrelated function",
+  "log": "good.jsonl"
+ },
+ "uncommitted-fix": {
+  "expect": [],
+  "files": {
+   "app/config.py": "config.good.py",
+   "tests/test_config_errors.py": "test_config_errors.py"
+  },
+  "log": "good.jsonl",
+  "visible": true
+ }
+}

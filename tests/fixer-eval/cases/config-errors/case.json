@@ -1,0 +1,6 @@
+{
+ "kind": "heldout",
+ "defect": "error handling: a blanket except turns every malformed setting into the defaults",
+ "scope": ["app/config.py"],
+ "counts": {"critical": 0, "warning": 1, "note": 0}
+}

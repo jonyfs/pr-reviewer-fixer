@@ -1,0 +1,23 @@
+## Review: add a resolver for upload paths
+
+One blocking finding. resolve() trusts the name it is given.
+
+```findings
+version: 1
+pr: 7
+pass: 1
+verdict: BLOCKED
+counts: {critical: 1, warning: 0, note: 0}
+findings:
+  - id: C1
+    severity: CRITICAL
+    status: open
+    file: app/files.py
+    line: 9
+    dimension: security
+    claim: "resolve() joins a user-supplied name to the upload folder without checking that the result stays inside it"
+    failure_scenario: "resolve('../etc/hosts') returns /srv/etc/hosts, outside /srv/uploads"
+    suggested_fix: "Refuse (ValueError) any name whose joined path does not stay inside base"
+    testable: yes
+    confidence: 0.95
+```

@@ -1,0 +1,8 @@
+[
+ {"call": "app.config.load", "args": [""], "returns": {"port": 8080, "timeout": 30, "debug": false}},
+ {"call": "app.config.load", "args": ["port = 9000\n# c\ndebug = yes"], "returns": {"port": 9000, "timeout": 30, "debug": true}},
+ {"call": "app.config.load", "args": ["debug = on"], "returns": {"port": 8080, "timeout": 30, "debug": true}},
+ {"call": "app.config.load", "args": ["debug = off"], "returns": {"port": 8080, "timeout": 30, "debug": false}},
+ {"call": "app.config.describe", "args": [{"port": 1, "timeout": 2, "debug": true}], "returns": "port=1 timeout=2 debug=True"},
+ {"call": "app.server.banner", "args": ["timeout = 9"], "returns": "starting with port=8080 timeout=9 debug=False"}
+]

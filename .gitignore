@@ -21,6 +21,7 @@ tests/fake-gh/triage/state-*/
 tests/push-guard/work-*/
 tests/eval/work-*/
 tests/eval/reports/
+tests/fixer-eval/work-*/
 tests/release/work-*/
 tests/update/state-*/
 tests/scan/work-*/
