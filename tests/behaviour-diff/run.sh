@@ -174,11 +174,11 @@ check "a committed post-checkout hook under a relative core.hooksPath never runs
 # and Ctrl-C send), or a TERM to the script alone, kills the running probe before the script exits.
 # The signal is sent only once the probe has written its pid, so the row cannot pass by arriving early.
 printf '{"timeout": 60, "probes": [{"id": "slow", "argv": ["bash", "-c", "echo $$ >>\\"$0\\"; exec sleep 300", "%s"]}]}\n' "$W/pids-sig" >"$W/p-sig.json"
-sigrow() { # name signal group|script
+sigrow() { # name signal group|script [signals the caller ignores, space-separated]
   local sp pp="" alive=1 rc i=0
   : >"$W/pids-sig"
-  (cd "$W/repo" && exec perl -e '$SIG{$_}="DEFAULT" for qw(HUP INT QUIT TERM); setpgrp(0,0); exec @ARGV' \
-    bash "$BD" "$BASE" "$FIX" "$W/p-sig.json") >"$W/out" 2>"$W/err" </dev/null &
+  (cd "$W/repo" && exec perl -e '$SIG{$_}="DEFAULT" for qw(HUP INT QUIT TERM); $SIG{$_}="IGNORE" for split / /, shift; setpgrp(0,0); exec @ARGV' \
+    "${4:-}" bash "$BD" "$BASE" "$FIX" "$W/p-sig.json") >"$W/out" 2>"$W/err" </dev/null &
   sp=$!
   while [ $i -lt 100 ] && [ ! -s "$W/pids-sig" ]; do sleep 0.1; i=$((i+1)); done
   pp="$(head -n 1 "$W/pids-sig")"
@@ -201,6 +201,10 @@ sigrow "INT to the process group (Ctrl-C) -> 2, the running probe is dead, workt
 sigrow "HUP to the process group -> 2, the running probe is dead, worktree removed" HUP group
 sigrow "TERM to the script alone -> 2, the running probe is dead, worktree removed" TERM script
 sigrow "QUIT to the process group (Ctrl-backslash) -> 2, the running probe is dead, worktree removed" QUIT group
+# W4: a caller that ignores TERM (the runner keeps it ignored), and INT to the script alone: the stop
+# must reach the runner by a signal it handles, not be dropped for every remaining probe of the side.
+sigrow "INT to the script alone under a caller that ignores TERM -> 2, the running probe is dead, worktree removed" INT script TERM
+sigrow "HUP to the script alone under a caller that ignores INT, QUIT and TERM -> 2, the running probe is dead" HUP script "INT QUIT TERM"
 # A probe sees the signal dispositions the caller gave the script, as when the runner ran in the
 # foreground: none ignored from a plain caller, HUP ignored under a nohup-like caller. Exit is a
 # bitmask of the ignored ones: HUP 1, INT 2, QUIT 4, TERM 8.

@@ -32,8 +32,9 @@
 # "timeout" is seconds per run (default 10, at most 600), at the file or the probe level; a probe
 # that runs out is killed with its whole process group, and so is every probe after it exits. A
 # HUP, INT, QUIT or TERM, to the script or to its process group, kills the running probe's group
-# too, removes the worktree and exits 2. A probe inherits the caller's signal dispositions (a signal
-# the caller ignores, such as HUP under nohup, stays ignored in the probe; the others are default).
+# too, removes the worktree and exits 2; one the caller ignores stays ignored and stops nothing.
+# A probe inherits the caller's signal dispositions (a signal the caller ignores, such as HUP under
+# nohup, stays ignored in the probe; the others are default).
 #
 # Report: one line per probe, then a summary line.
 #   same              the result is identical at both commits
@@ -79,13 +80,16 @@ cleanup() {
   rm -f "$PY"
 }
 PYPID=""
-stop() { # a stop from outside: the python runner kills its running probe's group, then we exit
+# A stop from outside: the python runner kills its running probe's group, then we exit. It is
+# forwarded the signal that fired the trap: bash cannot trap a signal the caller ignored, so that
+# signal is one the runner handles too (a fixed TERM would be dropped under a TERM-ignoring caller).
+stop() { # stop SIGNAL
   trap '' HUP INT QUIT TERM
-  if [ -n "$PYPID" ]; then kill -TERM "$PYPID" 2>/dev/null; wait "$PYPID" 2>/dev/null; fi
+  if [ -n "$PYPID" ]; then kill -"$1" "$PYPID" 2>/dev/null; wait "$PYPID" 2>/dev/null; fi
   exit 2
 }
 trap cleanup EXIT
-trap stop HUP INT QUIT TERM
+trap 'stop HUP' HUP; trap 'stop INT' INT; trap 'stop QUIT' QUIT; trap 'stop TERM' TERM
 
 cat >"$PY" <<'PYEOF'
 import hashlib, json, os, re, signal, subprocess, sys, time
