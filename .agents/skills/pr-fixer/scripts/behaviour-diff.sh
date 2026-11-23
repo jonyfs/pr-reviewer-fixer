@@ -30,7 +30,9 @@
 # temporary path (a detached `git worktree`), so a path in the output does not differ between them.
 # With "stdout": true the report also shows the two stdout texts, escaped and cut to 200 characters.
 # "timeout" is seconds per run (default 10, at most 600), at the file or the probe level; a probe
-# that runs out is killed with its whole process group.
+# that runs out is killed with its whole process group, and so is every probe after it exits. A
+# HUP, INT or TERM, to the script or to its process group, kills the running probe's group too,
+# removes the worktree and exits 2.
 #
 # Report: one line per probe, then a summary line.
 #   same              the result is identical at both commits
@@ -74,8 +76,14 @@ cleanup() {
   [ -z "$WT" ] || rm -rf "$WT"
   rm -f "$PY"
 }
+PYPID=""
+stop() { # a stop from outside: the python runner kills its running probe's group, then we exit
+  trap '' HUP INT TERM
+  if [ -n "$PYPID" ]; then kill -TERM "$PYPID" 2>/dev/null; wait "$PYPID" 2>/dev/null; fi
+  exit 2
+}
 trap cleanup EXIT
-trap 'exit 2' HUP INT TERM
+trap stop HUP INT TERM
 
 cat >"$PY" <<'PYEOF'
 import hashlib, json, os, re, signal, subprocess, sys, time
@@ -83,6 +91,11 @@ import hashlib, json, os, re, signal, subprocess, sys, time
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 MAX_PROBES = 500
 LONG = 4096
+STOP = []  # the signal that asked the runner to stop, if any; checked between and during probes
+
+
+def on_signal(signum, frame):
+    STOP.append(signum)
 
 
 def fail(msg):
@@ -207,18 +220,30 @@ def run_one(p, cwd, scratch):
                                     stdin=subprocess.DEVNULL, stdout=fo, stderr=fe, start_new_session=True)
         except OSError as e:
             return {"rc": "cannot-start", "out": b"", "err": str(e.strerror).encode()}
+        # The wait runs in short slices so a stop from outside (STOP, set by on_signal) is seen at
+        # once; the signal handler only records it, so nothing is interrupted half way.
+        deadline, rc = time.monotonic() + p["timeout"], None
         try:
-            rc = proc.wait(timeout=p["timeout"])
-        except subprocess.TimeoutExpired:
-            rc = "timeout"
-        # The whole process group goes, on a timeout and after a normal exit alike: a probe that left
-        # a child behind must not keep running into the other commit's run.
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except OSError:
-            pass
-        if rc == "timeout":
+            while rc is None and not STOP:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    rc = "timeout"
+                    break
+                try:
+                    rc = proc.wait(timeout=min(0.1, left))
+                except subprocess.TimeoutExpired:
+                    pass
+        finally:
+            # The whole process group goes, on a timeout, after a normal exit and on a stop alike: a
+            # probe that left a child behind must not keep running into the other commit's run, nor
+            # outlive the script.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                pass
             proc.wait()
+        if STOP:
+            fail("stopped by signal %d; the running probe was killed" % STOP[0])
     with open(so, "rb") as fo, open(se, "rb") as fe:
         return {"rc": rc, "out": fo.read(), "err": fe.read()}
 
@@ -237,8 +262,12 @@ def main():
         print("behaviour-diff: %d probes" % len(probes))
         return 0
     wt, scratch, side, results = sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6]
+    for s in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+        signal.signal(s, on_signal)
     rows = []
     for p in probes:
+        if STOP:
+            fail("stopped by signal %d" % STOP[0])
         r = run_one(p, wt, scratch)
         rows.append({"rc": str(r["rc"]), "out": digest(r["out"]), "err": digest(r["err"]),
                      "text": r["out"].decode("utf-8", "replace") if p["show"] else None})
@@ -316,7 +345,10 @@ echo "behaviour-diff: base ${BASE:0:12} head ${HEAD_SHA:0:12}"
 side() { # side commit
   git -C "$TOP" -c core.hooksPath=/dev/null worktree add -q --detach "$WT/tree" "$2" >/dev/null 2>&1 \
     || die "git cannot make a worktree at $2 (${1})"
-  python3 -I "$PY" run "$PROBES" "$WT/tree" "$WT/scratch" "$1" "$WT/$1.json" "$WT/base.json"; rc=$?
+  # In the background, so a signal to this script runs stop at once instead of after the probe;
+  # stdin is passed on explicitly (a background job would get /dev/null), the probe gets /dev/null.
+  python3 -I "$PY" run "$PROBES" "$WT/tree" "$WT/scratch" "$1" "$WT/$1.json" "$WT/base.json" <&0 &
+  PYPID=$!; wait "$PYPID"; rc=$?; PYPID=""
   git -C "$TOP" worktree remove --force "$WT/tree" >/dev/null 2>&1 || die "git cannot remove the worktree of $1"
   return "$rc"
 }

@@ -116,6 +116,35 @@ echo '{"probes": [{"id": "nope", "argv": ["./no-such-program"]}]}' >"$W/p-nocmd.
 r=$(run "$BASE" "$FIX" "$W/p-nocmd.json")
 check "a program that cannot start at either commit -> same, 0 (not an internal error)" eval '[ $r = 0 ] && has "same          nope finding=-: exit cannot-start" && clean'
 
+# 7. Stopped from outside (W1): a TERM, INT or HUP to the script's process group (what `timeout`
+# and Ctrl-C send), or a TERM to the script alone, kills the running probe before the script exits.
+# The signal is sent only once the probe has written its pid, so the row cannot pass by arriving early.
+printf '{"timeout": 60, "probes": [{"id": "slow", "argv": ["bash", "-c", "echo $$ >>\\"$0\\"; exec sleep 300", "%s"]}]}\n' "$W/pids-sig" >"$W/p-sig.json"
+sigrow() { # name signal group|script
+  local sp pp="" alive=1 rc i=0
+  : >"$W/pids-sig"
+  (cd "$W/repo" && exec perl -e '$SIG{INT}="DEFAULT"; $SIG{HUP}="DEFAULT"; setpgrp(0,0); exec @ARGV' \
+    bash "$BD" "$BASE" "$FIX" "$W/p-sig.json") >"$W/out" 2>"$W/err" </dev/null &
+  sp=$!
+  while [ $i -lt 100 ] && [ ! -s "$W/pids-sig" ]; do sleep 0.1; i=$((i+1)); done
+  pp="$(head -n 1 "$W/pids-sig")"
+  if [ -n "$pp" ]; then
+    if [ "$3" = group ]; then kill -"$2" -- -"$sp"; else kill -"$2" "$sp"; fi
+    i=0; while [ $i -lt 50 ] && kill -0 "$pp" 2>/dev/null; do sleep 0.1; i=$((i+1)); done
+    kill -0 "$pp" 2>/dev/null || alive=0
+  fi
+  # A broken copy leaves the probe or the script running: never leave either behind.
+  [ -z "$pp" ] || kill -KILL "$pp" 2>/dev/null
+  i=0; while [ $i -lt 100 ] && kill -0 "$sp" 2>/dev/null; do sleep 0.1; i=$((i+1)); done
+  kill -0 "$sp" 2>/dev/null && kill -KILL -- -"$sp" 2>/dev/null
+  wait "$sp"; rc=$?
+  check "$1" eval '[ -n "$pp" ] && [ $alive = 0 ] && [ $rc = 2 ] && clean'
+}
+sigrow "TERM to the process group (an outer timeout) -> 2, the running probe is dead, worktree removed" TERM group
+sigrow "INT to the process group (Ctrl-C) -> 2, the running probe is dead, worktree removed" INT group
+sigrow "HUP to the process group -> 2, the running probe is dead, worktree removed" HUP group
+sigrow "TERM to the script alone -> 2, the running probe is dead, worktree removed" TERM script
+
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
