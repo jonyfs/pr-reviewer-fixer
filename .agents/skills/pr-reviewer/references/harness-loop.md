@@ -22,7 +22,10 @@ The same file ships in both skills.
 
 The three skills never call each other and never share a context. They communicate only through the
 pull request, as described in [pr-protocol.md](pr-protocol.md). The review loop agent passes each of
-them the PR number and nothing else about the others' reasoning.
+them the PR number and nothing else about the others' reasoning. After a person runs
+`pr-merge-fixer` directly, the session's agent takes the loop agent's role only after the merge's
+closure comment, and the reviewer's brief carries the PR number and the screens' output, never the
+merge reasoning.
 
 If the harness cannot start a fresh-context sub-agent, the loop agent runs the reviewer in a new
 session or says that the review was not independent. A review by the agent that wrote the change
@@ -35,7 +38,8 @@ Run the loop, without being asked, when any of these happens in the session:
 - the agent opens a pull request (`gh pr create`);
 - the agent pushes new commits to the branch of an open pull request;
 - the `pr-merge-fixer` skill finishes a merge push, whether the loop agent dispatched it or a person
-  invoked it directly (then the session's agent runs the loop itself, from step 1);
+  invoked it directly (when a person invoked it directly, the session's agent runs the loop itself,
+  from step 1; when the loop agent dispatched it, the loop agent goes on);
 - a person asks for a review or a correction of a pull request.
 
 Do not wait for CI, a bot or a person to start it. If the session ends before the loop does, the
