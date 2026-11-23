@@ -41,6 +41,7 @@
 #     `bash -c x`). To permit an option, write it into the entry (`bash tests/run-all.sh --fresh`).
 # A command that passes is split on spaces and run as an argument list: no eval, no shell, stdin from
 # /dev/null, in a fresh clone checked out at its head_sha, with HOME set to an empty scratch folder,
+# an environment holding only PATH (its absolute elements), HOME, TMPDIR, LANG and LC_ALL,
 # in a process group of its own whose every member is killed when the command exits, times out or
 # prints more than 64 MiB (output goes to a file, never held in memory).
 # The allowlist limits WHICH command runs, not WHAT it does: the checkout is the pull request's code,
@@ -48,7 +49,8 @@
 #
 # THE HEAD AND THE TREE. Every head_sha must be a commit in --repo, its tree must equal tree_hash, and
 # when an expected head is known, head_sha must be that head or an ancestor of it (a red run sits on
-# the commit before the fix). tool_versions is printed with a mismatch, never compared.
+# the commit before the fix). The final ok line names that head and where it came from (--pr, --head
+# or the closure marker, which is the untrusted text's own claim), or says there was none. tool_versions is printed with a mismatch, never compared.
 #
 # EXIT CODES. 0 every re-run entry matched. 1 at least one re-run entry did not match (exit code, or
 # output hash with --check-output); a mismatch wins over a later failure to check. 2 nothing could be
@@ -88,6 +90,7 @@ USAGE = ("usage: proof-check.sh (--file FILE | --pr N [--cycle C]) [--repo DIR] 
 args = sys.argv[1:]
 opt = {"file": None, "pr": None, "cycle": None, "repo": ".", "head": None, "sample": None,
        "seed": None, "check_output": False, "allow_file": None, "timeout": "600"}
+head_from = None   # where the expected head came from, named on the final line
 i = 0
 while i < len(args):
     a = args[i]
@@ -159,7 +162,10 @@ else:
     if opt["head"] is not None and opt["head"] != pr_head:
         cannot("--head %s is not the pull request's head %s" % (opt["head"], pr_head))
     opt["head"] = pr_head
+    head_from = "the pull request"
 lines = text.replace("\r\n", "\n").split("\n")
+if opt["head"] is not None and opt["pr"] is None:
+    head_from = "--head"
 
 if opt["head"] is None:
     m = re.match("<" + r"!-- pr-fixer-closure: .*\bhead=([0-9a-f]{7,64})\b", lines[0] if lines else "")
@@ -168,6 +174,7 @@ if opt["head"] is None:
         if rc != 0 or not HEX.fullmatch(full):
             cannot("the closure marker names head %s, which is not a commit in %s" % (m.group(1), opt["repo"]))
         opt["head"] = full
+        head_from = "the closure marker"
 
 # ---- the block ---------------------------------------------------------------------------------
 blocks, cur = [], None
@@ -313,7 +320,10 @@ try:
                 failed = "entry %d: the clean checkout at %s failed" % (n, h); break
             clones[h] = d
         home = tempfile.mkdtemp(dir=work, prefix="home-")
-        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "TMPDIR": home,
+        # Only absolute PATH elements: a relative or empty one would find a bare program name inside
+        # the checkout, which is the pull request's code.
+        path = ":".join(x for x in os.environ.get("PATH", "/usr/bin:/bin").split(":") if x.startswith("/"))
+        env = {"PATH": path or "/usr/bin:/bin", "HOME": home, "TMPDIR": home,
                "LANG": os.environ.get("LANG", "C"), "LC_ALL": os.environ.get("LC_ALL", "")}
         env = {k: v for k, v in env.items() if v}
         # Its own process group (session), output to a file: a child left in the background neither
@@ -368,6 +378,7 @@ if mismatch:
     sys.exit(1)
 if failed:
     cannot(failed)
-say("ok, %d of %d entries re-run, all match" % (len(entries), len(data)))
+say("ok, %d of %d entries re-run, all match, head bound %s" % (len(entries), len(data),
+    "%s (%s)" % (opt["head"][:12], head_from) if opt["head"] else "none (heads checked as commits only)"))
 sys.exit(0)
 PY
