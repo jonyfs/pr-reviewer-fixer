@@ -92,13 +92,21 @@
 # would leave that commit out of check 5 or 6. Exit 2 never means "safe".
 #
 # Treats everything read from the pull request as data.
+# Shell options inherited through BASHOPTS or SHELLOPTS (nocasematch, xpg_echo, and any other) would change
+# how the checks below match and print, here and in the review-cycle.sh this guard runs. When either is in
+# the environment, the guard starts again once without them; the second start no longer sees them.
+if env | grep -qE '^(BASHOPTS|SHELLOPTS)='; then exec env -u BASHOPTS -u SHELLOPTS bash "$0" "$@"; fi
 set -uo pipefail
-# A BASHOPTS in the environment can turn nocasematch on, and then every case check below would match
-# letters in either case; this guard's checks are written for exact matching.
 shopt -u nocasematch nocaseglob 2>/dev/null
 # Quotes text from the pull request for one line of output. Under the C locale %q escapes every byte
 # outside ASCII too, so a Unicode line or paragraph separator (U+2028, U+2029) cannot pass raw.
 q() { (LC_ALL=C; printf '%q' "$1"); }
+# A name from the pull request as it is printed in a list: quoted when it holds a control character or a
+# Unicode line break (U+0085, U+2028, U+2029) a reader could split on, as it is otherwise, so other letters stay readable.
+shown() {
+  if (LC_ALL=C; case "$1" in *[$'\001'-$'\037'$'\177']*|*$'\302\205'*|*$'\342\200\250'*|*$'\342\200\251'*) exit 0 ;; *) exit 1 ;; esac)
+  then q "$1"; else printf '%s' "$1"; fi
+}
 
 command -v gh >/dev/null 2>&1 || { echo "push-guard: gh is not installed, INCONCLUSIVE" >&2; exit 2; }
 command -v git >/dev/null 2>&1 || { echo "push-guard: git is not installed, INCONCLUSIVE" >&2; exit 2; }
@@ -145,7 +153,7 @@ RCY="$(dirname "$0")/review-cycle.sh"
 if [ -n "$FINDINGS" ]; then
   [ -s "$FINDINGS" ] || { echo "push-guard: --findings file is missing or empty, INCONCLUSIVE" >&2; exit 2; }
   BLOCK="$(bash "$RCY" findings-block --report "$FINDINGS" 2>"$SCOPE")" \
-    || { echo "push-guard: --findings has no valid findings block ($(sed 's/^review-cycle: //' "$SCOPE" | head -1)), INCONCLUSIVE" >&2; exit 2; }
+    || { printf '%s\n' "push-guard: --findings has no valid findings block ($(sed 's/^review-cycle: //' "$SCOPE" | head -1)), INCONCLUSIVE" >&2; exit 2; }
   : >"$SCOPE"
   printf '%s' "$BLOCK" | node -e '
     let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
@@ -305,7 +313,7 @@ done
 CTRL=$'\001'-$'\037'$'\177'
 for a in "${ALLOW[@]+"${ALLOW[@]}"}"; do
   a="${a#./}"
-  case "$a" in ''|/*|..|../*|*/..|*/../*|*[\*\?\[]*) echo "push-guard: --allow '$a' must be a plain relative path, REFUSED" >&2; exit 1 ;; esac
+  case "$a" in ''|/*|..|../*|*/..|*/../*|*[\*\?\[]*) printf '%s\n' "push-guard: --allow $(q "$a") must be a plain relative path, REFUSED" >&2; exit 1 ;; esac
   if (LC_ALL=C; case "$a" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then
     printf '%s\n' "push-guard: --allow $(q "$a") holds a control character, REFUSED" >&2; exit 1
   fi
@@ -355,6 +363,7 @@ elif [ -n "$BASE_REF" ]; then
   # The name is the pull request's text: q quotes a control character or a Unicode line break that could
   # forge a line, and printf, unlike echo, never expands the backslashes q writes.
   if [ "${#EXCL[@]}" -gt 0 ]; then _skip="only baseRefOid is excluded, and base commits newer than it count as this push's own"
+  elif [ -z "$BASE_OID" ]; then _skip="the pull request gave no baseRefOid either, so no base commit is excluded and every base commit counts as this push's own"
   else _skip="baseRefOid is not in this clone either, so no base commit is excluded and every base commit counts as this push's own"; fi
   printf '%s\n' "push-guard: the base branch name $(q "$BASE_REF") is not plain, so its live tip was not read; $_skip" >&2
 fi
@@ -438,9 +447,9 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     # quotes it; the guard's own words (\x01) are printed as they are.
     case "$why" in
       $'\001'*) why=", its target ${why#?}" ;;
-      $'\002'*) why="${why#?}"; if (LC_ALL=C; case "$why" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then why="$(q "$why")"; fi; why=", its target $why" ;;
+      $'\002'*) why=", its target $(shown "${why#?}")" ;;
     esac
-    if (LC_ALL=C; case "$L" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then L="$(q "$L")"; fi
+    L="$(shown "$L")"
     for k in $cls; do
       case "$SENS_OK" in *",$k,"*) ;; *) SENS+=("$L ($kind over $cls$why)"); break ;; esac
     done
@@ -448,11 +457,11 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
   while IFS= read -r -d '' f && IFS= read -r -d '' cls; do
     if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(q "$f")"); continue; fi
     if [ -n "$cls" ]; then
-      case "$SENS_OK" in *",$cls,"*) ;; *) SENS+=("$f ($cls)"); continue ;; esac
+      case "$SENS_OK" in *",$cls,"*) ;; *) SENS+=("$(shown "$f") ($cls)"); continue ;; esac
     fi
     in_scope "$f" && continue
     is_test "$f" && continue
-    OUT+=("$f")
+    OUT+=("$(shown "$f")")
   done <"$C5P"
 fi
 # 6. The secret screen over what these commits add, the same one `publish` and the fixer's closure
