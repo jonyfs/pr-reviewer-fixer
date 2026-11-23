@@ -32,6 +32,8 @@ TOK="$$$(date +%s | tail -c 5)"
 printf 'sleep 21.%s &\necho started\nexit 0\n' "$TOK" >"$W/repo/tests/bg.sh"
 printf 'sleep 22.%s\nexit 0\n' "$TOK" >"$W/repo/tests/fg.sh"
 printf 'head -c 70000000 /dev/zero\nexit 0\n' >"$W/repo/tests/big.sh"
+# W5: a foreground sleep that marks, outside the clone, that it started (sig.sh <name> <digit>).
+printf 'touch "%s/started-$1"\nsleep 2$2.%s\nexit 0\n' "$W" "$TOK" >"$W/repo/tests/sig.sh"
 # W3: what the command sees. Distinct exit codes name the rule that broke.
 cat >"$W/repo/tests/env.sh" <<'EOF'
 case "$1" in
@@ -128,6 +130,21 @@ closure "$W/fg.md" "[$(entry 'bash tests/fg.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD
 r=$(run "$W/fg.md" --timeout 1); check "a timed-out command -> 2, and its child (the sleep) is stopped too" \
   eval '[ $r = 2 ] && has "timed out after 1 s" && gone 22'
 pkill -f "slee[p] 2[12].$TOK" 2>/dev/null
+# W5 (pass 2): the checker itself stopped by SIGTERM (an outer timeout) or SIGHUP stops the command's
+# group and deletes its work folder. TMPDIR points the work folder at a scratch place this row lists.
+SIGTMP="$W/tmp-sig"; mkdir -p "$SIGTMP"; rm -f "$W"/started-*
+closure "$W/term.md" "[$(entry 'bash tests/sig.sh term 3' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$( (cd "$W/repo" && TMPDIR="$SIGTMP" timeout -s TERM "${PC_TERM_AFTER:-12}" bash "$PC" --file "$W/term.md" --allow-file "$ALLOW" --timeout 600) </dev/null >"$W/out" 2>&1; echo $?)
+check "proof-check under timeout -s TERM (W5) -> exit 2, the command's sleep is stopped, no work folder left" \
+  eval '[ -e "$W/started-term" ] && has "stopped by signal SIGTERM" && gone 23 && [ -z "$(ls -A "$SIGTMP")" ]'
+pkill -f "slee[p] 23.$TOK" 2>/dev/null; rm -rf "$SIGTMP"; mkdir -p "$SIGTMP"
+closure "$W/hup.md" "[$(entry 'bash tests/sig.sh hup 4' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+(cd "$W/repo" && TMPDIR="$SIGTMP" exec bash "$PC" --file "$W/hup.md" --allow-file "$ALLOW" --timeout 600) </dev/null >"$W/out" 2>&1 &
+pid=$!; for k in $(seq 1 150); do [ -e "$W/started-hup" ] && break; sleep 0.2; done
+kill -HUP "$pid" 2>/dev/null; wait "$pid"; r=$?
+check "proof-check sent SIGHUP while the command runs (W5) -> 2, the sleep is stopped, no work folder left" \
+  eval '[ -e "$W/started-hup" ] && [ $r = 2 ] && has "stopped by signal SIGHUP" && gone 24 && [ -z "$(ls -A "$SIGTMP")" ]'
+pkill -f "slee[p] 24.$TOK" 2>/dev/null
 closure "$W/big.md" "[$(entry 'bash tests/big.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
 r=$(run "$W/big.md"); check "output past the 64 MiB cap -> 2 (N4)" eval '[ $r = 2 ] && has "MiB"'
 
