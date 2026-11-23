@@ -74,5 +74,47 @@ KC1="$(GIT_CONFIG_GLOBAL="$W/gcg.config" bash "$R/tests/run-all.sh" --print-key 
 printf '[user]\n\tname = two\n' > "$W/gcg.config"
 KC2="$(GIT_CONFIG_GLOBAL="$W/gcg.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
 check "changing the file GIT_CONFIG_GLOBAL names changes the key" eval '[ -n "$KC1" ] && [ "$KC1" != "$KC2" ]'
+# The declared debt of PR 65 (N1-N3)
+# N2: a textconv driver must not hide a change: two contents a driver renders alike still give two keys.
+printf '#!/bin/sh\necho same\n' > "$W/same.sh"; chmod +x "$W/same.sh"
+g config diff.same.textconv "$W/same.sh"; printf 'a.md diff=same\n' > "$R/.git/info/attributes"
+printf 'one\n' > "$R/a.md"; KT1="$(key)"; printf 'two\n' > "$R/a.md"; KT2="$(key)"
+check "a textconv driver does not hide a change to a tracked file (--no-textconv)" eval '[ -n "$KT1" ] && [ "$KT1" != "$KT2" ]'
+g checkout -q -- a.md; rm -f "$R/.git/info/attributes"
+# N1: sha256sum is used where it exists (a stub that prints a fixed digest makes the key that digest).
+mkdir -p "$W/shabin"; printf '#!/bin/sh\ncat >/dev/null; echo "stubdigest  -"\n' > "$W/shabin/sha256sum"; chmod +x "$W/shabin/sha256sum"
+KS="$(PATH="$W/shabin:$PATH" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+check "the key is made with sha256sum when it is on PATH" [ "$KS" = stubdigest ]
+# N3: with HOME and XDG_CACHE_HOME both unset there is no per-user folder, so the cache is off (no shared /.cache).
+out="$(env -u HOME -u XDG_CACHE_HOME bash "$R/tests/run-all.sh" 2>&1)"
+check "HOME and XDG_CACHE_HOME unset: the cache is off, said plainly" eval 'printf %s "$out" | grep -q "the suite cache is off"'
+out="$(env -u HOME XDG_CACHE_HOME= bash "$R/tests/run-all.sh" 2>&1)"
+check "HOME unset and XDG_CACHE_HOME empty: the cache is off too" eval 'printf %s "$out" | grep -q "the suite cache is off"'
+# N4 (PR 71 pass 1, W1): a green full run records its key only when the tree is unchanged at the end. A second scratch
+# repository holds the skills, the gate workflow, VERSION and CHANGELOG.md copied from this checkout, so the checks after
+# the suites pass, and a stub at each suite path run-all.sh starts (taken from run-all.sh itself), each exiting 0. With
+# EDIT_DURING_RUN set, the stubs edit a tracked file while the run is under way.
+SR="$(cd "$T/../.." && pwd)"; R2="$W/green"; mkdir -p "$R2/tests"; cp "$SRC" "$R2/tests/run-all.sh"
+(cd "$SR" && git ls-files -z -- .agents .github/workflows/review-gate.yml VERSION CHANGELOG.md | xargs -0 tar cf -) | tar xf - -C "$R2"
+grep -oE '"\$HERE/[^"]+\.(sh|py)"' "$SRC" | sed 's/^"\$HERE\///; s/"$//' | sort -u | while IFS= read -r s; do
+  mkdir -p "$R2/tests/$(dirname "$s")"
+  case "$s" in
+    *.py) printf 'pass\n' > "$R2/tests/$s" ;;
+    *) printf '#!/usr/bin/env bash\n[ -z "${EDIT_DURING_RUN:-}" ] || echo edited >> "$(cd "$(dirname "$0")" && git rev-parse --show-toplevel)/a.md"\nexit 0\n' > "$R2/tests/$s" ;;
+  esac
+done
+echo base > "$R2/a.md"
+g2() { git -C "$R2" -c user.name=t -c user.email=t@example.com "$@"; }
+g2 init -q -b main; g2 add -A; g2 commit -qm base
+export XDG_CACHE_HOME="$W/xdg2"; CD2="$XDG_CACHE_HOME/pr-reviewer-fixer/run-all"; rm -rf "$XDG_CACHE_HOME"
+KG="$(bash "$R2/tests/run-all.sh" --print-key 2>/dev/null)"
+out="$(EDIT_DURING_RUN=1 bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a green full run that edits a tracked file is green (exit 0) and edited the file" eval '[ $r = 0 ] && grep -q edited "$R2/a.md"'
+check "a green full run whose tree changed during the run writes no key" eval '[ -n "$KG" ] && [ ! -e "$CD2/$KG" ] && [ -z "$(ls -A "$CD2" 2>/dev/null)" ]'
+check "a green full run whose tree changed says it was not recorded" eval 'printf %s "$out" | grep -q "not recorded"'
+g2 checkout -q -- a.md
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "the same green full run with no edit writes the key" eval '[ $r = 0 ] && [ -e "$CD2/$KG" ]'
+unset XDG_CACHE_HOME
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

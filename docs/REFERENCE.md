@@ -727,6 +727,11 @@ bash tests/run-all.sh --fresh  # the full run, every suite: the one before a PAS
 bash tests/run-all.sh --only words  # the suites whose name holds one of the words: for iteration only
 ```
 
+The cache lives in `$XDG_CACHE_HOME` or `~/.cache` and is off when neither is set. Its key covers the commit, the
+uncommitted and untracked files, the toolchain and the user's git configuration, but not the system git
+configuration, the repository's own `.git/config` or `.git/info/attributes`: after a change there (a clean filter,
+for example), run `--fresh`. A tree that changed during the run is not recorded as passed, and the run says so.
+
 The suite needs no network, only bash, python3, node, jq, git, curl, tar and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
