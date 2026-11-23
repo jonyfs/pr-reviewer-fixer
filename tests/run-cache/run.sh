@@ -111,6 +111,7 @@ KG="$(bash "$R2/tests/run-all.sh" --print-key 2>/dev/null)"
 out="$(EDIT_DURING_RUN=1 bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "a green full run that edits a tracked file is green (exit 0) and edited the file" eval '[ $r = 0 ] && grep -q edited "$R2/a.md"'
 check "a green full run whose tree changed during the run writes no key" eval '[ -n "$KG" ] && [ ! -e "$CD2/$KG" ] && [ -z "$(ls -A "$CD2" 2>/dev/null)" ]'
+check "a green full run whose tree changed says it was not recorded" eval 'printf %s "$out" | grep -q "not recorded"'
 g2 checkout -q -- a.md
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "the same green full run with no edit writes the key" eval '[ $r = 0 ] && [ -e "$CD2/$KG" ]'

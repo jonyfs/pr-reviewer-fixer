@@ -411,7 +411,12 @@ cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.gith
 model_key_scan
 # Only a green full run is written to the cache (see the cache note above), and only when the tree is still the one
 # the key was taken from: a file changed during the run would otherwise be recorded as passed without being run.
-if [ "$fail" = 0 ] && [ -z "${RUN_ONLY:-}" ] && [ -n "${KEY:-}" ] && [ -n "$CACHE_DIR" ] && [ "$(tree_key)" = "$KEY" ]; then
-  mkdir -p "$CACHE_DIR" 2>/dev/null && : >"$CACHE_DIR/$KEY" 2>/dev/null
+# Such a run says so, so a suite that leaves a file behind does not turn the cache off without a word.
+if [ "$fail" = 0 ] && [ -z "${RUN_ONLY:-}" ] && [ -n "${KEY:-}" ] && [ -n "$CACHE_DIR" ]; then
+  if [ "$(tree_key)" = "$KEY" ]; then
+    mkdir -p "$CACHE_DIR" 2>/dev/null && : >"$CACHE_DIR/$KEY" 2>/dev/null
+  else
+    echo "== run-all: the tree changed during the run (a suite or an edit touched a file), so this green run is not recorded in the suite cache."
+  fi
 fi
 exit $fail
