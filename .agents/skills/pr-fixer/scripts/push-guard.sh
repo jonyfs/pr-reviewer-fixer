@@ -104,7 +104,9 @@
 # (BASH_FUNC_*) that bash -p kept out. bash -p still hands those to its children, so the review-cycle.sh this guard
 # runs starts with -p as well (PR 75 W3), and an exported function in the environment is a reason to restart too:
 # the restart drops every BASH_FUNC_ variable by its exact name, as node lists the environment's names (never a line
-# of env's output), so no child of the guard (git, gh, node, python3, sed) receives one (PR 75 N10). The same mark
+# of env's output), so no child of the guard (git, gh, node, python3, sed) receives one node can read (PR 75 N10).
+# node leaves out a name that is not valid UTF-8, so such a BASH_FUNC_ name can still reach a child; it can never
+# equal git, gh or another command the guard runs, so it cannot replace one (PR 75 N11). The same mark
 # allows one restart for both: a function still exported on the second start makes the guard INCONCLUSIVE (exit 2).
 pg_funcs() {
   command -v node >/dev/null 2>&1 || return 0
