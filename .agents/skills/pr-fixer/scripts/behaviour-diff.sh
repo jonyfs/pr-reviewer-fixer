@@ -79,11 +79,14 @@ cleanup() {
   [ -z "$WT" ] || rm -rf "$WT"
   rm -f "$PY"
 }
-PYPID=""
+PYPID=""; LAUNCHING=0; PENDING=""
 # A stop from outside: the python runner kills its running probe's group, then we exit. It is
 # forwarded the signal that fired the trap: bash cannot trap a signal the caller ignored, so that
 # signal is one the runner handles too (a fixed TERM would be dropped under a TERM-ignoring caller).
+# While the runner is being started and its pid is not known yet, the stop is kept for side() to
+# deliver once it is, so the worktree is never removed under a runner that goes on.
 stop() { # stop SIGNAL
+  if [ "$LAUNCHING" = 1 ] && [ -z "$PYPID" ]; then PENDING="$1"; return; fi
   trap '' HUP INT QUIT TERM
   if [ -n "$PYPID" ]; then kill -"$1" "$PYPID" 2>/dev/null; wait "$PYPID" 2>/dev/null; fi
   exit 2
@@ -365,8 +368,11 @@ side() { # side commit
     || die "git cannot make a worktree at $2 (${1})"
   # In the background, so a signal to this script runs stop at once instead of after the probe;
   # stdin is passed on explicitly (a background job would get /dev/null), the probe gets /dev/null.
+  LAUNCHING=1
   python3 -I "$PY" run "$PROBES" "$WT/tree" "$WT/scratch" "$1" "$WT/$1.json" "$WT/base.json" "$IGNORED" <&0 &
-  PYPID=$!; wait "$PYPID"; rc=$?; PYPID=""
+  PYPID=$!; LAUNCHING=0
+  [ -z "$PENDING" ] || stop "$PENDING"
+  wait "$PYPID"; rc=$?; PYPID=""
   git -C "$TOP" worktree remove --force "$WT/tree" >/dev/null 2>&1 || die "git cannot remove the worktree of $1"
   return "$rc"
 }
