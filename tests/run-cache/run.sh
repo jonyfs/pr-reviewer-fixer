@@ -144,10 +144,11 @@ chmod o+w "${CD2%/*}"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "the folder above the cache folder writable by others: no skip, the cache is off, and the line says how to fix it" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "chmod 700 both folders"'
 chmod o-w "${CD2%/*}"
-# N3: a green run whose key cannot be written says so (the folder above is read-only and the cache folder is gone).
-rm -rf "$CD2"; chmod 500 "${CD2%/*}"
+# N3: a green run whose key cannot be written says so. The folder above is a plain file, so mkdir -p of the cache
+# folder fails for every user; a read-only mode would not, since root writes through it (PR 73 pass 3, W3).
+rm -rf "${CD2%/*}"; : > "${CD2%/*}"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
-chmod 700 "${CD2%/*}"
+rm -f "${CD2%/*}"
 check "a green run whose key cannot be written says it is not recorded" eval '[ $r = 0 ] && printf %s "$out" | grep -q "could not be made or written"'
 unset XDG_CACHE_HOME
 echo "TOTAL: $PASS passed, $FAIL failed"
