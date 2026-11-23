@@ -60,12 +60,14 @@ remote_sha=$(git rev-parse "origin/$HEAD_REF")
 [ "$remote_sha" = "$PLANNED_SHA" ] || echo "head moved: re-sync and re-plan"
 ```
 
-`scripts/push-guard.sh <pr> --findings FILE` runs this check and three more in one call: the
+`bash -p scripts/push-guard.sh <pr> --findings FILE` runs this check and three more in one call: the
 checked-out branch is the pull request's head branch, the head is not on a fork, and every file a
 new commit touches is named by a finding, passed with `--allow`, or a test file. For a merge
 commit, the files it touches are the ones where it differs from git's automatic merge of its two
 parents, so pass the files you resolved by hand with `--allow`. It posts nothing and exits 1 with
-every reason when any check fails.
+every reason when any check fails. Start it with `bash -p`, which keeps an inherited `SHELLOPTS`,
+`BASHOPTS` or `BASH_ENV` from acting before its first line, and push only on exit 0 together with
+its `push-guard: ok.` line: exit 0 alone is not a pass.
 
 Rules:
 
