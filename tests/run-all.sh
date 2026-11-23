@@ -134,7 +134,8 @@ tree_key() {
       "$(python3 -V 2>&1)" "$(uname -sm 2>/dev/null)" "$(node -v 2>/dev/null)" "$(jq --version 2>/dev/null)" \
       "$(curl --version 2>/dev/null | head -n 1)"
     # the user's global git configuration changes what git diff and git hash-object produce: its digest is part of the key.
-    # The system configuration (git config --system) is not keyed: a change there needs --fresh.
+    # The system configuration (git config --system), the repository's own .git/config and .git/info/attributes are
+    # not keyed: a change there (a clean filter, for example) needs --fresh.
     sha256 "${HOME:-/dev/null}/.gitconfig" "${XDG_CONFIG_HOME:-${HOME:-/dev/null}/.config}/git/config" \
       "${GIT_CONFIG_GLOBAL:-/dev/null}" 2>/dev/null
   } | sha256 2>/dev/null | cut -d' ' -f1
