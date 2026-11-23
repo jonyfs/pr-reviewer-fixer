@@ -32,6 +32,17 @@ TOK="$$$(date +%s | tail -c 5)"
 printf 'sleep 21.%s &\necho started\nexit 0\n' "$TOK" >"$W/repo/tests/bg.sh"
 printf 'sleep 22.%s\nexit 0\n' "$TOK" >"$W/repo/tests/fg.sh"
 printf 'head -c 70000000 /dev/zero\nexit 0\n' >"$W/repo/tests/big.sh"
+# W3: what the command sees. Distinct exit codes name the rule that broke.
+cat >"$W/repo/tests/env.sh" <<'EOF'
+case "$1" in
+  token) [ -z "${GH_TOKEN:-}" ] || exit 7 ;;
+  home) case "$HOME" in */proof-check-*/home-*) ;; *) exit 8 ;; esac
+        [ -z "$(ls -A "$HOME")" ] || exit 9 ;;
+esac
+exit 0
+EOF
+# N3: a program found only through a relative PATH element, inside the checkout.
+printf '#!/bin/sh\nexit 0\n' >"$W/repo/pc-n3prog"; chmod +x "$W/repo/pc-n3prog"
 g add -A; g commit -q -m base
 BASE="$(g rev-parse HEAD)"; BASE_TREE="$(g rev-parse HEAD^{tree})"
 printf 'echo fixed\nexit 0\n' >"$W/repo/tests/fail.sh"; g commit -q -am fix
@@ -119,6 +130,29 @@ r=$(run "$W/fg.md" --timeout 1); check "a timed-out command -> 2, and its child 
 pkill -f "slee[p] 2[12].$TOK" 2>/dev/null
 closure "$W/big.md" "[$(entry 'bash tests/big.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
 r=$(run "$W/big.md"); check "output past the 64 MiB cap -> 2 (N4)" eval '[ $r = 2 ] && has "MiB"'
+
+# W3 (pass 1): one row per isolation rule, each failing when that rule alone is undone.
+closure "$W/envtok.md" "[$(entry 'bash tests/env.sh token' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$(GH_TOKEN=plain-test-value run "$W/envtok.md"); check "GH_TOKEN set for the checker does not reach the command -> 0" eval '[ $r = 0 ] && has "all match"'
+closure "$W/envhome.md" "[$(entry 'bash tests/env.sh home' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$(run "$W/envhome.md"); check "HOME is an empty proof-check scratch folder -> 0" eval '[ $r = 0 ] && has "all match"'
+closure "$W/mmfail.md" "[$(entry 'bash tests/pass.sh' 1 "$HEAD" "$HEAD_TREE"),$(entry 'bash tests/fg.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$(run "$W/mmfail.md" --timeout 1); check "a mismatch, then a timeout -> 1 (a mismatch wins)" eval '[ $r = 1 ] && has "also entry 2"'
+pkill -f "slee[p] 22.$TOK" 2>/dev/null
+mkdir -p "$W/hooks"; printf '#!/bin/sh\ntouch "%s"\n' "$W/hook-ran" >"$W/hooks/post-checkout"; chmod +x "$W/hooks/post-checkout"
+printf '[core]\n\thooksPath = %s\n' "$W/hooks" >"$W/gitconfig"; rm -f "$W/hook-ran"
+r=$(GIT_CONFIG_GLOBAL="$W/gitconfig" run "$W/one.md"); check "a hooksPath in the checker's git config runs no hook in the clone -> 0" eval '[ $r = 0 ] && [ ! -e "$W/hook-ran" ]'
+MANY=""; for k in $(seq 1 201); do MANY="$MANY${MANY:+,}$(entry 'bash tests/pass.sh' 0 "$HEAD" "$HEAD_TREE")"; done
+closure "$W/many.md" "[$MANY]" "$HEAD"
+r=$(run "$W/many.md"); check "201 entries -> 2, nothing run" eval '[ $r = 2 ] && has "the limit is 200" && ! has "re-running"'
+r=$( (cd "$W/repo" && bash "$PC" --file "$W/one.md" --allow-file "$ALLOW" --repo "$W/no-such-dir") </dev/null >"$W/out" 2>&1; echo $?)
+check "an unforeseen error (a --repo that does not exist) -> 2, internal error" eval '[ $r = 2 ] && has "internal error"'
+# N2: the final line names the head the proofs were bound to, and where it came from.
+r=$(run "$W/one.md"); check "the ok line names the head bound and its source (N2)" eval '[ $r = 0 ] && has "head bound ${HEAD:0:12} (the closure marker)"'
+# N3: a relative PATH element does not resolve a bare program inside the checkout.
+closure "$W/n3.md" "[$(entry 'pc-n3prog' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+r=$( (cd "$W/repo" && PATH=".:$PATH" PROOF_CHECK_ALLOW=pc-n3prog bash "$PC" --file "$W/n3.md") </dev/null >"$W/out" 2>&1; echo $?)
+check "a bare program found only through a relative PATH element -> 2 (N3)" eval '[ $r = 2 ] && has "could not start"'
 
 # Malformed input: exit 2, never 0.
 printf '```proofs\n[{"command": "bash tests/pass.sh",\n```\n' >"$W/bad.md"
