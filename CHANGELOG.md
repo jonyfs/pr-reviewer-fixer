@@ -46,7 +46,8 @@ live tip and ignores inherited shell options, and a hidden-text scan that fails 
   - It also excludes the base branch's live tip, read from GitHub, so a merge of a base that moved is not
     refused for the base's own files. A stale `baseRefOid` no longer counts them as the push's own. The
     tip is read only for a plain base name (one `git check-ref-format` accepts) and used only when the
-    clone holds it. When the tip cannot be used, the guard says so and refuses more, not less.
+    clone holds it. When the tip cannot be read or is not in the clone, only `baseRefOid` is excluded,
+    which refuses more, not less; a base name that is not plain is reported.
   - It restarts once, under `bash -p`, without an inherited `BASHOPTS`, `SHELLOPTS`, `BASH_ENV` or
     exported functions (it lists them with `node` when node is installed). If they are still there after
     the restart, it exits 2. The `review-cycle.sh` it runs starts with `bash -p` too.
@@ -64,7 +65,7 @@ live tip and ignores inherited shell options, and a hidden-text scan that fails 
   preflight refuses a conflicted merge and accepts the resolved one.
 - `remote-review.sh` counts fix commits from the head the review branch was cut from.
 
-Compatibility: no marker, label or exit code changes meaning. The new subcommands and flags can be ignored.
+Compatibility: no marker or label changes meaning, and the new subcommands and flags can be ignored.
 Below 1.0.0 these are minor: the `bash -p` start and the ok line for push-guard, the `Review mode:` line
 that `lint-report` requires, and an unflagged `run-all.sh` that may skip a tree that already passed.
 
