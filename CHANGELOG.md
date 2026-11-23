@@ -4,6 +4,70 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.22.0
+
+Faster and stricter review loop: new read-only commands, a suite cache, a push guard that reads the base's
+live tip and ignores inherited shell options, and a hidden-text scan that fails closed.
+
+- **Push guard: callers must start it with `bash -p` and push only on exit 0 together with its
+  `push-guard: ok.` line.** This is the change an installed copy must follow. Exit 0 alone is not a pass:
+  a `SHELLOPTS=noexec` in the environment runs nothing and exits 0. `pr-fixer` and `pr-merge-fixer`
+  (SKILL.md, `conflicts.md`, `cycles-and-races.md`), `docs/HOW-IT-WORKS.md` and `docs/REFERENCE.md` say so,
+  and a test row checks those texts.
+- **Review loop commands** (`review-cycle.sh`):
+  - `start --sha <head>` refuses when the pull request's head is no longer the commit the reviewer read.
+    Without `--sha`, `start` works as before.
+  - `next` (new, read-only) prints the one next step from the label and the head the last verdict covers.
+  - `wait-head <pr> [sha]` (new, read-only) polls the head every 2 s for at most 120 s after a push. Exit 0
+    when it matches, 3 when it never does. `harness-loop.md` uses it instead of a fixed wait.
+  - `preflight [base]` (new) runs the secret screen and the hidden-text scan on `origin/<base>..HEAD`
+    before a push, and refuses a change that adds merge conflict markers. It moves no label and posts
+    nothing.
+  - `delta [pr]` (new, read-only) prints the change since the last verdict's head, or says a full pass is
+    needed.
+  - `base-scanner [base]` (new) copies the base's `pr-reviewer/scripts` folder, with its modes, to a temp
+    folder, so a pull request that changes the scanner is checked with the base's copy.
+  - A PASSED `publish` re-runs the failed `review-gate` runs at that exact head.
+  - `lint-report` requires a `Review mode: separate agents | single session.` line in the coverage note.
+    A single-session review is allowed, but must say so.
+- **`tests/run-all.sh`**:
+  - `--only <words>` runs only the suites whose names match, for iteration. It is not the full run.
+  - Each suite's wall time is in the log, with the total.
+  - A suite cache: a full run of a tree that already passed prints `nothing re-run` and exits 0.
+    `--fresh` runs everything and is required before a PASSED verdict or a merge. A filtered run never
+    reads or writes the cache. The key covers the commit, uncommitted and untracked files, the toolchain
+    and the user's git config, but not the system git config, `.git/config` or `.git/info/attributes`.
+    A tree that changes during the run is not recorded.
+  - The cache is off when neither `XDG_CACHE_HOME` nor `HOME` is set. It is also off when its folder or
+    the folder above it is a link, has another owner, or is writable by its group or others, and when
+    the cache root is writable by its group or others without a sticky bit. The run says why and how to
+    turn it back on (`chmod 700`, `chmod go-w` or `chmod +t`).
+- **Push guard**:
+  - It also excludes the base branch's live tip, read from GitHub, so a merge of a base that moved is not
+    refused for the base's own files. A stale `baseRefOid` no longer counts them as the push's own. The
+    tip is read only for a plain base name (one `git check-ref-format` accepts) and used only when the
+    clone holds it. When the tip cannot be used, the guard says so and refuses more, not less.
+  - It restarts once, under `bash -p`, without an inherited `BASHOPTS`, `SHELLOPTS`, `BASH_ENV` or
+    exported functions (it lists them with `node` when node is installed). If they are still there after
+    the restart, it exits 2. The `review-cycle.sh` it runs starts with `bash -p` too.
+  - Names it did not write (paths, link names and targets, the branch, secret-scan hits) are quoted when
+    they hold a control character or U+0085, U+2028 or U+2029, and lines carrying them use `printf`.
+    Lists are sorted under the C locale, so a name that is not valid UTF-8 no longer empties a list.
+- **`scan-hidden.py` fails closed**: when a file that GitHub may render as Markdown changes and holds a
+  comment, a details tag or a hidden element, the whole file is reported, whatever the change. Source and
+  data files (code, `.txt`, `.csv`, `.yml` and similar) are skipped by this rule.
+- **Docs**: the examples of review markers in the skill references and docs use the bracket form `<!-[-]`,
+  so their raw text holds no literal comment opener for the scan to report. AGENTS.md
+  explains the form. Agents still write real markers in the plain form.
+- **Tests**: a mutation check (`tests/mutation/run.sh`) undoes each of four guards and requires its suite to
+  fail; its mutants run in parallel, 55 s instead of 14 min. A merge integration suite checks that
+  preflight refuses a conflicted merge and accepts the resolved one.
+- `remote-review.sh` counts fix commits from the head the review branch was cut from.
+
+Compatibility: no marker, label or exit code changes meaning. The new subcommands and flags can be ignored.
+Below 1.0.0 these are minor: the `bash -p` start and the ok line for push-guard, the `Review mode:` line
+that `lint-report` requires, and an unflagged `run-all.sh` that may skip a tree that already passed.
+
 ## 0.21.0
 
 One-line install from GitHub, automatic harness detection, and six more harnesses.
