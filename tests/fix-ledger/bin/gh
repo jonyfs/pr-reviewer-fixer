@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Fake gh for fix-ledger.sh: logs every call and answers from the files in $FAKE_DIR (fakegh.py).
+D="${FAKE_DIR:?}"
+printf '%s\n' "gh $*" >>"$D/calls.log"
+exec python3 -I "$(cd "$(dirname "$0")/.." && pwd)/fakegh.py" "$D" "$@"

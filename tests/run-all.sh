@@ -209,6 +209,7 @@ start "merge conflict end to end (preflight)"    env TEST_TAG="${P}run" bash "$H
 start "run-all cache key and refusals"             env TEST_TAG="${P}run" bash "$HERE/run-cache/run.sh"
 start "mutation check (guards)"                 env TEST_TAG="${P}run" bash "$HERE/mutation/run.sh"
 start "cycle budget and extend"                  env TEST_TAG="${P}rev" python3 "$HERE/budget/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
+start "fix-ledger.sh"                             env TEST_TAG="${P}run" bash "$HERE/fix-ledger/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "scan-hidden.py"                           env TEST_TAG="${P}rev" python3 "$HERE/scan-hidden/t.py" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "check-version.sh"                         env TEST_TAG="${P}rev" bash "$HERE/version/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "release.sh"                                env TEST_TAG="${P}run" bash "$HERE/release/run.sh"
