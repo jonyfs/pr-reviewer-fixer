@@ -115,7 +115,8 @@ else CACHE_DIR=""; fi
 # A planted key file would skip every suite, so the folder must be this user's alone: a real directory (not a link),
 # owned by this user, and writable by nobody else. Anything else turns the cache off. It is created with mode 700. The
 # folder above it (pr-reviewer-fixer, made with it) is held to the same rule, since whoever can write there can swap
-# the folder for another between the check and the read.
+# the folder for another between the check and the read. The check stops there: XDG_CACHE_HOME (or ~/.cache) itself
+# is not checked, so a cache root that others can write, with no sticky bit, still allows that swap one level up.
 cache_dir_ok() {
   local d
   for d in "$CACHE_DIR" "${CACHE_DIR%/*}"; do
