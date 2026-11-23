@@ -33,6 +33,7 @@
 # that runs out is killed with its whole process group, and so is every probe after it exits. A
 # HUP, INT, QUIT or TERM, to the script or to its process group, kills the running probe's group
 # too, removes the worktree and exits 2; one the caller ignores stays ignored and stops nothing.
+# This holds whenever the stop lands, while a probe runs or while a side's runner is still starting.
 # A probe inherits the caller's signal dispositions (a signal the caller ignores, such as HUP under
 # nohup, stays ignored in the probe; the others are default).
 #
@@ -85,10 +86,17 @@ PYPID=""; LAUNCHING=0; PENDING=""
 # signal is one the runner handles too (a fixed TERM would be dropped under a TERM-ignoring caller).
 # While the runner is being started and its pid is not known yet, the stop is kept for side() to
 # deliver once it is, so the worktree is never removed under a runner that goes on.
+# The signal is sent again every 0.1 s until the runner exits. bash starts the runner as a
+# background job with INT and QUIT ignored, and its handlers exist only once python has started,
+# so one send can land before them and be dropped; a repeat is harmless (the handler only records
+# it). Never KILL the runner: it is what kills the running probe's group.
 stop() { # stop SIGNAL
   if [ "$LAUNCHING" = 1 ] && [ -z "$PYPID" ]; then PENDING="$1"; return; fi
   trap '' HUP INT QUIT TERM
-  if [ -n "$PYPID" ]; then kill -"$1" "$PYPID" 2>/dev/null; wait "$PYPID" 2>/dev/null; fi
+  if [ -n "$PYPID" ]; then
+    while kill -"$1" "$PYPID" 2>/dev/null; do sleep 0.1; done
+    wait "$PYPID" 2>/dev/null
+  fi
   exit 2
 }
 trap cleanup EXIT
@@ -267,6 +275,14 @@ def main():
     if mode == "ignored":  # run in the foreground, so it sees the dispositions the caller gave
         print(" ".join(n for n in SIGNALS if signal.getsignal(getattr(signal, n)) == signal.SIG_IGN))
         return 0
+    if mode == "run":
+        # First, before the probe file is read: this runner is a background job, which bash starts
+        # with INT and QUIT ignored. A signal the caller ignored stays ignored (and so reaches the
+        # probe ignored); every other one gets the handler, which exec turns back into the default
+        # in the probe. A stop that lands before this line is sent again by the script's stop().
+        ignored = set(sys.argv[8].split())
+        for n in SIGNALS:
+            signal.signal(getattr(signal, n), signal.SIG_IGN if n in ignored else on_signal)
     probe_file = sys.argv[2]
     probes = expand(probe_file)
     if mode == "list":
@@ -276,12 +292,6 @@ def main():
         print("behaviour-diff: %d probes" % len(probes))
         return 0
     wt, scratch, side, results = sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6]
-    # This runner is a background job, which bash starts with INT and QUIT ignored. A signal the
-    # caller ignored stays ignored (and so reaches the probe ignored); every other one gets the
-    # handler, which exec turns back into the default in the probe.
-    ignored = set(sys.argv[8].split())
-    for n in SIGNALS:
-        signal.signal(getattr(signal, n), signal.SIG_IGN if n in ignored else on_signal)
     rows = []
     for p in probes:
         if STOP:

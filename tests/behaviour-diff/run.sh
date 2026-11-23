@@ -205,6 +205,67 @@ sigrow "QUIT to the process group (Ctrl-backslash) -> 2, the running probe is de
 # must reach the runner by a signal it handles, not be dropped for every remaining probe of the side.
 sigrow "INT to the script alone under a caller that ignores TERM -> 2, the running probe is dead, worktree removed" INT script TERM
 sigrow "HUP to the script alone under a caller that ignores INT, QUIT and TERM -> 2, the running probe is dead" HUP script "INT QUIT TERM"
+# W5: a stop that lands while a side's runner is still starting. Two windows, each made wide on purpose:
+#   startup  a python3 shim first on PATH holds the run-mode runner before python starts (so before
+#            its handlers exist; a background job has INT and QUIT ignored) until the signal is sent;
+#   expand   the probe file is padded with whitespace, so reading it takes seconds, and the signal is
+#            sent as soon as the run-mode runner exists.
+# A stop must start no probe at all; a signal the caller ignores stops nothing (both sides run, 0).
+# Each probe writes its pid, so a dropped stop shows as probes started, not only as a late exit.
+mkdir -p "$W/shim"
+printf '#!/usr/bin/env bash\nif [ "${3-}" = run ] && [ -n "${BD_HOLD-}" ]; then\n  : >"$BD_HOLD.held"; i=0\n  while [ ! -e "$BD_HOLD.go" ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done\nfi\nexec "%s" "$@"\n' \
+  "$(command -v python3)" >"$W/shim/python3"; chmod +x "$W/shim/python3"
+upfile() { # out-file probe-shell-body pad-MB
+  python3 -I -c 'import json, sys
+probes = [{"id": "s%d" % k, "argv": ["bash", "-c", sys.argv[2], sys.argv[4]]} for k in (1, 2, 3)]
+with open(sys.argv[1], "w") as fh:
+    fh.write(json.dumps({"timeout": 3, "probes": probes}) + " " * (int(sys.argv[3]) << 20))' "$1" "$2" "$3" "$W/pids-up"
+}
+upfile "$W/p-up-stop.json" 'echo $$ >>"$0"; exec sleep 300' "${BD_PAD_MB:-16}"
+upfile "$W/p-up-ign.json" 'echo $$ >>"$0"' "${BD_PAD_MB:-16}"
+startrow() { # name signal group|script startup|expand [signals the caller ignores]
+  local sp f="$W/p-up-stop.json" want=stop hold="" seen=0 rc n alive=0 i=0
+  case " ${5:-} " in *" $2 "*) f="$W/p-up-ign.json"; want=ignored ;; esac
+  : >"$W/pids-up"; rm -f "$W/hold.held" "$W/hold.go"
+  [ "$4" = startup ] && hold="$W/hold"
+  (cd "$W/repo" && PATH="$W/shim:$PATH" BD_HOLD="$hold" exec perl -e '$SIG{$_}="DEFAULT" for qw(HUP INT QUIT TERM); $SIG{$_}="IGNORE" for split / /, shift; setpgrp(0,0); exec @ARGV' \
+    "${5:-}" bash "$BD" "$BASE" "$FIX" "$f") >"$W/out" 2>"$W/err" </dev/null &
+  sp=$!
+  while [ $i -lt 1200 ] && [ $seen = 0 ]; do
+    if [ -n "$hold" ]; then [ -e "$W/hold.held" ] && seen=1; else pgrep -P "$sp" -f ' run ' >/dev/null 2>&1 && seen=1; fi
+    [ $seen = 1 ] || { sleep 0.05; i=$((i+1)); }
+  done
+  if [ $seen = 1 ]; then
+    if [ "$3" = group ]; then kill -"$2" -- -"$sp"; else kill -"$2" "$sp"; fi
+  fi
+  : >"$W/hold.go"
+  i=0; while [ $i -lt 1200 ] && kill -0 "$sp" 2>/dev/null; do sleep 0.1; i=$((i+1)); done
+  kill -0 "$sp" 2>/dev/null && kill -KILL -- -"$sp" 2>/dev/null
+  wait "$sp"; rc=$?
+  n="$(wc -l <"$W/pids-up" | tr -d ' ')"
+  while read -r i; do kill -0 "$i" 2>/dev/null && { alive=1; kill -KILL "$i" 2>/dev/null; }; done <"$W/pids-up"
+  if [ $want = stop ]; then
+    check "$1" eval '[ $seen = 1 ] && [ $rc = 2 ] && [ "$n" = 0 ] && [ $alive = 0 ] && clean'
+  else
+    check "$1" eval '[ $seen = 1 ] && [ $rc = 0 ] && [ "$n" = 6 ] && has "same 3," && clean'
+  fi
+}
+if [ "${BD_MATRIX:-0}" = 1 ]; then
+  # The whole matrix: caller dispositions x signal x group or script alone x window (80 rows).
+  for ign in "" TERM INT "INT QUIT TERM" HUP; do for s in HUP INT QUIT TERM; do for to in group script; do for win in startup expand; do
+    startrow "matrix: caller ignores [${ign:--}], $s to the $to, $win window" "$s" "$to" "$win" "$ign"
+  done; done; done; done
+else
+  startrow "INT to the process group while the runner starts (before its handlers) -> 2, no probe started" INT group startup
+  startrow "QUIT to the process group while the runner starts (before its handlers) -> 2, no probe started" QUIT group startup
+  startrow "INT to the script alone while the runner starts (before its handlers) -> 2, no probe started" INT script startup
+  startrow "HUP to the process group while the runner starts -> 2, no probe started" HUP group startup
+  startrow "TERM to the script alone while the runner starts -> 2, no probe started" TERM script startup
+  startrow "INT to the script alone while the runner starts, caller ignores TERM -> 2, no probe started" INT script startup TERM
+  startrow "INT to the process group while the runner starts, caller ignores INT -> stops nothing, both sides run, 0" INT group startup INT
+  startrow "INT to the process group while the runner reads a padded probe file -> 2, no probe started" INT group expand
+  startrow "QUIT to the script alone while the runner reads a padded probe file -> 2, no probe started" QUIT script expand
+fi
 # A probe sees the signal dispositions the caller gave the script, as when the runner ran in the
 # foreground: none ignored from a plain caller, HUP ignored under a nohup-like caller. Exit is a
 # bitmask of the ignored ones: HUP 1, INT 2, QUIT 4, TERM 8.
