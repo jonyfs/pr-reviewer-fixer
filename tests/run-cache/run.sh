@@ -119,7 +119,7 @@ check "the same green full run with no edit writes the key" eval '[ $r = 0 ] && 
 # PR 71 debt N3: the cache folder must be this user's alone. It is created with mode 700; a folder others can write
 # to, or a link, turns the cache off even when a key file for this tree is in it.
 # find -perm 700 (an exact mode) reads the same with BSD and GNU find; stat -f means another thing to GNU stat.
-check "the cache folder is created with mode 700" eval '[ -n "$(find "$CD2" -maxdepth 0 -perm 700)" ]'
+check "the cache folder is created with mode 700 (a setgid bit from the folder above is allowed)" eval '[ -n "$(find "$CD2" -maxdepth 0 -perm -700 ! -perm -g+w ! -perm -o+w ! -perm -g+r ! -perm -o+r)" ]'
 chmod g+w "$CD2"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "a group-writable cache folder with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
@@ -139,6 +139,16 @@ out="$(PATH="$W/idbin:$PATH" bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "a cache folder with another owner (id -u gives another uid) with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "the folder restored to the user's alone: the key skips the run again" eval '[ $r = 0 ] && printf %s "$out" | grep -q "nothing re-run"'
+# PR 73 debt. N2: the folder above the cache folder is held to the same rule.
+chmod o+w "${CD2%/*}"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "the folder above the cache folder writable by others: no skip, the cache is off, and the line says how to fix it" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "chmod 700 both folders"'
+chmod o-w "${CD2%/*}"
+# N3: a green run whose key cannot be written says so (the folder above is read-only and the cache folder is gone).
+rm -rf "$CD2"; chmod 500 "${CD2%/*}"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+chmod 700 "${CD2%/*}"
+check "a green run whose key cannot be written says it is not recorded" eval '[ $r = 0 ] && printf %s "$out" | grep -q "could not be made or written"'
 unset XDG_CACHE_HOME
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

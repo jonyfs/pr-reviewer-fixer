@@ -113,10 +113,15 @@ if [ -n "${XDG_CACHE_HOME:-}" ]; then CACHE_DIR="$XDG_CACHE_HOME/pr-reviewer-fix
 elif [ -n "${HOME:-}" ]; then CACHE_DIR="$HOME/.cache/pr-reviewer-fixer/run-all"
 else CACHE_DIR=""; fi
 # A planted key file would skip every suite, so the folder must be this user's alone: a real directory (not a link),
-# owned by this user, and writable by nobody else. Anything else turns the cache off. It is created with mode 700.
+# owned by this user, and writable by nobody else. Anything else turns the cache off. It is created with mode 700. The
+# folder above it (pr-reviewer-fixer, made with it) is held to the same rule, since whoever can write there can swap
+# the folder for another between the check and the read.
 cache_dir_ok() {
-  [ -d "$CACHE_DIR" ] && [ ! -L "$CACHE_DIR" ] || return 1
-  [ -n "$(find "$CACHE_DIR" -maxdepth 0 -user "$(id -u)" ! -perm -g+w ! -perm -o+w 2>/dev/null)" ]
+  local d
+  for d in "$CACHE_DIR" "${CACHE_DIR%/*}"; do
+    [ -d "$d" ] && [ ! -L "$d" ] || return 1
+    [ -n "$(find "$d" -maxdepth 0 -user "$(id -u)" ! -perm -g+w ! -perm -o+w 2>/dev/null)" ] || return 1
+  done
 }
 # sha256sum where it exists (the header names it), shasum -a 256 otherwise: the same digest either way.
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
@@ -153,7 +158,7 @@ if [ -z "${RUN_ONLY:-}" ] && [ -z "$CACHE_DIR" ]; then
 elif [ -z "${RUN_ONLY:-}" ]; then
   KEY="$(tree_key)"   # computed on every full run: a --fresh run writes the key too
   if [ -e "$CACHE_DIR" ] && ! cache_dir_ok; then
-    echo "== run-all: the cache folder $CACHE_DIR is not this user's alone (another owner, a link, or writable by others); the suite cache is off."
+    echo "== run-all: the cache folder $CACHE_DIR (or the folder above it) is not this user's alone (another owner, a link, or writable by others); the suite cache is off. If it is yours, chmod 700 both folders, or remove them, to turn it back on."
     KEY=""
   fi
   if [ "$FRESH" = 0 ] && [ -n "$KEY" ] && [ -f "$CACHE_DIR/$KEY" ]; then
@@ -425,7 +430,9 @@ model_key_scan
 # Such a run says so, so a suite that leaves a file behind does not turn the cache off without a word.
 if [ "$fail" = 0 ] && [ -z "${RUN_ONLY:-}" ] && [ -n "${KEY:-}" ] && [ -n "$CACHE_DIR" ]; then
   if [ "$(tree_key)" = "$KEY" ]; then
-    (umask 077; mkdir -p "$CACHE_DIR") 2>/dev/null && cache_dir_ok && : >"$CACHE_DIR/$KEY" 2>/dev/null
+    if ! { (umask 077; mkdir -p "$CACHE_DIR") 2>/dev/null && cache_dir_ok && : >"$CACHE_DIR/$KEY" 2>/dev/null; }; then
+      echo "== run-all: the cache folder $CACHE_DIR could not be made or written, or is not this user's alone, so this green run is not recorded in the suite cache."
+    fi
   else
     echo "== run-all: the tree changed during the run (a suite or an edit touched a file), so this green run is not recorded in the suite cache."
   fi
