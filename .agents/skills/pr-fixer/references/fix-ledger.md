@@ -34,7 +34,7 @@ request was read, 2 on a refusal or when one could not be read (the others are s
 | `commits` | The four counts of those statuses |
 | `cycles` | Per fix cycle: the commit pass c reviewed, the closure head, the closure's counts, `escalated`, the fixer commits, and `new_critical` and `new_warning` on pass c+1 (null when either findings block cannot be read) |
 | `findings` | `closed` and `refused` summed over the trusted closures, `escalated` from their labelled lines, `debt` from the newest closure |
-| `refused_findings` | Each refused id with the file and line pass c cited, the reviewer's status on pass c+1, `reraised_at_pass`, `human_fix` (a commit sha) and `false_refusal` |
+| `refused_findings` | Each refused id with the file and line pass c cited, the reviewer's status on pass c+1, `reraised_at_pass`, `human_fix` (a commit sha), `human_fix_checked` (false when the clone lacks the commits) and `false_refusal` (null when it could not be judged) |
 | `complete`, `incomplete_reasons` | False when a trusted marker may be missing; such a row leaves every rate |
 | `ignored` | Markers by untrusted logins, trusted marker comments edited, trusted comments deleted by someone else |
 
@@ -62,7 +62,9 @@ Only ids, counts, shas, paths and line numbers are stored, never comment prose.
 - **False refusal**: a later pass lists the id as open or `refused-rejected` (re-raised), or a
   later non-fixer commit removes or replaces the line the pass c block cites, followed by blame
   from the commit pass c reviewed. The audit samples refused findings from the ledger
-  (`--sample N`, seeded, all by default) and prints the rate.
+  (`--sample N`, seeded, all by default) and prints the rate. A refusal no later pass re-raised,
+  recorded from a clone that lacked the commits, is printed as not judged and left out of the
+  rate, and the audit says how many there were.
 
 ## Trust
 
@@ -106,15 +108,20 @@ A pull request recorded twice is not counted twice.
   (debt fixed by hand after the last closure, say) counts as a person's, so its changes to fixer
   lines count as overwrites even when the same session wrote them.
 - Lines are followed by `git blame` without move or copy detection, and renames are not followed.
-  A merge commit is never judged as a later commit. The half-of-the-lines threshold is a choice;
+  A pure rename by a person removes every line of the old path, so the fixer lines in that file
+  count as overwritten. A merge commit is never judged as a later commit, and a merge commit inside
+  a fixer range is not a fixer commit. The half-of-the-lines threshold is a choice;
   the line counts are in the ledger for anyone who wants another.
 - Only the pull request's own commits are read: a revert on the base branch after the merge is not
   seen.
 - `gh pr view --json commits` lists at most 250 commits; a longer pull request is judged on those.
 - Nothing is fetched. For a repository that squash-merges, fetch the heads first:
   `git fetch origin 'refs/pull/*/head:refs/remotes/origin/pr/*'`. Otherwise its fixer commits are
-  `unknown` and leave the rate.
+  `unknown` and its refusals that no pass re-raised are not judged; both leave their rate.
 - A closure written without the labelled lines counts no escalation and no refusal ids of its own;
   the refused ids then come from the next pass's findings block alone.
+- A trusted login that edits its own closure so the marker no longer parses is not caught: the
+  editor is the author and the body no longer holds a marker. It is the same limit `review-cycle.sh`
+  documents for a deletion by the author.
 - A human fix is detected on the exact cited line only. A fix that leaves that line and changes
   its neighbours is not seen, so the false-refusal rate is a lower bound.
