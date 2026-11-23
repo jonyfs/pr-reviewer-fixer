@@ -118,8 +118,9 @@ out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "the same green full run with no edit writes the key" eval '[ $r = 0 ] && [ -e "$CD2/$KG" ]'
 # PR 71 debt N3: the cache folder must be this user's alone. It is created with mode 700; a folder others can write
 # to, or a link, turns the cache off even when a key file for this tree is in it.
-# find -perm 700 (an exact mode) reads the same with BSD and GNU find; stat -f means another thing to GNU stat.
-check "the cache folder is created with mode 700 (a setgid bit from the folder above is allowed)" eval '[ -n "$(find "$CD2" -maxdepth 0 -perm -700 ! -perm -g+w ! -perm -o+w ! -perm -g+r ! -perm -o+r)" ]'
+# find -perm reads the same with BSD and GNU find; stat -f means another thing to GNU stat. Owner rwx and no group or
+# other bit is mode 700 exactly, except a setgid bit inherited from the folder above (setgid is not g+x) (PR 73 N5).
+check "the cache folder is created with mode 700 (a setgid bit from the folder above is allowed)" eval '[ -n "$(find "$CD2" -maxdepth 0 -perm -700 ! -perm -g+w ! -perm -o+w ! -perm -g+r ! -perm -o+r ! -perm -g+x ! -perm -o+x)" ]'
 chmod g+w "$CD2"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 check "a group-writable cache folder with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
