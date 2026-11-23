@@ -206,7 +206,9 @@ entry, as in `bash tests/run-all.sh --fresh`. It validates every entry before an
 runs, splits each command on spaces and runs it as an argument list, never through `eval` or a
 shell, with stdin from `/dev/null` and an empty scratch `HOME`. The allowlist limits which command
 runs, not what it does: the checkout is the pull request's code, so permit only commands you would
-run on that code anyway. An agent never sets the allowlist for itself.
+run on that code anyway. The `..` and `/` rules check a word's text, not where it leads: a relative
+path can still leave the checkout through a symlink the pull request commits. An agent never sets
+the allowlist for itself.
 
 ## What this is not
 
