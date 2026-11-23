@@ -38,7 +38,8 @@ check "a filter that matches no suite exits 1" [ "$r" = 1 ]
 # The cache's skip, its --fresh bypass, its write gate and the --only guard (PR 65 pass 3, W4). The scratch repository has
 # no suites, so a full run fails at once, and no suite runs here. XDG_CACHE_HOME is a scratch folder.
 export XDG_CACHE_HOME="$W/xdg"; CD="$XDG_CACHE_HOME/pr-reviewer-fixer/run-all"
-rm -rf "$XDG_CACHE_HOME"; mkdir -p "$CD"
+# The folder is made as run-all.sh makes it (mode 700): under a umask of 002 a plain mkdir gives 775, which turns the cache off.
+rm -rf "$XDG_CACHE_HOME"; (umask 077; mkdir -p "$CD")
 KEYNOW="$(key)"
 : >"$CD/$KEYNOW"
 out="$(bash "$R/tests/run-all.sh" 2>&1)"; r=$?
@@ -74,5 +75,82 @@ KC1="$(GIT_CONFIG_GLOBAL="$W/gcg.config" bash "$R/tests/run-all.sh" --print-key 
 printf '[user]\n\tname = two\n' > "$W/gcg.config"
 KC2="$(GIT_CONFIG_GLOBAL="$W/gcg.config" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
 check "changing the file GIT_CONFIG_GLOBAL names changes the key" eval '[ -n "$KC1" ] && [ "$KC1" != "$KC2" ]'
+# The declared debt of PR 65 (N1-N3)
+# N2: a textconv driver must not hide a change: two contents a driver renders alike still give two keys.
+printf '#!/bin/sh\necho same\n' > "$W/same.sh"; chmod +x "$W/same.sh"
+g config diff.same.textconv "$W/same.sh"; printf 'a.md diff=same\n' > "$R/.git/info/attributes"
+printf 'one\n' > "$R/a.md"; KT1="$(key)"; printf 'two\n' > "$R/a.md"; KT2="$(key)"
+check "a textconv driver does not hide a change to a tracked file (--no-textconv)" eval '[ -n "$KT1" ] && [ "$KT1" != "$KT2" ]'
+g checkout -q -- a.md; rm -f "$R/.git/info/attributes"
+# N1: sha256sum is used where it exists (a stub that prints a fixed digest makes the key that digest).
+mkdir -p "$W/shabin"; printf '#!/bin/sh\n[ $# -gt 0 ] || cat >/dev/null; echo "stubdigest  -"\n' > "$W/shabin/sha256sum"; chmod +x "$W/shabin/sha256sum"
+KS="$(PATH="$W/shabin:$PATH" bash "$R/tests/run-all.sh" --print-key 2>/dev/null)"
+check "the key is made with sha256sum when it is on PATH" [ "$KS" = stubdigest ]
+# N3: with HOME and XDG_CACHE_HOME both unset there is no per-user folder, so the cache is off (no shared /.cache).
+out="$(env -u HOME -u XDG_CACHE_HOME bash "$R/tests/run-all.sh" 2>&1)"
+check "HOME and XDG_CACHE_HOME unset: the cache is off, said plainly" eval 'printf %s "$out" | grep -q "the suite cache is off"'
+out="$(env -u HOME XDG_CACHE_HOME= bash "$R/tests/run-all.sh" 2>&1)"
+check "HOME unset and XDG_CACHE_HOME empty: the cache is off too" eval 'printf %s "$out" | grep -q "the suite cache is off"'
+# N4 (PR 71 pass 1, W1): a green full run records its key only when the tree is unchanged at the end. A second scratch
+# repository holds the skills, the gate workflow, VERSION and CHANGELOG.md copied from this checkout, so the checks after
+# the suites pass, and a stub at each suite path run-all.sh starts (taken from run-all.sh itself), each exiting 0. With
+# EDIT_DURING_RUN set, the stubs edit a tracked file while the run is under way.
+SR="$(cd "$T/../.." && pwd)"; R2="$W/green"; mkdir -p "$R2/tests"; cp "$SRC" "$R2/tests/run-all.sh"
+(cd "$SR" && git ls-files -z -- .agents .github/workflows/review-gate.yml VERSION CHANGELOG.md | xargs -0 tar cf -) | tar xf - -C "$R2"
+grep -oE '"\$HERE/[^"]+\.(sh|py)"' "$SRC" | sed 's/^"\$HERE\///; s/"$//' | sort -u | while IFS= read -r s; do
+  mkdir -p "$R2/tests/$(dirname "$s")"
+  case "$s" in
+    *.py) printf 'pass\n' > "$R2/tests/$s" ;;
+    *) printf '#!/usr/bin/env bash\n[ -z "${EDIT_DURING_RUN:-}" ] || echo edited >> "$(cd "$(dirname "$0")" && git rev-parse --show-toplevel)/a.md"\nexit 0\n' > "$R2/tests/$s" ;;
+  esac
+done
+echo base > "$R2/a.md"
+g2() { git -C "$R2" -c user.name=t -c user.email=t@example.com "$@"; }
+g2 init -q -b main; g2 add -A; g2 commit -qm base
+export XDG_CACHE_HOME="$W/xdg2"; CD2="$XDG_CACHE_HOME/pr-reviewer-fixer/run-all"; rm -rf "$XDG_CACHE_HOME"
+KG="$(bash "$R2/tests/run-all.sh" --print-key 2>/dev/null)"
+out="$(EDIT_DURING_RUN=1 bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a green full run that edits a tracked file is green (exit 0) and edited the file" eval '[ $r = 0 ] && grep -q edited "$R2/a.md"'
+check "a green full run whose tree changed during the run writes no key" eval '[ -n "$KG" ] && [ ! -e "$CD2/$KG" ] && [ -z "$(ls -A "$CD2" 2>/dev/null)" ]'
+check "a green full run whose tree changed says it was not recorded" eval 'printf %s "$out" | grep -q "not recorded"'
+g2 checkout -q -- a.md
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "the same green full run with no edit writes the key" eval '[ $r = 0 ] && [ -e "$CD2/$KG" ]'
+# PR 71 debt N3: the cache folder must be this user's alone. It is created with mode 700; a folder others can write
+# to, or a link, turns the cache off even when a key file for this tree is in it.
+# find -perm reads the same with BSD and GNU find; stat -f means another thing to GNU stat. Owner rwx and no group or
+# other bit is mode 700 exactly, except a setgid bit inherited from the folder above (setgid is not g+x) (PR 73 N5).
+check "the cache folder is created with mode 700 (a setgid bit from the folder above is allowed)" eval '[ -n "$(find "$CD2" -maxdepth 0 -perm -700 ! -perm -g+w ! -perm -o+w ! -perm -g+r ! -perm -o+r ! -perm -g+x ! -perm -o+x)" ]'
+chmod g+w "$CD2"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a group-writable cache folder with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
+chmod g-w "$CD2"; mv "$CD2" "$CD2.real"; ln -s "$CD2.real" "$CD2"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a cache folder that is a symbolic link: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
+rm -f "$CD2"; mv "$CD2.real" "$CD2"
+# PR 73 pass 1, W2: the other two checks of cache_dir_ok each have a row, a folder writable by others and a folder
+# with another owner. The owner row puts an id stub first on PATH that gives another uid for -u, so -user misses.
+chmod o+w "$CD2"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a cache folder writable by others with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
+chmod o-w "$CD2"
+REAL_ID="$(command -v id)"; OTHER_UID=$(( $(id -u) + 1 )); mkdir -p "$W/idbin"
+printf '#!/bin/sh\nif [ "$*" = -u ]; then echo %s; else exec %s "$@"; fi\n' "$OTHER_UID" "$REAL_ID" > "$W/idbin/id"; chmod +x "$W/idbin/id"
+out="$(PATH="$W/idbin:$PATH" bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "a cache folder with another owner (id -u gives another uid) with a key for this tree: no skip, the cache is off" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "the suite cache is off"'
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "the folder restored to the user's alone: the key skips the run again" eval '[ $r = 0 ] && printf %s "$out" | grep -q "nothing re-run"'
+# PR 73 debt. N2: the folder above the cache folder is held to the same rule.
+chmod o+w "${CD2%/*}"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+check "the folder above the cache folder writable by others: no skip, the cache is off, and the line says how to fix it" eval '! printf %s "$out" | grep -q "nothing re-run" && printf %s "$out" | grep -q "chmod 700 both folders"'
+chmod o-w "${CD2%/*}"
+# N3: a green run whose key cannot be written says so. The folder above is a plain file, so mkdir -p of the cache
+# folder fails for every user; a read-only mode would not, since root writes through it (PR 73 pass 3, W3).
+rm -rf "${CD2%/*}"; : > "${CD2%/*}"
+out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
+rm -f "${CD2%/*}"
+check "a green run whose key cannot be written says it is not recorded" eval '[ $r = 0 ] && printf %s "$out" | grep -q "could not be made or written"'
+unset XDG_CACHE_HOME
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
