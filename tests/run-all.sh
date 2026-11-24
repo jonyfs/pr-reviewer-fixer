@@ -458,14 +458,19 @@ for f in references/pr-protocol.md references/harness-matrix.md references/harne
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-merge-fixer/$f" \
     && echo "== $f identical in pr-merge-fixer" || { echo "== $f DIFFERS in pr-merge-fixer"; fail=1; }
 done
-# The pr-fixer catalog's Counts section must agree with its tables: 100 rows, each Target one of
+# Each skill's improvements catalog (pr-fixer and pr-reviewer) has a Counts section that must agree
+# with its tables: 100 rows, each Target one of
 # SKILL, reference, shipped or backlog, the SKILL, shipped and backlog item lists equal to the rows
-# with that Target, and the reference count equal to the rest. The reviewer's catalog has no counts.
+# with that Target, and the reference count equal to the rest.
 # Every row is counted before the dict is built, so a repeated item number fails even when the copy
 # has the same Target, and a shipped Target must name a path (`shipped: <path>`), not stand bare: a word on each side
-# of a slash, naming a file or folder under .agents/skills/pr-fixer/ or the repository's root (PR 86 N6).
-if cat_out="$(python3 -I - "$ROOT/.agents/skills/pr-fixer/references/improvements-catalog.md" "$ROOT" <<'PY'
+# of a slash, naming a file or folder under that catalog's own skill folder (.agents/skills/<skill>/) or the
+# repository's root (PR 86 N6). The path is the cell's first token: `scripts/review-cycle.sh export-sarif` names
+# scripts/review-cycle.sh. The python takes the catalog, the root and the skill folder relative to the root.
+for cat_skill in pr-fixer pr-reviewer; do
+if cat_out="$(python3 -I - "$ROOT/.agents/skills/$cat_skill/references/improvements-catalog.md" "$ROOT" ".agents/skills/$cat_skill" <<'PY'
 import collections, os, re, sys
+skill_dir = sys.argv[3]
 text = open(sys.argv[1], encoding="utf-8").read()
 found = [(int(m.group(1)), m.group(2).strip())
          for m in re.finditer(r"^\| (\d+) \|.*\| ([^|]*?) \|\s*$", text, re.M)]
@@ -476,8 +481,8 @@ for n, t in found:
     p = re.match(r"shipped: `?([\w.-]*\w[\w.-]*/[\w./-]*\w[\w./-]*)", t)
     if t.startswith("shipped") and not p:
         bad.append("item %d Target %r: shipped needs 'shipped: <path>'" % (n, t)); nopath.add(n)
-    elif p and not any(os.path.exists(os.path.join(sys.argv[2], d, p.group(1))) for d in (".agents/skills/pr-fixer", "")):
-        bad.append("item %d Target %r: %s is not under .agents/skills/pr-fixer/ or the root" % (n, t, p.group(1))); nopath.add(n)
+    elif p and not any(os.path.exists(os.path.join(sys.argv[2], d, p.group(1))) for d in (skill_dir, "")):
+        bad.append("item %d Target %r: %s is not under %s/ or the root" % (n, t, p.group(1), skill_dir)); nopath.add(n)
     rows[n] = "shipped" if t.startswith("shipped: ") and n not in nopath else t
 got = {k: sorted(n for n, t in rows.items() if t == k) for k in ("SKILL", "reference", "shipped", "backlog")}
 bad += ["%d rows, not items 1-100" % len(rows)] if sorted(rows) != list(range(1, 101)) else []
@@ -495,10 +500,11 @@ print("; ".join(bad) or " ".join("%s %d" % (k, len(v)) for k, v in got.items()))
 sys.exit(1 if bad else 0)
 PY
 )"; then
-  echo "== pr-fixer catalog counts match its Target column ($cat_out)"
+  echo "== $cat_skill catalog counts match its Target column ($cat_out)"
 else
-  echo "== pr-fixer catalog counts DISAGREE with its Target column: $cat_out"; fail=1
+  echo "== $cat_skill catalog counts DISAGREE with its Target column: $cat_out"; fail=1
 fi
+done
 # The merge fixer runs the project's build, tests and lockfile regeneration on the pull request's code,
 # so `review-cycle.sh fix` (the fork and collaborator guard) must run before its first write on every
 # pull request, reviewed or not. Its text may not make that step conditional or skippable.

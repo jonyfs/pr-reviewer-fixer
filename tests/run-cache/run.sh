@@ -264,17 +264,25 @@ out="$(XDG_CACHE_HOME="$W/xdg-n3" bash "$R3/tests/run-all.sh" --fresh 2>&1)"; r=
 check "a failing suite with no FAIL or failed line prints its log's last lines, not only its last three (PR 88 N3)" \
   eval '[ "$r" != 0 ] && printf %s "$out" | grep -q "^   | boom: the suite stopped in another form$" && printf %s "$out" | grep -q "no FAIL or failed line in the log"'
 unset XDG_CACHE_HOME
-# PR 86 N6: the pr-fixer catalog check (the python run-all.sh feeds the catalog) needs a word on each side of a shipped
-# path's slash, and the path must exist under .agents/skills/pr-fixer/ or the repository's root. The check is taken out
-# of run-all.sh and run on the real catalog and on mutated copies.
+# PR 86 N6: the catalog check (the python run-all.sh feeds each skill's catalog) needs a word on each side of a shipped
+# path's slash, and the path must exist under that catalog's skill folder or the repository's root. The check is taken
+# out of run-all.sh and run on the real catalogs and on mutated copies; its third argument is the skill folder.
 CROOT="$(cd "$T/../.." && pwd)"; CAT="$CROOT/.agents/skills/pr-fixer/references/improvements-catalog.md"
+RCAT="$CROOT/.agents/skills/pr-reviewer/references/improvements-catalog.md"
 awk '/^if cat_out=.*<<.PY.$/{p=1; next} p&&/^PY$/{exit} p' "$SRC" >"$W/catalog-check.py"
-python3 -I "$W/catalog-check.py" "$CAT" "$CROOT" >/dev/null 2>&1; r=$?
+python3 -I "$W/catalog-check.py" "$CAT" "$CROOT" .agents/skills/pr-fixer >/dev/null 2>&1; r=$?
 check "the catalog check passes the real catalog" eval '[ -s "$W/catalog-check.py" ] && [ "$r" = 0 ]'
 cat_mut() { sed "s#| shipped: \`scripts/proof-check.sh\` (\#82) |#| shipped: $1 (\#82) |#" "$CAT" >"$W/cat-mut.md"
-  grep -qF "shipped: $1 (#82)" "$W/cat-mut.md" && ! python3 -I "$W/catalog-check.py" "$W/cat-mut.md" "$CROOT" >/dev/null 2>&1; }
+  grep -qF "shipped: $1 (#82)" "$W/cat-mut.md" && ! python3 -I "$W/catalog-check.py" "$W/cat-mut.md" "$CROOT" .agents/skills/pr-fixer >/dev/null 2>&1; }
 check "the catalog check fails a lone slash as a shipped path (shipped: / (#82))" cat_mut "/"
 check "the catalog check fails a shipped path with no word after its slash (shipped: scripts/ (#82))" cat_mut "scripts/"
 check "the catalog check fails a shipped path that names no file (shipped: \`scripts/no-such.sh\` (#82))" cat_mut "\`scripts/no-such.sh\`"
+# PR 93 loops the check over the pr-reviewer catalog too: its shipped cells (a path then a subcommand, such as
+# `scripts/review-metrics.sh agreement`) pass against its own folder, and fail against pr-fixer's, which has no
+# review-metrics.sh: each catalog is checked against its own skill folder.
+python3 -I "$W/catalog-check.py" "$RCAT" "$CROOT" .agents/skills/pr-reviewer >/dev/null 2>&1; r=$?
+out="$(python3 -I "$W/catalog-check.py" "$RCAT" "$CROOT" .agents/skills/pr-fixer 2>&1)"; r2=$?
+check "the catalog check passes the real pr-reviewer catalog against its own folder, and fails it against pr-fixer's" \
+  eval '[ "$r" = 0 ] && [ "$r2" != 0 ] && printf %s "$out" | grep -qF "scripts/review-metrics.sh is not under .agents/skills/pr-fixer/ or the root"'
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
