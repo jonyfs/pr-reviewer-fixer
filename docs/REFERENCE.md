@@ -179,6 +179,17 @@ sequenceDiagram
   per dimension and per model and tier: findings raised, blocking, verified after a fix, refused,
   and left as debt, plus the accepted rate. The marker has no cost field, so cost is reported as not
   recorded.
+- Can, when you opt in, run a CRITICAL candidate's repro with `scripts/repro-sandbox.sh`. It is off
+  unless you set `REVIEW_REPRO=1`. The repro (an existing test, or a short script the reviewer
+  writes) runs in a scratch clone at the head, with an empty environment (no `GH_TOKEN`, no SSH
+  agent, no credential helper), stdin closed, a wall-clock and CPU bound, and no network. No network
+  is enforced: `sandbox-exec` on macOS (which also confines writes to the scratch folder and hides
+  your home), `bwrap` on Linux (writes confined), else `unshare -rn` (network only). Where none of
+  them works, the script refuses with `no network sandbox here; repro skipped` (exit 4) and never
+  runs the repro unsandboxed. The result goes in the finding's optional `repro:` field:
+  `reproduced`, `not-reproduced` or `skipped`. It is evidence for the reviewer. It never changes a
+  severity or the verdict. `lint-report` refuses any other value; reports without the field are
+  unchanged.
 
 ### pr-fixer
 
@@ -738,6 +749,10 @@ flowchart TD
   forgery. They do not stop the author of a marker from deleting it and posting another. Signing the marker would, and
   it is on the backlog. They do not make a legal record.
 - Model id and tier in the marker and in the compliance records are self-attested.
+- The opt-in repro (`repro-sandbox.sh`) runs pull request code. Its sandbox blocks the network on
+  every backend it accepts, but only `sandbox-exec` (macOS) hides your home from reads, and `unshare`
+  (Linux without `bwrap`) confines neither reads nor writes. Its rows in the test suite are skipped
+  where no sandbox works, such as an Ubuntu host that blocks unprivileged user namespaces.
 - An AI verdict is not a human review. It reduces the chance that an obvious defect reaches the
   merge. It does not replace accountable review for high-risk changes.
 - Model names and harness paths change. The data here is dated 2026-10-14.
@@ -795,7 +810,7 @@ The suite needs no network, only bash, python3, node, jq, git, curl, tar, `sha25
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `export-sarif`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `review-metrics.sh`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `export-sarif`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `review-metrics.sh`, `repro-sandbox.sh`, `install.sh`, the review
 eval scorer, the version check, the update script (`tests/update/run.sh`, against a fake release served from local files) and the release script (`tests/release/run.sh`, which drives
 `.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so

@@ -193,6 +193,33 @@ The fixer's closure comment uses a smaller vocabulary per finding: `closed`, `re
 `escalated`, or `open` (not reached). `refused` is the fixer's claim; only the reviewer turns it into
 `refused-accepted` or `refused-rejected`.
 
+Optional field `repro:`: the result of the opt-in execution check, written only when
+`scripts/repro-sandbox.sh` ran (or refused) for that entry, usually a CRITICAL candidate. It is one of
+`reproduced` (the repro exited as the finding predicts: a failing test, a crash, a given exit code),
+`not-reproduced`, or `skipped` (opt-in off, no network sandbox on the host, timeout). It is evidence
+for the reviewer and the fixer: it never raises or lowers a severity by itself and never changes the
+verdict rule ([severity-and-verdict.md](severity-and-verdict.md)). A CRITICAL that is
+`not-reproduced` still needs its failure scenario judged on the code; a `skipped` one is judged as if
+no repro ran. `lint-report` refuses any other value (on every entry, `not-applicable` included);
+`findings-block` prints the field as written, and an entry without it has no `repro` key. A report
+with no `repro:` field anywhere is valid as before.
+
+```yaml
+  - id: C1
+    severity: CRITICAL
+    status: open
+    repro: reproduced
+```
+
+The script runs the repro in a scratch clone at `--sha`, with `env -i` (a fixed PATH, HOME and
+TMPDIR in the scratch folder, no token, no SSH agent, git's system and global config off), stdin
+from /dev/null, `timeout` and `ulimit -t`, and no network: `sandbox-exec` on macOS (writes confined
+to the scratch folder, the caller's home unreadable), `bwrap --unshare-net` on Linux (the root
+read-only), else `unshare -rn` (network only). With none working it prints `no network sandbox here;
+repro skipped` and exits 4; it never falls back to an unsandboxed run. The repro is given as
+`--cmd-file` or as argv after `--`, never as a string the script builds. Its log (`--log`) is pull
+request output: screen it before quoting it in a report.
+
 Optional fields: a security finding may carry `owasp:` (a category id such as `A01:2025`,
 `API3:2023`, `LLM01:2025` or `ASI02:2026`) and `cwe:` (such as `CWE-639`), as described in
 [security-checklist.md](security-checklist.md). `lint-report` and the fixer ignore them.

@@ -22,6 +22,10 @@ money in integer minor units, an admin key that bypasses policy, environment sep
 project declares none, CRITICAL is data loss, security breach and outage only. Never import another
 project's invariants.
 
+A finding's `repro:` field (the opt-in sandboxed repro, [report-contract.md](report-contract.md)) is
+evidence only. `reproduced` does not make a finding CRITICAL, and `not-reproduced` or `skipped` does
+not demote one: the definitions above decide.
+
 ### Where missing tests land
 
 Missing tests for new logic are a **WARNING**. They become a **CRITICAL** only when the untested
