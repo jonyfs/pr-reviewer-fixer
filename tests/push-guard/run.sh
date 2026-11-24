@@ -711,8 +711,9 @@ g checkout -q -f feat/x
 g checkout -q -f -B feat/gone "$HEAD_OID"; prjson OPEN feat/gone "$HEAD_OID" false
 printf 'blob that will vanish\n' >"$W/repo/src/gone.ts"; g add src/gone.ts; g commit -q -m "add gone.ts"
 GONE="$(g rev-parse HEAD:src/gone.ts)"; rm -f "$W/repo/.git/objects/${GONE:0:2}/${GONE:2}"
-# The work-tree copy goes too: git 2.39 and older read a missing blob from a work-tree file the index says is
-# unchanged (the same content), so the patch would still be complete there and the row could not fail for its reason.
+# The work-tree copy goes too: some git builds (seen on Linux with 2.56.1 and 2.39.5, not on macOS 2.56.0) read the
+# blob from an unchanged work-tree file (the same content), so the patch would still be complete there and the row could
+# not fail for its reason.
 rm -f "$W/repo/src/gone.ts"
 r=$(run --findings "$W/rep.md" --allow src/gone.ts)
 check "a commit whose added blob is missing -> 2 INCONCLUSIVE, not a pass of the secret screen (N9 of #27)" \
