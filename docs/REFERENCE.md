@@ -178,7 +178,12 @@ sequenceDiagram
   `scorecard` reads the trusted verdict and closure markers of a set of pull requests and counts,
   per dimension and per model and tier: findings raised, blocking, verified after a fix, refused,
   and left as debt, plus the accepted rate. The marker has no cost field, so cost is reported as not
-  recorded.
+  recorded. `suppress` is opt-in (set `REVIEW_SUPPRESS_SINCE` to a date): from the same trusted
+  history it names the dimensions whose decided findings were mostly dismissed (at least 5 decided,
+  a dismissed share of at least 0.6, both flags), and the reviewer shows their new WARNINGs and NOTEs
+  as NOTEs under `Suppressed by history` with a `suppressed:` line in Coverage. A CRITICAL, the
+  security dimension, a mandatory unit of the change and a blocking WARNING are never suppressed,
+  and anything it cannot read suppresses nothing.
 
 ### pr-fixer
 
