@@ -611,6 +611,43 @@ directory that resolves, symbolic links followed, outside the repository it runs
 [`docs/compliance-records/README.md`](./compliance-records/README.md) for what a record does and
 does not prove.
 
+`review-cycle.sh export-sarif [<pr>] [--report FILE] [--out FILE] [--include-closed]` writes the
+findings of one verdict report as SARIF 2.1.0, for a tool that already reads it, such as GitHub code
+scanning. It reads a report file, or the trusted verdict comment at the head of the pull request
+under the same trust rules as `export-audit`. Each finding becomes a result: `error` for CRITICAL,
+`warning` for WARNING, `note` for NOTE, one rule per review dimension, the claim as the message, the
+file and line as the location, and the scenario (`failure_scenario`, else `scenario`),
+`suggested_fix` and `owner_proposed` as properties. By default only open findings are exported (no status, `open`, `refused-rejected`).
+`--include-closed` adds `verified`, `refused-accepted` and `not-applicable` findings, each with an
+accepted external suppression. A finding with no line points at line 1 and carries
+`line_unknown: true`, because GitHub requires a start line. The fingerprint (`partialFingerprints`,
+under `prReviewerFinding/v1` and `primaryLocationLineHash`) hashes the file, the dimension and the
+normalized claim, so the same finding matches across passes even when its line or id changes, and
+ends with an occurrence suffix (`:1`, `:2` in report order) so two findings with the same file,
+dimension and claim at different lines stay two alerts. The
+claims are model-written text about the pull request: they are written as escaped JSON strings,
+never as Markdown. A report over GitHub's limits (10 MB gzip-compressed, 25,000 results or rules
+per run) is refused with exit 2 and nothing written, never truncated. Exit 1 is a trust refusal, 2
+a usage error or a report it cannot read or map.
+
+The script uploads nothing, and no workflow runs it. To upload by hand, either commit the file to a
+branch and use `github/codeql-action/upload-sarif` in a workflow of your own, or send it with the
+REST API (the file gzip-compressed, then base64-encoded). The request body is built in a file and
+sent on standard input, since the encoded file passed as one argument fails with "Argument list too
+long" well below the 10 MB the export allows:
+
+```bash
+review-cycle.sh export-sarif 123 --out review.sarif
+gzip -c review.sarif | base64 | tr -d '\n' > review.sarif.b64
+jq -n --rawfile sarif review.sarif.b64 \
+  --arg commit_sha "$(gh pr view 123 --json headRefOid --jq .headRefOid)" \
+  --arg ref refs/pull/123/head \
+  '{commit_sha: $commit_sha, ref: $ref, sarif: $sarif}' |
+  gh api --method POST repos/{owner}/{repo}/code-scanning/sarifs --input -
+```
+
+GitHub accepts up to 25,000 results per run but keeps only the top 5,000, ranked by severity.
+
 ## Model and effort
 
 Each unit of work is given a tier, and the tier maps to a model and an effort setting for the harness
@@ -750,7 +787,7 @@ The suite needs no network, only bash, python3, node, jq, git, curl, tar, `sha25
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `export-sarif`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `install.sh`, the review
 eval scorer, the version check, the update script (`tests/update/run.sh`, against a fake release served from local files) and the release script (`tests/release/run.sh`, which drives
 `.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so

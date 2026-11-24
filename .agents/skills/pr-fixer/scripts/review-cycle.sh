@@ -78,6 +78,12 @@
 #                          the trusted marker and the PR timeline; refuses when the head moved,
 #                          and when <dir> resolves (symbolic links followed) outside the
 #                          repository top level
+#     export-sarif [pr] [--report <file>] [--out <file>] [--include-closed]
+#                          writes the findings of the verdict report (the file, or the trusted
+#                          verdict comment at the head of the pull request) as SARIF 2.1.0, to
+#                          --out or stdout. Uploads nothing. Exit 1 refused by a trust rule, 2 on
+#                          usage, an unreadable or malformed report, or a GitHub size limit (never
+#                          truncated); see cmd_export_sarif
 #     stale [pr]           a marker-backed state whose head moved goes back to review:pending.
 #                          Refuses (exit 2) when REVIEW_MARKER_AUTHORS names no login.
 #     marker [file] [--author <login>]
@@ -146,7 +152,8 @@
 #                             is an HTML comment and every comment is scanned. The list must name
 #                             at least one login: unset, empty, whitespace, a lone comma and only
 #                             invisible characters all make `status`, `stale`, `start`, `publish`,
-#                             `budget`, `extend`, `halt`, `export-audit` refuse. `publish`, `extend` and
+#                             `budget`, `extend`, `halt`, `export-audit` and `export-sarif` without
+#                             `--report` refuse. `publish`, `extend` and
 #                             `halt --reason` also refuse when `gh api user` is not on the list
 #                             or cannot be resolved; `halt` without `--reason` posts nothing and
 #                             does not check it.
@@ -2027,10 +2034,14 @@ PY
 # with three backticks, which would close the fence early when it renders.
 #
 # Prints one JSON object: `entries` (each finding's id and its file, line, severity, status and
-# scenario fields, from the `findings:` list), `counts` ({critical, warning, note} or null when the
-# block has no `counts:` line), `mandatory_units` (a list of {unit, effort, status}, or null when the
-# field is absent) and `mandatory_problems` (what is wrong with that field, empty when it is well
-# formed). Exit 2 when the file cannot be read.
+# scenario fields, from the `findings:` list, plus the free-text fields claim, dimension,
+# failure_scenario, scenario_text (the `scenario:` value decoded like the others, beside the
+# quote-stripped `scenario`), suggested_fix, owner_proposed and refusal that `export-sarif` reads; a
+# double-quoted free-text value is decoded as a JSON string), `counts` ({critical, warning, note} or
+# null when the block has no `counts:` line), `mandatory_units` (a list of {unit, effort, status}, or
+# null when the field is absent), `mandatory_problems` (what is wrong with that field, empty when it
+# is well formed) and `header` (the block's version, pr, head, pass and verdict lines, as written).
+# Exit 2 when the file cannot be read.
 findings_block_json() {
   [ -r "${1:-}" ] && [ -f "${1:-}" ] || { echo "review-cycle: cannot read the report ${1:-}" >&2; return 2; }
   X_REPORT="$1" python3 -I - <<'PY'
@@ -2060,7 +2071,25 @@ for ln in body:
     if re.match(r" {0,3}```", ln):
         refuse("a line inside the `findings` block starts with ```, which would close it early; the block must be one fence")
 
-entries, counts, mu, mu_seen, problems = [], None, None, 0, []
+def text(v):
+    """A free-text field (claim, suggested_fix, ...): a double-quoted value that is one JSON string
+    is decoded, so \\" \\\\ \\n and \\uXXXX come out as the characters they name; a single-quoted
+    one whose inside has no lone quote loses its quotes ('' is one quote); anything else, such as
+    "a" and "b" or a double-quoted value JSON cannot decode, is kept as written, quotes included.
+    Never evaluated."""
+    if len(v) >= 2 and v[0] == v[-1] == '"':
+        try:
+            d = json.loads(v)
+            if isinstance(d, str):
+                return d
+        except ValueError:
+            pass
+        return v
+    if len(v) >= 2 and v[0] == v[-1] == "'" and re.fullmatch(r"(?:[^']|'')*", v[1:-1], re.S):
+        return v[1:-1].replace("''", "'")
+    return v
+
+entries, counts, mu, mu_seen, problems, header = [], None, None, 0, [], {}
 section, e = None, None
 for ln in body:
     if re.match(r"\s*(#|$)", ln):
@@ -2068,6 +2097,8 @@ for ln in body:
     top = re.match(r"([A-Za-z_][A-Za-z0-9_-]*):[ \t]*(.*?)[ \t]*$", ln)
     if top:
         section, e, key, val = top.group(1), None, top.group(1), top.group(2)
+        if key in ("version", "pr", "head", "pass", "verdict"):
+            header[key] = val.strip("\"'")
         if key == "counts":
             cm = re.fullmatch(r"\{\s*critical:\s*(\d+),\s*warning:\s*(\d+),\s*note:\s*(\d+)\s*\}", val, re.ASCII)
             counts = ({"critical": int(cm.group(1)), "warning": int(cm.group(2)), "note": int(cm.group(3))}
@@ -2089,6 +2120,14 @@ for ln in body:
         kv = re.match(r"\s{2,}(file|line|severity|status|scenario):\s*(.*?)\s*$", ln)
         if kv and e is not None:
             e[kv.group(1)] = kv.group(2).strip("\"'")
+            if kv.group(1) == "scenario":
+                # The quote-stripped `scenario` above is what lint-report reads, unchanged; the
+                # decoded text is a separate key, for export-sarif.
+                e["scenario_text"] = text(kv.group(2))
+            continue
+        tx = re.match(r"\s{2,}(claim|dimension|failure_scenario|suggested_fix|owner_proposed|refusal):\s*(.*?)\s*$", ln)
+        if tx and e is not None:
+            e[tx.group(1)] = text(tx.group(2))
     elif section == "mandatory_units":
         m = re.fullmatch(r"\s+-\s*\{\s*unit:\s*([a-z][a-z-]*)\s*,\s*effort:\s*([a-z]+)\s*,\s*status:\s*([a-z]+)\s*\}\s*", ln)
         if not m:
@@ -2104,7 +2143,8 @@ for ln in body:
         mu.append({"unit": unit, "effort": effort, "status": status})
 if mu_seen > 1:
     problems.append("the block has %d `mandatory_units:` fields; write exactly one" % mu_seen)
-print(json.dumps({"entries": entries, "counts": counts, "mandatory_units": mu, "mandatory_problems": problems}))
+print(json.dumps({"entries": entries, "counts": counts, "mandatory_units": mu, "mandatory_problems": problems,
+                  "header": header}))
 PY
 }
 
@@ -2120,6 +2160,271 @@ cmd_findings_block() {
   done
   [ -n "$report" ] || { echo "review-cycle: usage: review-cycle.sh findings-block --report <file>" >&2; return 2; }
   findings_block_json "$report"
+}
+
+# Exports the findings of one verdict report as SARIF 2.1.0, for a person to upload to a tool that
+# already reads it (GitHub code scanning, an IDE viewer). It uploads nothing and no workflow runs it.
+# The report is a file (`--report`, read as given, nothing read from GitHub) or the verdict comment
+# of a pull request, chosen by the same trust rules as `export-audit`: an author on
+# REVIEW_MARKER_AUTHORS, a comment never edited after it was created (pr-json.py), refused while a
+# trusted comment stands edited or deleted by another login, and refused when the head moved after
+# the last trusted marker. The findings come from `findings_block_json`, the one reader.
+#
+# One run; tool.driver is pr-reviewer at the SKILL.md metadata.version beside this script; one rule
+# per review dimension (`pr-reviewer/<dimension>`, `general` when an entry names none), since finding
+# ids renumber on every pass. Level: CRITICAL error, WARNING warning, NOTE note. By default only the
+# entries the `counts:` line counts are results (no status, `open`, `refused-rejected`); with
+# `--include-closed` the `verified`, `refused-accepted` and `not-applicable` entries are results too,
+# each with an external, accepted suppression naming its status. message.text is the claim; the
+# location is the file (repo-relative, percent-encoded, under %SRCROOT%) and the line (a range gives
+# endLine; an entry with no line gets startLine 1 and `line_unknown: true`, because GitHub requires a
+# startLine). partialFingerprints carries one hash of file, dimension and the normalized claim (NFKC,
+# casefolded, whitespace collapsed), never the line or the id, so the same finding keeps its
+# fingerprint across passes, followed by an occurrence suffix (`:1`, `:2` in report order among the
+# entries, closed ones included, that share those three) so two findings that share them stay
+# apart; it is written under `prReviewerFinding/v1` and under
+# `primaryLocationLineHash`, the only key GitHub matches on. failure_scenario (else scenario),
+# suggested_fix, owner_proposed and refusal go to properties. Every string from the report is model-written text
+# about pull request content: it is emitted through json.dumps (ASCII-escaped) into `text` fields and
+# properties only, never into a `markdown` field, and never evaluated.
+#
+# GitHub's limits (checked 2026-11-24): 10 MB gzip-compressed, 25,000 results and 25,000 rules per
+# run. Over either, nothing is written and the exit is 2: never a truncated file.
+#
+# Exit 0 = written (to --out, else stdout) · 1 = refused by a trust rule (allowlist empty, no trusted
+# marker, head moved, foreign edit) · 2 = usage, an unreadable input, a report with no valid findings
+# block (findings-block's 1 is mapped to 2 here), an entry that cannot be mapped (unknown severity or
+# status, no file, a path outside the repository, a line that is not a number, no claim, a dimension
+# that is not a lowercase word), or a GitHub limit.
+cmd_export_sarif() {
+  local pr="" report="" out="" closed=0
+  local usage="review-cycle: usage: review-cycle.sh export-sarif [pr] [--report <file>] [--out <file>] [--include-closed]"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --report) [ $# -ge 2 ] || { echo "review-cycle: --report needs a value" >&2; echo "$usage" >&2; return 2; }; report="${2:-}"; shift 2 ;;
+      --out) [ $# -ge 2 ] || { echo "review-cycle: --out needs a value" >&2; echo "$usage" >&2; return 2; }; out="${2:-}"; shift 2 ;;
+      --include-closed) closed=1; shift ;;
+      -*) echo "$usage" >&2; return 2 ;;
+      *) [ -z "$pr" ] || { echo "$usage" >&2; return 2; }; pr="$1"; shift ;;
+    esac
+  done
+  [ -z "$pr" ] || case "$pr" in *[!0-9]*|0*) echo "review-cycle: '$pr' is not one pull request number" >&2; return 2 ;; esac
+  local xdir; xdir="$(mktemp -d)" || { echo "review-cycle: could not create a temporary directory" >&2; return 2; }
+  local src="$report" msha="" mpass="" mverdict="" origin="report"
+  if [ -z "$report" ]; then
+    origin="marker"
+    marker_authors_ready || { rm -rf "$xdir"; die "review-cycle: REFUSED. $NOT_READY_MSG"; }
+    local json; json="$(pr_json "$pr")"
+    [ -n "$json" ] || { rm -rf "$xdir"; echo "review-cycle: could not read the pull request, or its comment edits could not be checked" >&2; return 2; }
+    parse "$json"
+    [ "$MARKER_FOREIGN_EDIT" = - ] || { rm -rf "$xdir"; die "review-cycle: REFUSED. $(foreign_msg)"; }
+    [ -n "$MARKER_SHA" ] || { rm -rf "$xdir"; die "review-cycle: REFUSED. no trusted marker remains on #$NUMBER, so there is no verdict to export"; }
+    case "$HEAD" in
+      "$MARKER_SHA"*) ;;
+      *) rm -rf "$xdir"; die "review-cycle: REFUSED. the head of #$NUMBER is ${HEAD:0:12} but the last trusted marker names ${MARKER_SHA:0:12}: the head moved after the review. Run the loop again." ;;
+    esac
+    msha="$MARKER_SHA"; mpass="$MARKER_PASS"; mverdict="$MARKER_VERDICT"; pr="$NUMBER"
+    # The body of that marker's comment, through a file (a pull request JSON can pass ARG_MAX). The
+    # same anchored marker regex as export-audit (its opener written `<!-{2}`, so this file adds no
+    # literal comment opener for the hidden-text scan to report), the same allowlist; the last match
+    # is the verdict.
+    printf '%s' "$json" >"$xdir/pr.json" || { rm -rf "$xdir"; echo "review-cycle: could not write $xdir/pr.json" >&2; return 2; }
+    if ! X_JSON_FILE="$xdir/pr.json" X_AUTHORS="$(marker_authors)" X_SHA="$msha" X_BODY="$xdir/report.md" python3 -I - <<'PY'
+import json, os, re, sys
+MARK = re.compile(
+    r"^\s*<!-{2}\s*adversarial-review:\s*sha=([0-9a-f]{7,40})\s+verdict=(PASSED|BLOCKED)\s+pass=(\d+)"
+    r"(?:\s+critical=(\d+)\s+warning=(\d+)\s+note=(\d+))?"
+    r"(?:\s+model=([A-Za-z0-9._:-]+)\s+tier=(fast|standard|deep))?"
+    r"(?:\s+block_at=(critical|warning))?\s*-->", re.I | re.ASCII)
+pr = json.load(open(os.environ["X_JSON_FILE"], encoding="utf-8"))
+allow = set(os.environ["X_AUTHORS"].split(",")) - {""}
+last = None
+for c in pr.get("comments", []):
+    if MARK.match(c.get("body") or "") and ((c.get("author") or {}).get("login") or "").lower() in allow:
+        last = c
+if last is None or MARK.match(last["body"]).group(1).lower() != os.environ["X_SHA"].lower():
+    print("review-cycle: REFUSED. the trusted marker comment could not be found again", file=sys.stderr)
+    sys.exit(1)
+with open(os.environ["X_BODY"], "w", encoding="utf-8") as fh:
+    fh.write(last["body"])
+PY
+    then rm -rf "$xdir"; exit 1; fi
+    src="$xdir/report.md"
+  fi
+  local rc=0
+  findings_block_json "$src" >"$xdir/block.json" 2>"$xdir/block.err" || rc=$?
+  if [ "$rc" != 0 ]; then
+    cat "$xdir/block.err" >&2
+    [ "$rc" = 2 ] || echo "review-cycle: the report has no valid findings block, so there is nothing to export" >&2
+    rm -rf "$xdir"; return 2
+  fi
+  local ver; ver="$("$(dirname "$0")/check-version.sh" --installed 2>/dev/null)" || ver=""
+  X_BLOCK="$xdir/block.json" X_OUT="$out" X_CLOSED="$closed" X_PR="$pr" X_ORIGIN="$origin" X_VER="$ver" \
+    X_MSHA="$msha" X_MPASS="$mpass" X_MVERDICT="$mverdict" python3 -I - <<'PY'
+import gzip, hashlib, json, os, re, sys, tempfile, unicodedata, urllib.parse
+
+MAX_GZIP = 10 * 1024 * 1024   # GitHub: 10 MB per gzip-compressed SARIF file (checked 2026-11-24)
+MAX_RESULTS = 25000           # results per run
+MAX_RULES = 25000             # rules per run
+LEVEL = {"CRITICAL": "error", "WARNING": "warning", "NOTE": "note"}
+COUNTED = ("open", "refused-rejected")
+CLOSED = ("verified", "refused-accepted", "not-applicable")
+
+def bad(msg):
+    print("review-cycle: export-sarif: " + msg, file=sys.stderr)
+    sys.exit(2)
+
+def clean(s):
+    # A lone surrogate (a \ud800 escape in the report) is not UTF-8; it becomes U+FFFD.
+    return s.encode("utf-8", "replace").decode("utf-8") if isinstance(s, str) else s
+
+def norm(s):
+    return " ".join(unicodedata.normalize("NFKC", s).casefold().split())
+
+blk = json.load(open(os.environ["X_BLOCK"], encoding="utf-8"))
+hdr = blk.get("header") or {}
+want_pr = os.environ["X_PR"]
+if want_pr and hdr.get("pr") and hdr["pr"] != want_pr:
+    bad("the findings block names pr %s, not %s" % (json.dumps(hdr["pr"]), want_pr))
+msha = os.environ["X_MSHA"].lower()
+if msha and hdr.get("head") and not (msha.startswith(hdr["head"].lower()) or hdr["head"].lower().startswith(msha)):
+    bad("the findings block names head %s, but its marker names %s" % (json.dumps(hdr["head"]), msha[:12]))
+include_closed = os.environ["X_CLOSED"] == "1"
+
+def occurrence_key(e):
+    # The fingerprint's inputs, read the way the mapping below reads them but without its checks, so
+    # an entry that is skipped (closed, without --include-closed) still counts.
+    path = clean(e.get("file") or "")
+    while path.startswith("./"):
+        path = path[2:]
+    return (path, (e.get("dimension") or "general").strip().lower(), norm(clean(e.get("claim") or "")))
+
+rules, rule_ix, results, seen = [], {}, [], {}
+for e in blk.get("entries", []):
+    fid = clean(e.get("id") or "")
+    okey = occurrence_key(e)
+    seen[okey] = seen.get(okey, 0) + 1
+    occ = seen[okey]
+    tag = json.dumps(fid)
+    sev = (e.get("severity") or "").upper()
+    if sev not in LEVEL:
+        bad("%s: severity %s is not CRITICAL, WARNING or NOTE" % (tag, json.dumps(e.get("severity"))))
+    status = e.get("status") or "open"
+    if status not in COUNTED + CLOSED:
+        bad("%s: status %s is not one of %s" % (tag, json.dumps(status), ", ".join(COUNTED + CLOSED)))
+    if status in CLOSED and not include_closed:
+        continue
+    path = clean(e.get("file") or "")
+    if not path:
+        bad("%s: no file, and a SARIF result needs a location" % tag)
+    while path.startswith("./"):
+        path = path[2:]
+    if (path.startswith("/") or "\\" in path or re.match(r"[A-Za-z]:", path) or "://" in path
+            or any(p in ("", "..", ".") for p in path.split("/"))
+            or any(unicodedata.category(ch) == "Cc" for ch in path)):
+        bad("%s: file %s is not a path relative to the repository" % (tag, json.dumps(path)))
+    line = e.get("line") or ""
+    region, line_unknown = {"startLine": 1}, True
+    if line:
+        lm = re.fullmatch(r"([1-9][0-9]{0,8})(?:-([1-9][0-9]{0,8}))?", line, re.ASCII)
+        if not lm:
+            bad("%s: line %s is not a line number or a range" % (tag, json.dumps(line)))
+        lo, hi = int(lm.group(1)), int(lm.group(2) or lm.group(1))
+        if lo > hi:
+            bad("%s: line range %s runs backwards" % (tag, json.dumps(line)))
+        region, line_unknown = {"startLine": lo}, False
+        if hi != lo:
+            region["endLine"] = hi
+    claim = clean(e.get("claim") or "")
+    if not claim.strip():
+        bad("%s: no claim, and the claim is the result's message" % tag)
+    dim = (e.get("dimension") or "general").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", dim, re.ASCII):
+        bad("%s: dimension %s is not a lowercase word" % (tag, json.dumps(e.get("dimension"))))
+    rid = "pr-reviewer/" + dim
+    if rid not in rule_ix:
+        rule_ix[rid] = len(rules)
+        rules.append({"id": rid, "name": dim,
+                      "shortDescription": {"text": "pr-reviewer finding, dimension %s" % dim},
+                      "properties": {"dimension": dim}})
+    # The occurrence suffix (:1, :2 in report order among the entries with this file, dimension and
+    # claim, closed ones included) keeps two such findings at different lines apart, as CodeQL does
+    # for identical line hashes.
+    fp = hashlib.sha256(("v1\0%s\0%s\0%s" % (path, dim, norm(claim))).encode("utf-8")).hexdigest() + ":%d" % occ
+    props = {"finding_id": fid, "severity": sev, "status": status, "dimension": dim}
+    # Reports write the scenario as `scenario:` (the contract's example says failure_scenario:);
+    # failure_scenario wins when both are written.
+    for srcs, dst in ((("failure_scenario", "scenario_text"), "scenario"), (("suggested_fix",), "suggested_fix"),
+                      (("owner_proposed",), "owner"), (("refusal",), "refusal")):
+        val = next((e[k] for k in srcs if e.get(k)), None)
+        if val:
+            props[dst] = clean(val)
+    if line_unknown:
+        props["line_unknown"] = True
+    r = {"ruleId": rid, "ruleIndex": rule_ix[rid], "level": LEVEL[sev], "message": {"text": claim},
+         "locations": [{"physicalLocation": {
+             "artifactLocation": {"uri": urllib.parse.quote(path, safe="/"), "uriBaseId": "%SRCROOT%"},
+             "region": region}}],
+         "partialFingerprints": {"prReviewerFinding/v1": fp, "primaryLocationLineHash": fp},
+         "properties": props}
+    if status in CLOSED:
+        r["suppressions"] = [{"kind": "external", "status": "accepted",
+                              "justification": "pr-reviewer status %s" % status}]
+    results.append(r)
+
+if len(results) > MAX_RESULTS:
+    bad("%d results, over GitHub's %d per run; nothing written (never truncated)" % (len(results), MAX_RESULTS))
+if len(rules) > MAX_RULES:
+    bad("%d rules, over GitHub's %d per run; nothing written" % (len(rules), MAX_RULES))
+driver = {"name": "pr-reviewer", "informationUri": "https://github.com/jonyfs/pr-reviewer-fixer", "rules": rules}
+ver = os.environ["X_VER"]
+if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", ver, re.ASCII):
+    driver["version"] = driver["semanticVersion"] = ver
+runprops = {"source": os.environ["X_ORIGIN"], "include_closed": include_closed}
+for k in ("pr", "head", "pass", "verdict"):
+    if hdr.get(k):
+        runprops["block_" + k] = clean(hdr[k])
+if msha:
+    runprops.update({"marker_sha": msha, "marker_pass": int(os.environ["X_MPASS"]),
+                     "marker_verdict": os.environ["X_MVERDICT"]})
+doc = {"$schema": "https://json.schemastore.org/sarif-2.1.0.json", "version": "2.1.0",
+       "runs": [{"tool": {"driver": driver}, "columnKind": "unicodeCodePoints",
+                 "originalUriBaseIds": {"%SRCROOT%": {"description": {"text": "The repository root"}}},
+                 "results": results, "properties": runprops}]}
+data = (json.dumps(doc, indent=2) + "\n").encode("ascii")
+gz = len(gzip.compress(data))
+if gz > MAX_GZIP:
+    bad("%d bytes gzip-compressed, over GitHub's %d; nothing written (never truncated)" % (gz, MAX_GZIP))
+out = os.environ["X_OUT"]
+if not out:
+    sys.stdout.buffer.write(data)
+    sys.exit(0)
+if os.path.islink(out):
+    bad("%s is a symbolic link; the export does not write through one" % out)
+if os.path.isdir(out):
+    bad("%s is a folder; name the file to write" % out)
+d = os.path.dirname(os.path.abspath(out))
+if not os.path.isdir(d):
+    bad("the folder of %s does not exist" % out)
+fd, tmp = tempfile.mkstemp(dir=d, prefix=".sarif.", suffix=".tmp")
+try:
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
+    mask = os.umask(0); os.umask(mask)
+    os.chmod(tmp, 0o666 & ~mask)
+    os.replace(tmp, out)
+except BaseException:
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    raise
+print(out)
+PY
+  rc=$?
+  rm -rf "$xdir"
+  # Only 0 and 2 come out of the writer; a crash (1, a traceback) is not a trust refusal, so it is 2.
+  [ "$rc" = 0 ] || return 2
 }
 
 # Checks the `findings` block of a report against the diff it claims to review, before `publish`.
@@ -2568,6 +2873,7 @@ case "${1:-status}" in
   budget)  shift || true; cmd_budget  "${1:-}" ;;
   extend)  shift || true; cmd_extend  "$@" ;;
   export-audit) shift || true; cmd_export_audit "$@" ;;
+  export-sarif) shift || true; cmd_export_sarif "$@" ;;
   stale)   shift || true; cmd_stale   "${1:-}" ;;
   marker)  shift || true; cmd_marker  "$@" ;;
   publish) shift || true; cmd_publish "$@" ;;
@@ -2575,6 +2881,6 @@ case "${1:-status}" in
   findings-block) shift || true; cmd_findings_block "$@" ;;
   screen)  shift || true; cmd_screen  "$@" ;;
   ensure-labels) shift || true; cmd_ensure_labels ;;
-  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight|delta|base-scanner} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
+  *) die "usage: review-cycle.sh {status|next|wait-head|debt|start|fix|halt|budget|extend|export-audit|export-sarif|stale|marker|publish|lint-report|findings-block|screen|ensure-labels|preflight|delta|base-scanner} [pr]; wait-head takes <pr> [sha]; preflight takes [base]" ;;
 esac
 fi
