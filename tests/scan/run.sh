@@ -34,10 +34,11 @@ scan() { local d="$1"; shift; r=0; env "$@" bash "$d/tests/run-all.sh" --scan-on
 has() { grep -qF -- "$1" "$W/out"; }
 
 # The real work tree's status, before and after, over the paths this suite plants (the scanned trees, install.sh,
-# .github, .gitignore and tests/run-all.sh), so a planted file that lands in the real tree is caught. Only those paths: the other
-# suites, and the person or agent who started the run, may change other files of the tree while this suite runs, and
-# a whole-tree compare failed on that (PR 85 N5, PR 86 N1, PR 87 N5).
-PLANTED_PATHS=("${trees[@]}" install.sh .github .gitignore tests/run-all.sh)
+# .github, .gitignore and tests/run-all.sh) and the instruction and skill paths no run may change (AGENTS.md, CLAUDE.md
+# and the whole .agents folder), so a planted file that lands in the real tree is caught. Only those paths: the other
+# suites, and the person or agent who started the run, may change other files of the tree while this suite runs (a
+# note at the root, for example), and a whole-tree compare failed on that (PR 85 N5, PR 86 N1, PR 87 N5; PR 88 W2).
+PLANTED_PATHS=("${trees[@]}" install.sh .github .gitignore tests/run-all.sh AGENTS.md CLAUDE.md .agents)
 real_status() { git -C "$ROOT" status --porcelain --untracked-files=all -- "${PLANTED_PATHS[@]}" 2>&1; }
 S0="$(real_status)"
 F="$W/fix"; mkfix "$F"
@@ -190,7 +191,7 @@ fi
 scan "$F"
 check "the fixture is clean again at the end" eval '[ $r = 0 ]'
 S1="$(real_status)"; printf 'before:\n%s\nafter:\n%s\n' "$S0" "$S1" >"$W/out"
-check "nothing was planted in the work tree (the paths this suite plants)" eval '[ "$S1" = "$S0" ]'
+check "nothing was planted in the work tree (the paths this suite plants, AGENTS.md, CLAUDE.md, .agents)" eval '[ "$S1" = "$S0" ]'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
