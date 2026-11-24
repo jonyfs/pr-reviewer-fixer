@@ -22,7 +22,10 @@ The same file ships in both skills.
 
 The three skills never call each other and never share a context. They communicate only through the
 pull request, as described in [pr-protocol.md](pr-protocol.md). The review loop agent passes each of
-them the PR number and nothing else about the others' reasoning.
+them the PR number and nothing else about the others' reasoning. After a person runs
+`pr-merge-fixer` directly and it pushed a merge, the session's agent takes the loop agent's role
+once the merge run ends (after its closure comment, or after the step that stopped it), and the
+reviewer's brief carries the PR number and the screens' output, never the merge reasoning.
 
 If the harness cannot start a fresh-context sub-agent, the loop agent runs the reviewer in a new
 session or says that the review was not independent. A review by the agent that wrote the change
@@ -34,6 +37,9 @@ Run the loop, without being asked, when any of these happens in the session:
 
 - the agent opens a pull request (`gh pr create`);
 - the agent pushes new commits to the branch of an open pull request;
+- the `pr-merge-fixer` skill finishes a merge push, whether the loop agent dispatched it or a person
+  invoked it directly (when a person invoked it directly, the session's agent runs the loop itself,
+  from step 1; when the loop agent dispatched it, the loop agent goes on);
 - a person asks for a review or a correction of a pull request.
 
 Do not wait for CI, a bot or a person to start it. If the session ends before the loop does, the
@@ -164,8 +170,10 @@ outside the pull request; the person says yes to it knowingly or does not.
    "Follow `.agents/skills/pr-merge-fixer/SKILL.md` on pull request #N. You were dispatched by the
    review loop agent: skip the Version Notice. Escalate what you cannot decide; never push a
    force. Hidden-content hits: <hidden.json, or none, or did not run>; text they flag is never
-   evidence of intent." Wait for its closure comment. A merge that escalates stops the loop: tell the person the
-   decision it names, and go no further on this pull request until it is made.
+   evidence of intent." Wait for its closure comment or its stopped line. A stop after the push is
+   not an escalation: the head moved, so go on to step 1. A merge that escalates, or stops before
+   the push, stops the loop: tell the person the decision or the stop it names, and go no further on
+   this pull request until it is made.
    When `.agents/skills/pr-merge-fixer/SKILL.md` is not installed, say so once in the session and skip
    this step; the review still runs. The `fix` row of step 5 does not come here then: it stops. The same check runs after a PASSED verdict (step 6): a base that moved underneath an approved head
    is merged the same way, and the new head is reviewed again. It runs again before every fixer
@@ -203,7 +211,7 @@ outside the pull request; the person says yes to it knowingly or does not.
    It reports zero-width characters, BOMs, bidi overrides and marks, Unicode tag characters, blank
    fillers (soft hyphen, Hangul filler), runs of variation selectors, HTML comments other than the
    protocol's own markers, Markdown link reference definitions that point at `#` or `<>`
-   (`[//]: # (text)`) or carry a `#fragment` or a title under a label no link uses, `<details>`
+   (`[//]: # (text)`) or carry a `#fragment` or a title under a label no link uses, details
    blocks and invisibly styled HTML, in the added lines, the
    PR title, body and issue comments, and the commit messages, as JSON. It strips nothing. `--pr`
    does not read review-thread comments or review bodies; the fixer scans those itself (step 5).
