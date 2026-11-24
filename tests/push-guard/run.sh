@@ -188,11 +188,14 @@ r=$(runenv SHELLOPTS=xtrace --findings "$W/rep.md" --allow src/q.ts)
 check "SHELLOPTS=xtrace from the environment: the guard restarts without it, ends in ok, no trace after the restart" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && ! grep -q "^+* *shopt -u nocasematch" "$W/out"'
 # PR 75 W1: the restart decides on the variables, not on lines of env output, and happens at most once. Each run is
 # bounded, so a loop ends the row as a failure instead of hanging the suite. Not an alarm: bash clears a pending alarm
-# when it starts, so an exec loop of bash outlives one. The bound is CPU time first: ulimit -t stops the guard after
-# 60 s of CPU (an exec loop keeps the same process, so its CPU time adds up), whatever the load. A watchdog kills it
-# after WD seconds of wall time (status 137). A fixed 20 s was within reach of a sound run on a loaded host (one run
-# took 6 s at a load of 600 on 12 CPUs; PR 85 N5, PR 86 N1, PR 87 N5), so it is 300 s, times TEST_TIMEOUT_SCALE.
-WD="$(awk -v s="${TEST_TIMEOUT_SCALE:-1}" 'BEGIN { s += 0; if (s <= 0) s = 1; printf "%d", 300 * s }')"
+# when it starts, so an exec loop of bash outlives one. The bound that holds on every platform is a watchdog that
+# kills the guard after WD seconds of wall time (status 137). ulimit -t 60 is kept as an extra bound: it stops a busy
+# guard after 60 s of CPU, but on macOS it did not stop an exec loop of bash (40 s of CPU, still running at 120 s;
+# PR 88 W3), and a restart loop spends most of its time in children, so CPU time is no bound for it there.
+# WD is 60 s, times TEST_TIMEOUT_SCALE: a fixed 20 s was within reach of a sound run on a loaded host (one run took 6 s
+# at a load of 600 on 12 CPUs; PR 85 N5, PR 86 N1, PR 87 N5), and 300 s let a restart-loop regression take about
+# 65 minutes over the 13 rows, past the 1800 s a full run is given, with no row named (PR 88 W3).
+WD="$(awk -v s="${TEST_TIMEOUT_SCALE:-1}" 'BEGIN { s += 0; if (s <= 0) s = 1; printf "%d", 60 * s }')"
 bnd() { local s="$1" p k rc; shift
   (cd "$W/repo" && ulimit -t 60 && exec "$@") >"$W/out" 2>&1 </dev/null & p=$!
   (sleep "$s"; kill -9 "$p") >/dev/null 2>&1 & k=$!
