@@ -187,13 +187,17 @@ check "xpg_echo on: an --allow value cannot forge a line" eval '[ $r = 1 ] && ! 
 r=$(runenv SHELLOPTS=xtrace --findings "$W/rep.md" --allow src/q.ts)
 check "SHELLOPTS=xtrace from the environment: the guard restarts without it, ends in ok, no trace after the restart" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && ! grep -q "^+* *shopt -u nocasematch" "$W/out"'
 # PR 75 W1: the restart decides on the variables, not on lines of env output, and happens at most once. Each run is
-# bounded by a watchdog that kills it after 20 seconds, so a loop ends the row as a failure (status 137) instead of
-# hanging the suite. Not an alarm: bash clears a pending alarm when it starts, so an exec loop of bash outlives one.
+# bounded, so a loop ends the row as a failure instead of hanging the suite. Not an alarm: bash clears a pending alarm
+# when it starts, so an exec loop of bash outlives one. The bound is CPU time first: ulimit -t stops the guard after
+# 60 s of CPU (an exec loop keeps the same process, so its CPU time adds up), whatever the load. A watchdog kills it
+# after WD seconds of wall time (status 137). A fixed 20 s was within reach of a sound run on a loaded host (one run
+# took 6 s at a load of 600 on 12 CPUs; PR 85 N5, PR 86 N1, PR 87 N5), so it is 300 s, times TEST_TIMEOUT_SCALE.
+WD="$(awk -v s="${TEST_TIMEOUT_SCALE:-1}" 'BEGIN { s += 0; if (s <= 0) s = 1; printf "%d", 300 * s }')"
 bnd() { local s="$1" p k rc; shift
-  (cd "$W/repo" && exec "$@") >"$W/out" 2>&1 </dev/null & p=$!
+  (cd "$W/repo" && ulimit -t 60 && exec "$@") >"$W/out" 2>&1 </dev/null & p=$!
   (sleep "$s"; kill -9 "$p") >/dev/null 2>&1 & k=$!
   wait "$p"; rc=$?; kill "$k" 2>/dev/null; wait "$k" 2>/dev/null; echo "$rc"; }
-runb() { local e="$1"; shift; bnd 20 env "$e" "$PG" 7 "$@"; }
+runb() { local e="$1"; shift; bnd "$WD" env "$e" "$PG" 7 "$@"; }
 r=$(runb "FOO=x"$'\n'"BASHOPTS=y" --findings "$W/rep.md" --allow src/q.ts)
 check "a value holding a newline then BASHOPTS= -> no restart loop, the guard ends in ok (W1 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
 r=$(runb "FOO=x"$'\n'"SHELLOPTS=y" --findings "$W/rep.md" --allow src/q.ts)
@@ -201,16 +205,16 @@ check "a value holding a newline then SHELLOPTS= -> no restart loop, the guard e
 r=$(runb GREP_OPTIONS=-v --findings "$W/rep.md" --allow src/q.ts)
 check "GREP_OPTIONS=-v -> no restart loop, the guard ends in ok (W1 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
 # The once-only mark is never a way around the restart: inherited together with BASHOPTS, the guard cannot check (2).
-r=$(bnd 20 env PUSH_GUARD_RESTARTED=1 BASHOPTS=nocasematch "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
+r=$(bnd "$WD" env PUSH_GUARD_RESTARTED=1 BASHOPTS=nocasematch "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
 check "restart mark inherited with BASHOPTS -> 2 INCONCLUSIVE, never a pass with the option on (W1 of #75)" eval '[ $r = 2 ] && grep -q "INCONCLUSIVE" "$W/out"'
 # PR 75 N1: the restart runs the bash that started the guard ($BASH), not the first bash on PATH.
 mkdir -p "$W/fakebash"; RB="$(command -v bash)"
 printf '#!/bin/sh\nprintf "%%s\\n" "$1" >>"%s/fakebash/log"\nexec "%s" "$@"\n' "$W" "$RB" >"$W/fakebash/bash"; chmod +x "$W/fakebash/bash"; : >"$W/fakebash/log"
-r=$(bnd 20 env PATH="$W/fakebash:$PATH" BASHOPTS=nocasematch "$RB" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
+r=$(bnd "$WD" env PATH="$W/fakebash:$PATH" BASHOPTS=nocasematch "$RB" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
 check "the restart runs \$BASH, not the bash first on PATH (N1 of #75)" eval '[ $r = 0 ] && ! grep -q "push-guard.sh$" "$W/fakebash/log"'
 # PR 75 N7: BASH_ENV is dropped on the restart, so the second start does not read it again.
 printf 'echo x >>"%s/bashenv.log"\n' "$W" >"$W/bashenv.sh"; : >"$W/bashenv.log"
-r=$(bnd 20 env BASHOPTS=nocasematch BASH_ENV="$W/bashenv.sh" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
+r=$(bnd "$WD" env BASHOPTS=nocasematch BASH_ENV="$W/bashenv.sh" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
 check "BASH_ENV is not read again after the restart (N7 of #75)" eval '[ $r = 0 ] && [ "$(wc -l <"$W/bashenv.log" | tr -d " ")" = 1 ]'
 # PR 75 W2: SHELLOPTS=noexec acts before the guard's first line, so it exits 0 having checked nothing. Started with
 # bash -p, bash ignores SHELLOPTS, BASHOPTS and BASH_ENV from the environment, so the guard runs and refuses.
@@ -223,7 +227,7 @@ check "SHELLOPTS=noexec, started with bash -p -> the guard runs and refuses src/
 # still kept out on the second start, and the refusal stands.
 GF='() { case "$*" in *diff-tree*|*merge-tree*) return 0 ;; *) command git "$@" ;; esac; }'
 for e in BASHOPTS=nocasematch SHELLOPTS=xtrace; do
-  r=$(bnd 20 env "BASH_FUNC_git%%=$GF" "$e" bash -p "$PG" 7 --findings "$W/rep.md")
+  r=$(bnd "$WD" env "BASH_FUNC_git%%=$GF" "$e" bash -p "$PG" 7 --findings "$W/rep.md")
   check "bash -p, $e and an exported git function -> the restart keeps -p, src/q.ts still refused (W3 of #75)" \
     eval '[ $r = 1 ] && grep -q "src/q.ts" "$W/out" && ! grep -q "^push-guard: ok" "$W/out"'
 done
@@ -317,7 +321,7 @@ r=$(run --findings "$W/rep.md"); check "a pushed commit adds a GitHub token in a
 # PR 75 W3: bash -p keeps exported functions out of the guard but still hands them to its children, so the
 # review-cycle.sh it runs starts with -p too. Here an exported python3 skips the screen of a patch and runs the rest.
 PF='() { if [ "${X_MODE:-}" = patch ]; then cat >/dev/null; return 0; fi; command python3 "$@"; }'
-r=$(bnd 20 env "BASH_FUNC_python3%%=$PF" bash -p "$PG" 7 --findings "$W/rep.md")
+r=$(bnd "$WD" env "BASH_FUNC_python3%%=$PF" bash -p "$PG" 7 --findings "$W/rep.md")
 check "bash -p and an exported python3 that skips the patch screen -> review-cycle.sh starts with -p, still refused, secret (W3 of #75)" \
   eval '[ $r = 1 ] && grep -q "tests/s.test.ts:1 GitHub token" "$W/out" && ! grep -q "^push-guard: ok" "$W/out"'
 g rm -q tests/s.test.ts; g commit -q -m "drop the token"
@@ -754,13 +758,13 @@ mkdir -p "$W/fnshim"; RG="$(command -v git)"
 printf '#!/bin/sh\nenv | grep -c "^BASH_FUNC_" >>"%s/fnshim/log"\nexec "%s" "$@"\n' "$W" "$RG" >"$W/fnshim/git"; chmod +x "$W/fnshim/git"
 for e in X_N10=1 BASHOPTS=nocasematch; do
   : >"$W/fnshim/log"
-  r=$(bnd 20 env PATH="$W/fnshim:$PATH" "BASH_FUNC_probe%%=() { :; }" "$e" bash -p "$PG" 7 --findings "$W/rep.md")
+  r=$(bnd "$WD" env PATH="$W/fnshim:$PATH" "BASH_FUNC_probe%%=() { :; }" "$e" bash -p "$PG" 7 --findings "$W/rep.md")
   check "bash -p, $e and an exported function -> no child of the guard receives it, ok (N10 of #75)" \
     eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && [ -s "$W/fnshim/log" ] && ! grep -qv "^ *0$" "$W/fnshim/log"'
 done
-r=$(bnd 20 env "FOO=x"$'\n'"BASH_FUNC_y%%=z" bash -p "$PG" 7 --findings "$W/rep.md")
+r=$(bnd "$WD" env "FOO=x"$'\n'"BASH_FUNC_y%%=z" bash -p "$PG" 7 --findings "$W/rep.md")
 check "a value holding a newline then BASH_FUNC_y%%= -> no restart loop, ok (N10 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
-r=$(bnd 20 env PUSH_GUARD_RESTARTED=1 "BASH_FUNC_probe%%=() { :; }" bash -p "$PG" 7 --findings "$W/rep.md")
+r=$(bnd "$WD" env PUSH_GUARD_RESTARTED=1 "BASH_FUNC_probe%%=() { :; }" bash -p "$PG" 7 --findings "$W/rep.md")
 check "restart mark inherited with an exported function -> 2 INCONCLUSIVE (N10 of #75)" eval '[ $r = 2 ] && grep -q "INCONCLUSIVE" "$W/out"'
 g checkout -q -f feat/x
 

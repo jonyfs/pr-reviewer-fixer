@@ -222,9 +222,29 @@ if [ -n "${RUN_ONLY:-}" ] && [ "$started" = 0 ]; then
   echo "run-all: --only $RUN_ONLY matches no suite; nothing ran" >&2; exit 1
 fi
 echo "== all suites: $(( $(date +%s) - run_t0 ))s wall${RUN_ONLY:+ (only: $RUN_ONLY: NOT the full run; a PASSED verdict or a merge needs the full run)}"
+# A suite that fails prints every FAIL or failed line of its log, not only the last three lines, and its whole log is
+# kept in a folder that outlives the run (the run's own folder is removed at exit), so a row that fails only under load
+# can be named and told from a defect. The folder is made at the first failure, under TMPDIR, and its path is printed.
+KEPT=""
+failed_rows() {
+  local n="$1" name="$2" log="$OUT/$1.log" dest rows
+  if [ -z "$KEPT" ]; then KEPT="$(mktemp -d "${TMPDIR:-/tmp}/run-all-failed.XXXXXX" 2>/dev/null)" || KEPT=""; fi
+  dest=""
+  if [ -n "$KEPT" ]; then
+    dest="$KEPT/$n-$(printf %s "$name" | tr -c 'A-Za-z0-9._-' '_').log"
+    cp "$log" "$dest" 2>/dev/null || dest=""
+  fi
+  echo "   -- ${name} FAILED; full log: ${dest:-not kept (no folder could be made under ${TMPDIR:-/tmp})}"
+  # A FAIL line, and a failed line unless it counts 0 failed; never a passing row whose name holds the word.
+  rows="$(awk '!/^(PASS|ok)[ :|]/ && (/FAIL/ || (/[Ff]ailed/ && !/(^|[^0-9])0 failed/))' "$log" 2>/dev/null)"
+  if [ -n "$rows" ]; then
+    printf '%s\n' "$rows" | head -n 60 | sed 's/^/   | /'
+    [ "$(printf '%s\n' "$rows" | wc -l)" -le 60 ] || echo "   | ... $(( $(printf '%s\n' "$rows" | wc -l) - 60 )) more in the full log"
+  else echo "   | (no FAIL or failed line in the log: the suite stopped early, or reports in another form)"; fi
+}
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]} ($(cat "$OUT/$n.secs" 2>/dev/null || echo ?)s)"; tail -n 3 "$OUT/$n.log"
-  [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -eq 0 ] || fail=1
+  if [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -ne 0 ]; then fail=1; failed_rows "$n" "${names[$i]}"; fi
 done
 # Every skill states the summary shape, so the three reports read the same way to a person: the
 # reviewer's template, the fixer's closure rule, the merge fixer's closure rule and the shared protocol.

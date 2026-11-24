@@ -3,7 +3,9 @@
 # No suite runs here: --print-key prints the key, and the option refusals exit before any suite starts.
 set -u
 T="$(cd "$(dirname "$0")" && pwd)"; SRC="$(cd "$T/.." && pwd)/run-all.sh"
-W="$T/work-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W"
+W="$T/work-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W/tmp"
+# The scratch runs below fail on purpose, and a failing run keeps its logs under TMPDIR: they stay in this suite's folder.
+export TMPDIR="$W/tmp"
 PASS=0; FAIL=0
 check() { local name="$1"; shift; if "$@"; then PASS=$((PASS+1)); echo "PASS | $name"; else FAIL=$((FAIL+1)); echo "FAIL | $name"; fi; }
 R="$W/repo"; mkdir -p "$R/tests"; cp "$SRC" "$R/tests/run-all.sh"
@@ -183,6 +185,20 @@ rm -rf "${CD2%/*}"; : > "${CD2%/*}"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 rm -f "${CD2%/*}"
 check "a green run whose key cannot be written says it is not recorded" eval '[ $r = 0 ] && printf %s "$out" | grep -q "could not be made or written"'
+# PR 85 N5, PR 86 N1, PR 87 N5: a failing suite names its failing rows and keeps its log. One stub fails with its FAIL row
+# first and six passing rows after it (one whose name holds FAIL), so the last three lines of its log do not hold the row.
+cp "$R2/tests/scan/run.sh" "$W/scan-stub.bak"
+printf '#!/usr/bin/env bash\necho "FAIL | the planted failing row"\necho "PASS | a passing row whose name says FAIL"\nfor i in 1 2 3 4 5; do echo "PASS | filler $i"; done\necho "TOTAL: 5 passed, 1 failed"\nexit 1\n' >"$R2/tests/scan/run.sh"
+rm -rf "$W/tmp/"run-all-failed.*
+out="$(bash "$R2/tests/run-all.sh" --fresh 2>&1)"; r=$?
+cp "$W/scan-stub.bak" "$R2/tests/scan/run.sh"
+KEPT_LOG="$(printf %s "$out" | sed -n 's/^   -- model-key scan FAILED; full log: //p')"
+check "a failing suite fails the run" [ "$r" != 0 ]
+check "a failing suite prints its FAIL row, not only its last three lines" eval 'printf %s "$out" | grep -q "^   | FAIL | the planted failing row$"'
+check "a failing suite keeps its whole log at the printed path, under TMPDIR, after the run" \
+  eval '[ -n "$KEPT_LOG" ] && case "$KEPT_LOG" in "$W/tmp/"*) true ;; *) false ;; esac && grep -q "FAIL | the planted failing row" "$KEPT_LOG" && grep -q "PASS | filler 5" "$KEPT_LOG"'
+check "a passing row whose name holds FAIL is not printed as a failing row" eval '! printf %s "$out" | grep -q "^   | PASS"'
+check "a passing suite prints no failing-rows block" eval '[ "$(printf %s "$out" | grep -c " FAILED; full log: ")" = 1 ]'
 unset XDG_CACHE_HOME
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
