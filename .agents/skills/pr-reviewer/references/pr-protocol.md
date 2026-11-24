@@ -424,7 +424,10 @@ from `findings-block`, the one reader. One rule per dimension; CRITICAL is `erro
 `warning`, NOTE `note`; only the entries the `counts:` line counts are results unless
 `--include-closed` adds the closed ones as suppressed. The fingerprint hashes file, dimension and
 the normalized claim, never the line or the id, and ends with an occurrence suffix (`:1`, `:2` in
-report order) that keeps two findings sharing those three apart. Every text field is the model's text about the pull
+report order, closed entries included) that keeps two findings sharing those three apart. A finding
+once exported stays in every later findings block of the pull request, closed as `verified` or
+`not-applicable` when it no longer applies, and is never dropped: the suffix follows block order, so
+dropping one of two such twin findings hands the survivor the other's suffix and fingerprint. Every text field is the model's text about the pull
 request and is written as an escaped JSON string, never as Markdown. Over GitHub's limits (10 MB
 gzip-compressed, 25,000 results or rules per run) it writes nothing and exits 2, as it does for a
 malformed block or an entry it cannot map. It uploads nothing.
