@@ -184,9 +184,10 @@ sequenceDiagram
   writes) runs in a scratch clone at the head, with an empty environment (no `GH_TOKEN`, no SSH
   agent, no credential helper), stdin closed, a new session, a wall-clock, CPU, file-size and
   process-count bound, and no network. The sandbox is called by a fixed path: `/usr/bin/sandbox-exec`
-  on macOS, with a profile that denies everything by default (no network, no system service such as
+  on macOS, with a profile that denies everything by default (no network, no mach service such as
   LaunchServices, the pasteboard or the keychain; writes only in the run's folder; your home
-  hidden), or `/usr/bin/bwrap` on Linux (every namespace unshared, only the system folders bound
+  hidden; launchd still answers read queries such as `launchctl print gui/<uid>`, which lists your
+  services), or `/usr/bin/bwrap` on Linux (every namespace unshared, only the system folders bound
   read-only, /tmp, /run and /home empty, the run's folder the only writable path). `unshare -rn` is
   not enough and is refused. Where no sandbox works, the script refuses with `no network sandbox
   here; repro skipped` (exit 4) and never runs the repro unsandboxed. The result goes in the
@@ -758,8 +759,13 @@ flowchart TD
   confines writes to the run's folder on both backends it accepts; Linux without `bwrap` gets no
   run at all. It still reads the system folders (on macOS also /Library, Homebrew and Xcode; on
   Linux /etc), so a secret kept there is readable inside, though it cannot leave. It limits time,
-  CPU, file size and process count, not memory. On macOS a leftover process is found through
-  `sandbox_check(3)` with `/usr/bin/python3`; without it the result is `skipped`. Its rows in the
+  CPU, file size and process count, not memory. On macOS launchd still answers read queries through
+  the bootstrap port inside the sandbox (`launchctl print gui/<uid>` lists your services, their pids
+  and state; changes are refused), and that text can reach the repro's log. A leftover process is
+  found through `sandbox_check(3)` with `/usr/bin/python3`, by two marker paths the repro cannot
+  touch, and killed by a reaper confined to the run's own sandbox instance; without python3 the
+  result is `skipped`. A repro that kills or stops that reaper and also replaces its box folder can
+  leave a process running (the result is `skipped` and the process is named). Its rows in the
   test suite are skipped where no sandbox works, such as an Ubuntu host that blocks unprivileged
   user namespaces, and the Linux rows have not run where this change was written (macOS).
 - An AI verdict is not a human review. It reduces the chance that an obvious defect reaches the

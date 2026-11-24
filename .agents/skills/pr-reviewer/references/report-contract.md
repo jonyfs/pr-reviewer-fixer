@@ -218,8 +218,9 @@ path the repro can write, with `env -i` (a fixed PATH, HOME and TMPDIR in box, n
 agent, git's system and global config off), stdin from /dev/null, a new session, `timeout`, `ulimit
 -t`, `-f` and `-u` (the uid's process count plus 256), and a sandbox called by a fixed path:
 `/usr/bin/sandbox-exec` on macOS with a profile that starts from `(deny default)` (exec and fork,
-signals to itself, reads of the system folders, reads and writes in box; no network and no
-mach-lookup, so no LaunchServices, pasteboard, keychain or Apple Events), `/usr/bin/bwrap` on Linux
+signals only within the run's own sandbox instance, reads of the system folders, reads and writes in
+box, reads of one marker file outside box; no network and no mach-lookup, so no LaunchServices,
+pasteboard, keychain or Apple Events), `/usr/bin/bwrap` on Linux
 (every namespace unshared, only /usr, /etc and the /bin, /sbin and /lib folders bound read-only,
 tmpfs on /tmp, /run, /var/run and /home, `--die-with-parent`, `--new-session`, `--clearenv`, box the
 only writable bind). `unshare -rn` is not enough (it confines neither reads nor writes) and is
@@ -231,17 +232,28 @@ a string the script builds. Its log (`--log`) is pull request output: screen it 
 a report.
 
 When the result is `skipped` rather than evidence: the repro never started (the wrapper writes a
-sentinel just before it execs the repro; a sandbox that aborts first leaves none), the timeout (124,
-137), a command that could not run (126, 127), the script's own CPU or file-size limit (152, 153), or
-a process of the repro that outlived it outside its session (found and killed) or survived the kill.
+sentinel just before it execs the repro; a sandbox that aborts first leaves none), the timeout (124),
+a SIGKILL (137: the timeout's KILL or the repro's own, which the script cannot tell apart), a command
+that could not run (126, 127), the script's own CPU or file-size limit (152, 153), a process of the
+repro that outlived it outside its session (found and killed) or survived the kill, or a repro that
+replaced or removed its box folder.
 `--expect fail` counts any other non-zero exit, so a missing dependency (`ModuleNotFoundError`, a
 package the fresh clone lacks) reads as `reproduced`: pair `fail` with `--expect-log <fixed string>`,
 the assertion message the finding predicts, and the result is `reproduced` only when the log holds it.
 
-Limits that remain. On macOS a process the repro leaves behind is found through `sandbox_check(3)`
-(this run's sandbox: box readable, the scratch folder not), which needs `/usr/bin/python3`; without
-it the result is `skipped`. Signals go only to the process itself, so a test that signals its own
-children fails inside. The profile allows reads of /usr, /System, /Library, /private/etc and the
+Limits that remain. On macOS a process the repro leaves behind is found through `sandbox_check(3)`,
+which needs `/usr/bin/python3` (without it the result is `skipped`). The test asks only about two
+random marker paths outside box, one that this run's profile alone may read and one it may not, so
+nothing the repro writes can steer it onto another process; the path box is never asked about. The
+kill goes through a reaper the wrapper forks inside the run's sandbox instance, which the kernel lets
+signal nothing outside that instance (`kill(-1)` is not used: its confinement could not be shown
+safely). The scan repeats until two rounds in a row find nothing, at most 15 s. The script kills
+directly only when the reaper is gone and box is still the folder it made; a repro that kills or
+stops the reaper and also replaces or removes box leaves its survivors running (named on stderr,
+result `skipped`). Signals reach only processes of the same sandbox instance. launchd still answers
+read queries that come through the bootstrap port, which is not a mach-lookup: `launchctl print
+gui/<uid>` lists the user's services with their pids and state inside the sandbox (changes are
+refused), and that text can reach `--log`. The profile allows reads of /usr, /System, /Library, /private/etc and the
 runtime folders (/opt/homebrew, Xcode): a secret kept there is readable, though nothing can leave
 without network. On Linux the bwrap backend is built from bwrap's documented flags and its rows run
 only where bwrap works (they skip elsewhere, and CI does not run this suite); /etc is bound read-only, so world-readable files there are visible;
