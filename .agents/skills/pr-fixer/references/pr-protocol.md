@@ -33,9 +33,10 @@ and check with `cmp`.
 
 Every comment an agent posts is plain text. Markdown is for the pull request description only. A
 comment has no headings, no tables, no bold or italics, no bullet or numbered lists, no checkboxes,
-no quotes, no fenced block other than the `findings` block (no Mermaid), and no emoji. The marker
-line and the `findings` block are the only exceptions. Every comment follows one order, so a reader
-learns where to look and a parser finds the marker on the first line:
+no quotes, no fenced block other than the `findings` block of a verdict or the `proofs` block of a
+fixer closure (no Mermaid), and no emoji. The marker line and those two blocks are the only
+exceptions. Every comment follows one order, so a reader learns where to look and a parser finds
+the marker on the first line:
 
 1. the marker, alone on the first line (`<!-[-] ... -->`);
 2. the banner, one line: `Written by pr-reviewer`, `Written by pr-fixer` or `Written by
@@ -44,7 +45,8 @@ learns where to look and a parser finds the marker on the first line:
    last), one value each;
 4. the detail: one labelled line per item, starting with its id or its label (`C1 closed:`,
    `Coverage:`, `File src/a.ts:`), with the evidence on that line or the next labelled one;
-5. the fenced `findings` block last, when the comment has one.
+5. the fenced `findings` block (a verdict) or `proofs` block (a fixer closure, see
+   `falsify-and-prove.md` in pr-fixer, "Proof block") last, when the comment has one.
 
 Legend, used the same way everywhere, in words: CRITICAL, WARNING and NOTE for severity; closed,
 refused, escalated and open for a fixer outcome; verified, refused-accepted, refused-rejected and not
@@ -56,7 +58,7 @@ Formatting that the scripts and the scanner reject, so never write it into an ag
 `details` blocks, HTML comments other than the protocol's markers, invisible HTML, and emoji with a
 variation selector (`⚠️`, `✔️`, `ℹ️`, `➡️`). `scan-hidden.py` flags each one as a candidate finding.
 `tests/run-all.sh` fails when a comment template in the skills holds a table row, a heading, bold,
-a bullet or a fenced block other than `findings`.
+a bullet or a fenced block other than `findings` or `proofs`.
 
 Links in a comment or in a pull request body are absolute. GitHub resolves a relative path such as
 `docs/guide.md` against the pull request's own URL, so it lands on a compare page, not on the file. Write

@@ -46,7 +46,7 @@
 # prints more than 64 MiB (output goes to a file, never held in memory). A member that moves itself
 # into another process group or session (setsid, set -m) escapes that kill. When the checker itself
 # gets SIGTERM, SIGHUP or SIGINT (one it was not started ignoring, as under nohup), it kills the
-# group, deletes its work folder and exits 2.
+# group, deletes its work folder and exits 2, or 1 when an entry already printed MISMATCH.
 # The allowlist limits WHICH command runs, not WHAT it does: the checkout is the pull request's code,
 # so permit only commands you would run on that code anyway. The .. and / rules check a word's text,
 # not where it leads: a relative path can still leave the checkout through a symlink the pull request
@@ -58,7 +58,8 @@
 # or the closure marker, which is the untrusted text's own claim), or says there was none. tool_versions is printed with a mismatch, never compared.
 #
 # EXIT CODES. 0 every re-run entry matched. 1 at least one re-run entry did not match (exit code, or
-# output hash with --check-output); a mismatch wins over a later failure to check. 2 nothing could be
+# output hash with --check-output); a mismatch wins over a later failure to check, a signal and an
+# internal error included. 2 nothing could be
 # checked: bad usage, no block, two blocks, malformed JSON, an empty array, a missing or malformed
 # field, a refused command, no allowlist, a wrong head or tree, a clone or checkout that failed, a
 # timeout, output past 64 MiB, or a pull request that could not be read. Exit 2 never means "proved"; it means nobody
@@ -76,6 +77,10 @@ def say(msg): print("proof-check: " + msg, flush=True)
 def cannot(msg):
     say(msg + ", cannot check"); sys.exit(2)
 LIVE = {"group": None, "child": None, "work": None}   # what a crash or a signal must stop and delete
+SEEN = {"mismatch": 0}   # entries that printed MISMATCH: a crash or a signal after one still exits 1
+def _say_seen():
+    if SEEN["mismatch"]:
+        say("%d re-run entries did not match before the stop" % SEEN["mismatch"])
 def stop_group(pgid):
     try:
         os.killpg(pgid, signal.SIGKILL)
@@ -91,24 +96,28 @@ def _cleanup():
             pass
     if LIVE["work"]:
         shutil.rmtree(LIVE["work"], ignore_errors=True)
-# An error nobody foresaw is "cannot check" (2), never a mismatch (1).
+# An error nobody foresaw is "cannot check" (2), never a mismatch (1), unless an entry already
+# printed MISMATCH: a mismatch wins, so that exits 1.
 def _crash(kind, value, tb):
+    code = 1 if SEEN["mismatch"] else 2
     try:   # a closed stdout must not turn exit 2 into Python's 1
-        _cleanup(); say("internal error (%s), cannot check" % kind.__name__)
+        _cleanup(); say("internal error (%s), cannot check" % kind.__name__); _say_seen()
     finally:
-        os._exit(2)
+        os._exit(code)
 sys.excepthook = _crash
 # The command runs in a session of its own, so a signal to the checker (an outer timeout's SIGTERM, a
 # closed terminal's SIGHUP, Ctrl-C) never reaches it: the checker stops its group, deletes the work
-# folder and exits 2. Inside held(), between starting a process and recording it, a signal waits.
+# folder and exits 2, or 1 after a MISMATCH. Inside held(), between starting a process and
+# recording it, a signal waits.
 HOLD = {"on": False, "sig": None}
 def _on_signal(signum, frame):
     if HOLD["on"]:
         HOLD["sig"] = HOLD["sig"] or signum; return
+    code = 1 if SEEN["mismatch"] else 2
     try:
-        _cleanup(); say("stopped by signal %s, cannot check" % signal.Signals(signum).name)
+        _cleanup(); say("stopped by signal %s, cannot check" % signal.Signals(signum).name); _say_seen()
     finally:
-        os._exit(2)
+        os._exit(code)
 class held:
     def __enter__(self):
         HOLD["on"] = True
@@ -410,7 +419,7 @@ try:
         if opt["check_output"] and got_hash != e["output_sha256"]:
             bad.append("output sha256 %s, claimed %s" % (got_hash[:12], e["output_sha256"][:12]))
         if bad:
-            mismatch += 1
+            mismatch += 1; SEEN["mismatch"] = mismatch
             say("entry %d MISMATCH: %s at %s: %s (claimed tools: %s)" % (n, e["command"], h[:12], "; ".join(bad), tv))
         else:
             say("entry %d match: %s at %s exit %d%s" % (n, e["command"], h[:12], r.returncode,

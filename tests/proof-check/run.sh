@@ -145,6 +145,15 @@ kill -HUP "$pid" 2>/dev/null; wait "$pid"; r=$?
 check "proof-check sent SIGHUP while the command runs (W5) -> 2, the sleep is stopped, no work folder left" \
   eval '[ -e "$W/started-hup" ] && [ $r = 2 ] && has "stopped by signal SIGHUP" && gone 24 && [ -z "$(ls -A "$SIGTMP")" ]'
 pkill -f "slee[p] 24.$TOK" 2>/dev/null
+# PR 82 N7: a signal after an entry printed MISMATCH exits 1, since a mismatch wins over a later failure.
+rm -rf "$SIGTMP"; mkdir -p "$SIGTMP"
+closure "$W/mmterm.md" "[$(entry 'bash tests/pass.sh' 1 "$HEAD" "$HEAD_TREE"),$(entry 'bash tests/sig.sh mmterm 5' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+(cd "$W/repo" && TMPDIR="$SIGTMP" exec bash "$PC" --file "$W/mmterm.md" --allow-file "$ALLOW" --timeout 600) </dev/null >"$W/out" 2>&1 &
+pid=$!; for k in $(seq 1 150); do [ -e "$W/started-mmterm" ] && break; sleep 0.2; done
+kill -TERM "$pid" 2>/dev/null; wait "$pid"; r=$?
+check "a MISMATCH, then SIGTERM while the next command runs (PR 82 N7) -> 1, the sleep is stopped, no work folder left" \
+  eval '[ -e "$W/started-mmterm" ] && [ $r = 1 ] && has "entry 1 MISMATCH" && has "stopped by signal SIGTERM" && has "1 re-run entries did not match before the stop" && gone 25 && [ -z "$(ls -A "$SIGTMP")" ]'
+pkill -f "slee[p] 25.$TOK" 2>/dev/null
 closure "$W/big.md" "[$(entry 'bash tests/big.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
 r=$(run "$W/big.md"); check "output past the 64 MiB cap -> 2 (N4)" eval '[ $r = 2 ] && has "MiB"'
 

@@ -248,9 +248,9 @@ for spec in \
 done
 # Agent comments are plain text: Markdown belongs in the pull request description only. A comment
 # template is a fenced block in a skill's Markdown whose first line is a protocol marker. Outside its
-# own `findings` fence, a template may hold no table row, heading, bold, bullet, checkbox, quote or
-# other fenced block (Mermaid included). A floor on the templates found keeps a wrong path from
-# passing with nothing read.
+# own `findings` fence (a verdict) or `proofs` fence (a fixer closure), a template may hold no table
+# row, heading, bold, bullet, checkbox, quote or other fenced block (Mermaid included). A floor on
+# the templates found keeps a wrong path from passing with nothing read.
 if ! plain_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
 import os, re, sys
 markers = ("<!-[-] adversarial-review:", "<!-[-] pr-fixer-closure:", "<!-[-] pr-merge-fixer-closure:",
@@ -288,7 +288,7 @@ for d, _, fs in os.walk(sys.argv[1]):
                         inner = None
                     continue
                 if f:
-                    if f.group(2) != "findings":
+                    if f.group(2) not in ("findings", "proofs"):
                         bad.append("%s:%d fenced block %s" % (path, ln, f.group(2) or "(untagged)"))
                     inner = f.group(1); continue
                 for rx, what in rules:
@@ -320,6 +320,13 @@ for check in \
   "pr-reviewer/references/harness-loop.md|directly and it pushed a merge, the session's agent takes the loop agent's role|the direct handover is keyed on the push (PR 83 W2)" \
   "pr-reviewer/references/harness-loop.md|once the merge run ends (after its closure comment, or after the step that stopped it)|a stop after the push still hands the loop over (PR 83 W2)" \
   "pr-reviewer/references/harness-loop.md|not an escalation: the head moved, so go on to step 1|step 0 goes on after a stop past the push (PR 83 N9)" \
+  "pr-reviewer/references/harness-loop.md|Wait for its closure comment or its stopped line, then compare the head|step 0 waits for the merge run's end, then reads the head (PR 83 N10)" \
+  "pr-reviewer/references/harness-loop.md|A merge that escalates, or stops before|an escalation or a stop before the push stops the loop (PR 83 N10)" \
+  "pr-reviewer/references/harness-loop.md|with the one before the dispatch: a head that moved means the merge was pushed|step 0 tells a stop after the push by the head (PR 83 N11)" \
+  "pr-reviewer/references/harness-loop.md|go no further on this pull request until the person answers|step 0 waits for the person after a stop (PR 83 N11)" \
+  "pr-fixer/references/pr-protocol.md|a fenced block other than \`findings\` or \`proofs\`|the comment rules allow the proofs block (PR 82 N1)" \
+  "pr-fixer/SKILL.md|Record each red, green, suite and mutation run|the Finding step names the runs recorded as proof (PR 82 N8)" \
+  "pr-fixer/SKILL.md|Leave the behaviour-diff run out of the block|the behaviour-diff run is not a proof entry (PR 82 N8)" \
   "pr-reviewer/references/harness-loop.md|the \`pr-merge-fixer\` skill finishes a merge push|a merge push triggers the loop"; do
   rel="${check%%|*}"; rest="${check#*|}"; phrase="${rest%%|*}"; why="${rest#*|}"
   grep -qF "$phrase" "$ROOT/.agents/skills/$rel" \
