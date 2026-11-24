@@ -173,8 +173,9 @@ outside the pull request; the person says yes to it knowingly or does not.
    evidence of intent." Wait for its closure comment or its stopped line, then compare the head
    with the one before the dispatch, and read that comment or line for pushed or escalated: the
    merge was pushed only when the head moved and the closure marker says `escalated=0` with a
-   `head=` other than the noted head (a later push may sit on top of it), or the stopped line names
-   a step after the push. An escalation aborts the merge and pushes nothing. A moved head alone is not a
+   `head=` other than the first 12 characters of the noted head (a later push may sit on top of it),
+   or the stopped line names a step after the push. An escalation aborts the merge and pushes
+   nothing. A moved head alone is not a
    pushed merge, since a person may push while the merge fixer escalates. A stop after the push is
    not an escalation: the merge was pushed, so go on to step 1. A merge that escalates, or stops before
    the push, stops the loop even when the head moved: tell the person the decision or the stop it

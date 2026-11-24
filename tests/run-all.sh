@@ -334,7 +334,8 @@ for check in \
   "pr-reviewer/references/harness-loop.md|Note the pull request's head sha, then dispatch the merge fixer|step 0 notes the head before the merge dispatch (PR 83 N11, PR 85 N1)" \
   "pr-reviewer/references/harness-loop.md|with the one before the dispatch, and read that comment or line for pushed or escalated|step 0 reads the merge run's closure or stopped line, not only the head (PR 85 N3)" \
   "pr-reviewer/references/harness-loop.md|merge was pushed only when the head moved and the closure marker says|a pushed merge needs the moved head and the merge run's own line (PR 85 N3)" \
-  "pr-reviewer/references/harness-loop.md|\`head=\` other than the noted head (a later push may sit on top of it)|a person's push on top of the merge still reads as a pushed merge (PR 85 N3)" \
+  "pr-reviewer/references/harness-loop.md|\`head=\` other than the first 12 characters of the noted head|the closure marker's 12-character head is compared with the noted head's first 12 characters (PR 85 N7)" \
+  "pr-reviewer/references/harness-loop.md|(a later push may sit on top of it)|a person's push on top of the merge still reads as a pushed merge (PR 85 N3)" \
   "pr-reviewer/references/harness-loop.md|A moved head alone is not a|a concurrent push during an escalation is not a pushed merge (PR 85 N3)" \
   "pr-reviewer/references/harness-loop.md|the push, stops the loop even when the head moved|an escalation stops the loop even when the head moved (PR 85 N3)" \
   "pr-reviewer/references/harness-loop.md|go no further on this pull request until the person answers|step 0 waits for the person after a stop (PR 83 N11)" \
