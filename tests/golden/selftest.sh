@@ -289,13 +289,24 @@ subprocess.run(("git", "-C", clone, "update-ref", "refs/remotes/origin/main", st
 subprocess.run(("git", "-C", clone, "remote", "set-url", "origin", clone + "-gone.git"), check=True)
 out["unreachable"] = bc.base_of(clone, "main", stale, p1, at, [p1])
 out["head_not_listed"] = bc.base_of(clone, "main", fork, p1, at, ["0" * 40])
+# emit(): a flagged draft is written, named on stderr and makes the run exit 2; a clean one does not.
+import contextlib, io, os, tempfile
+d = tempfile.mkdtemp(dir=os.path.dirname(clone))
+for name, why in (("flagged", "base x gives 3 commit(s)"), ("clean", None)):
+    case = {"pr": 7, "expected": [], "base_check": "mismatch" if why else "ok"}
+    err = io.StringIO()
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+        rc = bc.emit(7, case, why, d)
+    out[name] = {"rc": rc, "err": err.getvalue(), "written": json.load(open(os.path.join(d, "pr-7.draft.json")))["base_check"]}
 print(json.dumps(out))
 PY
 bo="$(python3 -I "$W/base.py" "$T/build-cases.py" "$GD/clone" "$STALE" "$FORK" "$P1" 2>&1)"
 check "build-cases: a stale local origin/main is fetched first, so the base is the fork point" eval \
   'jq -e --arg f "$FORK" ".stale_ref == [\$f, null]" <<<"$bo" >/dev/null'
-check "build-cases: a base whose base..head count differs from the pull request's commits is refused" eval \
-  'jq -e ".unreachable[0] == null and (.unreachable[1] | contains(\"3 commit(s)\") and contains(\"has 1 up to the first-pass head\"))" <<<"$bo" >/dev/null'
+check "build-cases: a base whose base..head count differs from the pull request's commits is flagged" eval \
+  'jq -e --arg s "$STALE" ".unreachable[0] == \$s and (.unreachable[1] | contains(\"3 commit(s)\") and contains(\"has 1 up to the first-pass head\"))" <<<"$bo" >/dev/null'
+check "build-cases: a flagged draft is written with base_check mismatch and the run exits 2" eval \
+  'jq -e ".flagged.rc == 1 and .flagged.written == \"mismatch\" and (.flagged.err | contains(\"base_check mismatch\")) and .clean.rc == 0 and .clean.written == \"ok\" and .clean.err == \"\"" <<<"$bo" >/dev/null'
 check "build-cases: a first-pass head that is not among the pull request's commits is refused" eval \
   'jq -e ".head_not_listed[0] == null and (.head_not_listed[1] | test(\"not among the pull request.s commits\"))" <<<"$bo" >/dev/null'
 

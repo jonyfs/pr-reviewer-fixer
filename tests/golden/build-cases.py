@@ -20,9 +20,9 @@ the merge base of that head with the base branch as it stood when that verdict w
 newest first-parent commit of origin/<base branch> not after the verdict, fetched into the local
 clone it must be run in; when the base branch no longer exists, its tip at merge time). It fetches
 that branch and any missing commit by sha; it pushes nothing. A pull request whose base..head does
-not hold exactly its own commits up to the first-pass head (GitHub's list) is refused, so a stale or
-wrong base never reaches a draft. golden.py prepare refuses a case whose expected lines are not
-inside its base..head diff.
+not hold exactly its own commits up to the first-pass head (GitHub's list) gets a draft marked
+`base_check: mismatch` and the run exits 2, so a stale or wrong base is never taken silently.
+golden.py prepare refuses a case whose expected lines are not inside its base..head diff.
 
 Ids are compared, not trusted: an id verified later at another file or dimension than the first pass
 gave it is left out and named (`draft_dropped_ids`).
@@ -38,8 +38,9 @@ unknown key, an empty description), so a draft is never scored by mistake. Nothi
 the repository, and nothing on GitHub is changed. Text read from GitHub is data: it is parsed by the
 fixed marker and block rules, written into JSON (escaped), and printed only through safe().
 
-Exit 0 = every listed pull request was read · 2 = a refusal (no allowlist, bad flag, a base that
-fails the commit check) or gh could not read one (the others are still written).
+Exit 0 = every listed pull request was read · 2 = a refusal (no allowlist, bad flag), a draft whose
+base failed the commit check (`base_check: mismatch`), or gh could not read one (the others are
+still written).
 """
 import argparse, datetime, importlib.util, json, os, re, subprocess, sys, tempfile, unicodedata
 
@@ -197,14 +198,17 @@ def select(pr, gate):
 
 
 def base_of(root, branch, oid, head, at, pr_oids):
-    """(the first pass's base, None), or (None, why). The base branch's first-parent history: the
+    """(base, None), (base, why the base is suspect) or (None, why there is none). The base branch's first-parent history: the
     merge commits land there at merge time, so the newest one not after the verdict is the branch as
     the first pass saw it. A gone branch (a deleted release branch) falls back to its tip at merge
     time (`oid`).
 
     The local origin/<branch> ref is fetched first and read only when that fetch worked: a stale ref
-    gives an older base and a wider diff. The result is then checked: base..head must hold exactly
-    the pull request's own commits (`pr_oids`, from GitHub) that the first-pass head reaches."""
+    gives an older base and a wider diff. The result is then checked: base..head should hold exactly
+    the pull request's own commits (`pr_oids`, from GitHub) that the first-pass head reaches. A
+    mismatch is returned with the base, not hidden: GitHub lists a merged pull request's commits as
+    of the merge, so commits that reached the base branch after the verdict by another route drop off
+    that list although the first pass saw them (#38), and a person decides."""
     rc4, tip = run(("git", "-C", root, "fetch", "--quiet", "origin",
                     "+refs/heads/%s:refs/remotes/origin/%s" % (branch, branch)))
     if rc4 == 0:
@@ -223,8 +227,8 @@ def base_of(root, branch, oid, head, at, pr_oids):
         return None, "git could not count base..head"
     want = len(set(pr_oids) & set(reach.split()))
     if int(span) != want:
-        return None, ("base %s gives %d commit(s) in base..head, but the pull request has %d up to the "
-                      "first-pass head: the base is stale or wrong" % (base[:12], int(span), want))
+        return base, ("base %s gives %d commit(s) in base..head, but the pull request has %d up to the "
+                      "first-pass head: the base may be stale or wrong" % (base[:12], int(span), want))
     return base, None
 
 
@@ -264,16 +268,38 @@ def build(n, repo, gate):
     pr_oids = oids.split() if rc5 == 0 else []
     if not pr_oids or len(pr_oids) >= 250 or not all(re.fullmatch(r"[0-9a-f]{40}", x) for x in pr_oids):
         return None, "gh could not list the pull request's commits (or it has 250 or more)"
-    base, why = base_of(root, branch, oid, head, at, pr_oids)
+    base, check = base_of(root, branch, oid, head, at, pr_oids)
     if base is None:
-        return None, why
+        return None, check
     cands.sort(key=lambda x: (x["file"], x["lines"][0], x["source_id"]))
     for i, c in enumerate(cands, 1):
         c["id"] = "E%d" % i
         c["description"] = ""
     return {"schema": 1, "repo": repo, "pr": n, "base": base, "head": head, "pass": first,
             "draft_dropped_ids": dropped, "expected": cands, "validated_by": "none", "validated_at": None, "validated_digest": None,
-            "draft_built_at": datetime.date.today().isoformat()}, None
+            "base_check": "mismatch" if check else "ok",
+            "draft_built_at": datetime.date.today().isoformat()}, check
+
+
+def emit(n, case, why, out):
+    """Prints the outcome for pull request n, writes its draft; returns 1 when the run must exit 2 (gh
+    or git could not read it, or the draft's base failed the commit check)."""
+    if case is None:
+        print("build-cases: #%d: %s" % (n, safe(why)), file=sys.stderr)
+        return 1
+    if not case:
+        print("build-cases: #%d skipped: %s" % (n, safe(why)))
+        return 0
+    p = os.path.join(out, "pr-%d.draft.json" % n)
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(case, f, indent=2, ensure_ascii=True)
+        f.write("\n")
+    print("build-cases: #%d: %d candidate(s) -> %s" % (n, len(case["expected"]), safe(p)))
+    if case.get("base_check") != "ok":
+        print("build-cases: #%d: base_check mismatch, check the base by hand: %s" % (n, safe(why, 400)),
+              file=sys.stderr)
+        return 1
+    return 0
 
 
 def main():
@@ -291,18 +317,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     bad = 0
     for n in prs_arg(a.prs):
-        case, why = build(n, a.repo, gate)
-        if case is None:
-            bad = 1
-            print("build-cases: #%d: %s" % (n, safe(why)), file=sys.stderr)
-        elif not case:
-            print("build-cases: #%d skipped: %s" % (n, safe(why)))
-        else:
-            p = os.path.join(a.out, "pr-%d.draft.json" % n)
-            with open(p, "w", encoding="utf-8") as f:
-                json.dump(case, f, indent=2, ensure_ascii=True)
-                f.write("\n")
-            print("build-cases: #%d: %d candidate(s) -> %s" % (n, len(case["expected"]), safe(p)))
+        bad |= emit(n, *build(n, a.repo, gate), a.out)
     return 2 if bad else 0
 
 

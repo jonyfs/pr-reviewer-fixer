@@ -44,7 +44,7 @@ A case file has these fields, and no others:
 | --- | --- |
 | `schema` | 1 |
 | `repo`, `pr` | the pull request |
-| `base`, `head` | the 40-digit shas the first pass reviewed: `head` is that verdict's `sha=`, `base` the merge base of `head` with the base branch as it stood when the verdict was posted (its newest first-parent commit not after the verdict). When the base branch was deleted (#35 and #36 targeted release branches), its tip at merge time stands in, which can be newer than what the first pass saw. `build-cases.py` fetches the base branch first and refuses a base whose base..head does not hold exactly the pull request's own commits up to `head` |
+| `base`, `head` | the 40-digit shas the first pass reviewed: `head` is that verdict's `sha=`, `base` the merge base of `head` with the base branch as it stood when the verdict was posted (its newest first-parent commit not after the verdict). When the base branch was deleted (#35 and #36 targeted release branches), its tip at merge time stands in, which can be newer than what the first pass saw. `build-cases.py` fetches the base branch first and flags a base whose base..head does not hold exactly the pull request's own commits up to `head`. One shipped case is flagged and kept: #38's base..head holds 6 commits, but GitHub now lists 1 of them, because #38's branch had taken in #35 (merged into it at 19:40, before #38's first verdict at 19:55 on 2026-10-26) and those commits reached main by another route before #38 merged; none of the 6 was on main when the verdict was posted, so the base is what the first pass saw |
 | `pass` | the verdict's pass number |
 | `expected` | a list of `{id, source_id, file, lines, dimension, severity, description}`: `id` is E1, E2, ...; `source_id` the finding's id in the verdict; `lines` is `[start, end]` in the new file; `description` is one sentence written from the verdict and the fix diff |
 | `validated_by` | `none`, or the login of the person who validated it |
@@ -64,8 +64,9 @@ It trusts a marker only from a login on `REVIEW_MARKER_AUTHORS`, reads comments 
 `pr-json.py` (an edited comment is never read), skips a pull request where a trusted comment was
 edited or deleted by someone else, and reads each findings block through `review-cycle.sh
 findings-block`. Run it inside a clone of this repository: it fetches the base branch there, and
-refuses (exit 2, no draft) a pull request whose base..head commit count differs from its own commits
-up to the first-pass head. A draft (`pr-<n>.draft.json`) carries the reviewer's own claim and the fix head, so
+marks the draft `base_check: mismatch` and exits 2 when the base..head commit count differs from the
+pull request's own commits up to the first-pass head (GitHub's list, which is as of the merge): check
+that base by hand before you keep the case. A draft (`pr-<n>.draft.json`) carries the reviewer's own claim and the fix head, so
 whoever finishes it can write the description from the claim and `git diff <head> <fix head>`.
 `golden.py validate` refuses a draft as it stands: copy only the case fields into `cases/pr-<n>.json`,
 write each `description` in your own words, then run `golden.py prepare` (below) to check that every
