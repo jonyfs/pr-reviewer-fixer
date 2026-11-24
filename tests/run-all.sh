@@ -388,6 +388,43 @@ for f in references/pr-protocol.md references/harness-matrix.md references/harne
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-merge-fixer/$f" \
     && echo "== $f identical in pr-merge-fixer" || { echo "== $f DIFFERS in pr-merge-fixer"; fail=1; }
 done
+# The pr-fixer catalog's Counts section must agree with its tables: 100 rows, each Target one of
+# SKILL, reference, shipped or backlog, the SKILL, shipped and backlog item lists equal to the rows
+# with that Target, and the reference count equal to the rest. The reviewer's catalog has no counts.
+# Every row is counted before the dict is built, so a repeated item number fails even when the copy
+# has the same Target, and a shipped Target must name a path (`shipped: <path>`), not stand bare.
+if cat_out="$(python3 -I - "$ROOT/.agents/skills/pr-fixer/references/improvements-catalog.md" <<'PY'
+import collections, re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+found = [(int(m.group(1)), m.group(2).strip())
+         for m in re.finditer(r"^\| (\d+) \|.*\| ([^|]*?) \|\s*$", text, re.M)]
+bad = ["item %d appears %d times" % (n, c)
+       for n, c in sorted(collections.Counter(n for n, _ in found).items()) if c > 1]
+rows, nopath = {}, set()
+for n, t in found:
+    if t.startswith("shipped") and not re.match(r"shipped: `?[\w.-]*/[\w./-]*", t):
+        bad.append("item %d Target %r: shipped needs 'shipped: <path>'" % (n, t)); nopath.add(n)
+    rows[n] = "shipped" if t.startswith("shipped: ") and n not in nopath else t
+got = {k: sorted(n for n, t in rows.items() if t == k) for k in ("SKILL", "reference", "shipped", "backlog")}
+bad += ["%d rows, not items 1-100" % len(rows)] if sorted(rows) != list(range(1, 101)) else []
+bad += ["item %d Target %r" % (n, t) for n, t in sorted(rows.items()) if t not in got and n not in nopath]
+counts = text.split("## Counts", 1)[-1].split("\n## ", 1)[0]
+for k, label in (("SKILL", "SKILL (lean body)"), ("shipped", "shipped (formerly backlog)"), ("backlog", "backlog")):
+    m = re.search(r"^- %s: (none|items ([\d, ]+) \((\d+)\))\." % re.escape(label), counts, re.M)
+    said = [] if m and m.group(1) == "none" else [int(x) for x in m.group(2).split(",")] if m else None
+    if said is None or (m.group(3) and int(m.group(3)) != len(said)) or said != got[k]:
+        bad.append("%s: counts line says %s, the tables have %s" % (k, m.group(1) if m else "nothing", got[k]))
+m = re.search(r"^- reference: the remaining (\d+)\.", counts, re.M)
+if not m or int(m.group(1)) != len(got["reference"]):
+    bad.append("reference: counts line says %s, the tables have %d" % (m.group(1) if m else "nothing", len(got["reference"])))
+print("; ".join(bad) or " ".join("%s %d" % (k, len(v)) for k, v in got.items()))
+sys.exit(1 if bad else 0)
+PY
+)"; then
+  echo "== pr-fixer catalog counts match its Target column ($cat_out)"
+else
+  echo "== pr-fixer catalog counts DISAGREE with its Target column: $cat_out"; fail=1
+fi
 # The merge fixer runs the project's build, tests and lockfile regeneration on the pull request's code,
 # so `review-cycle.sh fix` (the fork and collaborator guard) must run before its first write on every
 # pull request, reviewed or not. Its text may not make that step conditional or skippable.
