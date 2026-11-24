@@ -92,11 +92,11 @@ check "HOME and XDG_CACHE_HOME unset: the cache is off, said plainly" eval 'prin
 out="$(env -u HOME XDG_CACHE_HOME= bash "$R/tests/run-all.sh" 2>&1)"
 check "HOME unset and XDG_CACHE_HOME empty: the cache is off too" eval 'printf %s "$out" | grep -q "the suite cache is off"'
 # N4 (PR 71 pass 1, W1): a green full run records its key only when the tree is unchanged at the end. A second scratch
-# repository holds the skills, the gate workflow, VERSION and CHANGELOG.md copied from this checkout, so the checks after
+# repository holds the skills, the gate and suite-check workflows, VERSION and CHANGELOG.md copied from this checkout, so the checks after
 # the suites pass, and a stub at each suite path run-all.sh starts (taken from run-all.sh itself), each exiting 0. With
 # EDIT_DURING_RUN set, the stubs edit a tracked file while the run is under way.
 SR="$(cd "$T/../.." && pwd)"; R2="$W/green"; mkdir -p "$R2/tests"; cp "$SRC" "$R2/tests/run-all.sh"
-(cd "$SR" && git ls-files -z -- .agents .github/workflows/review-gate.yml VERSION CHANGELOG.md | xargs -0 tar cf -) | tar xf - -C "$R2"
+(cd "$SR" && git ls-files -z -- .agents .github/workflows/review-gate.yml .github/workflows/suite-check.yml VERSION CHANGELOG.md | xargs -0 tar cf -) | tar xf - -C "$R2"
 grep -oE '"\$HERE/[^"]+\.(sh|py)"' "$SRC" | sed 's/^"\$HERE\///; s/"$//' | sort -u | while IFS= read -r s; do
   mkdir -p "$R2/tests/$(dirname "$s")"
   case "$s" in

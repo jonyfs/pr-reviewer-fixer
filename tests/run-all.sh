@@ -507,6 +507,104 @@ else
 fi
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
+# suite-check.yml runs the pull request's own code (PR 87 N4). That is safe only while its one trigger is pull_request
+# (never pull_request_target or workflow_run), its token is contents: read and nothing more (one permissions block,
+# none per job), and every checkout drops the token (persist-credentials: false). push-guard keeps a fixer out of
+# workflows; this keeps a later edit by anyone from loosening them unseen. Comment lines are not read, and a form this
+# check does not parse (an inline `on:` list, for example) fails it. The parser below (PR 87 W1) accepts only lines of
+# the form `indent [- ]plain-key: value`, so a quoted key, a space before the colon, a flow mapping, an anchor or a
+# block scalar fails it; it reads each `- ` step by indent, and a step whose uses names actions/checkout (quoted or
+# not, any case) must hold exactly one persist-credentials: false directly under its own with:.
+# A parser of the raw text can be outrun by YAML itself (PR 87 W2: an escape in a double-quoted value, a single-quoted
+# value left open over later lines), so the first line of defence is a pin: the workflow must match the sha256 below
+# byte for byte. Any edit to it, a whitespace-only one included, fails here until the pin is updated in the same pull
+# request, which a reviewer then sees in the diff. That a harmless edit fails is intended. The parser stays as the
+# second line of defence and, since W2, also fails on any backslash in a value and on any quoted value that does not
+# close on its own line (one quoted token, with no inner quote of its kind, then at most a comment).
+sc_pin=d72298283d66d2ab0905727c900fe7407eec78d1364575711bccb683f5bdbec0
+sc_sum="$(sha256 "$ROOT/.github/workflows/suite-check.yml" 2>/dev/null | cut -d' ' -f1)"
+if [ -n "$sc_sum" ] && [ "$sc_sum" = "$sc_pin" ]; then
+  echo "== suite-check.yml matches the sha256 pinned in tests/run-all.sh"
+else
+  echo "== suite-check.yml DIFFERS from the sha256 pinned in tests/run-all.sh (now '${sc_sum}'): review the edit, then update the pin in the same pull request"; fail=1
+fi
+sc="$(grep -v '^[[:space:]]*#' "$ROOT/.github/workflows/suite-check.yml" 2>/dev/null)"
+sc_on="$(printf '%s\n' "$sc" | awk '/^on:/{on=1;next} on&&/^[^[:space:]]/{exit} on&&/^  [^[:space:]]/{print}')"
+sc_perm="$(printf '%s\n' "$sc" | awk '/^permissions:/{on=1;next} on&&/^[^[:space:]]/{exit} on&&/[^[:space:]]/{print}')"
+sc_co="$(printf '%s\n' "$sc" | grep -cE 'uses:[[:space:]]*actions/checkout@')"
+sc_pc="$(printf '%s\n' "$sc" | grep -cE '^[[:space:]]*persist-credentials:[[:space:]]*false[[:space:]]*$')"
+sc_py=1
+python3 -I - "$ROOT/.github/workflows/suite-check.yml" >/dev/null 2>&1 <<'PY' && sc_py=0
+import re, sys
+try:
+    lines = open(sys.argv[1], encoding="utf-8").read().split("\n")
+except Exception:
+    sys.exit(1)
+shape = re.compile(r"( *)(- )?([A-Za-z0-9_-]+):(?: (.*))?$")
+rows = []  # (indent, dash, key column, key, value, line lowercased)
+for raw in lines:
+    if not raw.strip() or raw.lstrip(" ").startswith("#"):
+        continue
+    m = shape.match(raw)
+    if not m:
+        sys.exit(1)
+    ind, dash, key, val = len(m.group(1)), m.group(2) is not None, m.group(3), (m.group(4) or "").strip()
+    if val[:1] in ("{", "&", "*", "|", ">", "!") or (val[:1] == "[" and key != "types"):
+        sys.exit(1)
+    if "\\" in val:  # PR 87 W2: YAML decodes escapes in a double-quoted value; the raw text is not the value
+        sys.exit(1)
+    if val[:1] in ("'", '"'):  # PR 87 W2: a quote left open swallows the lines below it
+        close = val.find(val[0], 1)
+        if close < 0 or not re.fullmatch(r"(\s+#.*)?", val[close + 1:]):
+            sys.exit(1)
+    rows.append((ind, dash, ind + 2 if dash else ind, key, val, raw.lower()))
+top = [r[3] for r in rows if r[2] == 0]
+perms = [r for r in rows if r[3] == "permissions"]
+if len(top) != len(set(top)) or len(perms) != 1 or perms[0][2] != 0 or perms[0][4] != "":
+    sys.exit(1)
+def end(i):  # the row after the step that starts at row i
+    j = i + 1
+    while j < len(rows) and rows[j][0] > rows[i][0]:
+        j += 1
+    return j
+checkouts = set()
+for n, r in enumerate(rows):
+    if "actions/checkout" not in r[5]:
+        continue
+    starts = [i for i in range(n + 1) if rows[i][1] and n < end(i)]
+    if not starts:
+        sys.exit(1)
+    s = starts[-1]
+    if r[3] != "uses" or r[2] != rows[s][2] or (r[1] and n != s):
+        sys.exit(1)
+    if not re.sub(r"\s+#.*$", "", r[4]).strip("\"'").lower().startswith("actions/checkout@"):
+        sys.exit(1)
+    checkouts.add(s)
+for s in checkouts:
+    k, e = rows[s][2], end(s)
+    withs = [i for i in range(s, e) if rows[i][2] == k and rows[i][3] == "with" and not rows[i][1]]
+    if [rows[i][3] for i in range(s + 1, e) if rows[i][2] == k].count("with") != 1 or len(withs) != 1 or rows[withs[0]][4]:
+        sys.exit(1)
+    w = withs[0]
+    kids = []
+    for i in range(w + 1, e):
+        if rows[i][0] <= k:
+            break
+        kids.append(rows[i])
+    pc = [x for x in kids if x[3] == "persist-credentials"]
+    allpc = [i for i in range(s, e) if rows[i][3] == "persist-credentials"]
+    if not kids or len(pc) != 1 or len(allpc) != 1 or pc[0][4] != "false" or pc[0][0] != kids[0][0]:
+        sys.exit(1)
+sys.exit(0 if checkouts else 1)
+PY
+if [ -n "$sc" ] && [ "$sc_on" = "  pull_request:" ] && [ "$sc_perm" = "  contents: read" ] \
+   && [ "$(printf '%s\n' "$sc" | grep -cE "(^|[[:space:]{,])[\"']?permissions[\"']?[[:space:]]*:")" = 1 ] \
+   && ! printf '%s\n' "$sc" | grep -qE 'pull_request_target|workflow_run|persist-credentials:[[:space:]]*[^f[:space:]]' \
+   && [ "$sc_co" -ge 1 ] && [ "$sc_pc" = "$sc_co" ] && [ "$sc_py" = 0 ]; then
+  echo "== suite-check.yml: pull_request only, contents: read only, persist-credentials: false on every checkout"
+else
+  echo "== suite-check.yml is not pull_request only, contents: read only, with persist-credentials: false on every checkout"; fail=1
+fi
 # The model-key scan runs here, last: see model_key_scan, defined near the top.
 model_key_scan
 # Only a green full run is written to the cache (see the cache note above), and only when the tree is still the one

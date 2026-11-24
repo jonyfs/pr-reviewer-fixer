@@ -705,7 +705,8 @@ flowchart TD
 .agents/skills/
   pr-reviewer/          the reviewer skill (SKILL.md, references/, scripts/, templates/)
   pr-fixer/             the fixer skill (SKILL.md, references/, scripts/, templates/)
-.github/workflows/      the review-gate check and the release workflow. No workflow calls a model
+.github/workflows/      the review-gate check, the release workflow and suite-check.yml (run-all.sh --only push-guard
+                        on each pull request: the push-guard suite and the shared-file checks). No workflow calls a model
 .github/scripts/        release.sh, the release workflow's logic, tested by tests/release/run.sh
 docs/
   HOW-IT-WORKS.md       what the two skills do, step by step, with diagrams

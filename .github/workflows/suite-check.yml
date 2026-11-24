@@ -1,0 +1,34 @@
+# Runs part of the test suite on every pull request (PR 72 N8, N9): the push-guard suite, and the checks
+# tests/run-all.sh makes after its suites, among them the byte-for-byte comparison of the scripts the
+# skills share (the two push-guard.sh copies included), of the shared references and of the gate
+# template with .github/workflows/review-gate.yml.
+#
+# It is `run-all.sh --only push-guard`, a filtered run: it is NOT the full run that a PASSED verdict or
+# a merge needs, and it never reads or writes the suite cache. The full run stays in the harness.
+#
+# This workflow runs no model, holds no secret and writes nothing: the token is read-only and is not
+# kept in the clone. It runs the pull request's own tree, which is what it tests; nothing it does
+# reaches the repository. Actions are pinned to full commit SHAs.
+name: suite-check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: suite-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  push-guard-and-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: push-guard suite and the shared-file identity checks
+        run: bash tests/run-all.sh --only push-guard </dev/null
