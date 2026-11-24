@@ -236,7 +236,8 @@ benign = ["env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -
           "perl -e 'print qw(a b c)'", "ruby -e 'puts %w(a b)'", "perl -e 'my $q = 1; print $q'",
           "python3 -c 'print(7 % 3)'", "python3 -c 'print(\"%x\" % 255)'", "perl -e 'printf(q{%s}, 1)'",
           "perl -e 'print qx(git rev-parse HEAD)'", "ruby -e 'puts %x!git log -1!'", "echo \"$(printf '%s' done)\"",
-          "printf -v printenv '%s' x | sh", "perl -e 'print qq,env,'"]
+          "printf -v printenv '%s' x | sh", "perl -e 'print qq,env,'", "printf '%s\\n' a b > out",
+          "printf '%s\\n' a b | sh", "printf '%s %s\\n' a printenv | sh"]
 reads = ["env", "printenv", "env | sort", "printenv | grep -i token", "env > /tmp/e", "env -0", "set", "set | grep TOK",
          "export", "export -p", "declare -x", "declare -p", "typeset -x", "compgen -e", "cat /proc/self/environ",
          "tr '\\0' '\\n' < /proc/1/environ", "python3 -c 'import os; print(dict(os.environ))'",
@@ -286,7 +287,8 @@ reads = ["env", "printenv", "env | sort", "printenv | grep -i token", "env > /tm
          "ruby -e 'puts %x!env!'", "ruby -e 'system(*%w[printenv])'", "ruby -e 'puts %x<printenv>'",
          "echo -e 'printenv' | sh", "echo -n printenv | bash", "echo -ne 'env\\n' | sh", "$(echo -n printenv)",
          "$(printf '%s' printenv)", "eval \"$(printf '%s' env)\"", "echo -E printenv | xargs -I{} sh -c '{}'",
-         "$(printf -- '%s' printenv)", "ruby -e 'system(*%W[printenv])'"]
+         "$(printf -- '%s' printenv)", "ruby -e 'system(*%W[printenv])'", "printf '%s\\n' a printenv | sh",
+         "$(printf '%s;' true printenv)"]
 writes = ["echo x >> .github/workflows/ci.yml", "tee .github/workflows/ci.yml < /tmp/w", "cp /tmp/w .github/workflows/ci.yml",
           "sed -i '' 's/a/b/' .github/workflows/ci.yml", "rm .github/workflows/ci.yml", "mkdir -p .github/actions/x",
           "git checkout -- .github/workflows/ci.yml", "printf x > AGENTS.md", "echo '{}' > .mcp.json", "touch .claude/settings.json",

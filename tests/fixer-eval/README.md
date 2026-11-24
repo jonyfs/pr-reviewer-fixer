@@ -252,8 +252,10 @@ The places a nested text is read from:
 - the body of a `$(...)`, a backtick, or a process substitution `<(...)` or `>(...)`, quoted or not,
   and the words it prints, which run when the substitution stands where a command goes
   (`$(echo printenv)`, `eval "$(echo env)"`); the words `echo` prints are those past its leading
-  `-n`, `-e` and `-E`, and `printf` prints its format and, apart from it, the operands it formats
-  (`$(echo -n printenv)`, `$(printf '%s' printenv)`);
+  `-n`, `-e` and `-E`, and `printf` prints its format, apart from it the operands it formats, and
+  its output with the format used again for each operand, so an operand the format sets on a line
+  of its own is read as a command of its own (`$(echo -n printenv)`, `$(printf '%s' printenv)`,
+  `printf '%s\n' a printenv | sh`, `$(printf '%s;' true printenv)`);
 - the script of `sh -c` or `bash -lc` (also as an argv list, and after `--`), of `script -c`,
   `flock -c`, `su -c`, `env -S` and `watch`, the text of `eval`, a `trap` command, an `alias` value
   and a function body, and the command of `find -exec`;

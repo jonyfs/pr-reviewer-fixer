@@ -572,10 +572,27 @@ def operands(args):
     return [a for a in no_redirects(args) if not (a.startswith("-") and a != "-")]
 
 
+PRINTF_SPEC = re.compile(r"%(?:%|[-+ #0']*\d*(?:\.\d*)?[diouxXfFeEgGaAcsbq])")
+
+
+def printf_output(fmt, args):
+    """What printf prints: the format with each conversion replaced by the next operand (%% by %),
+    used again while operands remain, as printf does (`printf '%s\\n' a printenv` prints a line for
+    each operand)."""
+    out, rest = [], list(args)
+    takes = sum(1 for m in PRINTF_SPEC.finditer(fmt) if m.group() != "%%")
+    while True:
+        out.append(PRINTF_SPEC.sub(lambda m: "%" if m.group() == "%%" else (rest.pop(0) if rest else ""), fmt))
+        if not takes or not rest:
+            return "".join(out)
+
+
 def printed_words(seg):
     """The texts one simple command prints, as `echo printenv` prints `printenv`: echo's words past its
-    leading -n, -e and -E options; printf's format, and apart from it the operands it formats
-    (`printf '%s' printenv` prints `printenv`); any other command's words after its name."""
+    leading -n, -e and -E options; printf's format, apart from it the operands it formats
+    (`printf '%s' printenv` prints `printenv`), and its output with the format used once per operand
+    (printf_output), so an operand the format sets on a line of its own is read as a command of its
+    own (`printf '%s\\n' a printenv`); any other command's words after its name."""
     if len(seg) < 2:
         return []
     w = strip_prefix(seg)
@@ -591,7 +608,7 @@ def printed_words(seg):
             args.pop(0)
         if not args or args[0] == "-v":  # printf -v NAME assigns and prints nothing
             return []
-        texts = [args[0]] + ([" ".join(args[1:])] if args[1:] else [])
+        texts = [args[0]] + ([" ".join(args[1:]), printf_output(args[0], args[1:])] if args[1:] else [])
     else:
         texts = [" ".join(seg[1:])]
     return [t.replace("\\n", "\n") for t in texts if t]
