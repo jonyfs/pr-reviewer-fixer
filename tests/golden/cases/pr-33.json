@@ -16,7 +16,7 @@
       ],
       "dimension": "security",
       "severity": "WARNING",
-      "description": "path-floor.sh does not list Woodpecker's .woodpecker.yaml or Buildkite's default pipeline files as CI configuration, so a change to them gets no security floor."
+      "description": "path-floor.sh does not list Woodpecker's .woodpecker.yaml or Buildkite's default pipeline files as CI configuration, so a change to them gets no security floor; same lists in the identical copy .agents/skills/pr-fixer/scripts/path-floor.sh."
     },
     {
       "id": "E2",
@@ -28,7 +28,7 @@
       ],
       "dimension": "performance",
       "severity": "WARNING",
-      "description": "The label-use regex in scan-hidden.py rescans up to 999 escaped pairs from every bracket, so a long run of escaped brackets makes the scan take seconds (quadratic time)."
+      "description": "The label-use regex in scan-hidden.py rescans up to 999 escaped pairs from every bracket, so a long run of escaped brackets makes the scan take seconds (quadratic time); same code in the identical copy .agents/skills/pr-fixer/scripts/scan-hidden.py."
     }
   ],
   "validated_by": "none",

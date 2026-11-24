@@ -13,6 +13,7 @@ Usage:
 A case is cases/<name>.json (tests/golden/README.md gives every field). A run is a folder:
   map.json              written by prepare: each case's neutral token
   inputs/<token>.patch  written by prepare: the case's base..head diff, under a name that hides the PR
+  judge-cases/<case>.json  written by prepare: the case as the judge sees it, without source_id
   reports/<token>.md    the reviewer's report, ending with the fenced findings block
   judge-a/<case>.json   the primary judge's verdict (JUDGE.md)
   judge-b/<case>.json   the second judge's verdict, for every case `sample` lists
@@ -271,10 +272,18 @@ def outside(case, rng):
             if not any(s <= e["lines"][1] and e["lines"][0] <= f for s, f in rng.get(e["file"], []))]
 
 
+def judge_view(case):
+    """The case as the judge is given it: each expected finding without `source_id`, the verdict's id
+    (W1, W2, ...), which a fresh report may reuse for another finding."""
+    v = dict(case)
+    v["expected"] = [{k: x for k, x in e.items() if k != "source_id"} for e in case["expected"]]
+    return v
+
+
 def cmd_prepare(a):
     cases = load_cases(a.cases)
     os.makedirs(os.path.join(a.run, "inputs"), exist_ok=True)
-    for d in ("reports", "judge-a", "judge-b"):
+    for d in ("reports", "judge-a", "judge-b", "judge-cases"):
         os.makedirs(os.path.join(a.run, d), exist_ok=True)
     m = {}
     for n, c in cases.items():
@@ -292,6 +301,9 @@ def cmd_prepare(a):
         t = token(n)
         with open(os.path.join(a.run, "inputs", t + ".patch"), "wb") as f:
             f.write(r.stdout)
+        with open(os.path.join(a.run, "judge-cases", n + ".json"), "w", encoding="utf-8") as f:
+            json.dump(judge_view(c), f, indent=2)
+            f.write("\n")
         m[n] = t
     with open(os.path.join(a.run, "map.json"), "w", encoding="utf-8") as f:
         json.dump({"schema": 1, "cases": m}, f, indent=2, sort_keys=True)

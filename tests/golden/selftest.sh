@@ -181,6 +181,16 @@ case = {"expected": [{"id": "E1", "file": "x.py", "lines": [12, 14]}, {"id": "E2
 print(json.dumps({"rng": rng, "outside": [e["id"] for e in g.outside(case, rng)]}))
 PY
 )"
+jv="$(python3 -I - "$G" "$C/alpha.json" <<'PY'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("g", sys.argv[1]); g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+c = json.load(open(sys.argv[2])); v = g.judge_view(c)
+print(json.dumps({"view": v, "case_kept": "source_id" in c["expected"][0]}))
+PY
+)"
+check "prepare's judge copy drops source_id and keeps every other field" eval \
+  'jq -e "(.view.expected | map(has(\"source_id\")) | any | not) and .case_kept and (.view.expected[0] | keys) == [\"description\",\"dimension\",\"file\",\"id\",\"lines\",\"severity\"] and .view.pr == 1" <<<"$jv" >/dev/null'
 check "prepare's hunk reader: new-file ranges, deleted files left out" eval 'jq -e ".rng == {\"x.py\": [[10, 12]]}" <<<"$hk" >/dev/null'
 check "prepare refuses expected lines outside the diff, keeps overlapping ones" eval 'jq -e ".outside == [\"E2\",\"E3\",\"E4\"]" <<<"$hk" >/dev/null'
 d="$W/nonevalidated"; mkdir -p "$d"; cp "$C/beta.json" "$C/gamma.json" "$d/"

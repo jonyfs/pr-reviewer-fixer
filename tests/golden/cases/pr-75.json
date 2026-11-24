@@ -28,7 +28,7 @@
       ],
       "dimension": "reliability",
       "severity": "WARNING",
-      "description": "The restart test in push-guard.sh greps the env output with no once-only guard, so an environment value holding a newline followed by BASHOPTS= or SHELLOPTS= (or GREP_OPTIONS=-v) makes the guard re-exec itself forever."
+      "description": "The restart test in push-guard.sh greps the env output with no once-only guard, so an env value holding a newline then BASHOPTS= or SHELLOPTS= (or GREP_OPTIONS=-v) makes it re-exec itself forever; same line in the identical copy .agents/skills/pr-merge-fixer/scripts/push-guard.sh."
     }
   ],
   "validated_by": "none",

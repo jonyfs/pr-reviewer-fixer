@@ -12,7 +12,8 @@ report found the same defect. You do not review the code yourself and you do not
 
 Inputs (read these files and nothing else, except the diff when a line number needs checking):
 
-- the case: `<CASE_FILE>` (JSON; `expected` lists the defects a person or a past review confirmed)
+- the case: `<CASE_FILE>` (JSON; `expected` lists the defects a person or a past review confirmed;
+  `golden.py prepare` writes this copy as `judge-cases/<case>.json`, without the verdict's own ids)
 - the report: `<REPORT_FILE>` (Markdown; its findings are in the fenced `findings` block at its end)
 - the diff the reviewer read: `<DIFF_FILE>`
 - write your verdict to: `<OUT_FILE>`
@@ -39,6 +40,9 @@ these must hold:
 3. The same failure: the claim describes the defect the expected `description` describes, in other
    words. A claim that names a different problem on the same lines does not match. A broader claim
    matches only when the expected defect is plainly part of what it says is wrong.
+
+The case's ids (E1, E2, ...) and the report's ids (W1, N2, ...) are unrelated: an id that looks the
+same in both says nothing about a match.
 
 Severity and dimension do not decide a match: the scorer reports a match at a lower severity
 separately. A report finding can match at most one expected finding; when two expected findings

@@ -16,7 +16,7 @@
       ],
       "dimension": "security",
       "severity": "WARNING",
-      "description": "push-guard.sh puts the base branch name unescaped into the gh api path, so a name with '#', a percent escape or a gh placeholder reads another ref, whose history is then left out of the scope, link and secret checks."
+      "description": "push-guard.sh puts the base branch name unescaped into the gh api path, so a name with '#', a percent escape or a gh placeholder reads another ref, whose history then escapes the scope, link and secret checks; same line in the identical copy .agents/skills/pr-merge-fixer/scripts/push-guard.sh."
     }
   ],
   "validated_by": "none",

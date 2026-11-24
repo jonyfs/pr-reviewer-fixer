@@ -79,11 +79,14 @@ the loop agent or the person; the scripts only check and count.
 
 1. **Prepare.** `python3 tests/golden/golden.py prepare --run tests/golden/runs/2026-12-01-<model>`
    writes each case's diff to `inputs/<token>.patch`, under a token that does not name the pull
-   request, and `map.json`. It refuses a case whose expected lines are not inside its diff.
+   request, `map.json`, and the judge's copy of each case in `judge-cases/`. It refuses a case whose expected lines are not inside its diff.
 
 2. **Review.** For each token, start a fresh-context reviewer sub-agent. Check the case's head out in
    a separate worktree first (`git worktree add /tmp/golden-<token> <head>`), so the code around the
-   diff is the code the first pass saw and the later fix is not there to read. Give it:
+   diff is the code the first pass saw and the later fix is not there to read. The blinding is
+   not a wall: the worktree shares this repository's refs and objects (`git log --all` there shows
+   the fix commits), and the token is a hash of the case name that anyone can recompute, so it hides
+   the name only from a casual reader. What keeps the reviewer from looking is the prompt. Give it:
 
    ```text
    Follow <checkout>/.agents/skills/pr-reviewer/SKILL.md. You were dispatched by the review loop
@@ -97,7 +100,8 @@ the loop agent or the person; the scripts only check and count.
    ```
 
 3. **Judge.** For each case, start a fresh-context judge sub-agent with `tests/golden/JUDGE.md`, the
-   case file, the report (`reports/<token>`, `map.json` names it), the diff and the output path
+   judge's copy of the case (`judge-cases/<case>.json`, which prepare writes without `source_id`, so
+   no verdict id can anchor a match), the report (`reports/<token>`, `map.json` names it), the diff and the output path
    `judge-a/<case>.json`.
 
 4. **Second judge.** `python3 tests/golden/golden.py sample --run <run>` lists the cases the second
