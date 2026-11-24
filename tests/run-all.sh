@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs every test against fake `gh` binaries. No network and no GitHub access needed.
-# Needs: bash, python3, node, jq, git, curl, tar and sha256sum.
+# Needs: bash, python3, node, jq, git, curl, tar, sha256sum and GNU timeout.
 set -u
 # A caller's REVIEW_BLOCK_AT or PUSH_GUARD_ALLOW_SENSITIVE would change what the scripts refuse, so
 # every suite starts without them; a row that needs one sets it itself.
@@ -197,6 +197,7 @@ run_t0=$(date +%s)
 start "review-cycle.sh and gate"                 env TEST_TAG="${P}rev" bash "$HERE/fake-gh/run.sh" "$ROOT/.agents/skills/pr-reviewer/scripts"
 start "triage-pr.sh"                             env TEST_TAG="${P}run" bash "$HERE/fake-gh/triage/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "push-guard.sh"                             env TEST_TAG="${P}run" bash "$HERE/push-guard/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
+start "proof-check.sh"                            env TEST_TAG="${P}run" bash "$HERE/proof-check/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "fetch-feedback.py"                        env TEST_TAG="${P}run" python3 "$HERE/feedback/t.py" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "behaviour-diff.sh"                        env TEST_TAG="${P}run" bash "$HERE/behaviour-diff/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "review eval scorer"                       env TEST_TAG="${P}run" bash "$HERE/eval/selftest.sh"

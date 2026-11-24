@@ -21,6 +21,7 @@ tests/feedback/state-*/
 tests/behaviour-diff/work-*/
 tests/fake-gh/triage/state-*/
 tests/push-guard/work-*/
+tests/proof-check/work-*/
 tests/eval/work-*/
 tests/eval/reports/
 tests/fixer-eval/work-*/
