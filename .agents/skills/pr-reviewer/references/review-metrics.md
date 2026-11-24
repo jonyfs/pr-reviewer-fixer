@@ -170,14 +170,22 @@ Nothing changes until a person opts in. The reviewer runs this step only when
 `REVIEW_SUPPRESS_SINCE` is set to a date (`SKILL.md`, step 8). Unset, the review is the same as
 before.
 
-**Category.** The finding's dimension, normalized as the scorecard normalizes it. A finer category
+**Category.** The finding's dimension label, mapped onto the eighteen rows of
+[dimensions.md](dimensions.md): case is folded, spaces and `_` read as `-`, and each name of a row
+is that row's category (`docs` is documentation, `architecture` is design, `data_integrity`,
+`data` and `migrations` are data-integrity, `contract` is api). A label that holds the word
+`security`, or a word such as `appsec`, `infosec` or `owasp` between hyphens, is security. Any
+other label is `other`, which is never suppressed, so a label outside the vocabulary
+(`privacy-data`, `usability`) cannot be suppressed by a spelling. A finer category
 (dimension plus a claim prefix) is not used: claims are free text, the agreement fingerprint shows
 how rarely two wordings of one defect match, and a prefix would split a category's history into
 samples too small to judge. An embedding-based match of similar claims can follow later.
 
 **History.** The pull requests of `--prs` or `--since`, read exactly as the scorecard reads them:
 through `pr-json.py`, trusted markers only (`REVIEW_MARKER_AUTHORS`), a pull request with an edited
-trusted marker left out. The same outcome rules apply. Per category:
+trusted marker left out, and then suppress fails open (below). The same outcome rules apply. Per
+category, with suppress's own list of accepted outcomes, so a change to the scorecard's never
+changes it:
 
 | Count | Outcomes |
 |---|---|
@@ -188,7 +196,8 @@ trusted marker left out. The same outcome rules apply. Per category:
 `fixed` counts as accepted. A non-blocking finding is only ever `open` or `not-applicable`, so
 `fixed` is the one way a NOTE can count as accepted; leaving it out would make a NOTE-heavy category
 look dismissed and, once suppressed, unable to recover. `withdrawn` is an upper bound (an owner's
-fix outside a fixer cycle reads the same), so both choices lean toward keeping a category.
+fix outside a fixer cycle reads the same), and counting it as dismissed leans toward suppressing;
+the 5-decided and 0.6 thresholds are the guard against that.
 
 **Thresholds.** A category is suppressed when it has at least `--min-decided` (5) accepted or
 dismissed findings and the dismissed share is at least `--min-dismissed` (0.6). Five is the
@@ -196,12 +205,12 @@ smallest sample where one finding moves the share by no more than 0.2; 0.6 means
 dismissed clearly more than it accepted.
 
 **Never suppressed.**
-- The `security` dimension, and the two buckets that are not one category: `none` (no dimension)
-  and `other` (a dimension the pattern could not read).
+- The `security` category, and the two buckets that are not one category: `none` (no dimension)
+  and `other` (a label outside the vocabulary).
 - A mandatory unit of this change: every unit `path-floor.sh` prints for `--floor BASE HEAD` (or
   `--floor-files FILE`, a NUL-separated path list), every unit in the report's `mandatory_units:`,
-  and every unit of `--mandatory a,b`. A unit protects the dimension of its own name and of its
-  first word, so `data-integrity` also protects `data`.
+  and every unit of `--mandatory a,b`. A unit protects its category, so `data-integrity` also
+  protects `data_integrity`, `data` and `migrations`.
 - A CRITICAL, in any category.
 - A WARNING when WARNINGs block (`REVIEW_BLOCK_AT=warning`, and any value but unset or `critical`).
   Suppression therefore never changes the verdict: it only moves debt.
@@ -210,8 +219,9 @@ dismissed clearly more than it accepted.
 `suppressed: none (fail open: <reason>)` and exit 2: an unset `REVIEW_MARKER_AUTHORS`, a pull
 request `gh` could not read (the history is incomplete), a report with no readable findings block,
 `--report` with no path floor, a floor `path-floor.sh` could not compute, a `--since` listing that
-reached `--limit` (there may be more pull requests), a bad flag, or an unexpected error. A pull request left out for an edited marker is not a failure; it is simply not
-counted.
+reached `--limit` (there may be more pull requests), a pull request left out for an edited trusted
+marker or a trusted findings block that cannot be read (leaving it out only removes evidence, which
+can only push a category toward dismissed), a bad flag, or an unexpected error.
 
 **Output.** One `category` line per dimension with its counts and the reason it is kept or
 suppressed, then the Coverage lines, one per suppressed category:
@@ -237,7 +247,9 @@ file in the repository and none in the cache directory. A category leaves the li
 the history window moves past the findings that put it there, or when accepted findings outweigh
 them.
 
-**On this repository.** With `REVIEW_MARKER_AUTHORS=jonyfs` over pull requests 60 to 94 (34
-counted, #87 left out for an edited marker) and the defaults, no category is suppressed. The
-nearest are documentation (6 dismissed of 24 decided, 0.25) and operability (2 of 4, under the
-minimum sample).
+**On this repository.** With `REVIEW_MARKER_AUTHORS=jonyfs` over pull requests 60 to 96, suppress
+fails open: #87 has an edited trusted marker, so the history is incomplete and nothing is
+suppressed (exit 2). Over the same range without #87 (36 counted) and the defaults, no category is
+suppressed. The nearest are documentation (6 dismissed of 24 decided, 0.25) and operability (2 of
+4, under the minimum sample); `architecture` counts as design, `contract` as api, and the labels
+outside the vocabulary (`process`, `release`, `usability`) as `other`.
