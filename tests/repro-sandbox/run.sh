@@ -2,10 +2,11 @@
 # Drives repro-sandbox.sh (the opt-in execution check for a CRITICAL candidate) and the optional
 # `repro:` field that lint-report and findings-block read. No network and no GitHub access needed.
 #
-# The rows that run a repro need a working network sandbox (sandbox-exec on macOS; bwrap or
-# `unshare -rn` on Linux). `repro-sandbox.sh --probe` decides: where it refuses, those rows print SKIP
-# and the refusal rows still run. The write and home-read rows need a backend that confines writes
-# (`net+write`); with `unshare` alone (`net-only`) they print SKIP.
+# The rows that run a repro need a working sandbox (sandbox-exec on macOS, bwrap on Linux).
+# `repro-sandbox.sh --probe` decides: where it refuses, those rows print SKIP and the refusal rows
+# still run. `unshare -rn` alone is never enough (PR 97 C3): runs are refused there too. Rows that
+# only one platform can show (LaunchServices, the pasteboard and the keychain on macOS; the masked
+# /run and /home under bwrap) print SKIP on the other one.
 set -u
 unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE REVIEW_REPRO REPRO_SANDBOX
 T="$(cd "$(dirname "$0")" && pwd)"
@@ -16,6 +17,21 @@ W="$T/work-${TEST_TAG:-main}"
 rm -rf "$W"; mkdir -p "$W/tmp"
 W="$(cd "$W" && pwd -P)"
 export TMPDIR="$W/tmp"
+OS="$(uname -s)"
+LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+SLP="4$$.5"   # the setsid sleeper's argument, unique to this run
+# Whatever a red run started is ended here: the LaunchServices entry of the probe app, the app
+# itself, and the sleeper that left the run's session.
+cleanup_probes() {
+  local p
+  if [ -x "$LSR" ] && [ -f "$W/app-path" ]; then
+    while IFS= read -r p; do [ -n "$p" ] && "$LSR" -u "$p" >/dev/null 2>&1; done <"$W/app-path"
+  fi
+  pkill -KILL -f "pr97probe-$$" 2>/dev/null
+  pkill -KILL -f "^/bin/sleep $SLP\$" 2>/dev/null
+  return 0
+}
+trap cleanup_probes EXIT
 PASS=0; FAIL=0; SKIP=0; ROWS=()
 row() { if [ "$2" = ok ]; then PASS=$((PASS+1)); ROWS+=("PASS | $1"); else FAIL=$((FAIL+1)); ROWS+=("FAIL | $1 (${3:-})"); fi; }
 skip() { SKIP=$((SKIP+1)); ROWS+=("SKIP | $1 ($2)"); }
@@ -35,6 +51,7 @@ printf 'exit 0\n' >"$W/src/test.sh"
 FIX="$("${G[@]}" -C "$W/src" rev-parse HEAD)"
 : >"$W/src/DIRTY"   # untracked in the working tree, so not in any commit
 printf 'sh test.sh\n' >"$W/cmd-test.sh"
+mkdir -p "$W/fakehome/.config/gh"; echo 'oauth_token: home-secret-value' >"$W/fakehome/.config/gh/hosts.yml"
 
 # ---- rows that never run a repro --------------------------------------------------------------------
 "$R" >"$W/out" 2>&1; r=$?
@@ -47,6 +64,8 @@ check "a short sha is refused, exit 2" eval '[ $r = 2 ]'
 check "--cmd-file and an argv together are refused, exit 2" eval '[ $r = 2 ]'
 REVIEW_REPRO=1 REPRO_SANDBOX=none "$R" --probe >"$W/out" 2>&1; r=$?
 check "an unknown REPRO_SANDBOX is refused, exit 2" eval '[ $r = 2 ]'
+"$R" --repo "$W/src" --sha "$BUG" --expect fail --expect-log '' --cmd-file "$W/cmd-test.sh" >"$W/out" 2>&1; r=$?
+check "an empty --expect-log is refused, exit 2" eval '[ $r = 2 ]'
 
 # Opt-in: without REVIEW_REPRO=1 nothing runs, whatever the sandbox.
 rm -f "$W/canary"
@@ -56,17 +75,46 @@ check "opt-in off: skipped, exit 3, and the repro never ran" \
 REVIEW_REPRO=yes "$R" --repo "$W/src" --sha "$BUG" --expect fail -- /usr/bin/touch "$W/canary" >"$W/out" 2>&1; r=$?
 check "opt-in takes exactly 1, not another value" eval '[ $r = 3 ] && [ ! -e "$W/canary" ]'
 
-# No sandbox: a PATH with the tools the script needs and no sandbox-exec, bwrap or unshare.
-mkdir -p "$W/nosb"
-for t in bash env git mktemp rmdir rm mkdir chmod cp head sed cat touch timeout gtimeout; do
-  x="$(command -v "$t" 2>/dev/null)" && case "$x" in /*) ln -sf "$x" "$W/nosb/$t" ;; esac
-done
-PATH="$W/nosb" REVIEW_REPRO=1 "$W/nosb/bash" "$R" --repo "$W/src" --sha "$BUG" --expect fail \
+# No sandbox: the backend this platform lacks stands for a host with none (the backends are called by
+# fixed paths, so a PATH without them no longer hides them).
+if [ "$OS" = Darwin ]; then NOSB=bwrap; else NOSB=sandbox-exec; fi
+REVIEW_REPRO=1 REPRO_SANDBOX="$NOSB" "$R" --repo "$W/src" --sha "$BUG" --expect fail \
   -- /usr/bin/touch "$W/canary" >"$W/out" 2>"$W/err"; r=$?
-check "no network sandbox: refused with exit 4, the message, and the repro never ran" \
+check "no sandbox ($NOSB on $OS): refused with exit 4, the message, and the repro never ran" \
   eval '[ $r = 4 ] && has "no network sandbox here; repro skipped" "$W/err" && has "repro: skipped (no network sandbox)" "$W/out" && [ ! -e "$W/canary" ]'
-PATH="$W/nosb" "$W/nosb/bash" "$R" --probe >"$W/out" 2>"$W/err"; r=$?
+REPRO_SANDBOX="$NOSB" "$R" --probe >"$W/out" 2>"$W/err"; r=$?
 check "--probe with no sandbox: exit 4 and the refusal" eval '[ $r = 4 ] && has "no network sandbox here" "$W/err"'
+
+# C3: `unshare -rn` confines neither reads nor writes, so it is never a backend for a run. A
+# pass-through stub on PATH stands for a working one (and for the caller's PATH steering the choice).
+mkdir -p "$W/stub"
+# (/bin/true, which the old probe ran, is /usr/bin/true on macOS.)
+printf '#!/bin/sh\necho used >>"%s/stub-used"\nwhile [ $# -gt 0 ]; do case "$1" in -r|-n|-rn|-nr) shift ;; *) break ;; esac; done\n[ "$1" = /bin/true ] && exit 0\nexec "$@"\n' "$W" >"$W/stub/unshare"
+chmod +x "$W/stub/unshare"
+rm -f "$W/canary" "$W/stub-used"
+PATH="$W/stub:$PATH" REVIEW_REPRO=1 REPRO_SANDBOX=unshare "$R" --repo "$W/src" --sha "$BUG" --expect fail \
+  -- /usr/bin/touch "$W/canary" >"$W/out" 2>"$W/err"; r=$?
+check "C3: the unshare backend is refused for a run, exit 4, and the repro never ran" \
+  eval '[ $r = 4 ] && has "repro: skipped (no network sandbox)" "$W/out" && [ ! -e "$W/canary" ]'
+
+# N2: the backend is called by a fixed path, never found through the caller's PATH.
+rm -f "$W/stub/unshare"
+printf '#!/bin/sh\necho used >>"%s/stub-used"\nwhile [ $# -gt 0 ]; do case "$1" in -p|-f|-D) shift 2 ;; --*) shift ;; *) break ;; esac; done\nexec "$@"\n' "$W" >"$W/stub/sandbox-exec"
+cp "$W/stub/sandbox-exec" "$W/stub/bwrap"; chmod +x "$W/stub/sandbox-exec" "$W/stub/bwrap"
+rm -f "$W/stub-used"
+PATH="$W/stub:$PATH" REVIEW_REPRO=1 "$R" --repo "$W/src" --sha "$FIX" --expect pass -- /bin/true >"$W/out" 2>"$W/err"; r=$?
+check "N2: a sandbox-exec or bwrap first on PATH is never used" eval '[ ! -e "$W/stub-used" ]'
+rm -rf "$W/stub"
+
+# N2: a home that does not resolve to a folder is refused before anything runs.
+rm -f "$W/canary"
+HOME="$W/no-such-home" REVIEW_REPRO=1 "$R" --repo "$W/src" --sha "$BUG" --expect fail \
+  -- /usr/bin/touch "$W/canary" >"$W/out" 2>"$W/err"; r=$?
+check "N2: a HOME that is not a folder is refused, exit 2, and the repro never ran" \
+  eval '[ $r = 2 ] && has "HOME" "$W/err" && [ ! -e "$W/canary" ]'
+( unset HOME; REVIEW_REPRO=1 "$R" --repo "$W/src" --sha "$BUG" --expect fail \
+  -- /usr/bin/touch "$W/canary" >"$W/out" 2>"$W/err" ); r=$?
+check "N2: an unset HOME is refused, exit 2, and the repro never ran" eval '[ $r = 2 ] && [ ! -e "$W/canary" ]'
 
 # ---- lint-report and findings-block: the optional `repro:` field -------------------------------------
 printf 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +11,2 @@\n x\n+y\n' >"$W/d.patch"
@@ -108,15 +156,17 @@ check "findings-block prints repro as written" eval '[ $r = 0 ] && jq -e ".entri
 
 # ---- rows that run a repro in the sandbox ------------------------------------------------------------
 "$R" --probe >"$W/probe" 2>&1; prc=$?
-LEVEL="$(sed -n 's/^sandbox: [a-z-]* //p' "$W/probe")"
+BACKEND="$(sed -n 's/^sandbox: \([a-z-]*\) .*/\1/p' "$W/probe")"
 sb() { REVIEW_REPRO=1 "$R" --repo "$W/src" --timeout "${TOUT:-60}" --log "$W/log" "$@" >"$W/out" 2>&1; }
 if [ "$prc" != 0 ]; then
-  for n in reproduced not-reproduced clone-at-sha env network-local network-public write-outside home-read timeout \
+  for n in reproduced not-reproduced clone-at-sha git-inside env network-local network-public write-outside \
+           home-read python3-clt python3-path launchservices pasteboard keychain run-masked log-symlink log-fifo \
+           expect-log-unchecked expect-log-checked sandbox-abort ulimit-kill timeout setsid-survivor nproc-cap \
            no-interpolation argv-file-name exit-127 crash exit-n no-scratch-left; do
-    skip "sandboxed row $n" "no network sandbox on this host: $(head -n 1 "$W/probe")"
+    skip "sandboxed row $n" "no sandbox on this host: $(head -n 1 "$W/probe")"
   done
 else
-  check "--probe names the backend and its level ($(cat "$W/probe"))" eval 'grep -qE "^sandbox: (sandbox-exec|bwrap) net\+write$|^sandbox: unshare net-only$" "$W/probe"'
+  check "--probe names the backend and its level ($(cat "$W/probe"))" eval 'grep -qE "^sandbox: (sandbox-exec|bwrap) net\+write$" "$W/probe"'
   sb --sha "$BUG" --expect fail --cmd-file "$W/cmd-test.sh"; r=$?
   check "reproduced: the failing test at the buggy head exits 0 with repro: reproduced" \
     eval '[ $r = 0 ] && has "repro: reproduced" "$W/out" && has "parsing an expired token" "$W/log"'
@@ -124,6 +174,8 @@ else
   check "not-reproduced: the same test at the fixed head exits 1" eval '[ $r = 1 ] && has "repro: not-reproduced" "$W/out"'
   sb --sha "$FIX" --expect pass -- /bin/sh -c 'test -e test.sh && test ! -e DIRTY'; r=$?
   check "the repro runs in a clone at the sha, not in the caller's working tree" eval '[ $r = 0 ]'
+  sb --sha "$FIX" --expect pass -- /bin/sh -c 'git rev-parse HEAD'; r=$?
+  check "git runs inside the sandbox and sees the clone at the sha" eval '[ $r = 0 ] && has "$FIX" "$W/log"'
 
   # The environment is empty: only the names the script sets (and what the shell or the OS adds).
   GH_TOKEN=tok-secret-value GITHUB_TOKEN=tok-secret-value SSH_AUTH_SOCK=/tmp/agent.sock \
@@ -162,22 +214,109 @@ LPID=$!
   TOUT=20 sb --sha "$FIX" --expect pass --cmd-file "$W/cmd-net2.sh"; r=$?
   check "network blocked: a connect to 1.1.1.1 fails inside" eval '[ $r = 1 ] && ! has CONNECTED "$W/log"'
 
-  if [ "$LEVEL" = net+write ]; then
-    sb --sha "$FIX" --expect pass -- /bin/sh -c 'echo x >"$1"' sh "$W/outside.txt"; r=$?
-    check "a write outside the scratch folder is denied" eval '[ $r = 1 ] && [ ! -e "$W/outside.txt" ]'
+  sb --sha "$FIX" --expect pass -- /bin/sh -c 'echo x >"$1"' sh "$W/outside.txt"; r=$?
+  check "a write outside the scratch folder is denied" eval '[ $r = 1 ] && [ ! -e "$W/outside.txt" ]'
+  HOME="$W/fakehome" sb --sha "$FIX" --expect pass -- /bin/cat "$W/fakehome/.config/gh/hosts.yml"; r=$?
+  check "the caller's home is not readable inside" eval '[ $r = 1 ] && ! has "home-secret-value" "$W/log"'
+
+  # A test in the usual runtimes still runs (PR 97 C1: the profile allows reads, never services).
+  if [ -x /usr/bin/python3 ]; then
+    sb --sha "$FIX" --expect pass -- /usr/bin/python3 -I -c 'print(6*7)'; r=$?
+    check "/usr/bin/python3 runs inside" eval '[ $r = 0 ] && has 42 "$W/log"'
+  else skip "/usr/bin/python3 runs inside" "no /usr/bin/python3"; fi
+  sb --sha "$FIX" --expect pass -- /bin/sh -c 'python3 -I -c "import json, subprocess; print(6*7)"'; r=$?
+  check "the python3 the repro's PATH finds first runs inside" eval '[ $r = 0 ] && has 42 "$W/log"'
+
+  # C1 (macOS): no LaunchServices, pasteboard or keychain service is reachable from inside.
+  if [ "$BACKEND" = sandbox-exec ]; then
+    rm -f "$W/app-canary" "$W/app-path"
+    # The repro builds a two-line app in its own folder and asks LaunchServices to start it; launchd
+    # would run it outside the sandbox, where it writes the canary. Only the exit codes reach the log.
+    cat >"$W/cmd-app.sh" <<EOF
+A="\$PWD/pr97probe-$$.app"
+mkdir -p "\$A/Contents/MacOS"
+printf '#!/bin/sh\\necho ran >"%s"\\n' "$W/app-canary" >"\$A/Contents/MacOS/pr97probe-$$"
+chmod +x "\$A/Contents/MacOS/pr97probe-$$"
+printf '<?xml version="1.0" encoding="UTF-8"?>\\n<plist version="1.0"><dict><key>CFBundleExecutable</key><string>pr97probe-$$</string><key>CFBundleIdentifier</key><string>invalid.pr97probe.t$$</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>\\n' >"\$A/Contents/Info.plist"
+echo "app-path=\$A"
+open -g "\$A" >/dev/null 2>&1; echo "open-rc=\$?"
+sleep 3
+EOF
+    sb --sha "$FIX" --expect pass --cmd-file "$W/cmd-app.sh"; r=$?
+    sed -n 's/^app-path=//p' "$W/log" >"$W/app-path"
+    sleep 2
+    check "C1: open -g of an app the repro built fails inside and the app never runs" \
+      eval '! grep -q "^open-rc=0$" "$W/log" && [ ! -e "$W/app-canary" ]'
+    cleanup_probes
+    # Only exit codes go to the log: the pasteboard and the keychain list never reach it.
+    sb --sha "$FIX" --expect pass -- /bin/sh -c 'pbpaste >/dev/null 2>&1; echo "pb-rc=$?"'; r=$?
+    check "C1: pbpaste fails inside" eval 'grep -q "^pb-rc=" "$W/log" && ! grep -q "^pb-rc=0$" "$W/log"'
+    sb --sha "$FIX" --expect pass -- /bin/sh -c 'security list-keychains >/dev/null 2>&1; echo "sec-rc=$?"'; r=$?
+    check "C1: security list-keychains fails inside" eval 'grep -q "^sec-rc=" "$W/log" && ! grep -q "^sec-rc=0$" "$W/log"'
   else
-    skip "a write outside the scratch folder is denied" "backend confines no writes: $(cat "$W/probe")"
+    for n in "C1: open -g of an app the repro built fails inside" "C1: pbpaste fails inside" "C1: security list-keychains fails inside"; do
+      skip "$n" "macOS services, backend $BACKEND"; done
   fi
-  if grep -q '^sandbox: sandbox-exec ' "$W/probe"; then
-    mkdir -p "$W/fakehome/.config/gh"; echo 'oauth_token: home-secret-value' >"$W/fakehome/.config/gh/hosts.yml"
-    HOME="$W/fakehome" sb --sha "$FIX" --expect pass -- /bin/cat "$W/fakehome/.config/gh/hosts.yml"; r=$?
-    check "the caller's home is not readable inside (sandbox-exec)" eval '[ $r = 1 ] && ! has "home-secret-value" "$W/log"'
+  if [ "$BACKEND" = bwrap ]; then
+    sb --sha "$FIX" --expect pass -- /bin/sh -c 'ls -A /run /var/run /home'; r=$?
+    check "C3: /run, /var/run and /home are empty inside bwrap (no host socket)" \
+      eval '[ $r = 0 ] && [ -z "$(grep -v ":$" "$W/log" | grep -v "^$")" ]'
   else
-    skip "the caller's home is not readable inside" "only sandbox-exec hides reads: $(cat "$W/probe")"
+    skip "C3: /run, /var/run and /home are empty inside bwrap" "bwrap only, backend $BACKEND"
   fi
+
+  # C2: the repro cannot reach the script's own copy of its output. It replaces every out.log a few
+  # levels up with a symlink to a home file, then with a FIFO; the log never holds the file and the
+  # script still ends.
+  printf 'for p in ../out.log ../../out.log ../../../out.log; do rm -f "$p"; ln -s "%s" "$p"; done; echo replaced\n' \
+    "$W/fakehome/.config/gh/hosts.yml" >"$W/cmd-ln.sh"
+  start=$SECONDS
+  HOME="$W/fakehome" TOUT=10 timeout 90 env REVIEW_REPRO=1 "$R" --repo "$W/src" --timeout 10 --log "$W/log" \
+    --sha "$FIX" --expect pass --cmd-file "$W/cmd-ln.sh" >"$W/out" 2>&1; r=$?
+  check "C2: a symlink in place of the log copies no home file into --log" \
+    eval '[ $r != 124 ] && ! has "home-secret-value" "$W/log" && ! has "home-secret-value" "$W/out"'
+  printf 'for p in ../out.log ../../out.log ../../../out.log; do rm -f "$p"; mkfifo "$p"; done; echo replaced\n' >"$W/cmd-fifo.sh"
+  start=$SECONDS
+  timeout 90 env REVIEW_REPRO=1 "$R" --repo "$W/src" --timeout 10 --log "$W/log" \
+    --sha "$FIX" --expect pass --cmd-file "$W/cmd-fifo.sh" >"$W/out" 2>&1; r=$?
+  el=$((SECONDS - start))
+  check "C2: a FIFO in place of the log does not hang the script (ended in ${el}s)" \
+    eval '[ $r != 124 ] && has "repro: " "$W/out" && [ "$el" -lt 60 ]'
+
+  # W1: an infrastructure failure is never evidence. A missing dependency reads as reproduced under
+  # --expect fail alone (documented); --expect-log turns it into not-reproduced.
+  sb --sha "$FIX" --expect fail -- /bin/sh -c 'python3 -I -c "import no_such_dep_pr97"'; r=$?
+  check "W1: --expect fail alone counts a ModuleNotFoundError as reproduced (documented: pair it with --expect-log)" \
+    eval '[ $r = 0 ] && has "repro: reproduced" "$W/out" && has "ModuleNotFoundError" "$W/log"'
+  sb --sha "$FIX" --expect fail --expect-log "parsing an expired token" -- /bin/sh -c 'python3 -I -c "import no_such_dep_pr97"'; r=$?
+  check "W1: with --expect-log the same failure is not-reproduced" eval '[ $r = 1 ] && has "repro: not-reproduced" "$W/out"'
+  sb --sha "$BUG" --expect fail --expect-log "parsing an expired token" --cmd-file "$W/cmd-test.sh"; r=$?
+  check "W1: with --expect-log the real failure is reproduced" eval '[ $r = 0 ] && has "repro: reproduced" "$W/out"'
+  if [ "$BACKEND" = sandbox-exec ]; then
+    # HOME=/ hides every path from the sandbox, so sandbox-exec cannot even start the wrapper.
+    HOME=/ sb --sha "$FIX" --expect fail -- /bin/sh -c 'exit 1'; r=$?
+    check "W1: a sandbox that aborts before the repro starts is skipped, never reproduced" \
+      eval '[ $r = 3 ] && has "repro: skipped" "$W/out" && ! has "repro: reproduced" "$W/out"'
+  else
+    skip "W1: a sandbox that aborts before the repro starts is skipped" "the HOME=/ trigger is sandbox-exec only"
+  fi
+  sb --sha "$FIX" --expect crash -- /bin/sh -c 'kill -XFSZ $$'; r=$?
+  check "W1: a death by SIGXFSZ (the file-size limit) is skipped, not a crash" eval '[ $r = 3 ] && has "repro: skipped" "$W/out"'
 
   TOUT=2 sb --sha "$FIX" --expect fail -- /bin/sleep 30; r=$?
   check "timeout gives skipped, exit 3" eval '[ $r = 3 ] && has "repro: skipped (timeout" "$W/out"'
+
+  # W2: a process that leaves the run's session does not outlive the script.
+  TOUT=10 sb --sha "$FIX" --expect pass -- /usr/bin/perl -MPOSIX -e 'fork and exit; POSIX::setsid(); exec "/bin/sleep", $ARGV[0]' "$SLP"; r=$?
+  sleep 1
+  check "W2: a setsid sleeper does not outlive the script" eval '! pgrep -f "^/bin/sleep $SLP\$" >/dev/null'
+  cleanup_probes
+  # The cap is the uid's current process count plus a margin, so it is lower than the caller's own.
+  outer_nproc="$(ulimit -u)"
+  sb --sha "$FIX" --expect pass -- /bin/sh -c 'ulimit -u'; r=$?
+  inner_nproc="$(head -n 1 "$W/log")"
+  check "W2: the repro runs under a lower process-count cap ($inner_nproc, caller $outer_nproc)" \
+    eval '[ $r = 0 ] && [[ "$inner_nproc" =~ ^[0-9]+$ ]] && { [ "$outer_nproc" = unlimited ] || [ "$inner_nproc" -lt "$outer_nproc" ]; }'
 
   # The command is argv or a file, never a string the script builds: $(...) and spaces stay text.
   ( cd "$W" && sb --sha "$FIX" --expect pass -- /bin/echo '$(touch pwned)' 'a  b;touch pwned2' ); r=$?
@@ -189,7 +328,7 @@ LPID=$!
     eval '[ $r = 0 ] && has "file-ran" "$W/log" && [ -z "$(find "$W" -name "pwned3*" ! -name "my*")" ]'
 
   sb --sha "$FIX" --expect fail -- no-such-command-here; r=$?
-  check "exit 127 (command not found) is not-reproduced, never reproduced" eval '[ $r = 1 ] && has "repro: not-reproduced (exit 127" "$W/out"'
+  check "exit 127 (command not found) is skipped, never reproduced" eval '[ $r = 3 ] && has "repro: skipped (exit 127" "$W/out"'
   sb --sha "$FIX" --expect crash -- /bin/sh -c 'kill -SEGV $$'; r=$?
   check "--expect crash: a signal death is reproduced" eval '[ $r = 0 ] && has "repro: reproduced" "$W/out"'
   sb --sha "$FIX" --expect crash -- /bin/sh -c 'exit 1'; r=$?
