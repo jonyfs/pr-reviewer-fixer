@@ -2199,8 +2199,8 @@ cmd_export_sarif() {
   local usage="review-cycle: usage: review-cycle.sh export-sarif [pr] [--report <file>] [--out <file>] [--include-closed]"
   while [ $# -gt 0 ]; do
     case "$1" in
-      --report) [ $# -ge 2 ] || die "review-cycle: --report needs a value"; report="${2:-}"; shift 2 ;;
-      --out) [ $# -ge 2 ] || die "review-cycle: --out needs a value"; out="${2:-}"; shift 2 ;;
+      --report) [ $# -ge 2 ] || { echo "review-cycle: --report needs a value" >&2; echo "$usage" >&2; return 2; }; report="${2:-}"; shift 2 ;;
+      --out) [ $# -ge 2 ] || { echo "review-cycle: --out needs a value" >&2; echo "$usage" >&2; return 2; }; out="${2:-}"; shift 2 ;;
       --include-closed) closed=1; shift ;;
       -*) echo "$usage" >&2; return 2 ;;
       *) [ -z "$pr" ] || { echo "$usage" >&2; return 2; }; pr="$1"; shift ;;
@@ -2399,6 +2399,8 @@ if not out:
     sys.exit(0)
 if os.path.islink(out):
     bad("%s is a symbolic link; the export does not write through one" % out)
+if os.path.isdir(out):
+    bad("%s is a folder; name the file to write" % out)
 d = os.path.dirname(os.path.abspath(out))
 if not os.path.isdir(d):
     bad("the folder of %s does not exist" % out)
