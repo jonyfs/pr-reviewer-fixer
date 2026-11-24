@@ -470,13 +470,18 @@ bash "$RM" scorecard --prs 21 --out "$W/score.txt" >"$W/stdout" 2>&1; rc=$?
 # ---- suppress (catalog item 26) -------------------------------------------------------------------
 # PR 40: trusted pass 1 BLOCKED raises CRITICALs in seven lenses; trusted closure 1; trusted pass 2
 # PASSED decides them: verified (accepted), refused-accepted or not-applicable (dismissed).
-#   noisy 1 verified, 2 refused, 2 withdrawn (4 of 5, 0.8)   few 4 withdrawn (only 4 decided)
-#   edge 2 verified, 3 withdrawn (0.6)                       below 3 verified, 2 withdrawn (0.4)
+#   documentation 1 verified, 2 refused, 2 withdrawn (4 of 5, 0.8)   complexity 4 withdrawn (only 4 decided)
+#   performance 2 verified, 3 withdrawn (0.6)                        testing 3 verified, 2 withdrawn (0.4)
 #   security 5 withdrawn            reliability 5 withdrawn            (no dimension) 5 withdrawn
-#   noisy also has a NOTE left open on the PASSED pass: debt, neither accepted nor dismissed.
-# PR 41: lens-untrusted, 5 CRITICALs a trusted pass raised; only mallory's pass 2 withdraws them.
-# PR 42: lens-edited, 5 withdrawn, but the trusted pass 2 was edited: left out. PR 43: lens-control,
-# the same history unedited.
+#   documentation also has a NOTE left open on the PASSED pass: debt, neither accepted nor dismissed.
+# Every label is a name of references/dimensions.md: suppress sends any other label to `other`.
+# PR 41: concurrency, 5 CRITICALs a trusted pass raised; only mallory's pass 2 withdraws them.
+# PR 42: observability, 5 withdrawn, but the trusted pass 2 was edited: left out, so a history that
+# holds it fails open (N2). PR 43: maintainability, the same history unedited.
+# PR 44 (W2): scalability, 5 NOTEs the fixer fixed (not-applicable after a trusted closure) and 5
+# CRITICALs withdrawn: accepted 5, dismissed 5, kept.
+# PR 45 (W1): 5 withdrawn CRITICALs under each of security-hardening, appsec, data_integrity,
+# privacy-data, an unknown label (style-nits) and Docs (the control, which is documentation).
 python3 -I - "$FAKE_DIR" <<'PY'
 import json, os, sys
 d = sys.argv[1]
@@ -514,9 +519,9 @@ def pr(n, comments, edited=None):
     json.dump(obj, open(os.path.join(d, "pr-%d.json" % n), "w"))
 
 
-plan = [("noisy", "verified refused-accepted refused-accepted not-applicable not-applicable"),
-        ("few", "not-applicable " * 4), ("edge", "verified verified not-applicable not-applicable not-applicable"),
-        ("below", "verified verified verified not-applicable not-applicable"),
+plan = [("documentation", "verified refused-accepted refused-accepted not-applicable not-applicable"),
+        ("complexity", "not-applicable " * 4), ("performance", "verified verified not-applicable not-applicable not-applicable"),
+        ("testing", "verified verified verified not-applicable not-applicable"),
         ("security", "not-applicable " * 5), ("reliability", "not-applicable " * 5), (None, "not-applicable " * 5)]
 p1, p2, k = [], [], 0
 for dim, sts in plan:
@@ -524,7 +529,7 @@ for dim, sts in plan:
         k += 1
         p1.append(("C%d" % k, "CRITICAL", "open", dim))
         p2.append(("C%d" % k, "CRITICAL", st, None))
-p1.append(("N1", "NOTE", "open", "noisy"))
+p1.append(("N1", "NOTE", "open", "documentation"))
 p2.append(("N1", "NOTE", "open", None))
 pr(40, [verdict("rev-bot", SHA[1], "BLOCKED", 1, p1, c=k, n=1), closure("rev-bot", 1),
         verdict("rev-bot", SHA[2], "PASSED", 2, p2, n=1)])
@@ -537,27 +542,62 @@ def five(lens, who2="rev-bot"):
             verdict(who2, SHA[2], "PASSED", 2, [(i, "CRITICAL", "not-applicable", None) for i in ids])]
 
 
-pr(41, five("lens-untrusted", "mallory"))
-pr(42, five("lens-edited"), edited={2: "rev-bot"})
-pr(43, five("lens-control"))
+pr(41, five("concurrency", "mallory"))
+pr(42, five("observability"), edited={2: "rev-bot"})
+pr(43, five("maintainability"))
+fx1 = [("N%d" % i, "NOTE", "open", "scalability") for i in range(1, 6)] + [("C%d" % i, "CRITICAL", "open", "scalability") for i in range(1, 6)]
+fx2 = [(i, s, "not-applicable", None) for i, s, _, _ in fx1]
+pr(44, [verdict("rev-bot", SHA[1], "BLOCKED", 1, fx1, c=5, n=5), closure("rev-bot", 1),
+        verdict("rev-bot", SHA[2], "PASSED", 2, fx2, n=5)])
+w1 = []
+for lab in ("security-hardening", "appsec", "data_integrity", "privacy-data", "style-nits", "Docs"):
+    w1 += [("C%d" % (len(w1) + j), "CRITICAL", "open", lab) for j in range(1, 6)]
+pr(45, [verdict("rev-bot", SHA[1], "BLOCKED", 1, w1, c=len(w1)), closure("rev-bot", 1),
+        verdict("rev-bot", SHA[2], "PASSED", 2, [(i, s, "not-applicable", None) for i, s, _, _ in w1])])
+# PR 46 (N2): a trusted verdict marker whose findings block cannot be read: left out.
+nb = verdict("rev-bot", SHA[1], "BLOCKED", 1, [])
+nb["body"] = nb["body"].split("```findings")[0] + "No findings block.\n"
+pr(46, [nb])
 PY
 # A draft report of the current review, and two path lists for the floor: one that summons nothing,
 # one whose Terraform file summons security, reliability and operability.
-python3 -I - "$W/r" <<'PY'
+python3 -I - "$W/r" "$SRC/../references" <<'PY'
 import os, sys
 d = sys.argv[1]
-ents = [("C1", "CRITICAL", "noisy"), ("W1", "WARNING", "noisy"), ("N1", "NOTE", "noisy"), ("W2", "WARNING", "security"),
-        ("W3", "WARNING", "reliability"), ("W4", "WARNING", "below"), ("W5", "WARNING", None), ("W6", "WARNING", "lens-control"),
-        ("W7", "WARNING", "lens-untrusted"), ("W8", "WARNING", "lens-edited")]
-out = ["Written by pr-reviewer, pass 1.", "", "```findings", "version: 1", "pr: 50", "head: 0123456789ab", "pass: 1",
-       "verdict: BLOCKED", "counts: {critical: 1, warning: 8, note: 1}", "mandatory_units: []", "findings:"]
-for fid, sev, dim in ents:
-    out += ["  - id: %s" % fid, "    severity: %s" % sev, "    file: src/x.py", "    line: 3"]
-    if dim:
-        out.append("    dimension: %s" % dim)
-    out += ["    claim: \"claim of %s\"" % fid, "    owner_proposed: \"author\"", "    testable: yes"]
-out += ["```", ""]
+ents = [("C1", "CRITICAL", "documentation"), ("W1", "WARNING", "documentation"), ("N1", "NOTE", "documentation"),
+        ("W2", "WARNING", "security"), ("W3", "WARNING", "reliability"), ("W4", "WARNING", "testing"), ("W5", "WARNING", None),
+        ("W6", "WARNING", "maintainability"), ("W7", "WARNING", "concurrency"), ("W8", "WARNING", "observability")]
+
+
+def draft(ents, mu="mandatory_units: []"):
+    out = ["Written by pr-reviewer, pass 1.", "", "```findings", "version: 1", "pr: 50", "head: 0123456789ab", "pass: 1",
+           "verdict: BLOCKED", "counts: {critical: 1, warning: 8, note: 1}", mu, "findings:"]
+    for fid, sev, dim in ents:
+        out += ["  - id: %s" % fid, "    severity: %s" % sev, "    file: src/x.py", "    line: 3"]
+        if dim:
+            out.append("    dimension: %s" % dim)
+        out += ["    claim: \"claim of %s\"" % fid, "    owner_proposed: \"author\"", "    testable: yes"]
+    return "\n".join(out + ["```", ""])
+
+
+out = draft(ents).split("\n")
 open(os.path.join(d, "draft.md"), "w").write("\n".join(out))
+# W1: the reviewer's scenario. mandatory_units lists security, data-integrity and privacy; each label
+# of PR 45 has a WARNING, and W9 (Docs, which is documentation) is the control no unit protects.
+w1 = [("W4", "WARNING", "security-hardening"), ("W5", "WARNING", "appsec"), ("W6", "WARNING", "data_integrity"),
+      ("W7", "WARNING", "privacy-data"), ("W8", "WARNING", "style-nits"), ("W9", "WARNING", "Docs")]
+mu = ("mandatory_units:\n  - {unit: security, effort: max, status: run}\n  - {unit: data-integrity, effort: standard, status: run}\n"
+      "  - {unit: privacy, effort: standard, status: run}")
+open(os.path.join(d, "draft-w1.md"), "w").write(draft(w1, mu))
+open(os.path.join(d, "draft-w1-nomu.md"), "w").write(draft(w1))
+# The vocabulary: every name of every row of references/dimensions.md, one WARNING each, id R<row>_<k>.
+rows, k = [], 0
+for ln in open(os.path.join(sys.argv[2], "dimensions.md"), encoding="utf-8"):
+    if ln.startswith("| **"):
+        k += 1
+        cell = ln.split("**")[1]
+        rows += [("R%d_%d" % (k, j), "WARNING", name.strip()) for j, name in enumerate(cell.split("/"))]
+open(os.path.join(d, "draft-vocab.md"), "w").write(draft(rows))
 # The same draft whose own mandatory_units field lists reliability.
 open(os.path.join(d, "draft-mu.md"), "w").write("\n".join(out).replace(
     "mandatory_units: []", "mandatory_units:\n  - {unit: reliability, effort: standard, status: run}"))
@@ -570,38 +610,36 @@ fo() { # fo <name> <expected exit> <cmd...>
   case "$o" in *"suppressed: none (fail open"*) [ "$rc" = "$want" ] && row "$name" ok || row "$name" bad "exit $rc: $o" ;;
     *) row "$name" bad "exit $rc: $o" ;; esac
 }
-SP="--prs 40,41,42,43"
+SP="--prs 40,41,43"
 SU="$W/sup.json"
 : >"$FAKE_DIR/calls.log"
 bash "$RM" suppress --json $SP >"$SU" 2>"$W/sup.err"; rc=$?
 [ "$rc" = 0 ] && row "suppress: exit 0 when the history was read" ok || row "suppress: exit 0 when the history was read" bad "exit $rc: $(cat "$W/sup.err")"
 cat_() { printf '(.categories[] | select(.dimension == "%s"))' "$1"; }
-jqk "suppress: 4 of 5 dismissed (0.8) is suppressed" "$SU" "$(cat_ noisy)"' | .suppressed and .dismissed == 4 and .accepted == 1 and .decided == 5'
-jqk "suppress: refused-accepted and not-applicable both count as dismissed; debt counts as neither" "$SU" "$(cat_ noisy)"' | .decided == 5'
-jqk "suppress: 4 decided, all dismissed, is below the minimum sample (5) and kept" "$SU" "$(cat_ few)"' | (.suppressed | not) and .decided == 4'
-jqk "suppress: 3 of 5 dismissed is exactly the 0.6 threshold and is suppressed" "$SU" "$(cat_ edge)"' | .suppressed'
-jqk "suppress: 2 of 5 dismissed (0.4) is kept" "$SU" "$(cat_ below)"' | .suppressed | not'
+jqk "suppress: 4 of 5 dismissed (0.8) is suppressed" "$SU" "$(cat_ documentation)"' | .suppressed and .dismissed == 4 and .accepted == 1 and .decided == 5'
+jqk "suppress: refused-accepted and not-applicable both count as dismissed; debt counts as neither" "$SU" "$(cat_ documentation)"' | .decided == 5'
+jqk "suppress: 4 decided, all dismissed, is below the minimum sample (5) and kept" "$SU" "$(cat_ complexity)"' | (.suppressed | not) and .decided == 4'
+jqk "suppress: 3 of 5 dismissed is exactly the 0.6 threshold and is suppressed" "$SU" "$(cat_ performance)"' | .suppressed'
+jqk "suppress: 2 of 5 dismissed (0.4) is kept" "$SU" "$(cat_ testing)"' | .suppressed | not'
 jqk "suppress: the security dimension is never suppressed, 5 of 5 dismissed" "$SU" "$(cat_ security)"' | (.suppressed | not) and .dismissed == 5'
 jqk "suppress: findings with no dimension are never suppressed as one category" "$SU" "$(cat_ none)"' | .suppressed | not'
 jqk "suppress: a category with no floor given (no --report) and 5 of 5 dismissed is suppressed" "$SU" "$(cat_ reliability)"' | .suppressed'
 jqk "suppress: untrusted markers are ignored: mallory's withdrawals decide nothing" "$SU" \
-  '([.categories[] | select(.dimension == "lens-untrusted") | .decided] | (. == [] or . == [0])) and (.suppressed | index("lens-untrusted") == null)'
-jqk "suppress: a pull request with an edited trusted marker is left out of the history" "$SU" \
-  '(.suppressed | index("lens-edited") == null) and (.suppressed | index("lens-control") != null) and .left_out == [42]'
-jqk "suppress: the suppressed list is exactly the categories over both thresholds" "$SU" '.suppressed == ["edge","lens-control","noisy","reliability"]'
-jqk "suppress: the JSON carries the Coverage lines" "$SU" '.coverage | index("suppressed: noisy (dismissed 4 of 5 over 3 pull requests)") != null'
+  '([.categories[] | select(.dimension == "concurrency") | .decided] | (. == [] or . == [0])) and (.suppressed | index("concurrency") == null)'
+jqk "suppress: the suppressed list is exactly the categories over both thresholds" "$SU" '.suppressed == ["documentation","maintainability","performance","reliability"]'
+jqk "suppress: the JSON carries the Coverage lines" "$SU" '.coverage | index("suppressed: documentation (dismissed 4 of 5 over 3 pull requests)") != null'
 bash "$RM" suppress --json $SP --min-dismissed 0.61 >"$W/sup61.json" 2>/dev/null
-jqk "suppress: --min-dismissed 0.61 keeps the 0.6 category" "$W/sup61.json" "$(cat_ edge)"' | .suppressed | not'
+jqk "suppress: --min-dismissed 0.61 keeps the 0.6 category" "$W/sup61.json" "$(cat_ performance)"' | .suppressed | not'
 bash "$RM" suppress --json $SP --min-decided 4 >"$W/sup4.json" 2>/dev/null
-jqk "suppress: --min-decided 4 lets the 4-decided category be suppressed" "$W/sup4.json" "$(cat_ few)"' | .suppressed'
+jqk "suppress: --min-decided 4 lets the 4-decided category be suppressed" "$W/sup4.json" "$(cat_ complexity)"' | .suppressed'
 out=$(bash "$RM" suppress $SP 2>&1)
-has "suppress: the table prints the Coverage line" "suppressed: noisy (dismissed 4 of 5 over 3 pull requests)" "$out"
+has "suppress: the table prints the Coverage line" "suppressed: documentation (dismissed 4 of 5 over 3 pull requests)" "$out"
 has "suppress: the table says why security is kept" "never suppressed" "$(printf '%s\n' "$out" | grep '^category security')"
 cp "$FAKE_DIR/list.json" "$FAKE_DIR/list.keep"
 printf '%s\n' '[{"number": 40}, {"number": 43}]' >"$FAKE_DIR/list.json"
 out=$(bash "$RM" suppress --since 2026-11-01 2>&1)
 mv "$FAKE_DIR/list.keep" "$FAKE_DIR/list.json"
-has "suppress --since: the Coverage line names the date" "suppressed: noisy (dismissed 4 of 5 since 2026-11-01)" "$out"
+has "suppress --since: the Coverage line names the date" "suppressed: documentation (dismissed 4 of 5 since 2026-11-01)" "$out"
 # The per-finding mode over a draft report.
 SF="$W/supf.json"
 bash "$RM" suppress --json $SP --report "$R/draft.md" --floor-files "$R/floor-none" >"$SF" 2>"$W/supf.err"; rc=$?
@@ -614,9 +652,8 @@ jqk "suppress --report: a security WARNING is kept" "$SF" "$(fnd W2)"' | .action
 jqk "suppress --report: a WARNING of a category not suppressed is kept" "$SF" "$(fnd W4)"' | .action == "keep"'
 jqk "suppress --report: a WARNING with no dimension is kept" "$SF" "$(fnd W5)"' | .action == "keep"'
 jqk "suppress --report: with a floor that summons nothing, reliability is demoted" "$SF" "$(fnd W3)"' | .action == "demote"'
-jqk "suppress --report: untrusted and edited histories demote nothing; the control is demoted" "$SF" \
-  "$(fnd W7)"' | .action == "keep"'
-jqk "suppress --report: the edited history demotes nothing" "$SF" "$(fnd W8)"' | .action == "keep"'
+jqk "suppress --report: an untrusted history demotes nothing" "$SF" "$(fnd W7)"' | .action == "keep"'
+jqk "suppress --report: a category with no history is kept" "$SF" "$(fnd W8)"' | .action == "keep"'
 jqk "suppress --report: the unedited control is demoted" "$SF" "$(fnd W6)"' | .action == "demote"'
 bash "$RM" suppress --json $SP --report "$R/draft.md" --floor-files "$R/floor-infra" >"$W/supi.json" 2>/dev/null
 jqk "suppress --report: a mandatory unit of the path floor (reliability for a .tf file) is never suppressed" "$W/supi.json" \
@@ -639,7 +676,7 @@ cp "$FAKE_DIR/list.json" "$FAKE_DIR/list.keep"
 printf '%s\n' '[{"number": 40}, {"number": 43}]' >"$FAKE_DIR/list.json"
 fo "fail open: a --since listing that reaches --limit suppresses nothing (exit 2)" 2 bash "$RM" suppress --since 2026-11-01 --limit 2
 mv "$FAKE_DIR/list.keep" "$FAKE_DIR/list.json"
-printf 'x\n```findings\nversion: 1\nfindings:\n  - id: W1\n    severity: "WARN\033[2JING"\n    file: a\n    line: 1\n    dimension: noisy\n    claim: "c"\n```\n' >"$R/escsev.md"
+printf 'x\n```findings\nversion: 1\nfindings:\n  - id: W1\n    severity: "WARN\033[2JING"\n    file: a\n    line: 1\n    dimension: documentation\n    claim: "c"\n```\n' >"$R/escsev.md"
 out=$( { bash "$RM" suppress $SP --report "$R/escsev.md" --floor-files "$R/floor-none"; bash "$RM" suppress --json $SP --report "$R/escsev.md" --floor-files "$R/floor-none";
          bash "$RM" suppress --prs 40,99 --report "$R/escsev.md" --floor-files "$R/floor-none"; } 2>&1)
 case "$out" in *$'\033'*) row "suppress: a severity holding ESC never reaches the output raw" bad "ESC in the output" ;;
@@ -651,8 +688,8 @@ jqk "suppress --report: under REVIEW_BLOCK_AT=warning a NOTE is still listed und
 REVIEW_BLOCK_AT=bogus bash "$RM" suppress --json $SP --report "$R/draft.md" --floor-files "$R/floor-none" >"$W/supb.json" 2>/dev/null
 jqk "suppress --report: an unknown REVIEW_BLOCK_AT is read as warning (no WARNING demoted)" "$W/supb.json" "$(fnd W1)"' | .action == "keep"'
 out=$(bash "$RM" suppress $SP --report "$R/draft.md" --floor-files "$R/floor-none" 2>&1)
-has "suppress --report: the table says which finding to demote" "finding W1 noisy WARNING: demote to NOTE" "$out"
-has "suppress --report: the table says a CRITICAL is kept" "finding C1 noisy CRITICAL: keep" "$out"
+has "suppress --report: the table says which finding to demote" "finding W1 documentation WARNING: demote to NOTE" "$out"
+has "suppress --report: the table says a CRITICAL is kept" "finding C1 documentation CRITICAL: keep" "$out"
 # Fail open: when anything cannot be read, nothing is suppressed, the output says so, exit 2.
 fo "fail open: a pull request gh cannot read suppresses nothing (exit 2)" 2 bash "$RM" suppress --prs 40,43,99
 fo "fail open: no REVIEW_MARKER_AUTHORS suppresses nothing (exit 2)" 2 env -u REVIEW_MARKER_AUTHORS bash "$RM" suppress $SP
@@ -665,6 +702,60 @@ bash "$RM" suppress --json --prs 40,99 >"$W/supfo.json" 2>/dev/null
 jqk "fail open: the JSON says fail_open and lists nothing" "$W/supfo.json" '.fail_open and .suppressed == [] and (.reason | length > 0)'
 bash "$RM" suppress --json --prs 40,99 --report "$R/draft.md" --floor-files "$R/floor-none" >"$W/supfo2.json" 2>/dev/null
 jqk "fail open: with a report, every finding is kept" "$W/supfo2.json" '[.findings[].action] | all(. == "keep")'
+# W1 (pass 1): labels outside the exact names. PR 45 has 5 withdrawn CRITICALs under each label; the
+# draft's mandatory_units lists security, data-integrity and privacy; REVIEW_BLOCK_AT is unset here.
+bash "$RM" suppress --json --prs 45 --report "$R/draft-w1.md" --floor-files "$R/floor-none" >"$W/sw1.json" 2>"$W/sw1.err"; rc=$?
+[ "$rc" = 0 ] && row "suppress W1: exit 0 over PR 45" ok || row "suppress W1: exit 0 over PR 45" bad "exit $rc: $(cat "$W/sw1.err")"
+for f in W4:security-hardening W5:appsec W6:data_integrity W7:privacy-data; do
+  jqk "suppress W1: a WARNING labelled ${f#*:} is never demoted (mandatory security, data-integrity, privacy)" "$W/sw1.json" \
+    "$(fnd "${f%%:*}")"' | .action == "keep"'
+done
+jqk "suppress W1: security-hardening and appsec are the security category, never suppressed" "$W/sw1.json" \
+  "$(cat_ security)"' | (.suppressed | not) and .dismissed == 10'
+jqk "suppress W1: data_integrity is the data-integrity category, which the mandatory unit protects" "$W/sw1.json" \
+  "$(cat_ data-integrity)"' | (.suppressed | not) and .dismissed == 5'
+jqk "suppress W1: privacy-data and an unknown label (style-nits) are other, never suppressed" "$W/sw1.json" \
+  "$(cat_ other)"' | (.suppressed | not) and .dismissed == 10'
+jqk "suppress W1: a WARNING with an unknown label is other and kept" "$W/sw1.json" "$(fnd W8)"' | .action == "keep" and .dimension == "other"'
+jqk "suppress W1: the control, Docs, is documentation and is still demoted" "$W/sw1.json" "$(fnd W9)"' | .action == "demote" and .dimension == "documentation"'
+bash "$RM" suppress --json --prs 45 --report "$R/draft-w1-nomu.md" --floor-files "$R/floor-none" >"$W/sw1n.json" 2>/dev/null
+jqk "suppress W1: with no mandatory unit, security-hardening, appsec, privacy-data and style-nits are still kept" "$W/sw1n.json" \
+  '[.findings[] | select(.id == "W4" or .id == "W5" or .id == "W7" or .id == "W8") | .action] == ["keep","keep","keep","keep"]'
+jqk "suppress W1: with no mandatory unit, data_integrity is data-integrity and is demoted" "$W/sw1n.json" \
+  "$(fnd W6)"' | .action == "demote" and .dimension == "data-integrity"'
+bash "$RM" suppress --json --prs 43 --report "$R/draft-vocab.md" --floor-files "$R/floor-none" >"$W/svoc.json" 2>/dev/null
+jqk "suppress W1: every name of the 18 rows of references/dimensions.md is a category of its row, none other" "$W/svoc.json" \
+  '[.findings[] | {row: (.id | split("_")[0]), d: .dimension}] as $a | ($a | length > 18)
+   and ($a | all(.d != "other" and .d != "none")) and ($a | group_by(.row) | length == 18 and all(map(.d) | unique | length == 1))
+   and ($a | map(.d) | unique | length == 18)'
+# W2 (pass 1): fixed NOTEs count as accepted, also when the scorecard's ACCEPTED is narrowed to
+# verified and resolved, as open PR 94 narrows it.
+bash "$RM" suppress --json --prs 44 >"$W/sw2.json" 2>/dev/null
+jqk "suppress W2: 5 fixed NOTEs and 5 withdrawn CRITICALs: accepted 5, dismissed 5, kept" "$W/sw2.json" \
+  "$(cat_ scalability)"' | .accepted == 5 and .dismissed == 5 and (.suppressed | not)'
+M="$W/mut"; rm -rf "$M"; cp -R "$SRC" "$M"
+if python3 -I - "$M/review-metrics.sh" <<'PY'
+import re, sys
+p = sys.argv[1]; s = open(p, encoding="utf-8").read()
+s, n = re.subn(r"(?m)^ACCEPTED = \(.*\)$", 'ACCEPTED = ("verified", "resolved")', s)
+if n != 1:
+    sys.exit(1)
+open(p, "w", encoding="utf-8").write(s)
+PY
+then
+  bash "$M/review-metrics.sh" suppress --json --prs 44 >"$W/sw2m.json" 2>/dev/null
+  jqk "suppress W2: with the scorecard's ACCEPTED narrowed to verified and resolved, fixed NOTEs still count as accepted" "$W/sw2m.json" \
+    "$(cat_ scalability)"' | .accepted == 5 and .dismissed == 5 and (.suppressed | not)'
+else row "suppress W2: the scorecard's ACCEPTED line was found to narrow" bad "no single ACCEPTED line in review-metrics.sh"; fi
+# N2 (pass 1): a pull request left out (an edited trusted marker, or a trusted findings block that
+# cannot be read) makes the history incomplete: nothing is suppressed, exit 2.
+fo "fail open N2: a history holding a pull request with an edited trusted marker suppresses nothing (exit 2)" 2 \
+  bash "$RM" suppress --prs 40,42,43
+fo "fail open N2: a history holding a trusted marker with an unreadable findings block suppresses nothing (exit 2)" 2 \
+  bash "$RM" suppress --prs 40,43,46
+bash "$RM" suppress --json --prs 40,42,43 --report "$R/draft.md" --floor-files "$R/floor-none" >"$W/sn2.json" 2>/dev/null
+jqk "fail open N2: the reason names the left-out pull request, and every finding is kept" "$W/sn2.json" \
+  '.fail_open and .suppressed == [] and (.reason | test("42")) and ([.findings[].action] | all(. == "keep"))'
 if grep -vE '^gh (pr view|api graphql|pr list)( |$)' "$FAKE_DIR/calls.log" | grep -q .; then
   row "suppress only reads GitHub" bad "$(grep -vE '^gh (pr view|api graphql|pr list)( |$)' "$FAKE_DIR/calls.log" | head -3)"
 else row "suppress only reads GitHub" ok; fi
