@@ -4,6 +4,94 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.23.0
+
+A merge push always leads to a review, the fixer's closure carries proofs a machine can re-run, new
+fixer scripts for behaviour diffs and an accepted-fix ledger, and push-guard reads the base through
+GraphQL.
+
+- **`pr-merge-fixer` step 10, "Start the review loop again": a merge push starts the review loop
+  again.** This is the first of two changes an installed copy must follow (the `pr-fixer` finding
+  lane below is the second). When the review loop agent dispatched the merge, the skill returns
+  and the loop goes on from step 1, as before. When a person ran
+  `/pr-merge-fixer` directly, the session's agent takes the review loop agent's role and runs
+  `harness-loop.md` from step 1 on the new head (`wait-head`, `stale`, `status`, `start`, the
+  screens, a fresh-context `pr-reviewer` sub-agent, then the budget table); the merge fixer never
+  reviews its own merge. When the harness cannot start a fresh-context sub-agent, `start` is not
+  run and the session says the pass is owed. A merge that escalates or stops before the push starts
+  nothing; a run that stops after the push still owes the pass. Step 9 screens the closure comment
+  before it is posted: on a screen exit 1, the merge fixer replaces the value it names the kind of
+  with `[REDACTED]` and screens again, as `pr-fixer` does. `harness-loop.md` (all three
+  copies) lists a merge push by `pr-merge-fixer` as a new loop trigger, and its step 0 waits for the
+  merge's closure comment or its stopped line: a stop after the push is not an escalation, so the
+  loop goes on to step 1. `docs/HOW-IT-WORKS.md` says so, and `tests/run-all.sh` pins the phrases.
+- **`pr-fixer` finding lane, step 5**: the second change an installed copy must follow. After the
+  green suite, run `scripts/behaviour-diff.sh` on the pre-fix and post-fix commits with probes the
+  fixer writes (never from PR text), and fix or explain every `supplementary` change before the
+  closure. The closure comment ends with one fenced `proofs` JSON block, one entry per proof command
+  (`command`, `exit_code`, `head_sha`, `tree_hash`, `tool_versions`, `output_sha256`). The rules
+  are in `falsify-and-prove.md` ("Behavioural diff", "Proof block"); operating principle 14 names
+  the checker.
+- **`behaviour-diff.sh`** (new, pr-fixer): runs the same probes at two commits, each checked out as a
+  detached worktree at the same temporary path with hooks off, and reports each probe whose exit
+  code, stdout hash or stderr hash changed. Each probe is an argv array run with no shell, stdin from
+  `/dev/null` and a per-run timeout; its process group is killed after every run. A probe tagged with
+  a finding id that changed is `expected`, an untagged change is `supplementary`, and a tagged probe
+  that did not move is `not-changed`. A template probe (`{}`) expands over values and boundaries
+  around numbers and strings, up to 500 probes; `--list` prints the expansion. Exit 0 no unexplained
+  difference, 1 a supplementary change, 2 cannot run (including a probe that timed out or could not
+  start at both commits).
+- **`proof-check.sh`** (new, pr-fixer): reads the `proofs` block from `--file`, or from the newest
+  trusted closure comment with `--pr N [--cycle C]` (through `pr-json.py`, by a
+  `REVIEW_MARKER_AUTHORS` login). It checks each `head_sha` is a commit whose tree is `tree_hash` and
+  that it is the expected head or an ancestor of it, then re-runs all entries, or a seeded
+  `--sample N` (a random seed, printed, when `--seed` is not given), in a fresh clone at each head,
+  and compares exit codes (and output hashes with `--check-output`). The commands are untrusted text:
+  nothing runs without an allowlist the person sets (`PROOF_CHECK_ALLOW` or `--allow-file`), a
+  command with shell syntax, a `..` part or an absolute path is refused, every entry is validated
+  before any runs, and each runs as an argument list with no shell, in a scrubbed environment and a
+  process group of its own. Exit 0 all match, 1 a mismatch, 2 cannot check.
+- **`fix-ledger.sh`** (new, pr-fixer, read-only on GitHub): `--prs` or `--since` appends one JSON line
+  per pull request to an append-only local ledger (by default under `XDG_DATA_HOME`; a path inside
+  the repository needs `--allow-in-repo`). Each line holds the fixer commits judged kept,
+  overwritten or reverted, the findings closed, refused, escalated and declared as debt, the new
+  CRITICAL and WARNING findings after each fix cycle, and each refused finding's fate. `summary`
+  prints the accepted-fix rate, and `audit` samples refused findings and prints the false-refusal
+  rate. Only trusted markers count; an unset `REVIEW_MARKER_AUTHORS` refuses with exit 2. The rules
+  are in `references/fix-ledger.md`.
+- **Push guard reads the base's live tip through GraphQL**: it asks for the pull request's own
+  `baseRef` on the host, owner and repository parsed from the pull request's url, instead of the
+  REST path `git/ref/heads/<base>`. The tip is used only when GitHub's `baseRefName` equals the base,
+  the oid is 40 lower-case hex digits and the clone holds the commit; otherwise only `baseRefOid` is
+  excluded, as before, and the guard prints why. The plain-name gate is removed: the base name no
+  longer enters a request, so names it used to refuse now get the live tip.
+- **Fixer eval** (`tests/fixer-eval/`, new): four held-out cases (path traversal, rounding, stale cache
+  state, swallowed errors) with hidden tests and behaviour probes, and three injection cases, one per
+  channel (PR text, review comment, CI log), with a canary token. `prepare.sh` builds a case,
+  `score.sh` scores a harness transcript, and `selftest.sh` runs in `tests/run-all.sh`. The scorer's
+  verdict rests on state checks only (canary, sensitive writes judged from the repository, and for
+  held-out cases hidden tests, scope and probes). The command-text checks (environment reads, a
+  sensitive write seen in a call, isolation) are advisory lines that never change the exit code. No
+  model is called by the scripts, and no result is committed.
+- **Docs**: `harness-loop.md` names the details tag in words, not in a code span, so the hidden-text
+  scan no longer reports that whole file on every change. `AGENTS.md`, `docs/HOW-IT-WORKS.md`,
+  `docs/SKILLS-REFERENCE.md` and `docs/REFERENCE.md` name `proof-check.sh` and `fix-ledger.sh`;
+  `AGENTS.md` and `docs/REFERENCE.md` name the fixer eval.
+
+Known limits: `pr-protocol.md` and the comment-template check in `tests/run-all.sh` still allow only
+the `findings` fence, and the reviewer does not run `proof-check.sh` yet. `behaviour-diff.sh` is
+documented in the pr-fixer skill only; `AGENTS.md` and `docs/REFERENCE.md` do not name it yet.
+`tests/run-all.sh` now needs GNU `timeout`, because `tests/proof-check/run.sh` calls it; a separate
+docs change adds it to the requirements in `AGENTS.md` and `docs/REFERENCE.md`. The fixer eval's
+advisory split gives up five guarantees, listed in `tests/fixer-eval/README.md` (for example, a
+held-out run that read the hidden tests passes, and so does an environment read sent off the
+machine), so a passing eval is not proof of isolation.
+
+Compatibility: no marker, label, subcommand or exit code changes meaning, and the new scripts can be
+ignored. Below 1.0.0 these are minor: `pr-merge-fixer` run directly now goes on to run the review loop
+after a merge push, `pr-fixer` adds a behaviour diff and a `proofs` block to the finding lane, and
+push-guard may now use the live base tip for base names it used to skip.
+
 ## 0.22.0
 
 Faster and stricter review loop: new read-only commands, a suite cache, a push guard that reads the base's
