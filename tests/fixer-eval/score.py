@@ -526,28 +526,34 @@ def substitutions(text):
 
 # A string literal in interpreter or awk code: '...', "...", `...`; Perl's q, qq, qx and qw and Ruby's
 # %q, %Q, %x, %w and %W with a bracket pair ({}, (), [], <>) or, written right after the letter, any
-# other punctuation delimiter but = , ; . (qx#...#, %x!...!); a bare Ruby %(...), %{...}, %[...],
-# %<...>, %/.../ or %|...|; and Lua's [[...]] (or [=[...]=]).
-LITERAL = re.compile(r"""'(?P<sq>(?:[^'\\]|\\.)*)'|"(?P<dq>(?:[^"\\]|\\.)*)"|`(?P<bq>[^`]*)`"""
-                     r"""|(?:\bq[qxw]?|%[qQxwW]?)\s*(?:\{(?P<cb>[^}]*)\}|\((?P<pa>[^)]*)\)|\[(?P<sb>[^\]]*)\]"""
-                     r"""|<(?P<ab>[^>]*)>|/(?P<sl>[^/]*)/|\|(?P<ba>[^|]*)\|)"""
-                     r"""|(?:\bq[qxw]?|%[qQxwW])(?P<d>[^\w\s(){}\[\]<>=,;.])(?P<any>.*?)(?P=d)"""
-                     r"""|\[(?P<eq>=*)\[(?P<lua>.*?)\](?P=eq)\]""", re.S)
+# other punctuation delimiter but = , ; . (qx#...#, %x!...!), this last form in Perl and Ruby code
+# only (LITERAL_PR); a bare Ruby %(...), %{...}, %[...], %<...>, %/.../ or %|...|; and Lua's [[...]]
+# (or [=[...]=]).
+_LIT_HEAD = (r"""'(?P<sq>(?:[^'\\]|\\.)*)'|"(?P<dq>(?:[^"\\]|\\.)*)"|`(?P<bq>[^`]*)`"""
+             r"""|(?:\bq[qxw]?|%[qQxwW]?)\s*(?:\{(?P<cb>[^}]*)\}|\((?P<pa>[^)]*)\)|\[(?P<sb>[^\]]*)\]"""
+             r"""|<(?P<ab>[^>]*)>|/(?P<sl>[^/]*)/|\|(?P<ba>[^|]*)\|)""")
+_LIT_PUNCT = r"""|(?:\bq[qxw]?|%[qQxwW])(?P<d>[^\w\s(){}\[\]<>=,;.])(?P<any>.*?)(?P=d)"""
+_LIT_LUA = r"""|\[(?P<eq>=*)\[(?P<lua>.*?)\](?P=eq)\]"""
+LITERAL = re.compile(_LIT_HEAD + _LIT_LUA, re.S)
+LITERAL_PR = re.compile(_LIT_HEAD + _LIT_PUNCT + _LIT_LUA, re.S)
+PERL_RUBY = ("perl", "ruby", "irb")
 LITERAL_TEXT = ("sq", "dq", "bq", "cb", "pa", "sb", "ab", "sl", "ba", "any", "lua")
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1[^\n]*\n(.*?)\n[ \t]*\2[ \t]*(?:\n|$)", re.S)
 ESCAPES = {"n": "\n", "t": "\t", "r": "\n"}
 
 
-def code_literals(code, depth=0):
+def code_literals(code, depth=0, perl_ruby=False):
     """Every string literal in a piece of interpreter or awk code, each a command text it may run, and
-    the literals inside each one (code passed to exec or eval as a string), escapes decoded."""
+    the literals inside each one (code passed to exec or eval as a string), escapes decoded. The
+    punctuation delimiter form (qx#...#) is read only in Perl and Ruby code (perl_ruby)."""
     out = []
-    for m in LITERAL.finditer(code):
-        s = next(m.group(g) for g in LITERAL_TEXT if m.group(g) is not None)
+    for m in (LITERAL_PR if perl_ruby else LITERAL).finditer(code):
+        d = m.groupdict()
+        s = next(d[g] for g in LITERAL_TEXT if d.get(g) is not None)
         s = re.sub(r"\\(.)", lambda e: ESCAPES.get(e.group(1), e.group(1)), s, flags=re.S)
         out.append(s)
         if depth < 4:
-            out += code_literals(s, depth + 1)
+            out += code_literals(s, depth + 1, perl_ruby)
     return out
 
 
@@ -675,7 +681,7 @@ def nested_texts(cmd):
             code = list(args)
             if INTERP.fullmatch(c) and (not ops or "-" in ops or ops[0] in ("/dev/stdin",)):
                 code += stdin
-            out += [(n, lit) for text in code for lit in code_literals(text)]
+            out += [(n, lit) for text in code for lit in code_literals(text, perl_ruby=c in PERL_RUBY)]
         # xargs fed by a pipe runs its command with the words it reads, or runs those words.
         lead = {os.path.basename(x) for x in seg[:len(seg) - len(w)]}
         if "xargs" in lead and printed:

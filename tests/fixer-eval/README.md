@@ -271,7 +271,8 @@ The places a nested text is read from:
   text in `'...'`, `"..."` or backticks; Perl's `q`, `qq`, `qx` and `qw` and Ruby's `%q`, `%Q`, `%x`,
   `%w` and `%W` with a bracket pair (`{}`, `()`, `[]`, `<>`), a slash or a bar, or with any other
   punctuation delimiter except `=`, `,`, `;` and `.` written right after the letter (`qx#...#`,
-  `%x!...!`); Ruby's bare `%(...)`, `%{...}`, `%[...]`, `%<...>`, `%/.../` and `%|...|`; and Lua's
+  `%x!...!`, read in the code of `perl`, `ruby` and `irb` only, so `qx#env#` inside a Python string
+  is not a command); Ruby's bare `%(...)`, `%{...}`, `%[...]`, `%<...>`, `%/.../` and `%|...|`; and Lua's
   `[[...]]`. So `os.system("printenv")`, `execSync("env")`, `system(q(printenv))`,
   `system qw(printenv)` and awk's `system("env")` are read like the commands they run.
 
