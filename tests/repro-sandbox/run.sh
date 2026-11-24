@@ -161,7 +161,8 @@ sb() { REVIEW_REPRO=1 "$R" --repo "$W/src" --timeout "${TOUT:-60}" --log "$W/log
 if [ "$prc" != 0 ]; then
   for n in reproduced not-reproduced clone-at-sha git-inside env network-local network-public write-outside \
            home-read python3-clt python3-path launchservices pasteboard keychain run-masked log-symlink log-fifo \
-           expect-log-unchecked expect-log-checked sandbox-abort ulimit-kill timeout setsid-survivor nproc-cap \
+           expect-log-unchecked expect-log-checked sandbox-abort ulimit-kill timeout setsid-survivor rmbox-survivor \
+           fork-walker box-swap-decoy exit-137 nproc-cap \
            no-interpolation argv-file-name exit-127 crash exit-n no-scratch-left; do
     skip "sandboxed row $n" "no sandbox on this host: $(head -n 1 "$W/probe")"
   done
@@ -311,6 +312,50 @@ EOF
   sleep 1
   check "W2: a setsid sleeper does not outlive the script" eval '! pgrep -f "^/bin/sleep $SLP\$" >/dev/null'
   cleanup_probes
+
+  # W2 (pass 2): the same sleeper, then the repro deletes box. The check must not depend on box.
+  printf 'B="$(cd .. && pwd -P)"\n/usr/bin/perl -MPOSIX -e '\''fork and exit; POSIX::setsid(); exec "/bin/sleep", $ARGV[0]'\'' "%s"\ncd /; rm -rf "$B"; echo "rm-rc=$?"; exit 1\n' "$SLP" >"$W/cmd-rmbox.sh"
+  TOUT=10 sb --sha "$FIX" --expect fail --cmd-file "$W/cmd-rmbox.sh"; r=$?
+  sleep 1
+  check "W2: a setsid sleeper plus rm -rf of box does not outlive the script, and the result is skipped" \
+    eval '! pgrep -f "^/bin/sleep $SLP\$" >/dev/null && [ $r = 3 ] && has "repro: skipped" "$W/out"'
+  cleanup_probes
+  # W2 (pass 2): a walker that forks every 20 ms and lets its parent exit, so each pid lives briefly.
+  # It stops by itself at an absolute deadline (per-process limits restart in each child); the tag
+  # in its argv lets the row see it and the cleanup end it.
+  WALK="pr97walk-$$"
+  printf '/usr/bin/perl -MPOSIX -e '\''my ($end) = @ARGV; fork and exit; POSIX::setsid(); while (time < $end) { select(undef, undef, undef, 0.02); my $p = fork; exit 0 if $p; exit 1 unless defined $p }'\'' "%s" "%s"\nexit 1\n' \
+    "$(( $(date +%s) + 20 ))" "$WALK" >"$W/cmd-walk.sh"
+  timeout 90 env REVIEW_REPRO=1 "$R" --repo "$W/src" --timeout 10 --log "$W/log" \
+    --sha "$FIX" --expect fail --cmd-file "$W/cmd-walk.sh" >"$W/out" 2>&1; r=$?
+  walk_seen=0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "$WALK" >/dev/null && walk_seen=1; sleep 0.1; done
+  check "W2: a walker forking every 20 ms does not outlive the script, and the result is skipped" \
+    eval '[ $walk_seen = 0 ] && [ $r = 3 ] && has "repro: skipped" "$W/out"'
+  for _ in 1 2 3 4 5 6 7 8 9 10; do pkill -KILL -f "$WALK" 2>/dev/null || break; done
+  # C4: the repro replaces box with a symlink to a folder that a decoy process (started here, under its
+  # own sandbox profile that may read that folder and not the scratch folder) can read. The script
+  # must never kill the decoy, must not touch the folder, and must report skipped.
+  if [ "$BACKEND" = sandbox-exec ]; then
+    DEC="$W/decoy"; mkdir -p "$DEC"; echo keep >"$DEC/keep.txt"
+    DSLP="5$$.7"
+    timeout 60 /usr/bin/sandbox-exec -p "(version 1)(deny default)(allow process-exec process-fork)(allow sysctl-read)(allow file-read* (literal \"/\") (subpath \"/usr\") (subpath \"/bin\") (subpath \"/System\") (subpath \"/private/var/db/timezone\") (subpath \"/dev\") (subpath \"$DEC\"))" \
+      /bin/sleep "$DSLP" </dev/null >/dev/null 2>&1 &
+    DECOY=$!
+    sleep 1
+    printf 'B="$(cd .. && pwd -P)"\ncd /; rm -rf "$B"; echo "rm-rc=$?"; ln -s "%s" "$B"; echo "ln-rc=$?"; exit 1\n' "$DEC" >"$W/cmd-swap.sh"
+    TOUT=10 sb --sha "$FIX" --expect fail --cmd-file "$W/cmd-swap.sh"; r=$?
+    sleep 0.5
+    decoy_alive=0; pgrep -f "^/bin/sleep $DSLP\$" >/dev/null && decoy_alive=1
+    check "C4: a box swapped for a symlink never gets a decoy process of the user killed, and the result is skipped" \
+      eval '[ $decoy_alive = 1 ] && grep -q "^ln-rc=0$" "$W/log" && [ $r = 3 ] && has "repro: skipped" "$W/out" && [ -f "$DEC/keep.txt" ]'
+    kill -KILL "$DECOY" 2>/dev/null; pkill -KILL -f "^/bin/sleep $DSLP\$" 2>/dev/null; wait "$DECOY" 2>/dev/null
+  else
+    skip "C4: a box swapped for a symlink never gets a decoy process killed" "sandbox_check is macOS only, backend $BACKEND"
+  fi
+  # N5: a repro that SIGKILLs itself exits 137 like the timeout's KILL; the result says both.
+  sb --sha "$FIX" --expect crash -- /bin/sh -c 'kill -KILL $$'; r=$?
+  check "N5: exit 137 is skipped and worded as killed or timeout" eval '[ $r = 3 ] && has "repro: skipped (exit 137: killed by SIGKILL or the timeout" "$W/out"'
   # The cap is the uid's current process count plus a margin, so it is lower than the caller's own.
   outer_nproc="$(ulimit -u)"
   sb --sha "$FIX" --expect pass -- /bin/sh -c 'ulimit -u'; r=$?
