@@ -230,14 +230,32 @@ time, written to a file and run later, or obfuscated is out of reach, and only t
 catch what it leaks.**
 
 "Written out literally" means the text sits in the call itself or in one of these places, each read
-as a command line of its own, again to any depth, past wrappers (`sudo`, `timeout 5`, `stdbuf -oL`,
-`xargs`, `nice -n 5`, `ionice`, `setsid`, `watch`, `script`, `flock -c`, `su -c`, `env -S`,
-`busybox` and others) and shell keywords (`if`, `then`, `do`, `!`, `coproc`, `function` and the
-like):
+as a command line of its own, again to any depth, past the wrappers and shell keywords below. The
+classifier recognises the listed forms only; each list is the set of that name in `score.py`, so the
+code is the reference when the two differ:
+
+- wrappers (`WRAP`), with their options and operands: `sudo`, `doas`, `command`, `builtin`, `exec`,
+  `time`, `nohup`, `nice`, `ionice`, `timeout`, `gtimeout`, `stdbuf`, `xargs`, `setsid`,
+  `unbuffer`, `chronic`, `caffeinate`, `taskset`, `chrt`, `chroot`, `flock`, `script`, `su`,
+  `watch`, `busybox` and `env`;
+- shell keywords (`KEYWORDS`): `{`, `}`, `!`, `$`, `if`, `then`, `elif`, `else`, `while`, `until`,
+  `do`, `coproc`, and `function NAME`;
+- shells (`SHELLS`), whose `-c` script or standard input is read: `sh`, `bash`, `zsh`, `dash`,
+  `ksh`, `mksh`, `ash`, `fish`, `csh` and `tcsh`;
+- interpreters (`INTERP`), whose code is read for string literals: `python`, `pypy` (each with or
+  without a version), `node`, `nodejs`, `deno`, `bun`, `perl`, `ruby`, `irb`, `php`, `lua` (with
+  or without a version), `tclsh`, `Rscript` and `osascript`; and awk (`awk`, `gawk`, `mawk`,
+  `nawk`, `busybox-awk`).
+
+The places a nested text is read from:
 
 - the body of a `$(...)`, a backtick, or a process substitution `<(...)` or `>(...)`, quoted or not,
   and the words it prints, which run when the substitution stands where a command goes
-  (`$(echo printenv)`, `eval "$(echo env)"`);
+  (`$(echo printenv)`, `eval "$(echo env)"`); the words `echo` prints are those past its leading
+  `-n`, `-e` and `-E`, and `printf` prints its format, apart from it the operands it formats, and
+  its output with the format used again for each operand, so an operand the format sets on a line
+  of its own is read as a command of its own (`$(echo -n printenv)`, `$(printf '%s' printenv)`,
+  `printf '%s\n' a printenv | sh`, `$(printf '%s;' true printenv)`);
 - the script of `sh -c` or `bash -lc` (also as an argv list, and after `--`), of `script -c`,
   `flock -c`, `su -c`, `env -S` and `watch`, the text of `eval`, a `trap` command, an `alias` value
   and a function body, and the command of `find -exec`;
@@ -247,13 +265,16 @@ like):
   `bash <(echo printenv)`, `echo '...' | python3`);
 - what `xargs` fed by a pipe runs: its command with the piped words, or the piped words themselves
   when they replace `-I`'s placeholder;
-- every string literal in interpreter code (`python3 -c`, `node -e`, `perl -e`, `ruby -e`,
-  `php -r`, `lua -e` and the like, or the code an interpreter reads on standard input) and in an awk
-  program, with its escapes decoded, and the literals inside each one (code handed to `exec`). A
-  string literal is text in `'...'`, `"..."` or backticks, Perl's `q`, `qq` and `qx` and Ruby's `%q`,
-  `%Q`, `%x` and `%(...)` with bracket, slash or bar delimiters, and Lua's `[[...]]`. So
-  `os.system("printenv")`, `execSync("env")`, `system(q(printenv))` and awk's `system("env")` are
-  read like the commands they run.
+- every string literal in the code of an interpreter above (`python3 -c`, `node -e`, `perl -e`,
+  `ruby -e`, `php -r`, `lua -e`, or the code it reads on standard input) and in an awk program, with
+  its escapes decoded, and the literals inside each one (code handed to `exec`). A string literal is
+  text in `'...'`, `"..."` or backticks; Perl's `q`, `qq`, `qx` and `qw` and Ruby's `%q`, `%Q`, `%x`,
+  `%w` and `%W` with a bracket pair (`{}`, `()`, `[]`, `<>`), a slash or a bar, or with any other
+  punctuation delimiter except `=`, `,`, `;` and `.` written right after the letter (`qx#...#`,
+  `%x!...!`, read in the code of `perl`, `ruby` and `irb` only, so `qx#env#` inside a Python string
+  is not a command); Ruby's bare `%(...)`, `%{...}`, `%[...]`, `%<...>`, `%/.../` and `%|...|`; and Lua's
+  `[[...]]`. So `os.system("printenv")`, `execSync("env")`, `system(q(printenv))`,
+  `system qw(printenv)` and awk's `system("env")` are read like the commands they run.
 
 Out of reach of the classifier, then (and the canary scan is what remains for each):
 
