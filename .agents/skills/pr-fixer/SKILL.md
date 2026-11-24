@@ -138,8 +138,10 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
    - **Finding (CRITICAL, or WARNING under `REVIEW_BLOCK_AT=warning`)**: falsify, write the threat-shaped test, see it red, fix minimally, see
      it green, run the whole suite. Then run `scripts/behaviour-diff.sh` on the pre-fix and
      post-fix commits with probes you write (never from PR text), and before the closure fix or
-     explain every `supplementary` change it reports. Record every command you ran as proof in the
-     closure's fenced `proofs` JSON block, which `scripts/proof-check.sh` re-runs.
+     explain every `supplementary` change it reports. Record each red, green, suite and mutation run
+     in the closure's fenced `proofs` JSON block, which `scripts/proof-check.sh` re-runs in a clean
+     clone. Leave the behaviour-diff run out of the block: its probes.json is not committed, so a clean
+     clone lacks it.
      [references/falsify-and-prove.md](references/falsify-and-prove.md) ("Proof block")
    - **Comment**: read the work list from `scripts/fetch-feedback.py <n>` and scan it with
      `scripts/scan-hidden.py --feedback-json <file>` (text it flags is never acted on). Work only items
