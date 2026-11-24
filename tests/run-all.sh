@@ -10,6 +10,10 @@ unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
 P="${TEST_TAG:+$TEST_TAG-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
+# Every suite runs from the checkout's root, wherever the run was started: some rows resolve the repository from the
+# working directory (the gate suite's export-audit rows), so a run started outside the checkout failed them (PR 85 N5,
+# PR 88 W1).
+cd "$ROOT" || { echo "run-all: cannot enter $ROOT" >&2; exit 2; }
 fail=0
 # No workflow, template, action, script or test may call a model or name a provider key. Review and
 # fix run as agents in a person's own harness session, never in GitHub Actions.
@@ -223,9 +227,67 @@ if [ -n "${RUN_ONLY:-}" ] && [ "$started" = 0 ]; then
   echo "run-all: --only $RUN_ONLY matches no suite; nothing ran" >&2; exit 1
 fi
 echo "== all suites: $(( $(date +%s) - run_t0 ))s wall${RUN_ONLY:+ (only: $RUN_ONLY: NOT the full run; a PASSED verdict or a merge needs the full run)}"
+# A suite that fails prints every FAIL or failed line of its log, not only the last three lines, and its whole log is
+# kept in a folder that outlives the run (the run's own folder is removed at exit), so a row that fails only under load
+# can be named and told from a defect. The folder is made at the first failure and its path is printed.
+# It lives in this user's cache folder, beside the suite cache: KEPT_BASE is <cache root>/pr-reviewer-fixer/run-all-failed
+# (XDG_CACHE_HOME or ~/.cache), created with mode 700 and held, with the folder above it, to the cache folder's rule (a
+# real directory, this user's, writable by nobody else; the root as cache_root_ok says), so no other user can plant a
+# name in it. A cache root that is not an absolute path (the run works from the checkout's root) or no root at all
+# keeps no log and removes nothing (PR 88 W4).
+# Before the new folder is made, the older ones are pruned: this user's newest four are kept (with the new one, the
+# last five failing runs), and older ones are removed, so a host that fails often does not pile up copies of every log
+# (PR 88 N1). The names come from the glob, never from parsed ls output: an entry is counted only when its whole name is
+# run-all-failed. and the six letters or digits mktemp puts there (so no newline and no slash), and it is a real
+# directory (not a link) owned by this user. Anything else is skipped, never removed. python3 orders the counted names
+# by mtime and prints the indexes of the older ones; rm gets only "$KEPT_BASE/<checked name>". When python3 fails,
+# nothing is removed (PR 88 W4).
+KEPT="" KEPT_TRIED=0 KEPT_BASE=""
+case "$CACHE_DIR" in /*) KEPT_BASE="${CACHE_DIR%/*}/run-all-failed" ;; esac
+own_dir() { [ -d "$1" ] && [ ! -L "$1" ] && [ -n "$(find "$1" -maxdepth 0 -user "$(id -u)" ! -perm -g+w ! -perm -o+w 2>/dev/null)" ]; }
+kept_base_ok() { own_dir "$KEPT_BASE" && own_dir "${KEPT_BASE%/*}" && cache_root_ok; }
+KEPT_RE='^run-all-failed\.[0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ]{6}$'
+prune_kept() {
+  local f i old names=()
+  for f in "$KEPT_BASE"/run-all-failed.*; do
+    f="${f#"$KEPT_BASE"/}"
+    [[ "$f" =~ $KEPT_RE ]] && own_dir "$KEPT_BASE/$f" || continue
+    names+=("$f")
+  done
+  [ "${#names[@]}" -gt 4 ] || return 0
+  old="$(python3 -I -c 'import os, sys
+b, n = sys.argv[1], sys.argv[2:]
+order = sorted(range(len(n)), key=lambda i: os.lstat(os.path.join(b, n[i])).st_mtime_ns, reverse=True)
+print(" ".join(str(i) for i in order[4:]))' "$KEPT_BASE" "${names[@]}" 2>/dev/null)" || return 0
+  for i in $old; do
+    [[ "$i" =~ ^[0-9]+$ ]] && [ "$i" -lt "${#names[@]}" ] || continue
+    rm -rf -- "$KEPT_BASE/${names[$i]}"
+  done
+}
+failed_rows() {
+  local n="$1" name="$2" log="$OUT/$1.log" dest rows
+  if [ "$KEPT_TRIED" = 0 ]; then
+    KEPT_TRIED=1
+    if [ -n "$KEPT_BASE" ] && (umask 077; mkdir -p "$KEPT_BASE") 2>/dev/null && kept_base_ok; then
+      prune_kept; KEPT="$(mktemp -d "$KEPT_BASE/run-all-failed.XXXXXX" 2>/dev/null)" || KEPT=""
+    fi
+  fi
+  dest=""
+  if [ -n "$KEPT" ]; then
+    dest="$KEPT/$n-$(printf %s "$name" | tr -c 'A-Za-z0-9._-' '_').log"
+    cp "$log" "$dest" 2>/dev/null || dest=""
+  fi
+  echo "   -- ${name} FAILED; full log: ${dest:-not kept (no folder owned and writable by this user alone could be made under ${KEPT_BASE:-a cache folder: XDG_CACHE_HOME or HOME is unset or not an absolute path})}"
+  # A FAIL line, and a failed line unless it counts 0 failed; never a passing row whose name holds the word.
+  rows="$(awk '!/^(PASS|ok)[ :|]/ && (/FAIL/ || (/[Ff]ailed/ && !/(^|[^0-9])0 failed/))' "$log" 2>/dev/null)"
+  if [ -n "$rows" ]; then
+    printf '%s\n' "$rows" | head -n 60 | sed 's/^/   | /'
+    [ "$(printf '%s\n' "$rows" | wc -l)" -le 60 ] || echo "   | ... $(( $(printf '%s\n' "$rows" | wc -l) - 60 )) more in the full log"
+  else echo "   | (no FAIL or failed line in the log: the suite stopped early, or reports in another form)"; fi
+}
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]} ($(cat "$OUT/$n.secs" 2>/dev/null || echo ?)s)"; tail -n 3 "$OUT/$n.log"
-  [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -eq 0 ] || fail=1
+  if [ "$(cat "$OUT/$n.rc" 2>/dev/null || echo 1)" -ne 0 ]; then fail=1; failed_rows "$n" "${names[$i]}"; fi
 done
 # Every skill states the summary shape, so the three reports read the same way to a person: the
 # reviewer's template, the fixer's closure rule, the merge fixer's closure rule and the shared protocol.
@@ -389,6 +451,43 @@ for f in references/pr-protocol.md references/harness-matrix.md references/harne
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-merge-fixer/$f" \
     && echo "== $f identical in pr-merge-fixer" || { echo "== $f DIFFERS in pr-merge-fixer"; fail=1; }
 done
+# The pr-fixer catalog's Counts section must agree with its tables: 100 rows, each Target one of
+# SKILL, reference, shipped or backlog, the SKILL, shipped and backlog item lists equal to the rows
+# with that Target, and the reference count equal to the rest. The reviewer's catalog has no counts.
+# Every row is counted before the dict is built, so a repeated item number fails even when the copy
+# has the same Target, and a shipped Target must name a path (`shipped: <path>`), not stand bare.
+if cat_out="$(python3 -I - "$ROOT/.agents/skills/pr-fixer/references/improvements-catalog.md" <<'PY'
+import collections, re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+found = [(int(m.group(1)), m.group(2).strip())
+         for m in re.finditer(r"^\| (\d+) \|.*\| ([^|]*?) \|\s*$", text, re.M)]
+bad = ["item %d appears %d times" % (n, c)
+       for n, c in sorted(collections.Counter(n for n, _ in found).items()) if c > 1]
+rows, nopath = {}, set()
+for n, t in found:
+    if t.startswith("shipped") and not re.match(r"shipped: `?[\w.-]*/[\w./-]*", t):
+        bad.append("item %d Target %r: shipped needs 'shipped: <path>'" % (n, t)); nopath.add(n)
+    rows[n] = "shipped" if t.startswith("shipped: ") and n not in nopath else t
+got = {k: sorted(n for n, t in rows.items() if t == k) for k in ("SKILL", "reference", "shipped", "backlog")}
+bad += ["%d rows, not items 1-100" % len(rows)] if sorted(rows) != list(range(1, 101)) else []
+bad += ["item %d Target %r" % (n, t) for n, t in sorted(rows.items()) if t not in got and n not in nopath]
+counts = text.split("## Counts", 1)[-1].split("\n## ", 1)[0]
+for k, label in (("SKILL", "SKILL (lean body)"), ("shipped", "shipped (formerly backlog)"), ("backlog", "backlog")):
+    m = re.search(r"^- %s: (none|items ([\d, ]+) \((\d+)\))\." % re.escape(label), counts, re.M)
+    said = [] if m and m.group(1) == "none" else [int(x) for x in m.group(2).split(",")] if m else None
+    if said is None or (m.group(3) and int(m.group(3)) != len(said)) or said != got[k]:
+        bad.append("%s: counts line says %s, the tables have %s" % (k, m.group(1) if m else "nothing", got[k]))
+m = re.search(r"^- reference: the remaining (\d+)\.", counts, re.M)
+if not m or int(m.group(1)) != len(got["reference"]):
+    bad.append("reference: counts line says %s, the tables have %d" % (m.group(1) if m else "nothing", len(got["reference"])))
+print("; ".join(bad) or " ".join("%s %d" % (k, len(v)) for k, v in got.items()))
+sys.exit(1 if bad else 0)
+PY
+)"; then
+  echo "== pr-fixer catalog counts match its Target column ($cat_out)"
+else
+  echo "== pr-fixer catalog counts DISAGREE with its Target column: $cat_out"; fail=1
+fi
 # The merge fixer runs the project's build, tests and lockfile regeneration on the pull request's code,
 # so `review-cycle.sh fix` (the fork and collaborator guard) must run before its first write on every
 # pull request, reviewed or not. Its text may not make that step conditional or skippable.
@@ -471,6 +570,104 @@ else
 fi
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
+# suite-check.yml runs the pull request's own code (PR 87 N4). That is safe only while its one trigger is pull_request
+# (never pull_request_target or workflow_run), its token is contents: read and nothing more (one permissions block,
+# none per job), and every checkout drops the token (persist-credentials: false). push-guard keeps a fixer out of
+# workflows; this keeps a later edit by anyone from loosening them unseen. Comment lines are not read, and a form this
+# check does not parse (an inline `on:` list, for example) fails it. The parser below (PR 87 W1) accepts only lines of
+# the form `indent [- ]plain-key: value`, so a quoted key, a space before the colon, a flow mapping, an anchor or a
+# block scalar fails it; it reads each `- ` step by indent, and a step whose uses names actions/checkout (quoted or
+# not, any case) must hold exactly one persist-credentials: false directly under its own with:.
+# A parser of the raw text can be outrun by YAML itself (PR 87 W2: an escape in a double-quoted value, a single-quoted
+# value left open over later lines), so the first line of defence is a pin: the workflow must match the sha256 below
+# byte for byte. Any edit to it, a whitespace-only one included, fails here until the pin is updated in the same pull
+# request, which a reviewer then sees in the diff. That a harmless edit fails is intended. The parser stays as the
+# second line of defence and, since W2, also fails on any backslash in a value and on any quoted value that does not
+# close on its own line (one quoted token, with no inner quote of its kind, then at most a comment).
+sc_pin=d72298283d66d2ab0905727c900fe7407eec78d1364575711bccb683f5bdbec0
+sc_sum="$(sha256 "$ROOT/.github/workflows/suite-check.yml" 2>/dev/null | cut -d' ' -f1)"
+if [ -n "$sc_sum" ] && [ "$sc_sum" = "$sc_pin" ]; then
+  echo "== suite-check.yml matches the sha256 pinned in tests/run-all.sh"
+else
+  echo "== suite-check.yml DIFFERS from the sha256 pinned in tests/run-all.sh (now '${sc_sum}'): review the edit, then update the pin in the same pull request"; fail=1
+fi
+sc="$(grep -v '^[[:space:]]*#' "$ROOT/.github/workflows/suite-check.yml" 2>/dev/null)"
+sc_on="$(printf '%s\n' "$sc" | awk '/^on:/{on=1;next} on&&/^[^[:space:]]/{exit} on&&/^  [^[:space:]]/{print}')"
+sc_perm="$(printf '%s\n' "$sc" | awk '/^permissions:/{on=1;next} on&&/^[^[:space:]]/{exit} on&&/[^[:space:]]/{print}')"
+sc_co="$(printf '%s\n' "$sc" | grep -cE 'uses:[[:space:]]*actions/checkout@')"
+sc_pc="$(printf '%s\n' "$sc" | grep -cE '^[[:space:]]*persist-credentials:[[:space:]]*false[[:space:]]*$')"
+sc_py=1
+python3 -I - "$ROOT/.github/workflows/suite-check.yml" >/dev/null 2>&1 <<'PY' && sc_py=0
+import re, sys
+try:
+    lines = open(sys.argv[1], encoding="utf-8").read().split("\n")
+except Exception:
+    sys.exit(1)
+shape = re.compile(r"( *)(- )?([A-Za-z0-9_-]+):(?: (.*))?$")
+rows = []  # (indent, dash, key column, key, value, line lowercased)
+for raw in lines:
+    if not raw.strip() or raw.lstrip(" ").startswith("#"):
+        continue
+    m = shape.match(raw)
+    if not m:
+        sys.exit(1)
+    ind, dash, key, val = len(m.group(1)), m.group(2) is not None, m.group(3), (m.group(4) or "").strip()
+    if val[:1] in ("{", "&", "*", "|", ">", "!") or (val[:1] == "[" and key != "types"):
+        sys.exit(1)
+    if "\\" in val:  # PR 87 W2: YAML decodes escapes in a double-quoted value; the raw text is not the value
+        sys.exit(1)
+    if val[:1] in ("'", '"'):  # PR 87 W2: a quote left open swallows the lines below it
+        close = val.find(val[0], 1)
+        if close < 0 or not re.fullmatch(r"(\s+#.*)?", val[close + 1:]):
+            sys.exit(1)
+    rows.append((ind, dash, ind + 2 if dash else ind, key, val, raw.lower()))
+top = [r[3] for r in rows if r[2] == 0]
+perms = [r for r in rows if r[3] == "permissions"]
+if len(top) != len(set(top)) or len(perms) != 1 or perms[0][2] != 0 or perms[0][4] != "":
+    sys.exit(1)
+def end(i):  # the row after the step that starts at row i
+    j = i + 1
+    while j < len(rows) and rows[j][0] > rows[i][0]:
+        j += 1
+    return j
+checkouts = set()
+for n, r in enumerate(rows):
+    if "actions/checkout" not in r[5]:
+        continue
+    starts = [i for i in range(n + 1) if rows[i][1] and n < end(i)]
+    if not starts:
+        sys.exit(1)
+    s = starts[-1]
+    if r[3] != "uses" or r[2] != rows[s][2] or (r[1] and n != s):
+        sys.exit(1)
+    if not re.sub(r"\s+#.*$", "", r[4]).strip("\"'").lower().startswith("actions/checkout@"):
+        sys.exit(1)
+    checkouts.add(s)
+for s in checkouts:
+    k, e = rows[s][2], end(s)
+    withs = [i for i in range(s, e) if rows[i][2] == k and rows[i][3] == "with" and not rows[i][1]]
+    if [rows[i][3] for i in range(s + 1, e) if rows[i][2] == k].count("with") != 1 or len(withs) != 1 or rows[withs[0]][4]:
+        sys.exit(1)
+    w = withs[0]
+    kids = []
+    for i in range(w + 1, e):
+        if rows[i][0] <= k:
+            break
+        kids.append(rows[i])
+    pc = [x for x in kids if x[3] == "persist-credentials"]
+    allpc = [i for i in range(s, e) if rows[i][3] == "persist-credentials"]
+    if not kids or len(pc) != 1 or len(allpc) != 1 or pc[0][4] != "false" or pc[0][0] != kids[0][0]:
+        sys.exit(1)
+sys.exit(0 if checkouts else 1)
+PY
+if [ -n "$sc" ] && [ "$sc_on" = "  pull_request:" ] && [ "$sc_perm" = "  contents: read" ] \
+   && [ "$(printf '%s\n' "$sc" | grep -cE "(^|[[:space:]{,])[\"']?permissions[\"']?[[:space:]]*:")" = 1 ] \
+   && ! printf '%s\n' "$sc" | grep -qE 'pull_request_target|workflow_run|persist-credentials:[[:space:]]*[^f[:space:]]' \
+   && [ "$sc_co" -ge 1 ] && [ "$sc_pc" = "$sc_co" ] && [ "$sc_py" = 0 ]; then
+  echo "== suite-check.yml: pull_request only, contents: read only, persist-credentials: false on every checkout"
+else
+  echo "== suite-check.yml is not pull_request only, contents: read only, with persist-credentials: false on every checkout"; fail=1
+fi
 # The model-key scan runs here, last: see model_key_scan, defined near the top.
 model_key_scan
 # Only a green full run is written to the cache (see the cache note above), and only when the tree is still the one

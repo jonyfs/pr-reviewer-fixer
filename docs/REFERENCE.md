@@ -713,7 +713,8 @@ flowchart TD
 .agents/skills/
   pr-reviewer/          the reviewer skill (SKILL.md, references/, scripts/, templates/)
   pr-fixer/             the fixer skill (SKILL.md, references/, scripts/, templates/)
-.github/workflows/      the review-gate check and the release workflow. No workflow calls a model
+.github/workflows/      the review-gate check, the release workflow and suite-check.yml (run-all.sh --only push-guard
+                        on each pull request: the push-guard suite and the shared-file checks). No workflow calls a model
 .github/scripts/        release.sh, the release workflow's logic, tested by tests/release/run.sh
 docs/
   HOW-IT-WORKS.md       what the two skills do, step by step, with diagrams
@@ -753,11 +754,11 @@ uncommitted and untracked files, the toolchain and the user's git configuration,
 configuration, the repository's own `.git/config` or `.git/info/attributes`: after a change there (a clean filter,
 for example), run `--fresh`. A tree that changed during the run is not recorded as passed, and the run says so.
 
-The suite needs no network, only bash, python3, node, jq, git, curl, tar and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
+The suite needs no network, only bash, python3, node, jq, git, curl, tar, `sha256sum` and GNU `timeout` (coreutils; the tests call `timeout` by that name and do not fall back to `gtimeout`, so on macOS put Homebrew coreutils' `timeout` on `PATH`). It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `review-metrics.sh`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `review-metrics.sh`, `install.sh`, the review
 eval scorer, the version check, the update script (`tests/update/run.sh`, against a fake release served from local files) and the release script (`tests/release/run.sh`, which drives
 `.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
