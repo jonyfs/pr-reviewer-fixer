@@ -42,7 +42,7 @@ python3 tests/scan-hidden/t.py .agents/skills/pr-reviewer/scripts  # scan-hidden
 
 `tests/run-all.sh` runs the suites at the same time. Each run uses its own scratch directory, named by `TEST_TAG` (`work-*/` and `state-*/`, both gitignored), so set a different `TEST_TAG` when you start two runs of the same suite together. `run-all.sh` puts a `TEST_TAG` you give it in front of each suite's own tag, so two runs of `run-all.sh` with different tags do not collide either. Every suite unsets `REVIEW_BLOCK_AT` and `PUSH_GUARD_ALLOW_SENSITIVE` when it starts, so a value exported in your shell does not change the results. `run-all.sh` runs the suites of the shared scripts once, from the reviewer's copy (the `cmp` checks at its end compare every script found in both skills' `scripts/` folders, so a new shared script needs no new line), and, outside a virtual environment, puts a link to the real `python3` first on `PATH`, since a pyenv or asdf shim costs a few hundred milliseconds per start.
 
-The suite needs bash, python3, node, jq, git, curl, tar and sha256sum. It puts a fake `gh` first on `PATH` (`tests/*/bin/gh`, backed by `fakegh.py`), so nothing touches GitHub. There is no build or lint step. Workflows and templates are checked with `actionlint`, which is run by hand.
+The suite needs bash, python3, node, jq, git, curl, tar, sha256sum and GNU `timeout` (coreutils; the tests call `timeout` by that name and do not fall back to `gtimeout`, so on macOS put Homebrew coreutils' `timeout` on `PATH`). It puts a fake `gh` first on `PATH` (`tests/*/bin/gh`, backed by `fakegh.py`), so nothing touches GitHub. There is no build or lint step. Workflows and templates are checked with `actionlint`, which is run by hand.
 
 ## Architecture
 

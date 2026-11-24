@@ -745,7 +745,7 @@ uncommitted and untracked files, the toolchain and the user's git configuration,
 configuration, the repository's own `.git/config` or `.git/info/attributes`: after a change there (a clean filter,
 for example), run `--fresh`. A tree that changed during the run is not recorded as passed, and the run says so.
 
-The suite needs no network, only bash, python3, node, jq, git, curl, tar and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
+The suite needs no network, only bash, python3, node, jq, git, curl, tar, `sha256sum` and GNU `timeout` (coreutils; the tests call `timeout` by that name and do not fall back to `gtimeout`, so on macOS put Homebrew coreutils' `timeout` on `PATH`). It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
