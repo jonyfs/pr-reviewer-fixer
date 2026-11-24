@@ -564,6 +564,12 @@ open(os.path.join(d, "draft-mu.md"), "w").write("\n".join(out).replace(
 open(os.path.join(d, "floor-none"), "wb").write(b"README.md\0")
 open(os.path.join(d, "floor-infra"), "wb").write(b"infra/main.tf\0")
 PY
+fo() { # fo <name> <expected exit> <cmd...>
+  local name="$1" want="$2"; shift 2
+  local o rc; o=$("$@" 2>/dev/null); rc=$?
+  case "$o" in *"suppressed: none (fail open"*) [ "$rc" = "$want" ] && row "$name" ok || row "$name" bad "exit $rc: $o" ;;
+    *) row "$name" bad "exit $rc: $o" ;; esac
+}
 SP="--prs 40,41,42,43"
 SU="$W/sup.json"
 : >"$FAKE_DIR/calls.log"
@@ -618,6 +624,26 @@ jqk "suppress --report: a mandatory unit of the path floor (reliability for a .t
 jqk "suppress --report: the floor's unit is kept at the category level too" "$W/supi.json" "$(cat_ reliability)"' | .suppressed | not'
 bash "$RM" suppress --json $SP --report "$R/draft-mu.md" --floor-files "$R/floor-none" >"$W/supm.json" 2>/dev/null
 jqk "suppress --report: a unit the report's mandatory_units lists is never suppressed" "$W/supm.json" "$(fnd W3)"' | .action == "keep"'
+# --floor BASE HEAD: path-floor.sh over a real git range. The second commit adds a Terraform file.
+G="$W/floorgit"
+mkdir -p "$G" && git -C "$G" init -q && git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m one \
+  && mkdir -p "$G/infra" && : >"$G/infra/main.tf" && git -C "$G" add infra && git -C "$G" -c user.name=t -c user.email=t@t commit -q -m two
+(cd "$G" && bash "$RM" suppress --json $SP --report "$R/draft.md" --floor HEAD~1 HEAD) >"$W/supg.json" 2>"$W/supg.err"; rc=$?
+[ "$rc" = 0 ] && row "suppress --floor BASE HEAD: exit 0 in a git checkout" ok || row "suppress --floor BASE HEAD: exit 0 in a git checkout" bad "exit $rc: $(cat "$W/supg.err")"
+jqk "suppress --floor BASE HEAD: the .tf file the range adds makes reliability mandatory, so it is kept" "$W/supg.json" \
+  "$(fnd W3)"' | .action == "keep"'
+jqk "suppress --floor BASE HEAD: a category no unit protects is still demoted" "$W/supg.json" "$(fnd W1)"' | .action == "demote"'
+fo "fail open: --floor with a revision git does not know suppresses nothing (exit 2)" 2 \
+  bash -c 'cd "$1" && shift && exec bash "$@"' _ "$G" "$RM" suppress $SP --report "$R/draft.md" --floor no-such-rev HEAD
+cp "$FAKE_DIR/list.json" "$FAKE_DIR/list.keep"
+printf '%s\n' '[{"number": 40}, {"number": 43}]' >"$FAKE_DIR/list.json"
+fo "fail open: a --since listing that reaches --limit suppresses nothing (exit 2)" 2 bash "$RM" suppress --since 2026-11-01 --limit 2
+mv "$FAKE_DIR/list.keep" "$FAKE_DIR/list.json"
+printf 'x\n```findings\nversion: 1\nfindings:\n  - id: W1\n    severity: "WARN\033[2JING"\n    file: a\n    line: 1\n    dimension: noisy\n    claim: "c"\n```\n' >"$R/escsev.md"
+out=$( { bash "$RM" suppress $SP --report "$R/escsev.md" --floor-files "$R/floor-none"; bash "$RM" suppress --json $SP --report "$R/escsev.md" --floor-files "$R/floor-none";
+         bash "$RM" suppress --prs 40,99 --report "$R/escsev.md" --floor-files "$R/floor-none"; } 2>&1)
+case "$out" in *$'\033'*) row "suppress: a severity holding ESC never reaches the output raw" bad "ESC in the output" ;;
+  *) row "suppress: a severity holding ESC never reaches the output raw" ok ;; esac
 REVIEW_BLOCK_AT=warning bash "$RM" suppress --json $SP --report "$R/draft.md" --floor-files "$R/floor-none" >"$W/supw.json" 2>/dev/null
 jqk "suppress --report: under REVIEW_BLOCK_AT=warning a WARNING blocks and is never demoted" "$W/supw.json" \
   "$(fnd W1)"' | .action == "keep"'
@@ -628,12 +654,6 @@ out=$(bash "$RM" suppress $SP --report "$R/draft.md" --floor-files "$R/floor-non
 has "suppress --report: the table says which finding to demote" "finding W1 noisy WARNING: demote to NOTE" "$out"
 has "suppress --report: the table says a CRITICAL is kept" "finding C1 noisy CRITICAL: keep" "$out"
 # Fail open: when anything cannot be read, nothing is suppressed, the output says so, exit 2.
-fo() { # fo <name> <expected exit> <cmd...>
-  local name="$1" want="$2"; shift 2
-  local o rc; o=$("$@" 2>/dev/null); rc=$?
-  case "$o" in *"suppressed: none (fail open"*) [ "$rc" = "$want" ] && row "$name" ok || row "$name" bad "exit $rc: $o" ;;
-    *) row "$name" bad "exit $rc: $o" ;; esac
-}
 fo "fail open: a pull request gh cannot read suppresses nothing (exit 2)" 2 bash "$RM" suppress --prs 40,43,99
 fo "fail open: no REVIEW_MARKER_AUTHORS suppresses nothing (exit 2)" 2 env -u REVIEW_MARKER_AUTHORS bash "$RM" suppress $SP
 fo "fail open: no --prs or --since suppresses nothing (exit 2)" 2 bash "$RM" suppress

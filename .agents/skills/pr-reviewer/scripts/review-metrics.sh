@@ -576,6 +576,7 @@ def list_prs(o):
             die("gh pr list could not list the merged pull requests")
         prs = sorted({int(x["number"]) for x in got if isinstance(x, dict) and isinstance(x.get("number"), int)})
         if len(got) >= o["limit"]:
+            o["truncated"] = True
             print("review-metrics: gh returned --limit %d pull requests; there may be more, raise --limit" % o["limit"],
                   file=sys.stderr)
     return prs
@@ -640,7 +641,8 @@ def fail_open(o, reason, findings=None):
            "coverage": ["suppressed: none (fail open: %s)" % reason]}
     for e in findings or []:
         res["findings"].append({"id": safe(e.get("id"), 40), "dimension": dimension(e.get("dimension")),
-                                "severity": str(e.get("severity") or "").upper(), "action": "keep", "reason": "fail open"})
+                                "severity": safe(str(e.get("severity") or "").upper(), 20), "action": "keep",
+                                "reason": "fail open"})
     if o.get("json"):
         text = json.dumps(res, sort_keys=True) + "\n"
     else:
@@ -701,6 +703,8 @@ def suppress(o):
     if not gate.allowlist():
         fail_open(o, "REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted", counted)
     prs = list_prs(o)
+    if o.get("truncated"):
+        fail_open(o, "gh returned --limit %d pull requests, so the history may be incomplete" % o["limit"], counted)
     rows, failed = [], []
     for n in prs:
         r = read_pr(n, gate)
@@ -738,7 +742,7 @@ def suppress(o):
     warn_blocks = (os.environ.get("REVIEW_BLOCK_AT") or "critical") != "critical"
     findings = []
     for e in counted:
-        d, sev = dimension(e.get("dimension")), str(e.get("severity") or "").upper()
+        d, sev = dimension(e.get("dimension")), safe(str(e.get("severity") or "").upper(), 20)
         if d not in suppressed:
             act, why = "keep", "category not suppressed"
         elif sev == "CRITICAL":

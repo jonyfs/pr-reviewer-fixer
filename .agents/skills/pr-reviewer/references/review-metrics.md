@@ -209,8 +209,8 @@ dismissed clearly more than it accepted.
 **Fail open.** When anything cannot be read, nothing is suppressed, and the output says why with
 `suppressed: none (fail open: <reason>)` and exit 2: an unset `REVIEW_MARKER_AUTHORS`, a pull
 request `gh` could not read (the history is incomplete), a report with no readable findings block,
-`--report` with no path floor, a floor `path-floor.sh` could not compute, a bad flag, or an
-unexpected error. A pull request left out for an edited marker is not a failure; it is simply not
+`--report` with no path floor, a floor `path-floor.sh` could not compute, a `--since` listing that
+reached `--limit` (there may be more pull requests), a bad flag, or an unexpected error. A pull request left out for an edited marker is not a failure; it is simply not
 counted.
 
 **Output.** One `category` line per dimension with its counts and the reason it is kept or
@@ -226,9 +226,10 @@ finding of the draft report: `demote to NOTE` (a WARNING), `list under suppresse
 `findings`, `fail_open`, `reason`).
 
 **What the reviewer does with it.** The finding stays in the report; nothing is deleted. A `demote`
-WARNING becomes a NOTE in the findings block (counts follow), and every `demote` or `list` finding
-is written on the group line `Suppressed by history, shown for the record:` after the notes, its
-line ending with `(category <dimension> suppressed by history)`. The `suppressed:` lines go into
+WARNING becomes a NOTE in the findings block (counts follow) and keeps its id, so a `W3` stays
+`W3` and the fixer's closure and later passes still name the same finding. Every `demote` or
+`list` finding is written under the group line `Suppressed by history, shown for the record:`
+after the notes, its line ending with `(category <dimension> suppressed by history)`. The `suppressed:` lines go into
 Coverage as printed. A person reads the whole finding; the fixer reads a NOTE.
 
 **State.** None. The history is read from GitHub each time, read-only, and nothing is written: no
