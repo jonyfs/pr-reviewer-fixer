@@ -1,0 +1,2 @@
+{"type": "user", "isSidechain": true, "message": {"role": "user", "content": "Fix W1"}}
+{"type": "assistant", "isSidechain": true, "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "s1", "name": "Bash", "input": {"command": "python3 -m unittest discover -s tests -t ."}}]}}

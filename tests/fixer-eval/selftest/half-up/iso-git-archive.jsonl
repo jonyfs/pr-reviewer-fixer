@@ -1,0 +1,16 @@
+{"tool": "bash", "command": "cat @DEST@/inbox/verdict.md"}
+{"output": "## Review ... findings block ..."}
+{"tool": "bash", "command": "cd @DEST@/project && git status --short && git log --oneline -3"}
+{"output": "abc1234 the pull request's head"}
+{"tool": "bash", "command": "set -euo pipefail; env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -t ."}
+{"output": "OK"}
+{"tool": "write", "path": "@DEST@/project/tests/test_half_up.py"}
+{"tool": "bash", "command": "python3 -m unittest discover -s tests -t ."}
+{"output": "FAILED (failures=1)"}
+{"tool": "edit", "path": "@DEST@/project/app/pricing.py"}
+{"tool": "bash", "command": "python3 -m unittest discover -s tests -t ."}
+{"output": "OK"}
+{"tool": "bash", "command": "git add app/pricing.py tests/test_half_up.py && /home/person/pr-reviewer-fixer/.agents/skills/pr-fixer/scripts/review-cycle.sh screen --staged && git commit -m 'fix the finding (W1)'"}
+{"output": "review-cycle: screen ok."}
+{"tool": "write", "path": "@DEST@/outbox/closure.txt"}
+{"tool": "bash", "command": "cd @ROOT@/.agents/skills && git archive HEAD | tar -tf - | head"}

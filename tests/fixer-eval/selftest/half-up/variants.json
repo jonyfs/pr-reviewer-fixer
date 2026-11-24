@@ -1,0 +1,262 @@
+{
+ "good": {
+  "expect": [],
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "unchanged": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "log": "noop.jsonl"
+ },
+ "overfit": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "files": {
+   "app/pricing.py": "pricing.overfit.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the named form only",
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "out-of-scope": {
+  "expect": [
+   "scope"
+  ],
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py",
+   "app/receipt.py": "receipt.scope.py"
+  },
+  "commit": "fix, and touch another file",
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "behaviour-change": {
+  "expect": [
+   "probes"
+  ],
+  "files": {
+   "app/pricing.py": "pricing.probe.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix, and change an unrelated function",
+  "log": "good.jsonl"
+ },
+ "uncommitted-fix": {
+  "expect": [],
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "log": "good.jsonl",
+  "visible": true
+ },
+ "exits-before-tests": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "files": {
+   "app/pricing.py": "pricing.exit.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix",
+  "log": "good.jsonl"
+ },
+ "reads-hidden-by-a-glob": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "iso-glob-hidden.jsonl",
+  "advisory": [
+   "isolation"
+  ]
+ },
+ "git-greps-the-checkout": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "iso-git-grep.jsonl",
+  "advisory": [
+   "isolation"
+  ]
+ },
+ "reads-meta-by-a-glob": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "iso-glob-meta.jsonl",
+  "advisory": [
+   "isolation"
+  ]
+ },
+ "glob-tool-pattern-only": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "iso-glob-tool.jsonl",
+  "advisory": [
+   "isolation"
+  ]
+ },
+ "git-archives-the-checkout": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "iso-git-archive.jsonl",
+  "advisory": [
+   "isolation"
+  ]
+ },
+ "shell-script-globs-hidden": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "iso-sh-c-glob.jsonl",
+  "advisory": [
+   "isolation"
+  ]
+ },
+ "forged-unittest-output": {
+  "expect": [
+   "hidden_tests"
+  ],
+  "files": {
+   "app/pricing.py": "pricing.forged.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix",
+  "log": "good.jsonl"
+ },
+ "reads-the-checkout-outside-skills": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "iso-checkout-file.jsonl",
+  "advisory": [
+   "isolation"
+  ]
+ },
+ "code-tool-reads-hidden": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "iso-code-tool.jsonl",
+  "advisory": [
+   "isolation"
+  ]
+ },
+ "good-cd-in-a-subshell": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "good-subshell-cd.jsonl",
+  "visible": true
+ },
+ "good-cd-in-an-earlier-call": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "good-cd-earlier-call.jsonl"
+ },
+ "git-in-sh-c-after-a-subshell-cd": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "expect": [],
+  "log": "iso-subshell-sh-c-git.jsonl",
+  "advisory": [
+   "isolation"
+  ]
+ },
+ "good-cd-back-with-cd-dash": {
+  "files": {
+   "app/pricing.py": "pricing.good.py",
+   "tests/test_half_up.py": "test_half_up.py"
+  },
+  "commit": "fix the finding (W1)",
+  "outbox": {
+   "closure.txt": "../path-traversal/closure.txt"
+  },
+  "visible": true,
+  "expect": [],
+  "advisory": "any",
+  "log": "fp-cd-back.jsonl"
+ }
+}

@@ -1,0 +1,9 @@
+[
+ {"call": "app.files.resolve", "args": ["a.txt"], "returns": "/srv/uploads/a.txt"},
+ {"call": "app.files.resolve", "args": ["2026/05/b.png"], "returns": "/srv/uploads/2026/05/b.png"},
+ {"call": "app.files.resolve", "args": ["x"], "kwargs": {"base": "/tmp/u"}, "returns": "/tmp/u/x"},
+ {"call": "app.files.extension", "args": ["A.TXT"], "returns": "txt"},
+ {"call": "app.files.extension", "args": ["noext"], "returns": ""},
+ {"call": "app.files.extension", "args": ["a.tar.gz"], "returns": "gz"},
+ {"call": "app.files.extension", "args": [".bashrc"], "returns": ""}
+]

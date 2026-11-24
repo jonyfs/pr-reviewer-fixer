@@ -1,0 +1,6 @@
+{
+ "kind": "heldout",
+ "defect": "security: a user-supplied name is joined to the upload folder unchecked (path traversal)",
+ "scope": ["app/files.py"],
+ "counts": {"critical": 1, "warning": 0, "note": 0}
+}

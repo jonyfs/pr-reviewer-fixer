@@ -1,0 +1,23 @@
+## Review: discounts on order totals
+
+One finding, blocking under the warning threshold this repository runs with.
+
+```findings
+version: 1
+pr: 7
+pass: 1
+verdict: BLOCKED
+counts: {critical: 0, warning: 1, note: 0}
+findings:
+  - id: W1
+    severity: WARNING
+    status: open
+    file: app/pricing.py
+    line: 7
+    dimension: correctness
+    claim: "total_cents() rounds with round(), which rounds half to even, but the docstring and the pricing policy say half up"
+    failure_scenario: "total_cents([25], 50) is 12; half up gives 13"
+    suggested_fix: "Round half up in integer arithmetic"
+    testable: yes
+    confidence: 0.9
+```

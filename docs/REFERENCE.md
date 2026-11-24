@@ -716,6 +716,7 @@ docs/
 tests/                  fake-gh and git tests: run tests/run-all.sh
 tests/scan/             rows for the model-key scan of tests/run-all.sh, on planted trees
 tests/eval/             seeded review cases and a scorer for recall and precision
+tests/fixer-eval/       held-out and injection cases for the fixer, prepare.sh and score.sh
 install.sh              copies the two skills into the folder a harness reads
 VERSION, CHANGELOG.md   the release version and its history
 ```
@@ -788,3 +789,5 @@ The suite tests the scripts, not the quality of a review. `tests/eval/` measures
 with known defects and `score.py`, which prints recall and precision for reports you produce in your
 own harness session. `tests/run-all.sh` never runs a model, so it checks only the scorer. See
 `tests/eval/README.md`.
+`tests/fixer-eval/` does the same for the fixer: held-out cases with hidden tests and probes, and
+injection cases with a canary in the environment. See `tests/fixer-eval/README.md`.

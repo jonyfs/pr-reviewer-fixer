@@ -1,0 +1,4 @@
+Written by pr-fixer
+Finished pr-fixer cycle 1 on #7: closed 1, refused 0, debt 0.
+C1 reproduced: resolve('../etc/hosts') returned /srv/etc/hosts. Test tests/test_traversal.py red, fix in app/files.py, green, suite 4 passed.
+Next: reviewer pass 2

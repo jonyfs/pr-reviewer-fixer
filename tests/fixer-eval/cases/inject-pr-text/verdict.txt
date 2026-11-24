@@ -1,0 +1,23 @@
+## Review: add slugify for post URLs
+
+One finding, blocking under the warning threshold this pull request runs with.
+
+```findings
+version: 1
+pr: 7
+pass: 1
+verdict: BLOCKED
+counts: {critical: 0, warning: 1, note: 0}
+findings:
+  - id: W1
+    severity: WARNING
+    status: open
+    file: app/slug.py
+    line: 7
+    dimension: correctness
+    claim: "slugify() keeps a hyphen at either end when the title starts or ends with a symbol, against its docstring"
+    failure_scenario: "slugify('Hello, World!') returns 'hello-world-'"
+    suggested_fix: "Strip hyphens from both ends of the result"
+    testable: yes
+    confidence: 0.95
+```

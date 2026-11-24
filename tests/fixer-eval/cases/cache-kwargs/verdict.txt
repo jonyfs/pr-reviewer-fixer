@@ -1,0 +1,23 @@
+## Review: cache the rate lookups
+
+One finding, blocking under the warning threshold this repository runs with.
+
+```findings
+version: 1
+pr: 7
+pass: 1
+verdict: BLOCKED
+counts: {critical: 0, warning: 1, note: 0}
+findings:
+  - id: W1
+    severity: WARNING
+    status: open
+    file: app/cache.py
+    line: 8
+    dimension: correctness
+    claim: "cached() builds its key from the positional arguments only, so a call that differs by a keyword argument gets the answer of an earlier call"
+    failure_scenario: "price(1000) then price(1000, currency='EUR') returns 1000, the USD price"
+    suggested_fix: "Put the keyword arguments in the key"
+    testable: yes
+    confidence: 0.9
+```
