@@ -2035,7 +2035,8 @@ PY
 #
 # Prints one JSON object: `entries` (each finding's id and its file, line, severity, status and
 # scenario fields, from the `findings:` list, plus the free-text fields claim, dimension,
-# failure_scenario, suggested_fix, owner_proposed and refusal that `export-sarif` reads; a
+# failure_scenario, scenario_text (the `scenario:` value decoded like the others, beside the
+# quote-stripped `scenario`), suggested_fix, owner_proposed and refusal that `export-sarif` reads; a
 # double-quoted free-text value is decoded as a JSON string), `counts` ({critical, warning, note} or
 # null when the block has no `counts:` line), `mandatory_units` (a list of {unit, effort, status}, or
 # null when the field is absent), `mandatory_problems` (what is wrong with that field, empty when it
@@ -2117,6 +2118,10 @@ for ln in body:
         kv = re.match(r"\s{2,}(file|line|severity|status|scenario):\s*(.*?)\s*$", ln)
         if kv and e is not None:
             e[kv.group(1)] = kv.group(2).strip("\"'")
+            if kv.group(1) == "scenario":
+                # The quote-stripped `scenario` above is what lint-report reads, unchanged; the
+                # decoded text is a separate key, for export-sarif.
+                e["scenario_text"] = text(kv.group(2))
             continue
         tx = re.match(r"\s{2,}(claim|dimension|failure_scenario|suggested_fix|owner_proposed|refusal):\s*(.*?)\s*$", ln)
         if tx and e is not None:
@@ -2329,10 +2334,13 @@ for e in blk.get("entries", []):
                       "properties": {"dimension": dim}})
     fp = hashlib.sha256(("v1\0%s\0%s\0%s" % (path, dim, norm(claim))).encode("utf-8")).hexdigest()
     props = {"finding_id": fid, "severity": sev, "status": status, "dimension": dim}
-    for src, dst in (("failure_scenario", "scenario"), ("suggested_fix", "suggested_fix"),
-                     ("owner_proposed", "owner"), ("refusal", "refusal")):
-        if e.get(src):
-            props[dst] = clean(e[src])
+    # Reports write the scenario as `scenario:` (the contract's example says failure_scenario:);
+    # failure_scenario wins when both are written.
+    for srcs, dst in ((("failure_scenario", "scenario_text"), "scenario"), (("suggested_fix",), "suggested_fix"),
+                      (("owner_proposed",), "owner"), (("refusal",), "refusal")):
+        val = next((e[k] for k in srcs if e.get(k)), None)
+        if val:
+            props[dst] = clean(val)
     if line_unknown:
         props["line_unknown"] = True
     r = {"ruleId": rid, "ruleIndex": rule_ix[rid], "level": LEVEL[sev], "message": {"text": claim},

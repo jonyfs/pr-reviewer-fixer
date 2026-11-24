@@ -616,8 +616,8 @@ findings of one verdict report as SARIF 2.1.0, for a tool that already reads it,
 scanning. It reads a report file, or the trusted verdict comment at the head of the pull request
 under the same trust rules as `export-audit`. Each finding becomes a result: `error` for CRITICAL,
 `warning` for WARNING, `note` for NOTE, one rule per review dimension, the claim as the message, the
-file and line as the location, and `failure_scenario`, `suggested_fix` and `owner_proposed` as
-properties. By default only open findings are exported (no status, `open`, `refused-rejected`).
+file and line as the location, and the scenario (`failure_scenario`, else `scenario`),
+`suggested_fix` and `owner_proposed` as properties. By default only open findings are exported (no status, `open`, `refused-rejected`).
 `--include-closed` adds `verified`, `refused-accepted` and `not-applicable` findings, each with an
 accepted external suppression. A finding with no line points at line 1 and carries
 `line_unknown: true`, because GitHub requires a start line. The fingerprint (`partialFingerprints`,

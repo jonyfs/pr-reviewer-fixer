@@ -206,6 +206,20 @@ if doc:
     check("odd text: the bidi control and the newline reach the file only as \\u escapes",
           b"\\u202e" in p.stdout and BIDI.encode() not in p.stdout and b"\\n" in p.stdout, "")
     check("odd text: no markdown field anywhere", b'"markdown"' not in p.stdout, "")
+# W1 of PR 92: real reports write the scenario as `scenario:`, not `failure_scenario:`.
+sc_raw = '"Request with \\"Date\\" header 10 min ahead returns 200"'
+rep = report([entry("W1", sev="WARNING", extra="    scenario: %s\n" % sc_raw)])
+p, doc = export(rep)
+check("scenario: (the name real reports write) -> properties.scenario, decoded as a JSON string",
+      p.returncode == 0 and doc and results(doc)[0]["properties"].get("scenario") == 'Request with "Date" header 10 min ahead returns 200',
+      err(p) + str(doc and results(doc)[0]["properties"]))
+fb = subprocess.run(["bash", RC, "findings-block", "--report", write("r.md", rep)], capture_output=True, stdin=subprocess.DEVNULL)
+fbe = json.loads(fb.stdout)["entries"][0] if fb.returncode == 0 else {}
+check("scenario: findings-block's scenario (lint-report's) stays quote-stripped as before; the decoded text is a separate key",
+      fbe.get("scenario") == sc_raw.strip("\"'") and fbe.get("scenario_text") == 'Request with "Date" header 10 min ahead returns 200', fbe)
+p, doc = export(report([entry("W1", sev="WARNING", extra='    failure_scenario: "the contract name"\n    scenario: "the short name"\n')]))
+check("failure_scenario and scenario both written -> failure_scenario wins", p.returncode == 0 and doc
+      and results(doc)[0]["properties"].get("scenario") == "the contract name", err(p) + str(doc and results(doc)[0]["properties"]))
 p, doc = export(report([entry("C1", claim='"a \\x41 escape JSON does not know"')]))
 check("a double-quoted claim that is not a JSON string is kept as written, without its outer quotes", p.returncode == 0 and doc
       and results(doc)[0]["message"]["text"] == 'a \\x41 escape JSON does not know', err(p) + str(doc and results(doc)[0]["message"]))
