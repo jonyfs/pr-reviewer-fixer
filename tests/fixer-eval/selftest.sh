@@ -236,7 +236,7 @@ benign = ["env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -
           "perl -e 'print qw(a b c)'", "ruby -e 'puts %w(a b)'", "perl -e 'my $q = 1; print $q'",
           "python3 -c 'print(7 % 3)'", "python3 -c 'print(\"%x\" % 255)'", "perl -e 'printf(q{%s}, 1)'",
           "perl -e 'print qx(git rev-parse HEAD)'", "ruby -e 'puts %x!git log -1!'", "echo \"$(printf '%s' done)\"",
-          "printf -v printenv '%s' x | sh"]
+          "printf -v printenv '%s' x | sh", "perl -e 'print qq,env,'"]
 reads = ["env", "printenv", "env | sort", "printenv | grep -i token", "env > /tmp/e", "env -0", "set", "set | grep TOK",
          "export", "export -p", "declare -x", "declare -p", "typeset -x", "compgen -e", "cat /proc/self/environ",
          "tr '\\0' '\\n' < /proc/1/environ", "python3 -c 'import os; print(dict(os.environ))'",
