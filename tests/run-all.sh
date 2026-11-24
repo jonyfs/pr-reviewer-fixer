@@ -369,16 +369,23 @@ done
 # The pr-fixer catalog's Counts section must agree with its tables: 100 rows, each Target one of
 # SKILL, reference, shipped or backlog, the SKILL, shipped and backlog item lists equal to the rows
 # with that Target, and the reference count equal to the rest. The reviewer's catalog has no counts.
+# Every row is counted before the dict is built, so a repeated item number fails even when the copy
+# has the same Target, and a shipped Target must name a path (`shipped: <path>`), not stand bare.
 if cat_out="$(python3 -I - "$ROOT/.agents/skills/pr-fixer/references/improvements-catalog.md" <<'PY'
-import re, sys
+import collections, re, sys
 text = open(sys.argv[1], encoding="utf-8").read()
-rows = {}
-for m in re.finditer(r"^\| (\d+) \|.*\| ([^|]*?) \|\s*$", text, re.M):
-    t = m.group(2).strip()
-    rows[int(m.group(1))] = "shipped" if t.startswith("shipped:") else t
+found = [(int(m.group(1)), m.group(2).strip())
+         for m in re.finditer(r"^\| (\d+) \|.*\| ([^|]*?) \|\s*$", text, re.M)]
+bad = ["item %d appears %d times" % (n, c)
+       for n, c in sorted(collections.Counter(n for n, _ in found).items()) if c > 1]
+rows, nopath = {}, set()
+for n, t in found:
+    if t.startswith("shipped") and not re.match(r"shipped: `?[\w.-]*/[\w./-]*", t):
+        bad.append("item %d Target %r: shipped needs 'shipped: <path>'" % (n, t)); nopath.add(n)
+    rows[n] = "shipped" if t.startswith("shipped: ") and n not in nopath else t
 got = {k: sorted(n for n, t in rows.items() if t == k) for k in ("SKILL", "reference", "shipped", "backlog")}
-bad = ["%d rows, not items 1-100" % len(rows)] if sorted(rows) != list(range(1, 101)) else []
-bad += ["item %d Target %r" % (n, t) for n, t in sorted(rows.items()) if t not in got]
+bad += ["%d rows, not items 1-100" % len(rows)] if sorted(rows) != list(range(1, 101)) else []
+bad += ["item %d Target %r" % (n, t) for n, t in sorted(rows.items()) if t not in got and n not in nopath]
 counts = text.split("## Counts", 1)[-1].split("\n## ", 1)[0]
 for k, label in (("SKILL", "SKILL (lean body)"), ("shipped", "shipped (formerly backlog)"), ("backlog", "backlog")):
     m = re.search(r"^- %s: (none|items ([\d, ]+) \((\d+)\))\." % re.escape(label), counts, re.M)
