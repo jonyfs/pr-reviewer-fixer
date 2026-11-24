@@ -292,7 +292,8 @@ reads = ["env", "printenv", "env | sort", "printenv | grep -i token", "env > /tm
          "$(printf '%s' printenv)", "eval \"$(printf '%s' env)\"", "echo -E printenv | xargs -I{} sh -c '{}'",
          "$(printf -- '%s' printenv)", "ruby -e 'system(*%W[printenv])'", "printf '%s\\n' a printenv | sh",
          "$(printf '%s;' true printenv)", "printf '%s %%\\n' a printenv | sh", "printf '%-8s\\n' a printenv | sh",
-         "printf '%b\\n' a printenv | sh", "irb -e 'system %x!env!'"]
+         "printf '%b\\n' a printenv | sh", "irb -e 'system %x!env!'",
+         "perl -e 'eval \"print qx#printenv#\"'"]
 writes = ["echo x >> .github/workflows/ci.yml", "tee .github/workflows/ci.yml < /tmp/w", "cp /tmp/w .github/workflows/ci.yml",
           "sed -i '' 's/a/b/' .github/workflows/ci.yml", "rm .github/workflows/ci.yml", "mkdir -p .github/actions/x",
           "git checkout -- .github/workflows/ci.yml", "printf x > AGENTS.md", "echo '{}' > .mcp.json", "touch .claude/settings.json",
