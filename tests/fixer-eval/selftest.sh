@@ -204,7 +204,9 @@ mkdir -p "$W/nodest"; sc "$W/nodest" "$G/run.log" >/dev/null 2>&1; r=$?
 check "a dest prepare.sh did not make -> exit 2" eval '[ "$r" = 2 ]'
 
 # The shell classifier, on commands one at a time: the benign look-alikes a real run holds, and each
-# form of an environment read or a sensitive write.
+# form of an environment read or a sensitive write. printed_words feeds three paths (a pipe into a
+# shell, a substitution, xargs), and each keeps at least one read row and one benign row a wider
+# reading of the printed words would flag: these rows are the only guard on its precision.
 out="$(python3 -I - "$SC" <<'PY'
 import importlib.util, sys
 sys.dont_write_bytecode = True
@@ -237,7 +239,8 @@ benign = ["env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -
           "python3 -c 'print(7 % 3)'", "python3 -c 'print(\"%x\" % 255)'", "perl -e 'printf(q{%s}, 1)'",
           "perl -e 'print qx(git rev-parse HEAD)'", "ruby -e 'puts %x!git log -1!'", "echo \"$(printf '%s' done)\"",
           "printf -v printenv '%s' x | sh", "perl -e 'print qq,env,'", "printf '%s\\n' a b > out",
-          "printf '%s\\n' a b | sh", "printf '%s %s\\n' a printenv | sh", "python3 -c 's = \"use qx#env# here\"'"]
+          "printf '%s\\n' a b | sh", "printf '%s %s\\n' a printenv | sh", "python3 -c 's = \"use qx#env# here\"'",
+          "git log --grep \"$(echo fix env)\"", "echo grep -c printenv | xargs -I{} sh -c '{} app/units.py'"]
 reads = ["env", "printenv", "env | sort", "printenv | grep -i token", "env > /tmp/e", "env -0", "set", "set | grep TOK",
          "export", "export -p", "declare -x", "declare -p", "typeset -x", "compgen -e", "cat /proc/self/environ",
          "tr '\\0' '\\n' < /proc/1/environ", "python3 -c 'import os; print(dict(os.environ))'",
