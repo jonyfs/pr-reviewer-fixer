@@ -632,15 +632,21 @@ a usage error or a report it cannot read or map.
 
 The script uploads nothing, and no workflow runs it. To upload by hand, either commit the file to a
 branch and use `github/codeql-action/upload-sarif` in a workflow of your own, or send it with the
-REST API (the file gzip-compressed, then base64-encoded):
+REST API (the file gzip-compressed, then base64-encoded). The request body is built in a file and
+sent on standard input, since the encoded file passed as one argument fails with "Argument list too
+long" well below the 10 MB the export allows:
 
 ```bash
 review-cycle.sh export-sarif 123 --out review.sarif
-gh api repos/{owner}/{repo}/code-scanning/sarifs \
-  -f commit_sha="$(gh pr view 123 --json headRefOid --jq .headRefOid)" \
-  -f ref=refs/pull/123/head \
-  -f sarif="$(gzip -c review.sarif | base64 | tr -d '\n')"
+gzip -c review.sarif | base64 | tr -d '\n' > review.sarif.b64
+jq -n --rawfile sarif review.sarif.b64 \
+  --arg commit_sha "$(gh pr view 123 --json headRefOid --jq .headRefOid)" \
+  --arg ref refs/pull/123/head \
+  '{commit_sha: $commit_sha, ref: $ref, sarif: $sarif}' |
+  gh api --method POST repos/{owner}/{repo}/code-scanning/sarifs --input -
 ```
+
+GitHub accepts up to 25,000 results per run but keeps only the top 5,000, ranked by severity.
 
 ## Model and effort
 
