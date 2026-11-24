@@ -41,8 +41,13 @@ CPU_BOUND, CPU_CAP = 10, 20
 WALL_GUARD = 600 * float(os.environ.get("TEST_TIMEOUT_SCALE") or 1)
 
 def _cpu_cap():
+    # Never above the hard limit the run inherited: raising it is refused, and the refusal would end the suite with a
+    # traceback instead of failing a row (PR 88 N2). Under a lower inherited limit the scan is stopped sooner, which fails
+    # the row, never passes it.
     import resource
-    resource.setrlimit(resource.RLIMIT_CPU, (CPU_CAP, CPU_CAP + 5))
+    hard_now = resource.getrlimit(resource.RLIMIT_CPU)[1]
+    hard = CPU_CAP + 5 if hard_now == resource.RLIM_INFINITY else min(CPU_CAP + 5, hard_now)
+    resource.setrlimit(resource.RLIMIT_CPU, (min(CPU_CAP, hard), hard))
 
 def cpu_scan(path):
     """Scan one file; return (exit code or None when stopped, CPU seconds the scan used)."""
