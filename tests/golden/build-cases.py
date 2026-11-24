@@ -28,7 +28,8 @@ Ids are compared, not trusted: an id verified later at another file or dimension
 gave it is left out and named (`draft_dropped_ids`).
 
 Each findings block is read through `review-cycle.sh findings-block`, the one parser the other
-scripts use; `dimension:` and `claim:` are read from the same block by the same line rules.
+scripts use, and every field of an entry (id, severity, status, file, line, dimension, claim) is
+taken from what it prints.
 
 Output: one draft per pull request with at least one candidate, DIR/pr-<n>.draft.json. A draft
 carries the reviewer's claim (`draft_claim`) so the person or agent finishing it can write the
@@ -82,33 +83,6 @@ def load_gate():
     return mod
 
 
-def block_extras(text):
-    """`dimension:` and `claim:` per entry, in order, by the findings-block line rules."""
-    lines = [ln[:-1] if ln.endswith("\r") else ln for ln in text.split("\n")]
-    last = max((i for i, ln in enumerate(lines) if ln.strip(" \t")), default=None)
-    first = next((i for i, ln in enumerate(lines) if ln == "```findings"), None)
-    entries, section, e = [], None, None
-    if last is None or first is None:
-        return entries
-    for ln in lines[first + 1:last]:
-        if re.match(r"\s*(#|$)", ln):
-            continue
-        top = re.match(r"([A-Za-z_][A-Za-z0-9_-]*):[ \t]*(.*?)[ \t]*$", ln)
-        if top:
-            section, e = top.group(1), None
-            continue
-        if section == "findings":
-            s = re.match(r"\s*-\s+id:\s*(\S+)", ln)
-            if s:
-                e = {"id": s.group(1).strip("\"'")}
-                entries.append(e)
-                continue
-            kv = re.match(r"\s{2,}(dimension|claim):\s*(.*?)\s*$", ln)
-            if kv and e is not None:
-                e[kv.group(1)] = kv.group(2).strip("\"'")
-    return entries
-
-
 def entries_of(body):
     fd, tmp = tempfile.mkstemp(prefix="golden-", suffix=".md")
     try:
@@ -126,12 +100,8 @@ def entries_of(body):
         blk = None
     if not isinstance(blk, dict):
         return None
-    base, extra = blk.get("entries") or [], block_extras(body)
-    if [x.get("id") for x in base] != [x.get("id") for x in extra]:
-        return None
-    for b, x in zip(base, extra):
-        b["dimension"], b["claim"] = x.get("dimension"), x.get("claim")
-    return base
+    ents = blk.get("entries") or []
+    return ents if isinstance(ents, list) and all(isinstance(e, dict) for e in ents) else None
 
 
 def line_range(v):
