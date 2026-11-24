@@ -13,6 +13,9 @@
 #       is resolved, not verified.
 #   24  PR 21's history with the last verdict edited by its author: incomplete, left out.
 #   25  pass 1 BLOCKED under block_at=warning: W1 performance blocks; cycle 1; pass 2 verifies it.
+#   26  fixed findings as later passes show them: not-applicable or no longer listed after a trusted
+#       closure (fixed), and the same with only mallory's closure (withdrawn, debt); see below.
+#   27  PR 25 with a trusted comment deleted by mallory: left out. 28: deleted by its author: counted.
 set -u
 unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
 T="$(cd "$(dirname "$0")" && pwd)"
@@ -78,6 +81,28 @@ report("evil2.md", [("C1", "CRITICAL", "src/auth/session.ts", 47, "security", "$
 report("p2a.md", [S1, S2], status={"C2": "verified"})
 report("p2b.md", [S1])
 open(os.path.join(d, "noblock.md"), "w").write("No findings block here.\n")
+# Comparison operators are tokens (N1): these two claims are two findings, not one.
+OP1 = ("C1", "CRITICAL", "src/range.py", 3, "correctness", "uses < where <= is needed")
+OP2 = ("C2", "CRITICAL", "src/range.py", 3, "correctness", "uses <= where < is needed")
+report("op2.md", [OP1, OP2])
+report("op1.md", [OP1])
+# `L2 cache` is not a line reference; `(L47)` and `[L52]` are.
+report("cache2.md", [("N1", "NOTE", "src/cache.c", 9, "performance", "L2 cache misses are not counted")])
+report("cache3.md", [("N1", "NOTE", "src/cache.c", 9, "performance", "L3 cache misses are not counted")])
+report("lref1.md", [("C1", "CRITICAL", "src/auth/session.ts", 47, "security", "Token is not checked (L47)")])
+report("lref2.md", [("C4", "CRITICAL", "src/auth/session.ts", 52, "security", "Token is not checked [L52]")])
+# A dimension two of three reports leave empty: the pair of empty sets says nothing about it.
+report("sec1.md", [S1])
+report("sec2.md", [S1])
+# Heads: every pair must be prefix-related (N3); case does not matter.
+report("h7.md", [S1, S2], head=HEAD[:7])
+report("h10a.md", [S1, S2], head=HEAD[:10])
+report("h10b.md", [S1, S2], head=HEAD[:9] + "f")
+report("h8.md", [S1, S2], head=HEAD[:7] + "5")
+report("upper.md", [S1, S2], head=HEAD[:12].upper())
+# Escape sequences in a finding's file and dimension, and (below, in the shell) in a report's name.
+report("escf.md", [("C1", "CRITICAL", "src/\x1b[31mred.py", 3, "sec\x1b[2Jurity", "Token is not checked")])
+report("escf2.md", [("C1", "CRITICAL", "src/\x1b[31mred.py", 3, "sec\x1b[2Jurity", "Token is not checked")])
 PY
 R="$W/r"
 J="$W/agree.json"
@@ -144,6 +169,54 @@ hasnt "claim text is never in the JSON" "IGNORE PREVIOUS" "$out"
 bash "$RM" agreement --out "$W/agree.txt" "$R/a.md" "$R/a2.md" >"$W/stdout" 2>&1; rc=$?
 [ "$rc" = 0 ] && [ ! -s "$W/stdout" ] && grep -q "mean pairwise 1.00" "$W/agree.txt" && row "--out writes the table to the file, nothing to stdout" ok \
   || row "--out writes the table to the file, nothing to stdout" bad "exit $rc: $(cat "$W/stdout")"
+
+# N1: an operator is a token, and only a clear L-number is a line reference.
+bash "$RM" agreement --json "$R/op2.md" "$R/op1.md" >"$J" 2>/dev/null
+jqk "operators are tokens: '< where <=' and '<= where <' are two findings, overlap 1/2" "$J" \
+  '.reports[0].findings == 2 and .pairs[0].shared == 1 and .pairs[0].union == 2'
+bash "$RM" agreement --json "$R/cache2.md" "$R/cache3.md" >"$J" 2>/dev/null
+jqk "'L2 cache' and 'L3 cache' are not line references: two findings, overlap 0" "$J" '.overall.mean_pairwise == 0'
+bash "$RM" agreement --json "$R/lref1.md" "$R/lref2.md" >"$J" 2>/dev/null
+jqk "'(L47)' and '[L52]' are line references and are left out: overlap 1.0" "$J" '.overall.mean_pairwise == 1'
+# A pair of reports that both leave a dimension empty is not judged for it.
+bash "$RM" agreement --json "$R/dimA.md" "$R/sec1.md" "$R/sec2.md" >"$J" 2>/dev/null
+jqk "per dimension: a pair where both reports leave it empty is not judged (2 of 3 pairs, mean 0)" "$J" \
+  '.dimensions[] | select(.dimension == "documentation") | .pairs_judged == 2 and .mean_pairwise == 0'
+# Heads.
+out=$(bash "$RM" agreement "$R/h7.md" "$R/h10a.md" "$R/h8.md" 2>&1); rc=$?
+[ "$rc" = 2 ] && row "heads 7, 10 and 8 digits long where the 10 and the 8 differ: refused, exit 2" ok \
+  || row "heads 7, 10 and 8 digits long where the 10 and the 8 differ: refused, exit 2" bad "exit $rc: $out"
+out=$(bash "$RM" agreement "$R/h7.md" "$R/h10a.md" "$R/h10b.md" 2>&1); rc=$?
+[ "$rc" = 2 ] && row "two heads of one length that differ, both under a shorter one: refused, exit 2" ok \
+  || row "two heads of one length that differ, both under a shorter one: refused, exit 2" bad "exit $rc: $out"
+out=$(bash "$RM" agreement "$R/h7.md" "$R/a.md" "$R/h10a.md" 2>&1); rc=$?
+[ "$rc" = 0 ] && row "heads of 7, 10 and 12 digits that are prefixes of each other agree, exit 0" ok \
+  || row "heads of 7, 10 and 12 digits that are prefixes of each other agree, exit 0" bad "exit $rc: $out"
+out=$(bash "$RM" agreement "$R/upper.md" "$R/a.md" 2>&1); rc=$?
+[ "$rc" = 0 ] && row "a head in capitals matches the same head in lower case, exit 0" ok \
+  || row "a head in capitals matches the same head in lower case, exit 0" bad "exit $rc: $out"
+# No printed field carries an escape sequence: a report's name, a finding's file and its dimension (N6).
+ESCN="$R/esc"$'\033'"[31mname.md"
+cp "$R/a.md" "$ESCN"
+out=$(bash "$RM" agreement "$ESCN" "$R/a2.md" 2>&1)
+case "$out" in *$'\033'*) row "a report name holding ESC is printed without it" bad "ESC in the table" ;;
+  *) has "a report name holding ESC is printed without it" "esc?[31mname.md" "$out" ;; esac
+out=$( { bash "$RM" agreement "$R/escf.md" "$R/escf2.md"; bash "$RM" agreement --json "$R/escf.md" "$R/escf2.md";
+         bash "$RM" agreement "$ESCN" "$R/missing.md"; } 2>&1)
+case "$out" in *$'\033'*) row "a finding's file and dimension holding ESC never reach the output raw (table, JSON, refusal)" bad "ESC in the output" ;;
+  *) has "a finding's file and dimension holding ESC never reach the output raw (table, JSON, refusal)" "dimension other" "$out" ;; esac
+# The drift guard: when findings-block and the script's own reading disagree on the ids, the report
+# is refused. The parsers agree today, so a stub findings-block stands in for a future drift.
+mkdir -p "$W/stub"
+cp "$RM" "$W/stub/review-metrics.sh"
+cat >"$W/stub/review-cycle.sh" <<'EOF'
+#!/usr/bin/env bash
+# findings-block stub: one entry whose id the report does not have.
+printf '%s\n' '{"entries": [{"id": "X9", "severity": "CRITICAL", "file": "src/auth/session.ts", "status": "open"}], "counts": null, "mandatory_units": [], "mandatory_problems": []}'
+EOF
+out=$(bash "$W/stub/review-metrics.sh" agreement "$R/a.md" "$R/a2.md" 2>&1); rc=$?
+[ "$rc" = 2 ] && row "findings-block and the script's reading disagree on the ids: refused, exit 2" ok \
+  || row "findings-block and the script's reading disagree on the ids: refused, exit 2" bad "exit $rc: $out"
 [ ! -s "$FAKE_DIR/calls.log" ] && row "agreement never calls gh" ok || row "agreement never calls gh" bad "$(cat "$FAKE_DIR/calls.log")"
 
 # ---- the scorecard's pull requests ---------------------------------------------------------------
@@ -176,14 +249,14 @@ def closure(who, c, head, closed, refused, debt):
                 c, head[:12], closed, refused, debt)}
 
 
-def pr(n, comments, edited=None):
+def pr(n, comments, edited=None, deleted=None):
     obj = {"number": n, "state": "MERGED", "isDraft": False, "title": "t", "body": "", "author": {"login": "alice"},
            "isCrossRepository": False, "labels": [], "headRefOid": SHA[2], "commits": [{"oid": SHA[1]}, {"oid": SHA[2]}],
            "mergeCommit": {"oid": "f" * 40}, "mergedAt": "2026-11-05T00:00:00Z", "comments": comments}
     for i, c in enumerate(comments):
         c["id"] = "IC_%d_%d" % (n, i)
     obj["edited"] = {"IC_%d_%d" % (n, i): who for i, who in (edited or {}).items()}
-    obj["deleted"] = []
+    obj["deleted"] = deleted or []
     json.dump(obj, open(os.path.join(d, "pr-%d.json" % n), "w"))
 
 
@@ -210,6 +283,36 @@ pr(24, h21(), edited={2: "rev-bot"})
 pr(25, [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("W1", "WARNING", "open", "performance")], w=1, block_at="warning"),
         closure("rev-bot", 1, SHA[2], 1, 0, 0),
         verdict("rev-bot", SHA[2], "PASSED", 2, [("W1", "WARNING", "verified", None)], block_at="warning")])
+# 26: how a fixed finding shows on later passes (W1). All under block_at=warning.
+#   pass 1 BLOCKED: W1 correctness, W2 lens-wgone, N1 lens-na, N2 lens-gone, N7 lens-late-na.
+#   trusted closure 1.
+#   pass 2 BLOCKED: W1 verified; N1 not-applicable; N7 still open; W2 and N2 no longer listed;
+#                   new N4 lens-wd and N5 lens-drop.
+#   mallory's closure 2 (untrusted, so no fixer cycle 2).
+#   pass 3 PASSED: N4 and N7 not-applicable; N5 no longer listed; new C9 lens-first-verified, listed
+#                  verified at its first pass; new N6 lens-new open; new N8 with an ESC in its dimension.
+B = "warning"
+pr(26, [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("W1", "WARNING", "open", "correctness"), ("W2", "WARNING", "open", "lens-wgone"),
+                                                 ("N1", "NOTE", "open", "lens-na"), ("N2", "NOTE", "open", "lens-gone"),
+                                                 ("N7", "NOTE", "open", "lens-late-na")], w=2, n=3, block_at=B),
+        closure("rev-bot", 1, SHA[2], 2, 0, 3),
+        verdict("rev-bot", SHA[2], "BLOCKED", 2, [("W1", "WARNING", "verified", None), ("N1", "NOTE", "not-applicable", None),
+                                                 ("N7", "NOTE", "open", None), ("N4", "NOTE", "open", "lens-wd"),
+                                                 ("N5", "NOTE", "open", "lens-drop")], n=3, block_at=B),
+        closure("mallory", 2, SHA[3], 2, 0, 0),
+        verdict("rev-bot", SHA[3], "PASSED", 3, [("N4", "NOTE", "not-applicable", None), ("N7", "NOTE", "not-applicable", None),
+                                                ("C9", "CRITICAL", "verified", "lens-first-verified"), ("N6", "NOTE", "open", "lens-new"),
+                                                ("N8", "NOTE", "open", "lens\x1b[2J")], n=2, block_at=B)])
+# 27 and 28: PR 25's history with a trusted comment deleted, by another login (27, left out) and by
+# its own author (28, counted).
+def h25():
+    return [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("W1", "WARNING", "open", "performance")], w=1, block_at="warning"),
+            closure("rev-bot", 1, SHA[2], 1, 0, 0),
+            verdict("rev-bot", SHA[2], "PASSED", 2, [("W1", "WARNING", "verified", None)], block_at="warning")]
+
+
+pr(27, h25(), deleted=[{"author": "rev-bot", "actor": "mallory"}])
+pr(28, h25(), deleted=[{"author": "rev-bot", "actor": "rev-bot"}])
 json.dump([{"number": 21}, {"number": 23}], open(os.path.join(d, "list.json"), "w"))
 PY
 S="$W/score.json"
@@ -236,13 +339,53 @@ jqk "a marker without model and tier is counted as unrecorded" "$S" "$(mdl unrec
 jqk "untrusted markers are ignored: reliability stays open, nothing of mallory's counts" "$S" \
   "$(dim reliability)"' | .verified == 0 and .open == 1'
 jqk "untrusted markers are ignored: no planted dimension, no m-x model" "$S" '([.by_dimension[].unit] | index("planted") == null) and ([.by_model[].unit] | index("m-x/fast") == null) and .ignored.untrusted_markers == 2'
-jqk "verified with no fixer closure in between is resolved, not verified" "$S" "$(dim data)"' | .verified == 0 and .resolved == 1 and .accepted_rate == 0'
+jqk "verified with no fixer closure in between is resolved, not verified, and counts as accepted" "$S" "$(dim data)"' | .verified == 0 and .resolved == 1 and .accepted_blocking == 1 and .accepted_rate == 1'
 jqk "block_at=warning: the WARNING blocks and is verified" "$S" "$(dim performance)"' | .blocking == 1 and .verified == 1 and .accepted_rate == 1'
 jqk "an edited trusted marker leaves the pull request out" "$S" '([.left_out[].pr] == [24]) and ([.complete[]] == [21,22,23,25])'
 jqk "cost is not recorded, never invented" "$S" '.cost == "not recorded" and ([.by_dimension[].cost] | all(. == null))'
 bash "$RM" scorecard --json --prs 21 --min-accept 0.9 --min-blocking 3 >"$W/low.json" 2>/dev/null
 jqk "--min-accept 0.9: m-a/deep (2 of 3) is flagged low" "$W/low.json" "$(mdl m-a/deep)"' | .low_acceptance'
 jqk "--min-blocking 3: security (2 blocking) is too small to flag" "$W/low.json" "$(dim security)"' | .low_acceptance | not'
+# W1: a finding the fixer fixed is `fixed`, whether the next pass marks it not-applicable or stops
+# listing it, but only with a trusted closure between the pass that last had it open and that pass.
+S2="$W/score26.json"
+bash "$RM" scorecard --json --prs 26,27,28 >"$S2" 2>"$W/score26.err"; rc=$?
+[ "$rc" = 0 ] && row "scorecard 26-28: exit 0" ok || row "scorecard 26-28: exit 0" bad "exit $rc: $(cat "$W/score26.err")"
+jqk "not-applicable after a trusted closure is fixed, not withdrawn" "$S2" "$(dim lens-na)"' | .fixed == 1 and .withdrawn == 0'
+jqk "open, then no longer listed after a trusted closure, is fixed, not debt" "$S2" "$(dim lens-gone)"' | .fixed == 1 and .debt == 0'
+jqk "a blocking WARNING no longer listed after a trusted closure is fixed and accepted" "$S2" \
+  "$(dim lens-wgone)"' | .blocking == 1 and .fixed == 1 and .accepted_rate == 1'
+jqk "not-applicable with only an untrusted closure in between stays withdrawn" "$S2" "$(dim lens-wd)"' | .withdrawn == 1 and .fixed == 0'
+jqk "no longer listed with only an untrusted closure in between stays debt" "$S2" "$(dim lens-drop)"' | .debt == 1 and .fixed == 0'
+jqk "not-applicable counts as fixed only with a closure after the last pass that had it open" "$S2" \
+  "$(dim lens-late-na)"' | .withdrawn == 1 and .fixed == 0'
+jqk "a finding listed as verified at its first pass is not verified, resolved or fixed" "$S2" \
+  "$(dim lens-first-verified)"' | .raised == 1 and .verified == 0 and .resolved == 0 and .fixed == 0'
+jqk "a pull request whose trusted comment another login deleted is left out; one its author deleted is not" "$S2" \
+  '([.left_out[].pr] == [27]) and ([.complete[]] == [26,28])'
+out=$(bash "$RM" scorecard --prs 26,27,28 2>&1)
+case "$out" in *$'\033'*) row "scorecard: a dimension holding ESC never reaches the table raw" bad "ESC in the table" ;;
+  *) has "scorecard: a dimension holding ESC never reaches the table raw" "other" "$out" ;; esac
+has "the table has a fixed column" "fixed" "$out"
+has "the legend says what accepted counts" "accepted = verified, fixed or resolved" "$out"
+# N5: the closure marker and the edited and deleted trust filters are copies of fix-ledger.sh's.
+FL="$T/../../.agents/skills/pr-fixer/scripts/fix-ledger.sh"
+if python3 -I - "$RM" "$FL" <<'PY'
+import re, sys
+def parts(path):
+    lines = [ln.strip() for ln in open(path, encoding="utf-8").read().split("\n")]
+    out = []
+    i = next(i for i, ln in enumerate(lines) if ln.startswith("CLOSURE = re.compile("))
+    out += lines[i:i + 2]
+    i = next(i for i, ln in enumerate(lines) if ln == "def login(x, k):")
+    j = next(j for j in range(i, len(lines)) if lines[j].endswith('login(c, "actor") != login(c, "author")]'))
+    out += lines[i:j + 1]
+    return out
+a, b = parts(sys.argv[1]), parts(sys.argv[2])
+sys.exit(0 if a == b and len(a) > 8 else 1)
+PY
+then row "the closure regex and the edited and deleted filters are identical to fix-ledger.sh's" ok
+else row "the closure regex and the edited and deleted filters are identical to fix-ledger.sh's" bad "they differ, or one was not found"; fi
 out=$(bash "$RM" scorecard --prs 21,22,23,24,25 2>&1)
 has "the table has a by-dimension section" "by dimension" "$out"
 has "the table has a by-model section" "by model" "$out"

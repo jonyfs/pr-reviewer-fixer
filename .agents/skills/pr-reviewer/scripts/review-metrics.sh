@@ -19,8 +19,9 @@
 #   Fingerprint: sha256 of file, dimension and normalized claim; the line, the id and the severity are
 #   left out. The file loses a leading `./`. The dimension is lowercased, and anything but
 #   [a-z0-9_-] (or a missing one) reads as `other` / `none`. The claim is NFKC-normalized and
-#   casefolded; line references (`line 47`, `lines 4-7`, `L47`, `:47`) are removed; every run of
-#   characters that are not letters or digits becomes one space; the ends are trimmed. Nothing
+#   casefolded; line references (`line 47`, `lines 4-7`, `:47`, and `L47` right after `#`, `:`, `(`
+#   or `[`, or as a range `L4-L7`) are removed; what is left is its runs of letters or digits and its
+#   comparison operators (`<`, `<=`, `>`, `>=`, `==`, `!=`, `===`, `!==`), joined by one space. Nothing
 #   fuzzier: two claims match only when they say the same words in the same order.
 #   Overlap: Jaccard |A n B| / |A u B| of two reports' fingerprint sets, and 1.0 when both are empty.
 #   Overall: the mean over every pair (`mean_pairwise`, the number --min is checked against), and the
@@ -30,23 +31,29 @@
 #   (default 0.5) is unstable.
 #   Exit 0 when nothing is unstable, 1 when something is, 2 for a refusal: fewer than two reports, a
 #   report that cannot be read or has no findings block, a missing or different `pr:` or `head:`
-#   (two heads match when one is a prefix of the other, 7 hex digits at least), a bad flag.
+#   (heads match when, of every two, one is a prefix of the other, 7 hex digits at least), a bad flag.
 #
 # SCORECARD (per-unit scorecard, catalog item 97). For each pull request (--prs, or the pull requests
 # merged since --since, as fix-ledger.sh lists them), the trusted verdict markers and closure markers.
 # A finding is an id; it is raised at the first trusted pass whose findings block has it, and is
 # attributed to that entry's `dimension` (the lens) and that marker's `model`/`tier` (`unrecorded`
-# when the marker has none). Its outcome is read from the newest trusted pass that lists it:
+# when the marker has none). Its outcome is read from the newest trusted pass that lists it, in order:
 #   verified   `verified` on a later pass, with a trusted fixer closure for a cycle in between
 #   resolved   `verified` on a later pass with no trusted closure in between (someone else fixed it)
 #   refused    `refused-accepted`: the fixer refused it and the reviewer accepted the refusal
-#   withdrawn  `not-applicable`
+#   fixed      `not-applicable` with a trusted closure between the pass before it that listed the
+#              finding and the pass that first marked it so; or open, then no longer listed by the
+#              next pass, with a trusted closure between the two (the fixer fixed it, the reviewer
+#              dropped it or marked it not-applicable)
+#   withdrawn  `not-applicable` with no such closure (an upper bound: an owner's fix outside a fixer
+#              cycle reads the same)
 #   debt       still open when the pull request's newest trusted verdict is PASSED (declared debt)
 #   open       still open (or refused-rejected) under a BLOCKED newest verdict
 # Blocking: every CRITICAL, and a WARNING raised under a marker with `block_at=warning`. Accepted rate:
-# verified / blocking. A unit with at least --min-blocking (3) blocking findings and an accepted rate
-# below --min-accept (0.5) is flagged `low_acceptance`, a candidate to retune or retire. Cost: the
-# verdict marker has no cost field, so it is printed as "not recorded" and never estimated.
+# blocking findings verified, fixed or resolved, over blocking (a valid finding someone fixed). A unit
+# with at least --min-blocking (3) blocking findings and an accepted rate below --min-accept (0.5) is
+# flagged `low_acceptance`, a candidate to retune or retire. Cost: the verdict marker has no cost
+# field, so it is printed as "not recorded" and never estimated.
 #
 # TRUST. As fix-ledger.sh: pull requests are read through pr-json.py (an edited comment is never read),
 # a marker counts only from a login on REVIEW_MARKER_AUTHORS (the gate's own `allowlist`,
@@ -91,7 +98,10 @@ def run(cmd, timeout=120):
 
 
 def safe(s, limit=200):
-    """A path or name for the terminal: no control or format characters, bounded."""
+    """A path or name for the terminal: no control or format characters, bounded. Every free-text
+    field the table prints goes through it (a report's name, a finding's file, a unit); the others are
+    numbers, hashes or regex-bound (dimension, model, tier), and the suite checks that none of them
+    carries an ESC."""
     s = "".join(ch if ch.isprintable() and unicodedata.category(ch) != "Cf" else "?" for ch in str(s))
     return s[:limit]
 
@@ -252,14 +262,22 @@ def entries_of(body):
 
 
 # ---- agreement ----------------------------------------------------------------------------------
-LINE_REF = re.compile(r"\blines?\s+[0-9]+(\s*[-–]\s*[0-9]+)?\b|\bl[0-9]+\b|:[0-9]+\b", re.I)
+# A line reference: `line 47`, `lines 4-7`, `:47`, and an L-number only where it clearly is one: right
+# after `#`, `:`, `(` or `[` (`session.ts#L47`, `(L47)`) or as a range (`L4-L7`, `L4-7`). A bare
+# `L2` stays, so `L2 cache` and `L3 cache` are two claims.
+LINE_REF = re.compile(r"\blines?\s+[0-9]+(\s*[-–]\s*[0-9]+)?\b"
+                      r"|(?<=[#:(\[])l[0-9]+(\s*[-–]\s*l?[0-9]+)?\b"
+                      r"|\bl[0-9]+\s*[-–]\s*l?[0-9]+\b"
+                      r"|:[0-9]+\b", re.I)
+# A token: a run of letters or digits, or a comparison operator, kept as its own characters so that
+# `<` and `<=` stay two claims. Everything else separates tokens.
+TOKEN = re.compile(r"[^\W_]+|[<>]=?|[!=]==?")
 
 
 def normalize(claim):
     s = unicodedata.normalize("NFKC", claim or "").casefold()
     s = LINE_REF.sub(" ", s)
-    s = re.sub(r"[\W_]+", " ", s)
-    return s.strip()
+    return " ".join(TOKEN.findall(s))
 
 
 def fingerprint(e):
@@ -301,7 +319,8 @@ def agreement(o):
         die("the reports are of different pull requests (%s); compare reports of one pull request" %
             ", ".join("#%d" % n for n in sorted(prs)))
     heads = sorted({r["head"] for r in reports}, key=len)
-    if any(not h.startswith(heads[0]) for h in heads) or len({h for h in heads if len(h) == len(heads[-1])}) > 1:
+    # Every pair, not only each against the shortest: 7, 10 and 8 digits that share 7 are two heads.
+    if any(not b.startswith(a) for a, b in itertools.combinations(heads, 2)):
         die("the reports are of different heads (%s); compare reports of one head" % ", ".join(heads))
     k = len(reports)
     names = {}
@@ -405,7 +424,7 @@ def read_pr(n, gate):
         reasons.append("%d trusted marker comment(s) edited, or edited by someone else" % len(edited))
     if deleted:
         reasons.append("%d trusted comment(s) deleted by someone other than the author" % len(deleted))
-    found = {}
+    found, listed = {}, {}
     for p in sorted(verdicts):
         v = verdicts[p]
         _, ents = entries_of(v["body"])
@@ -422,15 +441,32 @@ def read_pr(n, gate):
                               "model": ("%s/%s" % (v["model"], v["tier"])) if v["model"] else "unrecorded",
                               "blocking": sev == "CRITICAL" or (sev == "WARNING" and v["block_at"] == "warning")}
             found[fid]["last_pass"], found[fid]["status"] = p, str(e.get("status") or "open")
-    newest = verdicts[max(verdicts)]["verdict"] if verdicts else None
+            listed.setdefault(fid, {})[p] = found[fid]["status"]
+    passes = sorted(verdicts)
+    newest = verdicts[passes[-1]]["verdict"] if verdicts else None
+
+    def fixer_between(a, b):
+        """A trusted fixer closure for a cycle from pass a up to, not including, pass b."""
+        return any(a <= c < b for c in closures)
     for f in found.values():
-        st = f["status"]
+        st, hist = f["status"], listed[f["id"]]
         if st == "verified" and f["last_pass"] > f["raised_at"]:
-            f["outcome"] = "verified" if any(f["raised_at"] <= c < f["last_pass"] for c in closures) else "resolved"
+            f["outcome"] = "verified" if fixer_between(f["raised_at"], f["last_pass"]) else "resolved"
         elif st == "refused-accepted":
             f["outcome"] = "refused"
         elif st == "not-applicable":
-            f["outcome"] = "withdrawn"
+            # The pass that first marked it not-applicable in its final run, and the pass before it
+            # that listed it: a fixer closure between the two means the fixer fixed it (this
+            # repository's reviewer marks a fixed NOTE not-applicable). Without one it was withdrawn.
+            q = f["last_pass"]
+            while any(p < q and hist[p] == "not-applicable" for p in hist):
+                q = max(p for p in hist if p < q)
+            before = [p for p in hist if p < q]
+            f["outcome"] = "fixed" if before and fixer_between(max(before), q) else "withdrawn"
+        elif f["last_pass"] < passes[-1] and fixer_between(f["last_pass"], min(p for p in passes if p > f["last_pass"])):
+            # Open (or refused-rejected) and no longer listed by the next pass, with a fixer closure
+            # between them: the reviewer dropped it because the fixer fixed it.
+            f["outcome"] = "fixed"
         elif newest == "PASSED":
             f["outcome"] = "debt"
         else:
@@ -439,7 +475,8 @@ def read_pr(n, gate):
             "untrusted": untrusted, "edited": len(edited), "deleted": len(deleted)}
 
 
-OUTCOMES = ("verified", "resolved", "refused", "withdrawn", "debt", "open")
+OUTCOMES = ("verified", "fixed", "resolved", "refused", "withdrawn", "debt", "open")
+ACCEPTED = ("verified", "fixed", "resolved")
 
 
 def tally(rows, key, o):
@@ -449,13 +486,13 @@ def tally(rows, key, o):
         u["raised"] += 1
         u["blocking"] += f["blocking"]
         u[f["outcome"]] += 1
-        u.setdefault("_bv", 0)
-        u["_bv"] += f["blocking"] and f["outcome"] == "verified"
+        u.setdefault("_ba", 0)
+        u["_ba"] += f["blocking"] and f["outcome"] in ACCEPTED
     out = []
     for u in acc.values():
-        bv = u.pop("_bv")
-        u["accepted_rate"] = round(bv / u["blocking"], 4) if u["blocking"] else None
-        u["verified_blocking"] = bv
+        ba = u.pop("_ba")
+        u["accepted_rate"] = round(ba / u["blocking"], 4) if u["blocking"] else None
+        u["accepted_blocking"] = ba
         u["cost"] = None
         u["low_acceptance"] = bool(u["blocking"] >= o["min_blocking"] and u["accepted_rate"] < o["min_accept"])
         out.append(u)
@@ -463,11 +500,11 @@ def tally(rows, key, o):
 
 
 def table(title, units):
-    cols = ("raised", "blocking", "verified", "resolved", "refused", "debt", "open", "withdrawn")
+    cols = ("raised", "blocking", "verified", "fixed", "resolved", "refused", "debt", "open", "withdrawn")
     w = max([len(title)] + [len(safe(u["unit"], 60)) for u in units])
     lines = ["%-*s  %s  accepted  cost" % (w, title, "  ".join("%8s" % c for c in cols))]
     for u in units:
-        rate = ("%d/%d %.2f" % (u["verified_blocking"], u["blocking"], u["accepted_rate"])) if u["blocking"] else "n/a"
+        rate = ("%d/%d %.2f" % (u["accepted_blocking"], u["blocking"], u["accepted_rate"])) if u["blocking"] else "n/a"
         lines.append("%-*s  %s  %-8s  %s%s" % (w, safe(u["unit"], 60), "  ".join("%8d" % u[c] for c in cols), rate, COST,
                                                "  LOW: retune or retire" if u["low_acceptance"] else ""))
     return lines
@@ -515,7 +552,8 @@ def scorecard(o):
             out.append("could not read: " + ", ".join("#%d" % n for n in failed))
         out.append("ignored: %d untrusted marker(s), %d edited and %d deleted trusted comment(s)" % (
             res["ignored"]["untrusted_markers"], res["ignored"]["edited_trusted"], res["ignored"]["deleted_trusted"]))
-        out.append("accepted = verified / blocking; cost: not recorded (the verdict marker has no cost field)")
+        out.append("accepted = verified, fixed or resolved / blocking; withdrawn is an upper bound (see the reference); "
+                   "cost: not recorded (the verdict marker has no cost field)")
         out.append("")
         out.append("by dimension")
         out += table("dimension", res["by_dimension"])
