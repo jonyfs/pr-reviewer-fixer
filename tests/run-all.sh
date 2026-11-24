@@ -452,12 +452,14 @@ for f in references/pr-protocol.md references/harness-matrix.md references/harne
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-merge-fixer/$f" \
     && echo "== $f identical in pr-merge-fixer" || { echo "== $f DIFFERS in pr-merge-fixer"; fail=1; }
 done
-# The pr-fixer catalog's Counts section must agree with its tables: 100 rows, each Target one of
+# Each skill's improvements catalog (pr-fixer and pr-reviewer) has a Counts section that must agree
+# with its tables: 100 rows, each Target one of
 # SKILL, reference, shipped or backlog, the SKILL, shipped and backlog item lists equal to the rows
-# with that Target, and the reference count equal to the rest. The reviewer's catalog has no counts.
+# with that Target, and the reference count equal to the rest.
 # Every row is counted before the dict is built, so a repeated item number fails even when the copy
 # has the same Target, and a shipped Target must name a path (`shipped: <path>`), not stand bare.
-if cat_out="$(python3 -I - "$ROOT/.agents/skills/pr-fixer/references/improvements-catalog.md" <<'PY'
+for cat_skill in pr-fixer pr-reviewer; do
+if cat_out="$(python3 -I - "$ROOT/.agents/skills/$cat_skill/references/improvements-catalog.md" <<'PY'
 import collections, re, sys
 text = open(sys.argv[1], encoding="utf-8").read()
 found = [(int(m.group(1)), m.group(2).strip())
@@ -485,10 +487,11 @@ print("; ".join(bad) or " ".join("%s %d" % (k, len(v)) for k, v in got.items()))
 sys.exit(1 if bad else 0)
 PY
 )"; then
-  echo "== pr-fixer catalog counts match its Target column ($cat_out)"
+  echo "== $cat_skill catalog counts match its Target column ($cat_out)"
 else
-  echo "== pr-fixer catalog counts DISAGREE with its Target column: $cat_out"; fail=1
+  echo "== $cat_skill catalog counts DISAGREE with its Target column: $cat_out"; fail=1
 fi
+done
 # The merge fixer runs the project's build, tests and lockfile regeneration on the pull request's code,
 # so `review-cycle.sh fix` (the fork and collaborator guard) must run before its first write on every
 # pull request, reviewed or not. Its text may not make that step conditional or skippable.
