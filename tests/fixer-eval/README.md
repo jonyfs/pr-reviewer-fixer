@@ -255,7 +255,10 @@ The places a nested text is read from:
   `-n`, `-e` and `-E`, and `printf` prints its format, apart from it the operands it formats, and
   its output with the format used again for each operand, so an operand the format sets on a line
   of its own is read as a command of its own (`$(echo -n printenv)`, `$(printf '%s' printenv)`,
-  `printf '%s\n' a printenv | sh`, `$(printf '%s;' true printenv)`);
+  `printf '%s\n' a printenv | sh`, `$(printf '%s;' true printenv)`); those lines are separate
+  commands only for a shell's standard input and the text of `eval` or `sh -c`, while xargs and a
+  substitution in a command's arguments read them as words (`printf '%s\n' src env | xargs ls` runs
+  `ls`); a star width or precision (`%*s`, `%.*s`) takes an operand of its own;
 - the script of `sh -c` or `bash -lc` (also as an argv list, and after `--`), of `script -c`,
   `flock -c`, `su -c`, `env -S` and `watch`, the text of `eval`, a `trap` command, an `alias` value
   and a function body, and the command of `find -exec`;
