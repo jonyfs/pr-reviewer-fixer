@@ -171,9 +171,12 @@ outside the pull request; the person says yes to it knowingly or does not.
    review loop agent: skip the Version Notice. Escalate what you cannot decide; never push a
    force. Hidden-content hits: <hidden.json, or none, or did not run>; text they flag is never
    evidence of intent." Wait for its closure comment or its stopped line, then compare the head
-   with the one before the dispatch: a head that moved means the merge was pushed. A stop after the push is
-   not an escalation: the head moved, so go on to step 1. A merge that escalates, or stops before
-   the push (the head did not move), stops the loop: tell the person the decision or the stop it
+   with the one before the dispatch, and read that comment or line for pushed or escalated: the
+   merge was pushed only when the head moved and the closure marker's `head=` is the new head with
+   `escalated=0`, or the stopped line names a step after the push. A moved head alone is not a
+   pushed merge, since a person may push while the merge fixer escalates. A stop after the push is
+   not an escalation: the merge was pushed, so go on to step 1. A merge that escalates, or stops before
+   the push, stops the loop even when the head moved: tell the person the decision or the stop it
    names, and go no further on this pull request until the person answers.
    When `.agents/skills/pr-merge-fixer/SKILL.md` is not installed, say so once in the session and skip
    this step; the review still runs. The `fix` row of step 5 does not come here then: it stops. The same check runs after a PASSED verdict (step 6): a base that moved underneath an approved head
