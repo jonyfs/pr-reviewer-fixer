@@ -448,6 +448,24 @@ else
 fi
 cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.github/workflows/review-gate.yml" \
   && echo "== review-gate.yml matches its template" || { echo "== review-gate.yml DIFFERS from its template"; fail=1; }
+# suite-check.yml runs the pull request's own code (PR 87 N4). That is safe only while its one trigger is pull_request
+# (never pull_request_target or workflow_run), its token is contents: read and nothing more (one permissions block,
+# none per job), and every checkout drops the token (persist-credentials: false). push-guard keeps a fixer out of
+# workflows; this keeps a later edit by anyone from loosening them unseen. Comment lines are not read, and a form this
+# check does not parse (an inline `on:` list, for example) fails it.
+sc="$(grep -v '^[[:space:]]*#' "$ROOT/.github/workflows/suite-check.yml" 2>/dev/null)"
+sc_on="$(printf '%s\n' "$sc" | awk '/^on:/{on=1;next} on&&/^[^[:space:]]/{exit} on&&/^  [^[:space:]]/{print}')"
+sc_perm="$(printf '%s\n' "$sc" | awk '/^permissions:/{on=1;next} on&&/^[^[:space:]]/{exit} on&&/[^[:space:]]/{print}')"
+sc_co="$(printf '%s\n' "$sc" | grep -cE 'uses:[[:space:]]*actions/checkout@')"
+sc_pc="$(printf '%s\n' "$sc" | grep -cE '^[[:space:]]*persist-credentials:[[:space:]]*false[[:space:]]*$')"
+if [ -n "$sc" ] && [ "$sc_on" = "  pull_request:" ] && [ "$sc_perm" = "  contents: read" ] \
+   && [ "$(printf '%s\n' "$sc" | grep -cE '(^|[[:space:]])permissions:')" = 1 ] \
+   && ! printf '%s\n' "$sc" | grep -qE 'pull_request_target|workflow_run|persist-credentials:[[:space:]]*[^f[:space:]]' \
+   && [ "$sc_co" -ge 1 ] && [ "$sc_pc" = "$sc_co" ]; then
+  echo "== suite-check.yml: pull_request only, contents: read only, persist-credentials: false on every checkout"
+else
+  echo "== suite-check.yml is not pull_request only, contents: read only, with persist-credentials: false on every checkout"; fail=1
+fi
 # The model-key scan runs here, last: see model_key_scan, defined near the top.
 model_key_scan
 # Only a green full run is written to the cache (see the cache note above), and only when the tree is still the one

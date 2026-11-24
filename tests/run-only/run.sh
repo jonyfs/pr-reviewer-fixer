@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The --only filter of tests/run-all.sh (PR 60, W2): a filter that matches no suite exits 1, an empty word exits 2.
-# Both refusals come before any suite starts. The rows after them (PR 87 N3) run a copy of the tree whose only
+# Both refusals come before any suite starts. The rows after them (PR 87 N3, N4) run a copy of the tree whose only
 # suite --only starts is a stub, so this suite never starts a real suite, itself included (no recursion).
 set -u
 # A nested call from this suite: run-all refuses to start any suite when RUN_ALL_NESTED is set, so even a
@@ -35,10 +35,34 @@ check "--only push-guard, on a clean copy: exit 0, and only the stub suite ran" 
 check "--only push-guard still runs the shared-script cmp checks (PR 87 N3)" \
   eval 'has "^== [0-9]+ shared scripts checked$" && has "^== references/pr-protocol.md identical in pr-merge-fixer$"'
 check "--only push-guard still runs the model-key scan (PR 87 N3)" has "^== no model action or provider key in [0-9]+ files"
+check "--only push-guard runs the suite-check.yml check, and the real workflow passes it (PR 87 N4)" \
+  has "^== suite-check.yml: pull_request only"
 G="$X/t/.agents/skills/pr-fixer/scripts/review-cycle.sh"; cp -p "$G" "$X/rc.bak"; printf '#\n' >>"$G"; only
 check "--only push-guard, one byte added to the fixer's review-cycle.sh -> exit 1, DIFFERS named (PR 87 N3)" \
   eval '[ $r = 1 ] && has "^== scripts/review-cycle.sh DIFFERS between the skills$"'
 cp -p "$X/rc.bak" "$G"
 
+# PR 87 N4: suite-check.yml runs the pull request's own code, so run-all holds its trigger, its token scope and the
+# checkout's credential setting. Each mutant is written over the copy's workflow, run, then the original put back.
+WF="$X/t/.github/workflows/suite-check.yml"; cp -p "$WF" "$X/wf.bak"
+mutant() {
+  local name="$1"; shift; "$@" <"$X/wf.bak" >"$WF"; only
+  check "suite-check.yml mutant, $name -> exit 1 (PR 87 N4)" \
+    eval '[ $r = 1 ] && has "^== suite-check.yml is not pull_request only" && ! cmp -s "$WF" "$X/wf.bak"'
+  cp -p "$X/wf.bak" "$WF"
+}
+mutant "pull_request_target added as a second trigger" awk '{print} /^  pull_request:$/{print "  pull_request_target:"}'
+mutant "workflow_run added as a second trigger" awk '{print} /^  pull_request:$/{print "  workflow_run:"}'
+mutant "contents: write" sed 's/^  contents: read$/  contents: write/'
+mutant "a second permission (pull-requests: write)" awk '{print} /^  contents: read$/{print "  pull-requests: write"}'
+mutant "a job-level permissions block" awk '{print} /^    runs-on:/{print "    permissions: write-all"}'
+mutant "persist-credentials: true" sed 's/persist-credentials: false/persist-credentials: true/'
+mutant "persist-credentials removed (the default keeps the token)" grep -v 'persist-credentials'
+mutant "a second checkout without persist-credentials" awk '{print} /^    steps:$/{print "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"}'
+awk 'NR==1{print "# pull_request_target, workflow_run and persist-credentials: true are never used here"} {print}' \
+  <"$X/wf.bak" >"$WF"; only
+check "a comment naming pull_request_target is not read -> still exit 0 (PR 87 N4)" \
+  eval '[ $r = 0 ] && has "^== suite-check.yml: pull_request only"'
+cp -p "$X/wf.bak" "$WF"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
