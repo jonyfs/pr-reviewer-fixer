@@ -78,6 +78,9 @@ def cannot(msg):
     say(msg + ", cannot check"); sys.exit(2)
 LIVE = {"group": None, "child": None, "work": None}   # what a crash or a signal must stop and delete
 SEEN = {"mismatch": 0}   # entries that printed MISMATCH: a crash or a signal after one still exits 1
+# Write SEEN only in the MISMATCH branch of the run loop, the one place that counts a mismatch. A
+# write anywhere else lets a crash or a signal exit 1 with no mismatch, so a failure to check reads
+# as a proved mismatch (PR 85 N4).
 def _say_seen():
     if SEEN["mismatch"]:
         say("%d re-run entries did not match before the stop" % SEEN["mismatch"])
