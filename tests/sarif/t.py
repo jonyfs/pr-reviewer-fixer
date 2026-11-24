@@ -221,8 +221,13 @@ p, doc = export(report([entry("W1", sev="WARNING", extra='    failure_scenario: 
 check("failure_scenario and scenario both written -> failure_scenario wins", p.returncode == 0 and doc
       and results(doc)[0]["properties"].get("scenario") == "the contract name", err(p) + str(doc and results(doc)[0]["properties"]))
 p, doc = export(report([entry("C1", claim='"a \\x41 escape JSON does not know"')]))
-check("a double-quoted claim that is not a JSON string is kept as written, without its outer quotes", p.returncode == 0 and doc
-      and results(doc)[0]["message"]["text"] == 'a \\x41 escape JSON does not know', err(p) + str(doc and results(doc)[0]["message"]))
+# N2 of PR 92: quotes come off only a well-formed quoted value; anything else is kept as written.
+check("a double-quoted claim that is not a JSON string is kept as written, quotes included", p.returncode == 0 and doc
+      and results(doc)[0]["message"]["text"] == '"a \\x41 escape JSON does not know"', err(p) + str(doc and results(doc)[0]["message"]))
+p, doc = export(report([entry("C1", claim='"a" and "b"', extra="    suggested_fix: 'it''s' or 'not'\n")]))
+check("a claim of two quoted phrases and a suggested_fix of two single-quoted ones -> both kept as written",
+      p.returncode == 0 and doc and results(doc)[0]["message"]["text"] == '"a" and "b"'
+      and results(doc)[0]["properties"].get("suggested_fix") == "'it''s' or 'not'", err(p) + str(doc and results(doc)[0]))
 
 # ---- statuses: open by default, closed ones with --include-closed as suppressed ---------------
 mixed = report([entry("C1"), entry("C2", status="open", claim='"b"'), entry("C3", status="refused-rejected", claim='"c"'),

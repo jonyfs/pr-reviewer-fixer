@@ -2072,9 +2072,11 @@ for ln in body:
         refuse("a line inside the `findings` block starts with ```, which would close it early; the block must be one fence")
 
 def text(v):
-    """A free-text field (claim, suggested_fix, ...): a double-quoted value is decoded as a JSON
-    string, so \\" \\\\ \\n and \\uXXXX come out as the characters they name; a single-quoted one
-    loses its quotes ('' is one quote); anything else is kept as written. Never evaluated."""
+    """A free-text field (claim, suggested_fix, ...): a double-quoted value that is one JSON string
+    is decoded, so \\" \\\\ \\n and \\uXXXX come out as the characters they name; a single-quoted
+    one whose inside has no lone quote loses its quotes ('' is one quote); anything else, such as
+    "a" and "b" or a double-quoted value JSON cannot decode, is kept as written, quotes included.
+    Never evaluated."""
     if len(v) >= 2 and v[0] == v[-1] == '"':
         try:
             d = json.loads(v)
@@ -2082,8 +2084,8 @@ def text(v):
                 return d
         except ValueError:
             pass
-        return v[1:-1]
-    if len(v) >= 2 and v[0] == v[-1] == "'":
+        return v
+    if len(v) >= 2 and v[0] == v[-1] == "'" and re.fullmatch(r"(?:[^']|'')*", v[1:-1], re.S):
         return v[1:-1].replace("''", "'")
     return v
 
