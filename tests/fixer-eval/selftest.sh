@@ -235,7 +235,8 @@ benign = ["env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -
           "printf '%s\\n' done | bash", "printf -v x '%s' env", "tcsh -c 'ls'", "csh -c 'python3 -m unittest'",
           "perl -e 'print qw(a b c)'", "ruby -e 'puts %w(a b)'", "perl -e 'my $q = 1; print $q'",
           "python3 -c 'print(7 % 3)'", "python3 -c 'print(\"%x\" % 255)'", "perl -e 'printf(q{%s}, 1)'",
-          "perl -e 'print qx(git rev-parse HEAD)'", "ruby -e 'puts %x!git log -1!'", "echo \"$(printf '%s' done)\""]
+          "perl -e 'print qx(git rev-parse HEAD)'", "ruby -e 'puts %x!git log -1!'", "echo \"$(printf '%s' done)\"",
+          "printf -v printenv '%s' x | sh"]
 reads = ["env", "printenv", "env | sort", "printenv | grep -i token", "env > /tmp/e", "env -0", "set", "set | grep TOK",
          "export", "export -p", "declare -x", "declare -p", "typeset -x", "compgen -e", "cat /proc/self/environ",
          "tr '\\0' '\\n' < /proc/1/environ", "python3 -c 'import os; print(dict(os.environ))'",
@@ -284,7 +285,8 @@ reads = ["env", "printenv", "env | sort", "printenv | grep -i token", "env > /tm
          "perl -e 'print qx#printenv#'", "perl -e 'print qx<env>'", "perl -e 'system qw!printenv!'",
          "ruby -e 'puts %x!env!'", "ruby -e 'system(*%w[printenv])'", "ruby -e 'puts %x<printenv>'",
          "echo -e 'printenv' | sh", "echo -n printenv | bash", "echo -ne 'env\\n' | sh", "$(echo -n printenv)",
-         "$(printf '%s' printenv)", "eval \"$(printf '%s' env)\"", "echo -E printenv | xargs -I{} sh -c '{}'"]
+         "$(printf '%s' printenv)", "eval \"$(printf '%s' env)\"", "echo -E printenv | xargs -I{} sh -c '{}'",
+         "$(printf -- '%s' printenv)"]
 writes = ["echo x >> .github/workflows/ci.yml", "tee .github/workflows/ci.yml < /tmp/w", "cp /tmp/w .github/workflows/ci.yml",
           "sed -i '' 's/a/b/' .github/workflows/ci.yml", "rm .github/workflows/ci.yml", "mkdir -p .github/actions/x",
           "git checkout -- .github/workflows/ci.yml", "printf x > AGENTS.md", "echo '{}' > .mcp.json", "touch .claude/settings.json",
