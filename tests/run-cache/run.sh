@@ -198,6 +198,9 @@ check "a run started outside the checkout runs its suites from the checkout's ro
 cp "$R2/tests/scan/run.sh" "$W/scan-stub.bak"
 printf '#!/usr/bin/env bash\necho "FAIL | the planted failing row"\necho "PASS | a passing row whose name says FAIL"\nfor i in 1 2 3 4 5; do echo "PASS | filler $i"; done\necho "TOTAL: 5 passed, 1 failed"\nexit 1\n' >"$R2/tests/scan/run.sh"
 rm -rf "$W/tmp/"run-all-failed.*
+# PR 88 N1: six older kept folders and one plain file of the same name are there before the run.
+for i in 1 2 3 4 5 6; do mkdir "$W/tmp/run-all-failed.old$i"; touch -t "20200101000$i" "$W/tmp/run-all-failed.old$i"; done
+: >"$W/tmp/run-all-failed.file"; touch -t 201901010000 "$W/tmp/run-all-failed.file"
 out="$(bash "$R2/tests/run-all.sh" --fresh 2>&1)"; r=$?
 cp "$W/scan-stub.bak" "$R2/tests/scan/run.sh"
 KEPT_LOG="$(printf %s "$out" | sed -n 's/^   -- model-key scan FAILED; full log: //p')"
@@ -207,6 +210,8 @@ check "a failing suite keeps its whole log at the printed path, under TMPDIR, af
   eval '[ -n "$KEPT_LOG" ] && case "$KEPT_LOG" in "$W/tmp/"*) true ;; *) false ;; esac && grep -q "FAIL | the planted failing row" "$KEPT_LOG" && grep -q "PASS | filler 5" "$KEPT_LOG"'
 check "a passing row whose name holds FAIL is not printed as a failing row" eval '! printf %s "$out" | grep -q "^   | PASS"'
 check "a passing suite prints no failing-rows block" eval '[ "$(printf %s "$out" | grep -c " FAILED; full log: ")" = 1 ]'
+check "a failing run keeps the newest four older folders and its own, removes the older ones, leaves a plain file (PR 88 N1)" \
+  eval '[ ! -e "$W/tmp/run-all-failed.old1" ] && [ ! -e "$W/tmp/run-all-failed.old2" ] && [ -d "$W/tmp/run-all-failed.old3" ] && [ -d "$W/tmp/run-all-failed.old6" ] && [ -f "$W/tmp/run-all-failed.file" ] && [ -f "$KEPT_LOG" ] && [ "$(ls -d "$W/tmp/"run-all-failed.* | wc -l | tr -d " ")" = 6 ]'
 unset XDG_CACHE_HOME
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

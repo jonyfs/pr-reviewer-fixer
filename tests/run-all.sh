@@ -229,10 +229,20 @@ echo "== all suites: $(( $(date +%s) - run_t0 ))s wall${RUN_ONLY:+ (only: $RUN_O
 # A suite that fails prints every FAIL or failed line of its log, not only the last three lines, and its whole log is
 # kept in a folder that outlives the run (the run's own folder is removed at exit), so a row that fails only under load
 # can be named and told from a defect. The folder is made at the first failure, under TMPDIR, and its path is printed.
+# Before it is made, the older folders are pruned: this user's newest four are kept (with the new one, the last five
+# failing runs), and older ones are removed, so a host that fails often does not pile up copies of every log (PR 88 N1).
+# Only real folders of this user are touched, never a link or a plain file of the same name.
 KEPT=""
+prune_kept() {
+  local d i=0
+  while IFS= read -r d; do
+    [ -d "$d" ] && [ ! -L "$d" ] && [ -O "$d" ] || continue
+    i=$((i + 1)); [ "$i" -le 4 ] || rm -rf -- "$d"
+  done < <(ls -1dt -- "${TMPDIR:-/tmp}"/run-all-failed.* 2>/dev/null)
+}
 failed_rows() {
   local n="$1" name="$2" log="$OUT/$1.log" dest rows
-  if [ -z "$KEPT" ]; then KEPT="$(mktemp -d "${TMPDIR:-/tmp}/run-all-failed.XXXXXX" 2>/dev/null)" || KEPT=""; fi
+  if [ -z "$KEPT" ]; then prune_kept; KEPT="$(mktemp -d "${TMPDIR:-/tmp}/run-all-failed.XXXXXX" 2>/dev/null)" || KEPT=""; fi
   dest=""
   if [ -n "$KEPT" ]; then
     dest="$KEPT/$n-$(printf %s "$name" | tr -c 'A-Za-z0-9._-' '_').log"
