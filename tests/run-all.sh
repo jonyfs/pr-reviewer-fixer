@@ -248,13 +248,17 @@ for spec in \
 done
 # Agent comments are plain text: Markdown belongs in the pull request description only. A comment
 # template is a fenced block in a skill's Markdown whose first line is a protocol marker. Outside its
-# own `findings` fence (a verdict) or `proofs` fence (a fixer closure), a template may hold no table
-# row, heading, bold, bullet, checkbox, quote or other fenced block (Mermaid included). A floor on
-# the templates found keeps a wrong path from passing with nothing read.
+# own fence, a template may hold no table row, heading, bold, bullet, checkbox, quote or other fenced
+# block (Mermaid included). The fence is tied to the marker: `findings` in a verdict
+# (adversarial-review) only, `proofs` in a fixer closure (pr-fixer-closure) only, none in the others.
+# A floor on the templates found, and on the proofs fences found, keeps a wrong path or a template
+# that lost its proofs block from passing with nothing read (PR 85 N2).
 if ! plain_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
 import os, re, sys
 markers = ("<!-[-] adversarial-review:", "<!-[-] pr-fixer-closure:", "<!-[-] pr-merge-fixer-closure:",
            "<!-[-] pr-skill-status:")
+own = {"<!-[-] adversarial-review:": "findings", "<!-[-] pr-fixer-closure:": "proofs"}
+proofs_seen = 0
 rules = [(re.compile(r"^\s*\|"), "table row"), (re.compile(r"^\s*#{1,6}\s"), "heading"),
          (re.compile(r"\*\*|__\S"), "bold"), (re.compile(r"^\s*([-*+]|\d+[.)])\s"), "list item"),
          (re.compile(r"^\s*>"), "quote")]
@@ -280,6 +284,7 @@ for d, _, fs in os.walk(sys.argv[1]):
             if not first.startswith(markers):
                 continue
             found += 1
+            allowed = next((v for k, v in own.items() if first.startswith(k)), None)
             inner = None
             for ln, t in body:
                 f = re.match(r"^\s*(`{3,})\s*(\S*)", t)
@@ -288,13 +293,17 @@ for d, _, fs in os.walk(sys.argv[1]):
                         inner = None
                     continue
                 if f:
-                    if f.group(2) not in ("findings", "proofs"):
-                        bad.append("%s:%d fenced block %s" % (path, ln, f.group(2) or "(untagged)"))
+                    if allowed is None or f.group(2) != allowed:
+                        bad.append("%s:%d fenced block %s under %s" % (path, ln, f.group(2) or "(untagged)", first.split()[1]))
+                    elif allowed == "proofs":
+                        proofs_seen += 1
                     inner = f.group(1); continue
                 for rx, what in rules:
                     if rx.search(t):
                         bad.append("%s:%d %s" % (path, ln, what))
 print(found)
+if proofs_seen < 1:
+    bad.append("no pr-fixer-closure template shows its proofs fence (falsify-and-prove.md)")
 for b in bad:
     print(b)
 sys.exit(1 if bad or found < 5 else 0)

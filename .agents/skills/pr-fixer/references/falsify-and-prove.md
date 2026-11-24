@@ -125,7 +125,7 @@ The closure comment proves that the fixer ran, not only that it intended to. It 
 reader sees the banner, the summary lines, then one labelled line per checkpoint, each with its
 evidence. The layout is fixed:
 
-```text
+````text
 <!-[-] pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->
 Written by pr-fixer, cycle <c>, ran at <UTC time>, head <sha7>.
 
@@ -154,7 +154,12 @@ C2 why refused: the finding reads ADD CONSTRAINT; the code path it names is unre
 Debt W2 (WARNING): refresh path has no test. Owner: person.
 
 Next: reviewer pass <c+1> on <sha7>. The reviewer re-reads the refusal C2 and the new commit.
+
+```proofs
+[{"command": "pytest tests/auth/test_session.py", "exit_code": 1, "head_sha": "...", "tree_hash": "...", "tool_versions": {"python3": "3.12.4"}, "output_sha256": "..."},
+ {"command": "pytest tests/auth/test_session.py", "exit_code": 0, "head_sha": "...", "tree_hash": "...", "tool_versions": {"python3": "3.12.4"}, "output_sha256": "..."}]
 ```
+````
 
 Rules for the closure comment:
 
