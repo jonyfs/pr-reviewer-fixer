@@ -1,9 +1,9 @@
 ---
-Summary: Reviewer self-agreement and the per-unit scorecard (scripts/review-metrics.sh): how a loop agent produces k reports on one head, how findings are fingerprinted, and what the scorecard counts from trusted markers.
+Summary: Reviewer self-agreement, the per-unit scorecard and opt-in category suppression (scripts/review-metrics.sh): how a loop agent produces k reports on one head, how findings are fingerprinted, what the scorecard counts from trusted markers, and when a category's history demotes its findings.
 Tags: [#pr #review #metrics #reference]
 ---
 
-# Review metrics: self-agreement and the per-unit scorecard
+# Review metrics: self-agreement, the per-unit scorecard and category suppression
 
 `scripts/review-metrics.sh` measures the reviewer from what already exists. It runs no model and
 writes nothing to GitHub. Its output goes to stdout, or to the `--out` file.
@@ -14,6 +14,9 @@ writes nothing to GitHub. Its output goes to stdout, or to the `--out` file.
 - `scorecard` checks whether the review is useful. Per dimension (lens) and per model and tier, it
   counts how many findings were raised, how many blocking ones a fixer closed and a later pass
   verified, and how many were refused or left as debt.
+- `suppress` (opt-in) reads the same history and names the categories whose findings were shown
+  wrong again and again, so the reviewer can show their new WARNINGs and NOTEs as suppressed NOTEs
+  instead of debt. It never touches a CRITICAL, security, or a mandatory unit of the change.
 
 ## Producing k reports (the loop agent's job)
 
@@ -148,3 +151,92 @@ same trust code.
 
 Exit 0 when every pull request was read. Exit 2 on a refusal, or when `gh` could not read one
 pull request; the others are still counted and printed.
+
+## Category suppression (opt-in)
+
+```bash
+REVIEW_MARKER_AUTHORS=<login> scripts/review-metrics.sh suppress --since 2026-09-01
+REVIEW_MARKER_AUTHORS=<login> scripts/review-metrics.sh suppress --since 2026-09-01 \
+    --report .pr-skill/review.md --floor <base> <head> [--min-decided 5] [--min-dismissed 0.6] [--json]
+```
+
+A reviewer that keeps raising a kind of finding its readers keep showing to be wrong costs
+attention on every pull request. Uber's review system drops whole categories with low developer
+value, and Greptile holds back a comment that resembles three or more downvoted ones. `suppress`
+is the local, history-based form of the first: it counts, per category, how the trusted history
+decided that category's findings, and names the categories that were mostly dismissed.
+
+Nothing changes until a person opts in. The reviewer runs this step only when
+`REVIEW_SUPPRESS_SINCE` is set to a date (`SKILL.md`, step 8). Unset, the review is the same as
+before.
+
+**Category.** The finding's dimension, normalized as the scorecard normalizes it. A finer category
+(dimension plus a claim prefix) is not used: claims are free text, the agreement fingerprint shows
+how rarely two wordings of one defect match, and a prefix would split a category's history into
+samples too small to judge. An embedding-based match of similar claims can follow later.
+
+**History.** The pull requests of `--prs` or `--since`, read exactly as the scorecard reads them:
+through `pr-json.py`, trusted markers only (`REVIEW_MARKER_AUTHORS`), a pull request with an edited
+trusted marker left out. The same outcome rules apply. Per category:
+
+| Count | Outcomes |
+|---|---|
+| accepted | `verified`, `resolved`, `fixed` |
+| dismissed | `refused` (refusal accepted), `withdrawn` (not-applicable, not fixed) |
+| neither | `debt`, `open` |
+
+`fixed` counts as accepted. A non-blocking finding is only ever `open` or `not-applicable`, so
+`fixed` is the one way a NOTE can count as accepted; leaving it out would make a NOTE-heavy category
+look dismissed and, once suppressed, unable to recover. `withdrawn` is an upper bound (an owner's
+fix outside a fixer cycle reads the same), so both choices lean toward keeping a category.
+
+**Thresholds.** A category is suppressed when it has at least `--min-decided` (5) accepted or
+dismissed findings and the dismissed share is at least `--min-dismissed` (0.6). Five is the
+smallest sample where one finding moves the share by no more than 0.2; 0.6 means the history
+dismissed clearly more than it accepted.
+
+**Never suppressed.**
+- The `security` dimension, and the two buckets that are not one category: `none` (no dimension)
+  and `other` (a dimension the pattern could not read).
+- A mandatory unit of this change: every unit `path-floor.sh` prints for `--floor BASE HEAD` (or
+  `--floor-files FILE`, a NUL-separated path list), every unit in the report's `mandatory_units:`,
+  and every unit of `--mandatory a,b`. A unit protects the dimension of its own name and of its
+  first word, so `data-integrity` also protects `data`.
+- A CRITICAL, in any category.
+- A WARNING when WARNINGs block (`REVIEW_BLOCK_AT=warning`, and any value but unset or `critical`).
+  Suppression therefore never changes the verdict: it only moves debt.
+
+**Fail open.** When anything cannot be read, nothing is suppressed, and the output says why with
+`suppressed: none (fail open: <reason>)` and exit 2: an unset `REVIEW_MARKER_AUTHORS`, a pull
+request `gh` could not read (the history is incomplete), a report with no readable findings block,
+`--report` with no path floor, a floor `path-floor.sh` could not compute, a bad flag, or an
+unexpected error. A pull request left out for an edited marker is not a failure; it is simply not
+counted.
+
+**Output.** One `category` line per dimension with its counts and the reason it is kept or
+suppressed, then the Coverage lines, one per suppressed category:
+
+```text
+suppressed: documentation (dismissed 7 of 9 since 2026-09-01)
+```
+
+(`over N pull requests` with `--prs`), or `suppressed: none`. With `--report`, one line per counted
+finding of the draft report: `demote to NOTE` (a WARNING), `list under suppressed` (a NOTE), or
+`keep (<reason>)`. `--json` prints the same as one object (`categories`, `suppressed`, `coverage`,
+`findings`, `fail_open`, `reason`).
+
+**What the reviewer does with it.** The finding stays in the report; nothing is deleted. A `demote`
+WARNING becomes a NOTE in the findings block (counts follow), and every `demote` or `list` finding
+is written on the group line `Suppressed by history, shown for the record:` after the notes, its
+line ending with `(category <dimension> suppressed by history)`. The `suppressed:` lines go into
+Coverage as printed. A person reads the whole finding; the fixer reads a NOTE.
+
+**State.** None. The history is read from GitHub each time, read-only, and nothing is written: no
+file in the repository and none in the cache directory. A category leaves the list by itself when
+the history window moves past the findings that put it there, or when accepted findings outweigh
+them.
+
+**On this repository.** With `REVIEW_MARKER_AUTHORS=jonyfs` over pull requests 60 to 94 (34
+counted, #87 left out for an edited marker) and the defaults, no category is suppressed. The
+nearest are documentation (6 dismissed of 24 decided, 0.25) and operability (2 of 4, under the
+minimum sample).
