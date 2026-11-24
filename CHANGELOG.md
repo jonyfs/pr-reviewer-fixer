@@ -4,6 +4,86 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.24.0
+
+The review loop reads a merge fixer's outcome instead of trusting a moved head, the `proofs` block is
+part of the comment protocol, a CI job runs the push-guard suite and the copy checks on each pull
+request, and the test suite holds under heavy host load.
+
+- **`harness-loop.md` step 0 (all three copies): note the head before dispatching the merge fixer,
+  then read its outcome.** This is the first of two changes an installed copy must follow. The review
+  loop agent notes the pull request's head sha before it dispatches `pr-merge-fixer`. After the merge
+  fixer's closure comment or stopped line, it compares the head with the noted one and reads that
+  comment or line: the merge was pushed only when the head moved and the closure marker says
+  `escalated=0` with a `head=` other than the first 12 characters of the noted head (a later push may
+  sit on top of it), or the stopped line names a step after the push. A moved head alone is not a
+  pushed merge, since a person may push while the merge fixer escalates. A merge that escalates, or
+  stops before the push, stops the loop even when the head moved, and the loop goes no further on
+  that pull request until the person answers. `tests/run-all.sh` pins the new phrases.
+- **The `proofs` fence belongs to the fixer closure only.** The second change an installed copy must
+  follow. `pr-protocol.md` (all three copies) allows the `findings` block of a verdict or the `proofs`
+  block of a fixer closure, and no other fence (no Mermaid); either block comes last in the comment.
+  The comment-template check in `tests/run-all.sh` accepts a `proofs` fence as well as `findings`.
+  The `pr-fixer` Finding step now names what goes in the block: each red, green, suite and mutation
+  run, re-run by `proof-check.sh` in a clean clone. The `behaviour-diff.sh` run stays out of the
+  block, because its `probes.json` is not committed and a clean clone lacks it.
+  `falsify-and-prove.md` shows the block at the end of the closure layout.
+- **`proof-check.sh`: a mismatch wins over a later stop.** When the checker is stopped by SIGTERM,
+  SIGHUP or SIGINT, or hits an internal error, after an entry already printed MISMATCH, it exits 1
+  and prints how many entries did not match before the stop. With no MISMATCH printed, it exits 2,
+  as before. Exit 1 still means a re-run entry did not match; it never comes from a stop alone.
+- **`suite-check.yml`** (new workflow, this repository only, not installed by the skills): runs
+  `bash tests/run-all.sh --only push-guard` on each pull request. That is the push-guard suite plus
+  the checks `run-all.sh` makes after its suites, among them the byte-for-byte comparison of the
+  shared scripts, the shared references and the gate template. Trigger `pull_request` only,
+  `contents: read`, `persist-credentials: false`, no secret, no model, a 15-minute bound, and the
+  checkout pinned to the SHA `review-gate.yml` uses. `tests/run-all.sh` pins the file by its sha256
+  and checks its trigger, permissions and checkout, so any edit to it fails until the pin is updated
+  in the same pull request. A push-guard row ("a commit whose added blob is missing") now also
+  deletes the work-tree copy, because some git builds on Linux read a missing blob from an unchanged
+  work-tree file.
+- **The test suite holds under load.** The `scan-hidden` cost rows bound the scan's CPU time (10 s,
+  stopped by `RLIMIT_CPU` at 20 s, never above the inherited hard limit) instead of wall time; wall
+  time is only a 600 s hang guard. The push-guard rows bounded by a watchdog get 60 s of wall time
+  times `TEST_TIMEOUT_SCALE` (was a fixed 20 s), plus `ulimit -t 60`. `run-all.sh` changes to its own
+  root before any suite starts. A failing suite prints every FAIL or failed line of its log, and its
+  whole log is kept under `<XDG_CACHE_HOME or ~/.cache>/pr-reviewer-fixer/run-all-failed/` (mode
+  700; the path is printed; the last five kept, and pruning removes only folders with a checked name
+  that are real directories of this user). The "nothing was planted" row in `tests/scan/run.sh`
+  compares the status of the paths that suite plants plus `AGENTS.md`, `CLAUDE.md` and `.agents`,
+  so a file another process writes elsewhere in the checkout no longer fails it. No assertion is
+  weakened.
+- **Fixer eval advisory classifier** (`tests/fixer-eval/score.py`): flags `csh` and `tcsh` as shells,
+  reads Perl `qw` and Ruby `%w`/`%W` quoting (and the q-family and Ruby %-letter forms with a `<>`
+  pair or, in perl, ruby and irb code, a punctuation delimiter), and reads `echo` and `printf` output
+  as printed: `echo` drops a leading `-n`, `-e` or `-E`, `printf` prints its format, the operands
+  it formats and its output with the format applied to each operand (so an operand the format puts
+  on a line of its own is read as a command of its own), and `printf -v` prints nothing. The README lists the classifier's word lists in full
+  and names `score.py` as the reference. The verdict still rests on state checks only.
+- **Docs**: the pr-fixer improvements catalog marks items 31, 34, 97, 98, 99 and 100 `shipped`
+  (with where and which pull request), and `tests/run-all.sh` checks that the catalog's Counts
+  section matches its Target column. `AGENTS.md`, `docs/REFERENCE.md`, `docs/HOW-IT-WORKS.md` and
+  `docs/SKILLS-REFERENCE.md` name `behaviour-diff.sh`. `AGENTS.md` and `docs/REFERENCE.md` list GNU
+  `timeout` among the suite's needs (on macOS, coreutils' `timeout` on `PATH`) and name
+  `suite-check.yml`.
+
+Known limits: the catalog check accepts a lone slash, or a path that does not exist, as a `shipped`
+target (PR 86 N6). `AGENTS.md` does not yet say that any edit to `suite-check.yml` fails until the
+sha256 pinned in `tests/run-all.sh` is updated (PR 87 N6). The failing-rows filter in `run-all.sh`
+assumes a failing row holds FAIL or failed, true of every suite today (PR 88 N3). The fixer eval's
+advisory classifier still misfires on `printf '%s\n' ... | xargs` and on argument-position
+substitutions of multi-line printf output, misses a star width or precision (`printf '%*s'`), and
+names a single-operand printf read twice (PR 89 N4 to N6); the verdict is unaffected. The push
+guard's live-tip exclusion still assumes the agent cannot write the base branch; protecting `main`
+is a repository setting for a person (PR 70 N2). The reviewer does not run `proof-check.sh` yet.
+
+Compatibility: no marker, label or subcommand changes meaning. Below 1.0.0 these are minor: the
+review loop now reads the merge fixer's closure or stopped line before it treats a merge as pushed,
+a fixer closure may carry the `proofs` fence under the comment protocol, and `proof-check.sh` exits 1
+instead of 2 when a signal or an internal error follows a printed MISMATCH. `suite-check.yml` lives
+in this repository only. A failing `tests/run-all.sh` now leaves its logs in the cache folder named
+above (at most five runs).
+
 ## 0.23.0
 
 A merge push always leads to a review, the fixer's closure carries proofs a machine can re-run, new
