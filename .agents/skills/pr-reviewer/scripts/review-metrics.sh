@@ -41,12 +41,14 @@
 #   verified   `verified` on a later pass, with a trusted fixer closure for a cycle in between
 #   resolved   `verified` on a later pass with no trusted closure in between (someone else fixed it)
 #   refused    `refused-accepted`: the fixer refused it and the reviewer accepted the refusal
-#   fixed      `not-applicable` with a trusted closure between the pass before it that listed the
-#              finding and the pass that first marked it so; or open, then no longer listed by the
-#              next pass, with a trusted closure between the two (the fixer fixed it, the reviewer
-#              dropped it or marked it not-applicable)
-#   withdrawn  `not-applicable` with no such closure (an upper bound: an owner's fix outside a fixer
-#              cycle reads the same)
+#   fixed      a non-blocking finding only: `not-applicable` with a trusted closure between the pass
+#              before its final not-applicable run and the first pass of that run; or open, then no
+#              longer listed by the next pass, with a trusted closure between the two (the fixer fixed
+#              it, the reviewer dropped it or marked it not-applicable). An upper bound: a NOTE the
+#              fixer refused or declared debt that a later pass dropped or withdrew reads the same
+#   withdrawn  `not-applicable` and not fixed; a blocking `not-applicable` is always withdrawn, since
+#              the contract marks a fixed blocking finding verified (an upper bound: an owner's fix
+#              outside a fixer cycle reads the same)
 #   debt       still open when the pull request's newest trusted verdict is PASSED (declared debt)
 #   open       still open (or refused-rejected) under a BLOCKED newest verdict
 # Blocking: every CRITICAL, and a WARNING raised under a marker with `block_at=warning`. Accepted rate:
@@ -456,16 +458,19 @@ def read_pr(n, gate):
             f["outcome"] = "refused"
         elif st == "not-applicable":
             # The pass that first marked it not-applicable in its final run, and the pass before it
-            # that listed it: a fixer closure between the two means the fixer fixed it (this
-            # repository's reviewer marks a fixed NOTE not-applicable). Without one it was withdrawn.
+            # that listed it: for a non-blocking finding, a fixer closure between the two means the
+            # fixer fixed it (this repository's reviewer marks a fixed NOTE not-applicable). A blocking
+            # finding the fixer fixed is marked verified, so a blocking not-applicable is withdrawn.
             q = f["last_pass"]
-            while any(p < q and hist[p] == "not-applicable" for p in hist):
+            while any(p < q for p in hist) and hist[max(p for p in hist if p < q)] == "not-applicable":
                 q = max(p for p in hist if p < q)
             before = [p for p in hist if p < q]
-            f["outcome"] = "fixed" if before and fixer_between(max(before), q) else "withdrawn"
-        elif f["last_pass"] < passes[-1] and fixer_between(f["last_pass"], min(p for p in passes if p > f["last_pass"])):
-            # Open (or refused-rejected) and no longer listed by the next pass, with a fixer closure
-            # between them: the reviewer dropped it because the fixer fixed it.
+            f["outcome"] = ("fixed" if not f["blocking"] and before and fixer_between(max(before), q)
+                            else "withdrawn")
+        elif (not f["blocking"] and f["last_pass"] < passes[-1]
+              and fixer_between(f["last_pass"], min(p for p in passes if p > f["last_pass"]))):
+            # A non-blocking finding open (or refused-rejected) and no longer listed by the next pass,
+            # with a fixer closure between them: the reviewer dropped it because the fixer fixed it.
             f["outcome"] = "fixed"
         elif newest == "PASSED":
             f["outcome"] = "debt"
@@ -552,7 +557,7 @@ def scorecard(o):
             out.append("could not read: " + ", ".join("#%d" % n for n in failed))
         out.append("ignored: %d untrusted marker(s), %d edited and %d deleted trusted comment(s)" % (
             res["ignored"]["untrusted_markers"], res["ignored"]["edited_trusted"], res["ignored"]["deleted_trusted"]))
-        out.append("accepted = verified, fixed or resolved / blocking; withdrawn is an upper bound (see the reference); "
+        out.append("accepted = verified, fixed or resolved / blocking; fixed (non-blocking only) and withdrawn are upper bounds (see the reference); "
                    "cost: not recorded (the verdict marker has no cost field)")
         out.append("")
         out.append("by dimension")

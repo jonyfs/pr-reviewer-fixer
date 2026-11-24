@@ -103,14 +103,19 @@ first rule that applies:
 | `verified` | `verified` on a later pass, with a trusted fixer closure for a cycle in between |
 | `resolved` | `verified` on a later pass with no trusted closure in between (someone else fixed it) |
 | `refused` | `refused-accepted`: the fixer refused it and the reviewer accepted the refusal |
-| `fixed` | `not-applicable`, with a trusted closure between the pass before it that listed the finding and the pass that first marked it so; or open, then no longer listed by the next pass, with a trusted closure between the two |
-| `withdrawn` | `not-applicable` with no such closure |
+| `fixed` | a non-blocking finding only: `not-applicable`, with a trusted closure between the pass before its final not-applicable run and the first pass of that run; or open, then no longer listed by the next pass, with a trusted closure between the two |
+| `withdrawn` | `not-applicable` and not `fixed`: every blocking `not-applicable`, and a non-blocking one with no such closure |
 | `debt` | still open when the newest trusted verdict is PASSED (declared debt) |
 | `open` | still open, or `refused-rejected`, under a BLOCKED newest verdict |
 
 `fixed` is how this repository's reviewer records a NOTE the fixer fixed: the next pass marks it
 `not-applicable` or stops listing it. The closure has to fall in that step (a closure for an
-earlier cycle does not count), and only a trusted one counts. `withdrawn` is an upper bound: a
+earlier cycle does not count), and only a trusted one counts. The rule applies only to findings that
+do not block: the contract marks a blocking finding the fixer fixed `verified`, so a blocking
+`not-applicable` is the reviewer withdrawing it, and a blocking finding no longer listed is `debt` or
+`open`, whatever closure falls in the step. For non-blocking findings `fixed` is an upper bound too: a
+NOTE the fixer refused or declared debt that a later pass then withdrew or dropped reads the same as
+one it fixed. `withdrawn` is an upper bound: a
 finding an owner fixed outside a fixer cycle and the reviewer then marked `not-applicable` reads
 the same as a withdrawal, since the markers do not say which. On PRs 80, 85, 86, 88 and 89 this
 moved 18 of 20 withdrawn and 7 of 16 debt to `fixed`; the two left withdrawn are PR 80 W16 (a real
