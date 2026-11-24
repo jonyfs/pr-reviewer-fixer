@@ -3,7 +3,10 @@
 # No suite runs here: --print-key prints the key, and the option refusals exit before any suite starts.
 set -u
 T="$(cd "$(dirname "$0")" && pwd)"; SRC="$(cd "$T/.." && pwd)/run-all.sh"
-W="$T/work-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W"
+W="$T/work-${TEST_TAG:-main}"; rm -rf "$W"; mkdir -p "$W/tmp"
+# The scratch runs below fail on purpose. A failing run keeps its logs in the user's cache folder, and each run below
+# sets XDG_CACHE_HOME to a folder of this suite (or unsets HOME): TMPDIR is this suite's too, for the runs' own folders.
+export TMPDIR="$W/tmp"
 PASS=0; FAIL=0
 check() { local name="$1"; shift; if "$@"; then PASS=$((PASS+1)); echo "PASS | $name"; else FAIL=$((FAIL+1)); echo "FAIL | $name"; fi; }
 R="$W/repo"; mkdir -p "$R/tests"; cp "$SRC" "$R/tests/run-all.sh"
@@ -183,6 +186,77 @@ rm -rf "${CD2%/*}"; : > "${CD2%/*}"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 rm -f "${CD2%/*}"
 check "a green run whose key cannot be written says it is not recorded" eval '[ $r = 0 ] && printf %s "$out" | grep -q "could not be made or written"'
+# PR 85 N5, PR 88 W1: a run started outside the checkout runs every suite from the checkout's root (the gate suite's
+# export-audit rows resolve the repository from the working directory). One stub records the folder it runs in.
+cp "$R2/tests/scan/run.sh" "$W/scan-stub.bak"
+printf '#!/usr/bin/env bash\npwd -P >"%s/stub-pwd"\nexit 0\n' "$W" >"$R2/tests/scan/run.sh"; rm -f "$W/stub-pwd"
+out="$(cd / && bash "$R2/tests/run-all.sh" --fresh 2>&1)"; r=$?
+cp "$W/scan-stub.bak" "$R2/tests/scan/run.sh"
+check "a run started outside the checkout runs its suites from the checkout's root" \
+  eval '[ $r = 0 ] && [ "$(cat "$W/stub-pwd" 2>/dev/null)" = "$(cd "$R2" && pwd -P)" ]'
+# PR 85 N5, PR 86 N1, PR 87 N5: a failing suite names its failing rows and keeps its log. One stub fails with its FAIL row
+# first and six passing rows after it (one whose name holds FAIL), so the last three lines of its log do not hold the row.
+cp "$R2/tests/scan/run.sh" "$W/scan-stub.bak"
+printf '#!/usr/bin/env bash\necho "FAIL | the planted failing row"\necho "PASS | a passing row whose name says FAIL"\nfor i in 1 2 3 4 5; do echo "PASS | filler $i"; done\necho "TOTAL: 5 passed, 1 failed"\nexit 1\n' >"$R2/tests/scan/run.sh"
+# PR 88 N1, W4: the kept folders live in this user's cache folder (KB, under the scratch XDG_CACHE_HOME), never under
+# TMPDIR. Six older kept folders, a plain file of a kept name, and a folder whose suffix is not six characters are there
+# before the run; six older folders under TMPDIR are there too.
+KB="$XDG_CACHE_HOME/pr-reviewer-fixer/run-all-failed"
+plant_old() { local i; for i in 1 2 3 4 5 6; do mkdir -p "$1/run-all-failed.old00$i"; touch -t "20200101000$i" "$1/run-all-failed.old00$i"; done; }
+rm -rf "$KB" "$W/tmp/"run-all-failed.*; (umask 077; mkdir -p "$KB")
+plant_old "$KB"; plant_old "$W/tmp"
+: >"$KB/run-all-failed.file00"; touch -t 201901010000 "$KB/run-all-failed.file00"
+mkdir "$KB/run-all-failed.old1"; touch -t 201901010000 "$KB/run-all-failed.old1"
+out="$(bash "$R2/tests/run-all.sh" --fresh 2>&1)"; r=$?
+cp "$W/scan-stub.bak" "$R2/tests/scan/run.sh"
+KEPT_LOG="$(printf %s "$out" | sed -n 's/^   -- model-key scan FAILED; full log: //p')"
+check "a failing suite fails the run" [ "$r" != 0 ]
+check "a failing suite prints its FAIL row, not only its last three lines" eval 'printf %s "$out" | grep -q "^   | FAIL | the planted failing row$"'
+check "a failing suite keeps its whole log at the printed path, in the user's cache folder (XDG_CACHE_HOME/pr-reviewer-fixer/run-all-failed), after the run" \
+  eval '[ -n "$KEPT_LOG" ] && case "$KEPT_LOG" in "$KB/run-all-failed."*/*) true ;; *) false ;; esac && grep -q "FAIL | the planted failing row" "$KEPT_LOG" && grep -q "PASS | filler 5" "$KEPT_LOG"'
+check "a passing row whose name holds FAIL is not printed as a failing row" eval '! printf %s "$out" | grep -q "^   | PASS"'
+check "a passing suite prints no failing-rows block" eval '[ "$(printf %s "$out" | grep -c " FAILED; full log: ")" = 1 ]'
+check "a failing run keeps the newest four older folders and its own, removes the older ones, leaves a plain file and a name that is not mktemp's (PR 88 N1, W4)" \
+  eval '[ ! -e "$KB/run-all-failed.old001" ] && [ ! -e "$KB/run-all-failed.old002" ] && [ -d "$KB/run-all-failed.old003" ] && [ -d "$KB/run-all-failed.old006" ] && [ -f "$KB/run-all-failed.file00" ] && [ -d "$KB/run-all-failed.old1" ] && [ -f "$KEPT_LOG" ] && [ "$(ls -d "$KB/"run-all-failed.* | wc -l | tr -d " ")" = 7 ]'
+check "the kept folders' folder is made with mode 700" eval '[ -n "$(find "$KB" -maxdepth 0 -perm -700 ! -perm -g+r ! -perm -g+w ! -perm -g+x ! -perm -o+r ! -perm -o+w ! -perm -o+x)" ]'
+check "nothing is kept or removed under TMPDIR any more (PR 88 W4)" \
+  eval '[ "$(ls -d "$W/tmp/"run-all-failed.* | wc -l | tr -d " ")" = 6 ] && [ -d "$W/tmp/run-all-failed.old001" ]'
+# PR 88 W4: prune_kept once split ls output on newlines, so a kept folder whose name holds newlines turned each later
+# line into a relative path, which names a folder at the checkout's root (the run works from there), and removed it with
+# rm -rf. A third scratch repository (a copy of the green one with its own .git, never the suite's own tree) holds an
+# untracked decoy folder; the kept folders' folder holds a newest folder named run-all-failed.zz and then five decoy
+# lines and two .git lines, a link of a kept name to a folder outside, and the six older folders. Both decoys, the
+# repository, the link and its target must survive a failing run.
+R3="$W/nl"; rm -rf "$R3"; cp -R "$R2" "$R3"
+printf '#!/usr/bin/env bash\necho "FAIL | the planted failing row"\nexit 1\n' >"$R3/tests/scan/run.sh"
+mkdir "$R3/decoy"; echo keep >"$R3/decoy/f"; HEAD3="$(git -C "$R3" rev-parse HEAD)"
+mkdir -p "$W/linkdecoy"; echo keep >"$W/linkdecoy/f"
+rm -rf "$KB"; (umask 077; mkdir -p "$KB"); plant_old "$KB"
+NL="$KB/run-all-failed.zz"$'\n'decoy$'\n'decoy$'\n'decoy$'\n'decoy$'\n'decoy$'\n'.git$'\n'.git; mkdir "$NL"
+ln -s "$W/linkdecoy" "$KB/run-all-failed.lnk001"; touch -h -t 201801010000 "$KB/run-all-failed.lnk001" 2>/dev/null
+out="$(bash "$R3/tests/run-all.sh" --fresh 2>&1)"; r=$?
+check "a kept folder whose name holds newlines is never split: the decoy folder and .git at the checkout's root survive a failing run (PR 88 W4)" \
+  eval '[ "$r" != 0 ] && [ -f "$R3/decoy/f" ] && [ "$(git -C "$R3" rev-parse HEAD 2>/dev/null)" = "$HEAD3" ] && [ -d "$NL" ]'
+check "a link with a kept folder's name is never counted or removed, and its target survives (PR 88 W4)" \
+  eval '[ -L "$KB/run-all-failed.lnk001" ] && [ -f "$W/linkdecoy/f" ]'
+check "the same failing run still prunes the real older folders (the newest four and its own are left)" \
+  eval '[ ! -e "$KB/run-all-failed.old001" ] && [ ! -e "$KB/run-all-failed.old002" ] && [ -d "$KB/run-all-failed.old003" ]'
+# Another owner: an id stub first on PATH gives another uid for -u (no folder of another user can be made without root),
+# so the kept folders' folder is not this user's: nothing is kept and nothing is removed.
+rm -rf "$KB"; (umask 077; mkdir -p "$KB"); plant_old "$KB"
+out="$(PATH="$W/idbin:$PATH" bash "$R3/tests/run-all.sh" --fresh 2>&1)"; r=$?
+check "kept folders owned by another uid (id -u gives another uid): nothing is removed, nothing kept, said plainly (PR 88 W4)" \
+  eval '[ "$r" != 0 ] && [ "$(ls -d "$KB/"run-all-failed.* | wc -l | tr -d " ")" = 6 ] && printf %s "$out" | grep -q "full log: not kept (no folder owned and writable by this user alone could be made under $KB)"'
+# Writable by others: anyone could plant a name there, so nothing is kept and nothing is removed.
+rm -rf "$KB"; (umask 077; mkdir -p "$KB"); plant_old "$KB"; chmod o+w "$KB"
+out="$(bash "$R3/tests/run-all.sh" --fresh 2>&1)"; r=$?
+chmod o-w "$KB"
+check "a kept folders' folder writable by others: nothing is removed, nothing kept (PR 88 W4)" \
+  eval '[ "$r" != 0 ] && [ "$(ls -d "$KB/"run-all-failed.* | wc -l | tr -d " ")" = 6 ] && printf %s "$out" | grep -q "full log: not kept"'
+# A relative XDG_CACHE_HOME would name a folder inside the checkout (the run works from its root): nothing is kept there.
+out="$(cd "$W" && XDG_CACHE_HOME=relcache bash "$R3/tests/run-all.sh" --fresh 2>&1)"; r=$?
+check "a relative XDG_CACHE_HOME keeps nothing and makes no folder in the checkout or the caller's folder (PR 88 W4)" \
+  eval '[ "$r" != 0 ] && [ ! -e "$R3/relcache" ] && [ ! -e "$W/relcache" ] && printf %s "$out" | grep -q "full log: not kept"'
 unset XDG_CACHE_HOME
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
