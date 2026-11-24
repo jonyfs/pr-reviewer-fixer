@@ -723,6 +723,9 @@ jqk "suppress W1: with no mandatory unit, security-hardening, appsec, privacy-da
   '[.findings[] | select(.id == "W4" or .id == "W5" or .id == "W7" or .id == "W8") | .action] == ["keep","keep","keep","keep"]'
 jqk "suppress W1: with no mandatory unit, data_integrity is data-integrity and is demoted" "$W/sw1n.json" \
   "$(fnd W6)"' | .action == "demote" and .dimension == "data-integrity"'
+bash "$RM" suppress --json --prs 45 --mandatory migrations --report "$R/draft-w1-nomu.md" --floor-files "$R/floor-none" >"$W/sw1a.json" 2>/dev/null
+jqk "suppress W1: a mandatory unit named by another name of its row (migrations) protects data_integrity" "$W/sw1a.json" \
+  "$(fnd W6)"' | .action == "keep"'
 bash "$RM" suppress --json --prs 43 --report "$R/draft-vocab.md" --floor-files "$R/floor-none" >"$W/svoc.json" 2>/dev/null
 jqk "suppress W1: every name of the 18 rows of references/dimensions.md is a category of its row, none other" "$W/svoc.json" \
   '[.findings[] | {row: (.id | split("_")[0]), d: .dimension}] as $a | ($a | length > 18)
