@@ -456,6 +456,19 @@ cmp -s "$ROOT/.agents/skills/pr-reviewer/templates/review-gate.yml" "$ROOT/.gith
 # the form `indent [- ]plain-key: value`, so a quoted key, a space before the colon, a flow mapping, an anchor or a
 # block scalar fails it; it reads each `- ` step by indent, and a step whose uses names actions/checkout (quoted or
 # not, any case) must hold exactly one persist-credentials: false directly under its own with:.
+# A parser of the raw text can be outrun by YAML itself (PR 87 W2: an escape in a double-quoted value, a single-quoted
+# value left open over later lines), so the first line of defence is a pin: the workflow must match the sha256 below
+# byte for byte. Any edit to it, a whitespace-only one included, fails here until the pin is updated in the same pull
+# request, which a reviewer then sees in the diff. That a harmless edit fails is intended. The parser stays as the
+# second line of defence and, since W2, also fails on any backslash in a value and on any quoted value that does not
+# close on its own line (one quoted token, with no inner quote of its kind, then at most a comment).
+sc_pin=d72298283d66d2ab0905727c900fe7407eec78d1364575711bccb683f5bdbec0
+sc_sum="$(sha256 "$ROOT/.github/workflows/suite-check.yml" 2>/dev/null | cut -d' ' -f1)"
+if [ -n "$sc_sum" ] && [ "$sc_sum" = "$sc_pin" ]; then
+  echo "== suite-check.yml matches the sha256 pinned in tests/run-all.sh"
+else
+  echo "== suite-check.yml DIFFERS from the sha256 pinned in tests/run-all.sh (now '${sc_sum}'): review the edit, then update the pin in the same pull request"; fail=1
+fi
 sc="$(grep -v '^[[:space:]]*#' "$ROOT/.github/workflows/suite-check.yml" 2>/dev/null)"
 sc_on="$(printf '%s\n' "$sc" | awk '/^on:/{on=1;next} on&&/^[^[:space:]]/{exit} on&&/^  [^[:space:]]/{print}')"
 sc_perm="$(printf '%s\n' "$sc" | awk '/^permissions:/{on=1;next} on&&/^[^[:space:]]/{exit} on&&/[^[:space:]]/{print}')"
@@ -479,6 +492,12 @@ for raw in lines:
     ind, dash, key, val = len(m.group(1)), m.group(2) is not None, m.group(3), (m.group(4) or "").strip()
     if val[:1] in ("{", "&", "*", "|", ">", "!") or (val[:1] == "[" and key != "types"):
         sys.exit(1)
+    if "\\" in val:  # PR 87 W2: YAML decodes escapes in a double-quoted value; the raw text is not the value
+        sys.exit(1)
+    if val[:1] in ("'", '"'):  # PR 87 W2: a quote left open swallows the lines below it
+        close = val.find(val[0], 1)
+        if close < 0 or not re.fullmatch(r"(\s+#.*)?", val[close + 1:]):
+            sys.exit(1)
     rows.append((ind, dash, ind + 2 if dash else ind, key, val, raw.lower()))
 top = [r[3] for r in rows if r[2] == 0]
 perms = [r for r in rows if r[3] == "permissions"]
