@@ -33,7 +33,14 @@ mkfix() {
 scan() { local d="$1"; shift; r=0; env "$@" bash "$d/tests/run-all.sh" --scan-only >"$W/out" 2>&1 || r=$?; }
 has() { grep -qF -- "$1" "$W/out"; }
 
-S0="$(git -C "$ROOT" status --porcelain --untracked-files=all 2>/dev/null)"
+# The real work tree's status, before and after, over the paths this suite plants (the scanned trees, install.sh,
+# .github, .gitignore and tests/run-all.sh) and the instruction and skill paths no run may change (AGENTS.md, CLAUDE.md
+# and the whole .agents folder), so a planted file that lands in the real tree is caught. Only those paths: the other
+# suites, and the person or agent who started the run, may change other files of the tree while this suite runs (a
+# note at the root, for example), and a whole-tree compare failed on that (PR 85 N5, PR 86 N1, PR 87 N5; PR 88 W2).
+PLANTED_PATHS=("${trees[@]}" install.sh .github .gitignore tests/run-all.sh AGENTS.md CLAUDE.md .agents)
+real_status() { git -C "$ROOT" status --porcelain --untracked-files=all -- "${PLANTED_PATHS[@]}" 2>&1; }
+S0="$(real_status)"
 F="$W/fix"; mkfix "$F"
 scan "$F"
 check "a clean tree: exit 0 and the pass line" eval '[ $r = 0 ] && has "no model action or provider key"'
@@ -183,7 +190,8 @@ if [ "$(id -u)" != 0 ]; then
 fi
 scan "$F"
 check "the fixture is clean again at the end" eval '[ $r = 0 ]'
-check "nothing was planted in the work tree" eval '[ "$(git -C "$ROOT" status --porcelain --untracked-files=all 2>/dev/null)" = "$S0" ]'
+S1="$(real_status)"; printf 'before:\n%s\nafter:\n%s\n' "$S0" "$S1" >"$W/out"
+check "nothing was planted in the work tree (the paths this suite plants, AGENTS.md, CLAUDE.md, .agents)" eval '[ "$S1" = "$S0" ]'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"
