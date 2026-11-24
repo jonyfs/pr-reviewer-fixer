@@ -47,7 +47,7 @@ cp -p "$X/rc.bak" "$G"
 WF="$X/t/.github/workflows/suite-check.yml"; cp -p "$WF" "$X/wf.bak"
 mutant() {
   local name="$1"; shift; "$@" <"$X/wf.bak" >"$WF"; only
-  check "suite-check.yml mutant, $name -> exit 1 (PR 87 N4)" \
+  check "suite-check.yml mutant, $name -> exit 1 (${mt:-PR 87 N4})" \
     eval '[ $r = 1 ] && has "^== suite-check.yml is not pull_request only" && ! cmp -s "$WF" "$X/wf.bak"'
   cp -p "$X/wf.bak" "$WF"
 }
@@ -59,6 +59,33 @@ mutant "a job-level permissions block" awk '{print} /^    runs-on:/{print "    p
 mutant "persist-credentials: true" sed 's/persist-credentials: false/persist-credentials: true/'
 mutant "persist-credentials removed (the default keeps the token)" grep -v 'persist-credentials'
 mutant "a second checkout without persist-credentials" awk '{print} /^    steps:$/{print "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"}'
+# PR 87 W1: forms the line counts of the N4 check let through: a quoted or spaced job-level permissions key, the
+# checkout's persist-credentials line moved under another step or under the checkout's env, and a second checkout
+# written quoted, in another case, with a quoted key or as a flow mapping.
+mt="PR 87 W1"
+mutant "a job-level \"permissions\": write-all (quoted key)" \
+  awk '{print} /^    runs-on:/{print "    \"permissions\": write-all"}'
+mutant "a job-level 'permissions': {contents: write} (quoted key)" \
+  awk '{print} /^    runs-on:/{print "    \047permissions\047: {contents: write}"}'
+mutant "a job-level permissions : write-all (space before the colon)" \
+  awk '{print} /^    runs-on:/{print "    permissions : write-all"}'
+mutant "persist-credentials: false moved under a later step that is not a checkout" \
+  awk '/^        with:$/||/persist-credentials/{next} {print} END{print "      - uses: some/other@0000000000000000000000000000000000000000"; print "        with:"; print "          persist-credentials: false"}'
+mutant "persist-credentials: false under the checkout's env, not its with" sed 's/^        with:$/        env:/'
+mutant "a second checkout, uses quoted, without persist-credentials" \
+  awk '{print} /^    steps:$/{print "      - uses: \"actions/checkout@11d5960a326750d5838078e36cf38b85af677262\""}'
+mutant "a second checkout written Actions/Checkout, without persist-credentials" \
+  awk '{print} /^    steps:$/{print "      - uses: Actions/Checkout@11d5960a326750d5838078e36cf38b85af677262"}'
+mutant "a second checkout with a quoted uses key, without persist-credentials" \
+  awk '{print} /^    steps:$/{print "      - \"uses\": actions/checkout@11d5960a326750d5838078e36cf38b85af677262"}'
+mutant "a second checkout as a flow mapping, without persist-credentials" \
+  awk '{print} /^    steps:$/{print "      - {uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262}"}'
+mt=""
+# A checkout step written name, then uses, then with is the same step: it passes.
+awk '/^      - uses: actions\/checkout@/{print "      - name: checkout"; sub(/- uses:/, "  uses:")} {print}' <"$X/wf.bak" >"$WF"; only
+check "a checkout step written name, uses, with: persist-credentials: false -> still exit 0 (PR 87 W1)" \
+  eval '[ $r = 0 ] && has "^== suite-check.yml: pull_request only" && ! cmp -s "$WF" "$X/wf.bak"'
+cp -p "$X/wf.bak" "$WF"
 awk 'NR==1{print "# pull_request_target, workflow_run and persist-credentials: true are never used here"} {print}' \
   <"$X/wf.bak" >"$WF"; only
 check "a comment naming pull_request_target is not read -> still exit 0 (PR 87 N4)" \
