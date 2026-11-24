@@ -68,17 +68,21 @@
 # any gh call. Report and comment text is data: only the fixed marker formats and the findings block
 # are parsed, nothing read is executed, and no claim text is printed (a fingerprint is a short hash).
 #
-# SUPPRESS (opt-in category suppression, catalog item 26). The scorecard's history, per dimension:
-# accepted (verified, resolved, fixed) against dismissed (refused, withdrawn); debt and open are
-# neither. A dimension with at least --min-decided (5) decided findings and a dismissed share of at
-# least --min-dismissed (0.6) is suppressed, except security, `none` and `other`, and every
-# mandatory unit of the change (path-floor.sh over --floor BASE HEAD or --floor-files FILE, the
-# report's `mandatory_units:`, --mandatory). With --report, each counted finding of that draft
-# report is `demote` (a WARNING, to NOTE), `list` (a NOTE, shown under suppressed) or `keep`: a
-# CRITICAL always, and a WARNING whenever REVIEW_BLOCK_AT is set to anything but `critical`, so the
-# verdict never changes. FAIL OPEN: anything unreadable (no trusted login, a pull request gh could
-# not read, the report, the floor, a bad flag, an unexpected error) prints `suppressed: none (fail
-# open: <reason>)`, keeps every finding, and exits 2. No state: nothing is written but stdout or --out.
+# SUPPRESS (opt-in category suppression, catalog item 26). The scorecard's history, per category:
+# accepted (verified, resolved, fixed: suppress's own SUPPRESS_ACCEPTED) against dismissed (refused,
+# withdrawn); debt and open are neither. A category is a dimension label mapped onto the eighteen
+# rows of references/dimensions.md (`docs` is documentation, `data_integrity` is data-integrity); a
+# label holding the word security is security, and any other label is `other`. A category with at
+# least --min-decided (5) decided findings and a dismissed share of at least --min-dismissed (0.6)
+# is suppressed, except security, `none` and `other`, and the category of every mandatory unit of
+# the change (path-floor.sh over --floor BASE HEAD or --floor-files FILE, the report's
+# `mandatory_units:`, --mandatory). With --report, each counted finding of that draft report is
+# `demote` (a WARNING, to NOTE), `list` (a NOTE, shown under suppressed) or `keep`: a CRITICAL
+# always, and a WARNING whenever REVIEW_BLOCK_AT is set to anything but `critical`, so the verdict
+# never changes. FAIL OPEN: anything unreadable (no trusted login, a pull request gh could not read,
+# a pull request left out for an edited trusted marker or an unreadable trusted findings block, the
+# report, the floor, a bad flag, an unexpected error) prints `suppressed: none (fail open:
+# <reason>)`, keeps every finding, and exits 2. No state: nothing is written but stdout or --out.
 #
 # OUTPUT. A table, or one JSON object with --json, to stdout or to --out FILE (written whole; nothing
 # else is written). Read-only on GitHub. Scorecard exit codes: 0 when every pull request was read, 2
@@ -485,6 +489,7 @@ def read_pr(n, gate):
             if fid not in found:
                 sev = str(e.get("severity") or "").upper()
                 found[fid] = {"id": fid, "raised_at": p, "severity": sev, "dimension": dimension(e.get("dimension")),
+                              "label": str(e.get("dimension") or ""),
                               "model": ("%s/%s" % (v["model"], v["tier"])) if v["model"] else "unrecorded",
                               "blocking": sev == "CRITICAL" or (sev == "WARNING" and v["block_at"] == "warning")}
             found[fid]["last_pass"], found[fid]["status"] = p, str(e.get("status") or "open")
@@ -628,10 +633,52 @@ def scorecard(o):
 
 # ---- suppress -----------------------------------------------------------------------------------
 # What may never be suppressed, whatever its history: the security dimension, and the two buckets
-# that are not one category (no dimension, or one the pattern turns into `other`).
+# that are not one category (no dimension, or a label outside the vocabulary below).
 NEVER = {"security": "the security dimension", "none": "no dimension, not one category",
-         "other": "an unreadable dimension, not one category"}
+         "other": "a label outside references/dimensions.md, not one category"}
+# suppress keeps its own accepted outcomes: the scorecard's ACCEPTED may change (open PR 94 narrows
+# it), and a NOTE is accepted only as `fixed`, so without it a NOTE-heavy category looks dismissed.
+SUPPRESS_ACCEPTED = ("verified", "resolved", "fixed")
 DISMISSED = ("refused", "withdrawn")
+# The categories: the eighteen rows of references/dimensions.md, each name of a row (and a few
+# common short forms) mapped onto one canonical name. Any other label is `other`, never suppressed.
+VOCABULARY = {
+    "correctness": ("correctness", "functionality"),
+    "design": ("design", "architecture"),
+    "complexity": ("complexity",),
+    "maintainability": ("maintainability", "readability"),
+    "security": ("security",),
+    "performance": ("performance", "perf"),
+    "testing": ("testing", "tests", "test", "coverage"),
+    "error-handling": ("error-handling", "errors"),
+    "concurrency": ("concurrency",),
+    "api": ("api", "backward-compat", "backward-compatibility", "compatibility", "contract"),
+    "documentation": ("documentation", "docs", "doc"),
+    "dependencies": ("dependencies", "dependency", "deps"),
+    "observability": ("observability",),
+    "data-integrity": ("data-integrity", "data", "migrations", "migration"),
+    "reliability": ("reliability", "resilience"),
+    "scalability": ("scalability", "capacity"),
+    "operability": ("operability", "deployability"),
+    "privacy": ("privacy", "data-protection"),
+}
+CANONICAL = {alias: name for name, aliases in VOCABULARY.items() for alias in aliases}
+# A label holding `security`, or one of these words between hyphens, is the security dimension.
+SECURITY_WORDS = {"appsec", "infosec", "secops", "devsecops", "sec", "owasp", "vuln", "vulnerability", "vulnerabilities"}
+
+
+def category(v):
+    """The suppress category of a dimension label: NFKC, lowercase, spaces and `_` read as `-`; a
+    label holding the word security (or a security word) is `security`; a name of dimensions.md is
+    its row's name; empty is `none`; anything else is `other`."""
+    v = re.sub(r"[\s_]+", "-", unicodedata.normalize("NFKC", str(v or "")).strip().lower()).strip("-")
+    if not v:
+        return "none"
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", v, re.ASCII):
+        return "other"
+    if "security" in v or SECURITY_WORDS & set(v.split("-")):
+        return "security"
+    return CANONICAL.get(v, "other")
 
 
 def fail_open(o, reason, findings=None):
@@ -640,7 +687,7 @@ def fail_open(o, reason, findings=None):
     res = {"fail_open": True, "reason": reason, "suppressed": [], "categories": [], "findings": [],
            "coverage": ["suppressed: none (fail open: %s)" % reason]}
     for e in findings or []:
-        res["findings"].append({"id": safe(e.get("id"), 40), "dimension": dimension(e.get("dimension")),
+        res["findings"].append({"id": safe(e.get("id"), 40), "dimension": category(e.get("dimension")),
                                 "severity": safe(str(e.get("severity") or "").upper(), 20), "action": "keep",
                                 "reason": "fail open"})
     if o.get("json"):
@@ -668,10 +715,10 @@ def floor_units(o):
     return {dimension(ln.split(" ", 1)[0]) for ln in out.splitlines() if ln.strip()}
 
 
-def protects(units, dim):
-    """A mandatory unit protects the dimension of its name, and of its first word (`data-integrity`
-    protects `data` too, the name a findings block may use for it)."""
-    return any(dim == u or dim == u.split("-", 1)[0] for u in units)
+def protects(units, cat):
+    """A mandatory unit protects its own category (`data-integrity` protects `data_integrity`, `data`
+    and `migrations`, which are the same category)."""
+    return cat in {category(u) for u in units}
 
 
 def suppress(o):
@@ -711,12 +758,20 @@ def suppress(o):
         (failed.append(n) if r is None else rows.append(r))
     if failed:
         fail_open(o, "could not read pull request(s) %s, so the history is incomplete" % ",".join(map(str, failed)), counted)
-    done = [r for r in rows if r["complete"]]
+    left = [r for r in rows if not r["complete"]]
+    if left:
+        # Leaving a pull request out only removes evidence, and can only push a category toward
+        # dismissed: an incomplete history suppresses nothing.
+        fail_open(o, "pull request(s) %s left out (%s), so the history is incomplete" % (
+            ",".join(str(r["pr"]) for r in left), "; ".join("#%d: %s" % (r["pr"], "; ".join(r["reasons"])) for r in left)),
+            counted)
+    done = rows
     where = ("since %s" % o["since"]) if o["since"] else ("over %d pull request%s" % (len(done), "" if len(done) == 1 else "s"))
     cats = {}
     for f in (f for r in done for f in r["findings"]):
-        c = cats.setdefault(f["dimension"], {"dimension": f["dimension"], "accepted": 0, "dismissed": 0, "neither": 0})
-        c["accepted" if f["outcome"] in ACCEPTED else "dismissed" if f["outcome"] in DISMISSED else "neither"] += 1
+        d = category(f["label"])
+        c = cats.setdefault(d, {"dimension": d, "accepted": 0, "dismissed": 0, "neither": 0})
+        c["accepted" if f["outcome"] in SUPPRESS_ACCEPTED else "dismissed" if f["outcome"] in DISMISSED else "neither"] += 1
     out_cats, suppressed = [], []
     for d in sorted(cats):
         c = cats[d]
@@ -742,7 +797,7 @@ def suppress(o):
     warn_blocks = (os.environ.get("REVIEW_BLOCK_AT") or "critical") != "critical"
     findings = []
     for e in counted:
-        d, sev = dimension(e.get("dimension")), safe(str(e.get("severity") or "").upper(), 20)
+        d, sev = category(e.get("dimension")), safe(str(e.get("severity") or "").upper(), 20)
         if d not in suppressed:
             act, why = "keep", "category not suppressed"
         elif sev == "CRITICAL":
