@@ -10,11 +10,11 @@
 # AGREEMENT (self-agreement, catalog item 96). k >= 2 verdict reports of the same pull request and the
 # same head, written by k fresh-context reviewers that did not see each other (the loop agent runs them;
 # this script never calls a model, see references/review-metrics.md). Each report's findings block is
-# read through `review-cycle.sh findings-block`, the one parser the other scripts use; the `pr:`,
-# `head:`, `dimension:` and `claim:` fields it does not print are read from the same block by the same
-# line rules, and a report whose ids differ between the two readings is refused. Only entries that
-# count (status open, refused-rejected or none) are compared: a verified entry carried forward is not
-# a finding of this review.
+# read through `review-cycle.sh findings-block`, the one parser the other scripts use, and only
+# through it: the `pr:` and `head:` of its header and each entry's `dimension:` and `claim:` are the
+# values it prints (a double-quoted value that is one JSON string decoded, so `\u00e9` and the
+# literal letter are one claim). Only entries that count (status open, refused-rejected or none) are
+# compared: a verified entry carried forward is not a finding of this review.
 #
 #   Fingerprint: sha256 of file, dimension and normalized claim; the line, the id and the severity are
 #   left out. The file loses a leading `./`. The dimension is lowercased, and anything but
@@ -52,7 +52,8 @@
 #   debt       still open when the pull request's newest trusted verdict is PASSED (declared debt)
 #   open       still open (or refused-rejected) under a BLOCKED newest verdict
 # Blocking: every CRITICAL, and a WARNING raised under a marker with `block_at=warning`. Accepted rate:
-# blocking findings verified, fixed or resolved, over blocking (a valid finding someone fixed). A unit
+# blocking findings verified or resolved, over blocking (a valid finding someone fixed; fixed is never
+# blocking, so it is not in the rate). A unit
 # with at least --min-blocking (3) blocking findings and an accepted rate below --min-accept (0.5) is
 # flagged `low_acceptance`, a candidate to retune or retire. Cost: the verdict marker has no cost
 # field, so it is printed as "not recorded" and never estimated.
@@ -210,38 +211,9 @@ def findings_block(path):
         return 2, None
 
 
-def block_extras(text):
-    """The fields findings-block does not print, read from the same block by the same line rules:
-    top-level `pr:` and `head:`, and per entry (in order) `dimension:` and `claim:`."""
-    lines = [ln[:-1] if ln.endswith("\r") else ln for ln in text.split("\n")]
-    last = max((i for i, ln in enumerate(lines) if ln.strip(" \t")), default=None)
-    first = next((i for i, ln in enumerate(lines) if ln == "```findings"), None)
-    meta, entries, section, e = {}, [], None, None
-    if last is None or first is None:
-        return meta, entries
-    for ln in lines[first + 1:last]:
-        if re.match(r"\s*(#|$)", ln):
-            continue
-        top = re.match(r"([A-Za-z_][A-Za-z0-9_-]*):[ \t]*(.*?)[ \t]*$", ln)
-        if top:
-            section, e = top.group(1), None
-            if section in ("pr", "head"):
-                meta[section] = top.group(2).strip("\"'")
-            continue
-        if section == "findings":
-            s = re.match(r"\s*-\s+id:\s*(\S+)", ln)
-            if s:
-                e = {"id": s.group(1).strip("\"'")}
-                entries.append(e)
-                continue
-            kv = re.match(r"\s{2,}(dimension|claim):\s*(.*?)\s*$", ln)
-            if kv and e is not None:
-                e[kv.group(1)] = kv.group(2).strip("\"'")
-    return meta, entries
-
-
 def entries_of(body):
-    """The entries of a comment's or file's findings block with dimension and claim, or None."""
+    """(header, entries) of a comment's or file's findings block as findings-block prints them, or
+    (None, None). Nothing is read from the block past findings-block."""
     fd, tmp = tempfile.mkstemp(prefix="review-metrics-", suffix=".md")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -254,13 +226,10 @@ def entries_of(body):
             pass
     if rc or not isinstance(blk, dict):
         return None, None
-    meta, extra = block_extras(body)
-    base = blk.get("entries") or []
-    if [x.get("id") for x in base] != [x.get("id") for x in extra]:
+    meta, ents = blk.get("header"), blk.get("entries")
+    if not isinstance(meta, dict) or not isinstance(ents, list) or not all(isinstance(e, dict) for e in ents):
         return None, None
-    for b, x in zip(base, extra):
-        b["dimension"], b["claim"] = x.get("dimension"), x.get("claim")
-    return meta, base
+    return meta, ents
 
 
 # ---- agreement ----------------------------------------------------------------------------------
@@ -306,8 +275,8 @@ def agreement(o):
         meta, ents = entries_of(text)
         if ents is None:
             die("%s has no readable findings block (review-cycle.sh findings-block refused it)" % safe(p))
-        pr = meta.get("pr", "")
-        head = meta.get("head", "").lower()
+        pr = str(meta.get("pr") or "")
+        head = str(meta.get("head") or "").lower()
         if not re.fullmatch(r"[0-9]+", pr, re.ASCII) or not re.fullmatch(r"[0-9a-f]{7,40}", head, re.ASCII):
             die("%s: the findings block needs `pr:` (a number) and `head:` (7 to 40 hex digits)" % safe(p))
         fps = {}
@@ -481,7 +450,9 @@ def read_pr(n, gate):
 
 
 OUTCOMES = ("verified", "fixed", "resolved", "refused", "withdrawn", "debt", "open")
-ACCEPTED = ("verified", "fixed", "resolved")
+# What the accepted rate counts. fixed is never blocking (a blocking finding the fixer fixed is marked
+# verified), so it is not listed; the legend is built from this tuple.
+ACCEPTED = ("verified", "resolved")
 
 
 def tally(rows, key, o):
@@ -557,8 +528,9 @@ def scorecard(o):
             out.append("could not read: " + ", ".join("#%d" % n for n in failed))
         out.append("ignored: %d untrusted marker(s), %d edited and %d deleted trusted comment(s)" % (
             res["ignored"]["untrusted_markers"], res["ignored"]["edited_trusted"], res["ignored"]["deleted_trusted"]))
-        out.append("accepted = verified, fixed or resolved / blocking; fixed (non-blocking only) and withdrawn are upper bounds (see the reference); "
-                   "cost: not recorded (the verdict marker has no cost field)")
+        accepted = ", ".join(ACCEPTED[:-1]) + " or " + ACCEPTED[-1]
+        out.append("accepted = %s / blocking; fixed (non-blocking only) and withdrawn are upper bounds (see the reference); "
+                   "cost: not recorded (the verdict marker has no cost field)" % accepted)
         out.append("")
         out.append("by dimension")
         out += table("dimension", res["by_dimension"])

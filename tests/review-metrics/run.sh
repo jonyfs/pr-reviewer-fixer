@@ -21,6 +21,9 @@
 #   30  the not-applicable walk-back (N8): open, n/a, open, n/a with closure 1 only (withdrawn), and
 #       open, n/a, n/a, n/a with closure 1 (fixed).
 #   31  the closure window (N9): a closure for the cycle after the next pass counts for neither rule.
+#   32  the walk-back steps to the previous LISTED pass (N13a): n/a, not listed, n/a after closure 1.
+#   33  a not-applicable entry needs an earlier listing to be fixed (N13b): first listed n/a.
+#   34  blocking is read from the raising marker's block_at (N13c), not the newest marker's.
 set -u
 unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
 T="$(cd "$(dirname "$0")" && pwd)"
@@ -116,6 +119,15 @@ report("upper.md", [S1, S2], head=HEAD[:12].upper())
 # Escape sequences in a finding's file and dimension, and (below, in the shell) in a report's name.
 report("escf.md", [("C1", "CRITICAL", "src/\x1b[31mred.py", 3, "sec\x1b[2Jurity", "Token is not checked")])
 report("escf2.md", [("C1", "CRITICAL", "src/\x1b[31mred.py", 3, "sec\x1b[2Jurity", "Token is not checked")])
+# N12: a claim and a dimension are read as findings-block decodes them. A claim with the JSON escape
+# \u00e9 in one report and the literal letter in the other is one claim; so is a dimension written
+# "security" (quoted) and security. A lone surrogate escape is not UTF-8 and must not crash.
+report("esc-u.md", [("C1", "CRITICAL", "src/auth/session.ts", 47, "\"security\"", "Caf\\u00e9 token is accepted")])
+with open(os.path.join(d, "lit-u.md"), "w", encoding="utf-8") as fh:
+    fh.write(open(os.path.join(d, "esc-u.md"), encoding="utf-8").read()
+             .replace("Caf\\u00e9", "Caf\u00e9").replace('"security"', "security"))
+report("sur1.md", [("C1", "CRITICAL", "src/auth/session.ts", 47, "security", "Bad \\ud800 token")])
+report("sur2.md", [("C1", "CRITICAL", "src/auth/session.ts", 47, "security", "Bad \\ud800 token")])
 PY
 R="$W/r"
 J="$W/agree.json"
@@ -214,27 +226,38 @@ out=$(bash "$RM" agreement "$R/upper.md" "$R/a.md" 2>&1); rc=$?
 [ "$rc" = 0 ] && row "a head in capitals matches the same head in lower case, exit 0" ok \
   || row "a head in capitals matches the same head in lower case, exit 0" bad "exit $rc: $out"
 # No printed field carries an escape sequence: a report's name, a finding's file and its dimension (N6).
-ESCN="$R/esc"$'\033'"[31mname.md"
+# The report is named relatively from inside $R, so the printed name stays short (safe() cuts a name
+# at 200 characters) however long the clone path is (N11).
+ESCB="esc"$'\033'"[31mname.md"
+ESCN="$R/$ESCB"
 cp "$R/a.md" "$ESCN"
-out=$(bash "$RM" agreement "$ESCN" "$R/a2.md" 2>&1)
+out=$(cd "$R" && bash "$RM" agreement "$ESCB" a2.md 2>&1)
 case "$out" in *$'\033'*) row "a report name holding ESC is printed without it" bad "ESC in the table" ;;
   *) has "a report name holding ESC is printed without it" "esc?[31mname.md" "$out" ;; esac
 out=$( { bash "$RM" agreement "$R/escf.md" "$R/escf2.md"; bash "$RM" agreement --json "$R/escf.md" "$R/escf2.md";
          bash "$RM" agreement "$ESCN" "$R/missing.md"; } 2>&1)
 case "$out" in *$'\033'*) row "a finding's file and dimension holding ESC never reach the output raw (table, JSON, refusal)" bad "ESC in the output" ;;
   *) has "a finding's file and dimension holding ESC never reach the output raw (table, JSON, refusal)" "dimension other" "$out" ;; esac
-# The drift guard: when findings-block and the script's own reading disagree on the ids, the report
-# is refused. The parsers agree today, so a stub findings-block stands in for a future drift.
+# N12: the claim and the dimension are the ones findings-block prints, read nowhere else.
+bash "$RM" agreement --json "$R/esc-u.md" "$R/lit-u.md" >"$J" 2>"$W/esc-u.err"; rc=$?
+[ "$rc" = 0 ] && row "a claim with an escaped letter and one with the literal letter are one claim: exit 0" ok \
+  || row "a claim with an escaped letter and one with the literal letter are one claim: exit 0" bad "exit $rc: $(cat "$W/esc-u.err")"
+jqk "an escaped and a literal letter, a quoted and a bare dimension: jaccard 1.00, dimension security" "$J" \
+  '.overall.mean_pairwise == 1 and .pairs[0].shared == 1 and [.dimensions[].dimension] == ["security"]'
+out=$(bash "$RM" agreement "$R/sur1.md" "$R/sur2.md" 2>&1); rc=$?
+[ "$rc" = 0 ] && has "a claim holding a lone surrogate escape is read, not a crash: exit 0, overlap 1.00" "mean pairwise 1.00" "$out" \
+  || row "a claim holding a lone surrogate escape is read, not a crash: exit 0, overlap 1.00" bad "exit $rc: ${out:0:400}"
+# A stub findings-block that prints the same entry and header whatever the report says: two reports
+# that differ read the same, so nothing (claim, dimension, pr, head) is read past findings-block.
 mkdir -p "$W/stub"
 cp "$RM" "$W/stub/review-metrics.sh"
 cat >"$W/stub/review-cycle.sh" <<'EOF'
 #!/usr/bin/env bash
-# findings-block stub: one entry whose id the report does not have.
-printf '%s\n' '{"entries": [{"id": "X9", "severity": "CRITICAL", "file": "src/auth/session.ts", "status": "open"}], "counts": null, "mandatory_units": [], "mandatory_problems": []}'
+printf '%s\n' '{"entries": [{"id": "C1", "severity": "CRITICAL", "file": "src/auth/session.ts", "dimension": "security", "claim": "stub claim"}], "counts": null, "mandatory_units": [], "mandatory_problems": [], "header": {"pr": "7", "head": "9f2c1ab4e0d3"}}'
 EOF
-out=$(bash "$W/stub/review-metrics.sh" agreement "$R/a.md" "$R/a2.md" 2>&1); rc=$?
-[ "$rc" = 2 ] && row "findings-block and the script's reading disagree on the ids: refused, exit 2" ok \
-  || row "findings-block and the script's reading disagree on the ids: refused, exit 2" bad "exit $rc: $out"
+out=$(bash "$W/stub/review-metrics.sh" agreement "$R/dis.md" "$R/head.md" 2>&1); rc=$?
+[ "$rc" = 0 ] && has "claim, dimension, pr and head come from findings-block only: two different reports read the same through a stub" "mean pairwise 1.00" "$out" \
+  || row "claim, dimension, pr and head come from findings-block only: two different reports read the same through a stub" bad "exit $rc: $out"
 [ ! -s "$FAKE_DIR/calls.log" ] && row "agreement never calls gh" ok || row "agreement never calls gh" bad "$(cat "$FAKE_DIR/calls.log")"
 
 # ---- the scorecard's pull requests ---------------------------------------------------------------
@@ -361,6 +384,26 @@ pr(31, [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("N1", "NOTE", "open", "lens-i
         verdict("rev-bot", SHA[2], "BLOCKED", 2, [("N1", "NOTE", "not-applicable", None), ("C1", "CRITICAL", "open", None)], c=1),
         closure("rev-bot", 2, SHA[3], 1, 0, 0),
         verdict("rev-bot", SHA[3], "PASSED", 3, [("N1", "NOTE", "not-applicable", None), ("C1", "CRITICAL", "verified", None)])])
+# 32: N13a. N1 lens-skip: open at pass 1, closure 1, not-applicable at pass 2, not listed at pass 3,
+# not-applicable at pass 4. The walk-back goes from pass 4 to the previous pass that LISTS it (2, also
+# not-applicable) and stops at pass 1 (open): closure 1 is in that step, so it is fixed. Stepping to
+# pass q-1 stops at pass 4 (pass 3 does not list it) and finds no closure between 2 and 4: withdrawn.
+pr(32, [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("N1", "NOTE", "open", "lens-skip"), ("C1", "CRITICAL", "open", "lens-c")], c=1, n=1),
+        closure("rev-bot", 1, SHA[2], 1, 0, 0),
+        verdict("rev-bot", SHA[2], "BLOCKED", 2, [("N1", "NOTE", "not-applicable", None), ("C1", "CRITICAL", "open", None)], c=1),
+        verdict("rev-bot", SHA[3], "BLOCKED", 3, [("C1", "CRITICAL", "open", None)], c=1),
+        verdict("rev-bot", SHA[4], "PASSED", 4, [("N1", "NOTE", "not-applicable", None), ("C1", "CRITICAL", "verified", None)])])
+# 33: N13b. N3 lens-first-na: first listed at pass 2, already not-applicable, with closure 1 before
+# pass 2. No earlier listing, so nothing was fixed: withdrawn.
+pr(33, [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("C1", "CRITICAL", "open", "lens-c")], c=1),
+        closure("rev-bot", 1, SHA[2], 1, 0, 0),
+        verdict("rev-bot", SHA[2], "PASSED", 2, [("C1", "CRITICAL", "verified", None), ("N3", "NOTE", "not-applicable", "lens-first-na")])])
+# 34: N13c. W1 lens-ba-raise: raised under block_at=warning at pass 1, still open at pass 2, whose
+# marker has no block_at (critical): it blocks, as raised (debt, accepted 0/1). W2 lens-ba-late: raised
+# at pass 1 under block_at=critical, still open at pass 2 under block_at=warning: it does not block.
+pr(34, [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("W1", "WARNING", "open", "lens-ba-raise")], w=1, block_at="warning"),
+        verdict("rev-bot", SHA[2], "BLOCKED", 2, [("W1", "WARNING", "open", None), ("W2", "WARNING", "open", "lens-ba-late")], w=2),
+        verdict("rev-bot", SHA[3], "PASSED", 3, [("W1", "WARNING", "open", None), ("W2", "WARNING", "open", None)], w=2, block_at="warning")])
 json.dump([{"number": 21}, {"number": 23}], open(os.path.join(d, "list.json"), "w"))
 PY
 S="$W/score.json"
@@ -415,7 +458,9 @@ out=$(bash "$RM" scorecard --prs 26,27,28 2>&1)
 case "$out" in *$'\033'*) row "scorecard: a dimension holding ESC never reaches the table raw" bad "ESC in the table" ;;
   *) has "scorecard: a dimension holding ESC never reaches the table raw" "other" "$out" ;; esac
 has "the table has a fixed column" "fixed" "$out"
-has "the legend says what accepted counts" "accepted = verified, fixed or resolved" "$out"
+# N10: fixed is never blocking, so counting it as accepted changes no number; the legend is built
+# from the same list the rate counts, so this row fails if fixed (or anything else) joins it.
+has "the legend says what accepted counts: verified or resolved, nothing else" "accepted = verified or resolved / blocking;" "$out"
 # W3: blocking WARNINGs withdrawn after a trusted closure stay withdrawn, and the lens is flagged LOW.
 S3="$W/score29.json"
 bash "$RM" scorecard --json --prs 29,30,31 >"$S3" 2>"$W/score29.err"; rc=$?
@@ -435,6 +480,18 @@ jqk "N9: not-applicable at pass 2 with only closure 2 (after pass 2) is withdraw
   "$(dim lens-incl)"' | .withdrawn == 1 and .fixed == 0'
 jqk "N9: no longer listed at pass 2 with only closure 2 (not in that step) is debt, not fixed" "$S3" \
   "$(dim lens-nextstep)"' | .debt == 1 and .fixed == 0'
+# N13: three rules that each had a surviving mutant.
+S4="$W/score32.json"
+bash "$RM" scorecard --json --prs 32,33,34 >"$S4" 2>"$W/score32.err"; rc=$?
+[ "$rc" = 0 ] && row "scorecard 32-34: exit 0" ok || row "scorecard 32-34: exit 0" bad "exit $rc: $(cat "$W/score32.err")"
+jqk "N13a: n/a, not listed, n/a after closure 1: the walk-back steps to the previous listed pass, fixed" "$S4" \
+  "$(dim lens-skip)"' | .fixed == 1 and .withdrawn == 0'
+jqk "N13b: a NOTE first listed not-applicable, closure before it: no earlier listing, withdrawn, not fixed" "$S4" \
+  "$(dim lens-first-na)"' | .withdrawn == 1 and .fixed == 0'
+jqk "N13c: a WARNING raised under block_at=warning blocks though a later marker has no block_at" "$S4" \
+  "$(dim lens-ba-raise)"' | .blocking == 1 and .debt == 1 and .accepted_blocking == 0'
+jqk "N13c: a WARNING raised under block_at=critical does not block though the newest marker has block_at=warning" "$S4" \
+  "$(dim lens-ba-late)"' | .blocking == 0 and .debt == 1'
 # N5: the closure marker and the edited and deleted trust filters are copies of fix-ledger.sh's.
 FL="$T/../../.agents/skills/pr-fixer/scripts/fix-ledger.sh"
 if python3 -I - "$RM" "$FL" <<'PY'

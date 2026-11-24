@@ -40,9 +40,10 @@ scripts/review-metrics.sh agreement [--min 0.5] [--json] [--out FILE] r1.md r2.m
 ```
 
 Each report's findings block is read through `review-cycle.sh findings-block`, the same parser
-`lint-report` and `push-guard.sh` use. The fields that parser does not print (`pr:`, `head:`, and
-each entry's `dimension:` and `claim:`) are read from the same block by the same line rules. If the
-two readings disagree on the ids, the report is refused. Only entries that count are compared
+`lint-report`, `push-guard.sh` and `export-sarif` use, and through nothing else. The `pr:` and
+`head:` come from the header it prints, and each entry's `dimension:` and `claim:` are the values it
+prints. A double-quoted value that is one JSON string is decoded, so a claim that writes `\u00e9`
+and one that writes the letter itself are the same claim. Only entries that count are compared
 (status `open`, `refused-rejected` or none). A `verified` entry carried forward from an earlier
 pass was not found by this review.
 
@@ -122,9 +123,9 @@ moved 18 of 20 withdrawn and 7 of 16 debt to `fixed`; the two left withdrawn are
 withdrawal) and N12 (an owner fix in cycle 4, which has no closure).
 
 `blocking` counts every CRITICAL, plus each WARNING raised under a marker that carries
-`block_at=warning`. The accepted rate is the blocking findings that were `verified`, `fixed` or
-`resolved`, divided by blocking: the share of blocking findings that were valid and got fixed,
-whoever fixed them. A unit with at least `--min-blocking` (3) blocking findings and an accepted rate
+`block_at=warning`. The accepted rate is the blocking findings that were `verified` or `resolved`,
+divided by blocking: the share of blocking findings that were valid and got fixed, whoever fixed
+them. `fixed` is not in it: only a non-blocking finding can be `fixed`. A unit with at least `--min-blocking` (3) blocking findings and an accepted rate
 below `--min-accept` (0.5) is flagged `low_acceptance`, a candidate to retune or retire. The
 `verified` column alone says how many the fixer closed and the reviewer confirmed. A low rate on a
 pull request that is still open can simply mean the fixer has not finished, so judge merged pull
