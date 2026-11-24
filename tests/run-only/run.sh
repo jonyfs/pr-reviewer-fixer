@@ -37,6 +37,8 @@ check "--only push-guard still runs the shared-script cmp checks (PR 87 N3)" \
 check "--only push-guard still runs the model-key scan (PR 87 N3)" has "^== no model action or provider key in [0-9]+ files"
 check "--only push-guard runs the suite-check.yml check, and the real workflow passes it (PR 87 N4)" \
   has "^== suite-check.yml: pull_request only"
+check "the real workflow matches the sha256 pinned in run-all.sh (PR 87 W2)" \
+  has "^== suite-check.yml matches the sha256 pinned in tests/run-all.sh$"
 G="$X/t/.agents/skills/pr-fixer/scripts/review-cycle.sh"; cp -p "$G" "$X/rc.bak"; printf '#\n' >>"$G"; only
 check "--only push-guard, one byte added to the fixer's review-cycle.sh -> exit 1, DIFFERS named (PR 87 N3)" \
   eval '[ $r = 1 ] && has "^== scripts/review-cycle.sh DIFFERS between the skills$"'
@@ -48,7 +50,8 @@ WF="$X/t/.github/workflows/suite-check.yml"; cp -p "$WF" "$X/wf.bak"
 mutant() {
   local name="$1"; shift; "$@" <"$X/wf.bak" >"$WF"; only
   check "suite-check.yml mutant, $name -> exit 1 (${mt:-PR 87 N4})" \
-    eval '[ $r = 1 ] && has "^== suite-check.yml is not pull_request only" && ! cmp -s "$WF" "$X/wf.bak"'
+    eval '[ $r = 1 ] && has "^== suite-check.yml is not pull_request only" && ! cmp -s "$WF" "$X/wf.bak" \
+      && { [ -z "${ml:-}" ] || grep -qF -- "$ml" "$WF"; }'
   cp -p "$X/wf.bak" "$WF"
 }
 mutant "pull_request_target added as a second trigger" awk '{print} /^  pull_request:$/{print "  pull_request_target:"}'
@@ -80,16 +83,40 @@ mutant "a second checkout with a quoted uses key, without persist-credentials" \
   awk '{print} /^    steps:$/{print "      - \"uses\": actions/checkout@11d5960a326750d5838078e36cf38b85af677262"}'
 mutant "a second checkout as a flow mapping, without persist-credentials" \
   awk '{print} /^    steps:$/{print "      - {uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262}"}'
+# PR 87 W2: YAML decodes escapes in a double-quoted value, so the raw text the parser reads can differ from the
+# value a loader sees; and a single-quoted value left open runs on over the lines below it. Each form adds a checkout
+# that keeps its token. The escaped lines are appended with printf, never through awk or echo, which would decode the
+# backslash themselves; each row also checks that the literal escape reached the mutant file ($ml).
+mt="PR 87 W2"
+append() { cat; printf '%s\n' "$1"; }
+CO_SHA=11d5960a326750d5838078e36cf38b85af677262
+ml='\x65' mutant "a second checkout written \"actions/ch\\x65ckout@...\", without persist-credentials" \
+  append '      - uses: "actions/ch\x65ckout@'"$CO_SHA"'"'
+ml='\u0065' mutant "a second checkout written \"actions/ch\\u0065ckout@...\", without persist-credentials" \
+  append '      - uses: "actions/ch\u0065ckout@'"$CO_SHA"'"'
+ml='\U00000065' mutant "a second checkout written \"actions/ch\\U00000065ckout@...\", without persist-credentials" \
+  append '      - uses: "actions/ch\U00000065ckout@'"$CO_SHA"'"'
+ml='\x2f' mutant "a second checkout written \"actions\\x2fcheckout@...\", without persist-credentials" \
+  append '      - uses: "actions\x2fcheckout@'"$CO_SHA"'"'
+ml="name: 'x" mutant "a single-quoted name opened after the checkout's uses and closed after persist-credentials" \
+  awk '{print} /^      - uses: actions\/checkout@/{print "        name: \047x"} /persist-credentials/{print "        y: z\047"}'
 mt=""
-# A checkout step written name, then uses, then with is the same step: it passes.
+# The workflow is pinned by its sha256 in run-all.sh (PR 87 W2), so any edit to it fails the suite until the pin is
+# updated in the same pull request. The rows below are edits the parser accepts: each must exit 1 on the pin alone,
+# with the parser's success line still printed. That a harmless edit fails is intended.
+pinned() {
+  check "$1 -> exit 1 on the pin alone, the parser still accepts it (PR 87 W2, intended)" \
+    eval '[ $r = 1 ] && has "^== suite-check.yml DIFFERS from the sha256 pinned in tests/run-all.sh" \
+      && has "^== suite-check.yml: pull_request only" && ! cmp -s "$WF" "$X/wf.bak"'
+  cp -p "$X/wf.bak" "$WF"
+}
+# A checkout step written name, then uses, then with is the same step: the parser accepts it.
 awk '/^      - uses: actions\/checkout@/{print "      - name: checkout"; sub(/- uses:/, "  uses:")} {print}' <"$X/wf.bak" >"$WF"; only
-check "a checkout step written name, uses, with: persist-credentials: false -> still exit 0 (PR 87 W1)" \
-  eval '[ $r = 0 ] && has "^== suite-check.yml: pull_request only" && ! cmp -s "$WF" "$X/wf.bak"'
-cp -p "$X/wf.bak" "$WF"
+pinned "a checkout step written name, uses, with: persist-credentials: false (PR 87 W1)"
 awk 'NR==1{print "# pull_request_target, workflow_run and persist-credentials: true are never used here"} {print}' \
   <"$X/wf.bak" >"$WF"; only
-check "a comment naming pull_request_target is not read -> still exit 0 (PR 87 N4)" \
-  eval '[ $r = 0 ] && has "^== suite-check.yml: pull_request only"'
-cp -p "$X/wf.bak" "$WF"
+pinned "a comment naming pull_request_target, which the parser does not read (PR 87 N4)"
+awk '{print} /^name: suite-check$/{print ""}' <"$X/wf.bak" >"$WF"; only
+pinned "a whitespace-only edit (an empty line after name:)"
 echo "TOTAL: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
