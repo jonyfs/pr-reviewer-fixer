@@ -287,7 +287,7 @@ check "build-cases: a stale local origin/main is fetched first, so the base is t
 check "build-cases: a base whose base..head count differs from the pull request's commits is refused" eval \
   'jq -e ".unreachable[0] == null and (.unreachable[1] | contains(\"3 commit(s)\") and contains(\"has 1 up to the first-pass head\"))" <<<"$bo" >/dev/null'
 check "build-cases: a first-pass head that is not among the pull request's commits is refused" eval \
-  'jq -e ".head_not_listed[0] == null and (.head_not_listed[1] | contains(\"not among the pull request.s commits\"))" <<<"$bo" >/dev/null'
+  'jq -e ".head_not_listed[0] == null and (.head_not_listed[1] | test(\"not among the pull request.s commits\"))" <<<"$bo" >/dev/null'
 
 # ---- no network --------------------------------------------------------------------------------------
 check "no gh, curl or wget was called by any row" eval '[ ! -e "$W/net.log" ]'

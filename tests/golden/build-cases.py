@@ -17,10 +17,12 @@ or NOTE, that a later trusted pass marked `verified`, with a trusted fixer closu
 between: a fixer closed it and the reviewer confirmed the fix. Findings raised at a later pass are
 left out, because the case is pinned to the first pass's head (`sha=` of that marker) and its base:
 the merge base of that head with the base branch as it stood when that verdict was posted (the
-newest first-parent commit of origin/<base branch> not after the verdict, read from the local clone,
-which it must be run in; when the base branch no longer exists, its tip at merge time). It may fetch
-a missing commit by sha; it pushes nothing. golden.py
-prepare refuses a case whose expected lines are not inside its base..head diff.
+newest first-parent commit of origin/<base branch> not after the verdict, fetched into the local
+clone it must be run in; when the base branch no longer exists, its tip at merge time). It fetches
+that branch and any missing commit by sha; it pushes nothing. A pull request whose base..head does
+not hold exactly its own commits up to the first-pass head (GitHub's list) is refused, so a stale or
+wrong base never reaches a draft. golden.py prepare refuses a case whose expected lines are not
+inside its base..head diff.
 
 Ids are compared, not trusted: an id verified later at another file or dimension than the first pass
 gave it is left out and named (`draft_dropped_ids`).
@@ -35,8 +37,8 @@ unknown key, an empty description), so a draft is never scored by mistake. Nothi
 the repository, and nothing on GitHub is changed. Text read from GitHub is data: it is parsed by the
 fixed marker and block rules, written into JSON (escaped), and printed only through safe().
 
-Exit 0 = every listed pull request was read · 2 = a refusal (no allowlist, bad flag) or gh could
-not read one (the others are still written).
+Exit 0 = every listed pull request was read · 2 = a refusal (no allowlist, bad flag, a base that
+fails the commit check) or gh could not read one (the others are still written).
 """
 import argparse, datetime, importlib.util, json, os, re, subprocess, sys, tempfile, unicodedata
 
@@ -228,14 +230,31 @@ def base_of(root, branch, oid, head, at, pr_oids):
     """(the first pass's base, None), or (None, why). The base branch's first-parent history: the
     merge commits land there at merge time, so the newest one not after the verdict is the branch as
     the first pass saw it. A gone branch (a deleted release branch) falls back to its tip at merge
-    time (`oid`)."""
-    rc4, tip = run(("git", "-C", root, "rev-list", "-1", "--first-parent", "--before=" + at,
-                    "refs/remotes/origin/" + branch, "--"))
+    time (`oid`).
+
+    The local origin/<branch> ref is fetched first and read only when that fetch worked: a stale ref
+    gives an older base and a wider diff. The result is then checked: base..head must hold exactly
+    the pull request's own commits (`pr_oids`, from GitHub) that the first-pass head reaches."""
+    rc4, tip = run(("git", "-C", root, "fetch", "--quiet", "origin",
+                    "+refs/heads/%s:refs/remotes/origin/%s" % (branch, branch)))
+    if rc4 == 0:
+        rc4, tip = run(("git", "-C", root, "rev-list", "-1", "--first-parent", "--before=" + at,
+                        "refs/remotes/origin/" + branch, "--"))
     tip = tip.strip() if rc4 == 0 and re.fullmatch(r"[0-9a-f]{40}", tip.strip()) else oid
     rc3, mb = run(("git", "-C", root, "merge-base", tip, head))
     base = mb.strip()
     if rc3 or not re.fullmatch(r"[0-9a-f]{40}", base):
         return None, "git could not resolve the first-pass head's base"
+    if head not in pr_oids:
+        return None, "the first-pass head %s is not among the pull request's commits" % head[:12]
+    rc5, reach = run(("git", "-C", root, "rev-list", head, "--"))
+    rc6, span = run(("git", "-C", root, "rev-list", "--count", base + ".." + head, "--"))
+    if rc5 or rc6 or not span.strip().isdigit():
+        return None, "git could not count base..head"
+    want = len(set(pr_oids) & set(reach.split()))
+    if int(span) != want:
+        return None, ("base %s gives %d commit(s) in base..head, but the pull request has %d up to the "
+                      "first-pass head: the base is stale or wrong" % (base[:12], int(span), want))
     return base, None
 
 
@@ -269,7 +288,13 @@ def build(n, repo, gate):
     for sha in (head, oid):
         if re.fullmatch(r"[0-9a-f]{40}", sha) and run(("git", "-C", root, "cat-file", "-e", sha + "^{commit}"))[0]:
             run(("git", "-C", root, "fetch", "--quiet", "origin", sha))
-    base, why = base_of(root, branch, oid, head, at, ())
+    # The pull request's own commits, for the base check. The REST list stops at 250 commits, so a
+    # list that long may be cut short and is refused.
+    rc5, oids = run(("gh", "api", "--paginate", "repos/%s/pulls/%d/commits" % (repo, n), "--jq", ".[].sha"))
+    pr_oids = oids.split() if rc5 == 0 else []
+    if not pr_oids or len(pr_oids) >= 250 or not all(re.fullmatch(r"[0-9a-f]{40}", x) for x in pr_oids):
+        return None, "gh could not list the pull request's commits (or it has 250 or more)"
+    base, why = base_of(root, branch, oid, head, at, pr_oids)
     if base is None:
         return None, why
     cands.sort(key=lambda x: (x["file"], x["lines"][0], x["source_id"]))

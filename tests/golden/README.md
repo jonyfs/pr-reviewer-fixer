@@ -44,7 +44,7 @@ A case file has these fields, and no others:
 | --- | --- |
 | `schema` | 1 |
 | `repo`, `pr` | the pull request |
-| `base`, `head` | the 40-digit shas the first pass reviewed: `head` is that verdict's `sha=`, `base` the merge base of `head` with the base branch as it stood when the verdict was posted (its newest first-parent commit not after the verdict). When the base branch was deleted (#35 and #36 targeted release branches), its tip at merge time stands in, which can be newer than what the first pass saw; for every case the base..head commit count was checked against the pull request's own commit count |
+| `base`, `head` | the 40-digit shas the first pass reviewed: `head` is that verdict's `sha=`, `base` the merge base of `head` with the base branch as it stood when the verdict was posted (its newest first-parent commit not after the verdict). When the base branch was deleted (#35 and #36 targeted release branches), its tip at merge time stands in, which can be newer than what the first pass saw. `build-cases.py` fetches the base branch first and refuses a base whose base..head does not hold exactly the pull request's own commits up to `head` |
 | `pass` | the verdict's pass number |
 | `expected` | a list of `{id, source_id, file, lines, dimension, severity, description}`: `id` is E1, E2, ...; `source_id` the finding's id in the verdict; `lines` is `[start, end]` in the new file; `description` is one sentence written from the verdict and the fix diff |
 | `validated_by` | `none`, or the login of the person who validated it |
@@ -63,7 +63,9 @@ REVIEW_MARKER_AUTHORS=jonyfs python3 tests/golden/build-cases.py --prs 95-120 --
 It trusts a marker only from a login on `REVIEW_MARKER_AUTHORS`, reads comments through
 `pr-json.py` (an edited comment is never read), skips a pull request where a trusted comment was
 edited or deleted by someone else, and reads each findings block through `review-cycle.sh
-findings-block`. A draft (`pr-<n>.draft.json`) carries the reviewer's own claim and the fix head, so
+findings-block`. Run it inside a clone of this repository: it fetches the base branch there, and
+refuses (exit 2, no draft) a pull request whose base..head commit count differs from its own commits
+up to the first-pass head. A draft (`pr-<n>.draft.json`) carries the reviewer's own claim and the fix head, so
 whoever finishes it can write the description from the claim and `git diff <head> <fix head>`.
 `golden.py validate` refuses a draft as it stands: copy only the case fields into `cases/pr-<n>.json`,
 write each `description` in your own words, then run `golden.py prepare` (below) to check that every
