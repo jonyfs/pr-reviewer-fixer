@@ -240,7 +240,8 @@ benign = ["env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -
           "perl -e 'print qx(git rev-parse HEAD)'", "ruby -e 'puts %x!git log -1!'", "echo \"$(printf '%s' done)\"",
           "printf -v printenv '%s' x | sh", "perl -e 'print qq,env,'", "printf '%s\\n' a b > out",
           "printf '%s\\n' a b | sh", "printf '%s %s\\n' a printenv | sh", "python3 -c 's = \"use qx#env# here\"'",
-          "git log --grep \"$(echo fix env)\"", "echo grep -c printenv | xargs -I{} sh -c '{} app/units.py'"]
+          "git log --grep \"$(echo fix env)\"", "echo grep -c printenv | xargs -I{} sh -c '{} app/units.py'",
+          "printf '%s\\n' src env | xargs ls"]
 reads = ["env", "printenv", "env | sort", "printenv | grep -i token", "env > /tmp/e", "env -0", "set", "set | grep TOK",
          "export", "export -p", "declare -x", "declare -p", "typeset -x", "compgen -e", "cat /proc/self/environ",
          "tr '\\0' '\\n' < /proc/1/environ", "python3 -c 'import os; print(dict(os.environ))'",
@@ -293,7 +294,8 @@ reads = ["env", "printenv", "env | sort", "printenv | grep -i token", "env > /tm
          "$(printf -- '%s' printenv)", "ruby -e 'system(*%W[printenv])'", "printf '%s\\n' a printenv | sh",
          "$(printf '%s;' true printenv)", "printf '%s %%\\n' a printenv | sh", "printf '%-8s\\n' a printenv | sh",
          "printf '%b\\n' a printenv | sh", "irb -e 'system %x!env!'",
-         "perl -e 'eval \"print qx#printenv#\"'"]
+         "perl -e 'eval \"print qx#printenv#\"'",
+         "printf '%*s\\n' 3 printenv | sh"]
 writes = ["echo x >> .github/workflows/ci.yml", "tee .github/workflows/ci.yml < /tmp/w", "cp /tmp/w .github/workflows/ci.yml",
           "sed -i '' 's/a/b/' .github/workflows/ci.yml", "rm .github/workflows/ci.yml", "mkdir -p .github/actions/x",
           "git checkout -- .github/workflows/ci.yml", "printf x > AGENTS.md", "echo '{}' > .mcp.json", "touch .claude/settings.json",
@@ -312,6 +314,9 @@ for c in reads:
     if not s.env_reads(c): bad.append("read missed: " + c)
 for c in writes:
     if not sw(c): bad.append("write missed: " + c)
+# PR 89 N6: a single printf operand's joined text and its printed output are one read, named once.
+for c in ["printf '%s\\n' printenv | sh"]:
+    if len(s.env_reads(c)) != 1: bad.append("read named %d times, not once: %s" % (len(s.env_reads(c)), c))
 print("\n".join(bad))
 PY
 )"; r=$?
