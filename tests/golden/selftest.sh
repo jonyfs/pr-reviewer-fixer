@@ -229,6 +229,16 @@ out["untrusted_closure"] = bc.select(pr(closure=closure(1, "someone-else")), gat
 out["not_merged"] = bc.select(pr(extra={"state": "OPEN"}), gate)[1]
 out["edited"] = bc.select(pr(extra={"editedComments": [{"author": {"login": "trusted-one"}, "editor": {"login": "trusted-one"},
                                                          "body": O + " adversarial-review: sha=%s verdict=PASSED pass=3 -->" % A}]}), gate)[1]
+# A trusted comment that is not a marker, edited or deleted: by its author it is kept, by another login
+# the pull request is skipped.
+def ed(editor):
+    return {"editedComments": [{"author": {"login": "trusted-one"}, "editor": {"login": editor}, "body": "a plain comment"}]}
+def de(actor):
+    return {"deletedComments": [{"author": {"login": "trusted-one"}, "actor": {"login": actor}, "body": None}]}
+out["foreign_edit"] = bc.select(pr(extra=ed("someone-else")), gate)[1]
+out["own_edit"] = bc.select(pr(extra=ed("trusted-one")), gate)[1]
+out["foreign_delete"] = bc.select(pr(extra=de("someone-else")), gate)[1]
+out["own_delete"] = bc.select(pr(extra=de("trusted-one")), gate)[1]
 print(json.dumps(out))
 PY
 sel="$(python3 -I "$W/sel.py" "$T/build-cases.py" 2>&1)"
@@ -238,6 +248,46 @@ check "build-cases: an id verified at another file is dropped and named" eval 'j
 check "build-cases: a closure by an untrusted login does not count" eval 'jq -e ".untrusted_closure | startswith(\"no first-pass finding\")" <<<"$sel" >/dev/null'
 check "build-cases: a pull request that is not merged is skipped" eval 'jq -e ".not_merged == \"not merged\"" <<<"$sel" >/dev/null'
 check "build-cases: an edited trusted marker skips the pull request" eval 'jq -e ".edited | startswith(\"a trusted marker comment was edited\")" <<<"$sel" >/dev/null'
+check "build-cases: a trusted comment edited by another login skips the pull request" eval \
+  'jq -e ".foreign_edit == \"a trusted marker comment was edited, or a trusted comment was edited by someone else\" and .own_edit == null" <<<"$sel" >/dev/null'
+check "build-cases: a trusted comment deleted by another login skips the pull request" eval \
+  'jq -e ".foreign_delete == \"a trusted comment was deleted by someone other than its author\" and .own_delete == null" <<<"$sel" >/dev/null'
+
+# ---- build-cases.py base: a stale local origin/<base> ref (git only; the origin is a local bare repo) --
+GD="$W/git"; mkdir -p "$GD"
+gt() { git -c user.name=golden -c user.email=golden@example.invalid -c commit.gpgsign=false \
+         -c core.hooksPath=/dev/null -c init.defaultBranch=main "$@"; }
+mk() { GIT_AUTHOR_DATE="$2" GIT_COMMITTER_DATE="$2" gt -C "$1" commit -q --allow-empty -m "$3"; } # repo date message
+gt init -q --bare "$GD/origin.git"; gt init -q "$GD/src"
+mk "$GD/src" 2026-10-01T00:00:00Z c1; mk "$GD/src" 2026-10-02T00:00:00Z c2
+gt -C "$GD/src" push -q "$GD/origin.git" HEAD:refs/heads/main
+gt clone -q "$GD/origin.git" "$GD/clone" 2>/dev/null      # the clone's origin/main stops at c2
+STALE="$(git -C "$GD/src" rev-parse HEAD)"
+mk "$GD/src" 2026-10-03T00:00:00Z c3; mk "$GD/src" 2026-10-04T00:00:00Z c4; FORK="$(git -C "$GD/src" rev-parse HEAD)"
+gt -C "$GD/src" checkout -q -b feat; mk "$GD/src" 2026-10-05T00:00:00Z p1; P1="$(git -C "$GD/src" rev-parse HEAD)"
+gt -C "$GD/src" checkout -q main; mk "$GD/src" 2026-11-05T00:00:00Z c5   # after the verdict
+gt -C "$GD/src" push -q "$GD/origin.git" main feat
+gt -C "$GD/clone" fetch -q origin "+refs/heads/feat:refs/remotes/origin/feat"
+cat >"$W/base.py" <<'PY'
+import importlib.util, json, subprocess, sys
+spec = importlib.util.spec_from_file_location("bc", sys.argv[1]); bc = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bc)
+clone, stale, fork, p1 = sys.argv[2:6]
+at = "2026-11-01T00:00:00Z"
+out = {"stale_ref": bc.base_of(clone, "main", stale, p1, at, [p1])}
+subprocess.run(("git", "-C", clone, "update-ref", "refs/remotes/origin/main", stale), check=True)
+subprocess.run(("git", "-C", clone, "remote", "set-url", "origin", clone + "-gone.git"), check=True)
+out["unreachable"] = bc.base_of(clone, "main", stale, p1, at, [p1])
+out["head_not_listed"] = bc.base_of(clone, "main", fork, p1, at, ["0" * 40])
+print(json.dumps(out))
+PY
+bo="$(python3 -I "$W/base.py" "$T/build-cases.py" "$GD/clone" "$STALE" "$FORK" "$P1" 2>&1)"
+check "build-cases: a stale local origin/main is fetched first, so the base is the fork point" eval \
+  'jq -e --arg f "$FORK" ".stale_ref == [\$f, null]" <<<"$bo" >/dev/null'
+check "build-cases: a base whose base..head count differs from the pull request's commits is refused" eval \
+  'jq -e ".unreachable[0] == null and (.unreachable[1] | contains(\"3 commit(s)\") and contains(\"has 1 up to the first-pass head\"))" <<<"$bo" >/dev/null'
+check "build-cases: a first-pass head that is not among the pull request's commits is refused" eval \
+  'jq -e ".head_not_listed[0] == null and (.head_not_listed[1] | contains(\"not among the pull request.s commits\"))" <<<"$bo" >/dev/null'
 
 # ---- no network --------------------------------------------------------------------------------------
 check "no gh, curl or wget was called by any row" eval '[ ! -e "$W/net.log" ]'

@@ -224,6 +224,21 @@ def select(pr, gate):
     return (first, verdicts, cands, dropped), None
 
 
+def base_of(root, branch, oid, head, at, pr_oids):
+    """(the first pass's base, None), or (None, why). The base branch's first-parent history: the
+    merge commits land there at merge time, so the newest one not after the verdict is the branch as
+    the first pass saw it. A gone branch (a deleted release branch) falls back to its tip at merge
+    time (`oid`)."""
+    rc4, tip = run(("git", "-C", root, "rev-list", "-1", "--first-parent", "--before=" + at,
+                    "refs/remotes/origin/" + branch, "--"))
+    tip = tip.strip() if rc4 == 0 and re.fullmatch(r"[0-9a-f]{40}", tip.strip()) else oid
+    rc3, mb = run(("git", "-C", root, "merge-base", tip, head))
+    base = mb.strip()
+    if rc3 or not re.fullmatch(r"[0-9a-f]{40}", base):
+        return None, "git could not resolve the first-pass head's base"
+    return base, None
+
+
 def build(n, repo, gate):
     rc, out = run((sys.executable, "-I", os.path.join(SCRIPTS, "pr-json.py"), str(n)))
     try:
@@ -249,19 +264,14 @@ def build(n, repo, gate):
     if rc2 or not re.fullmatch(r"[A-Za-z0-9._/-]+", branch) or not re.fullmatch(r"[0-9TZ:.+-]+", at):
         return None, "gh could not read the base branch or the verdict's time"
     root = os.path.normpath(os.path.join(HERE, "..", ".."))
+    if rc or not re.fullmatch(r"[0-9a-f]{40}", head):
+        return None, "gh could not resolve the first-pass head"
     for sha in (head, oid):
         if re.fullmatch(r"[0-9a-f]{40}", sha) and run(("git", "-C", root, "cat-file", "-e", sha + "^{commit}"))[0]:
             run(("git", "-C", root, "fetch", "--quiet", "origin", sha))
-    # The base branch's first-parent history: the merge commits land there at merge time, so the
-    # newest one not after the verdict is the branch as the first pass saw it. A gone branch (a deleted
-    # release branch) falls back to its tip at merge time.
-    rc4, tip = run(("git", "-C", root, "rev-list", "-1", "--first-parent", "--before=" + at,
-                    "refs/remotes/origin/" + branch, "--"))
-    tip = tip.strip() if rc4 == 0 and re.fullmatch(r"[0-9a-f]{40}", tip.strip()) else oid
-    rc3, mb = run(("git", "-C", root, "merge-base", tip, head)) if rc == 0 else (1, "")
-    base = mb.strip()
-    if rc3 or not re.fullmatch(r"[0-9a-f]{40}", head) or not re.fullmatch(r"[0-9a-f]{40}", base):
-        return None, "gh could not resolve the first-pass head or its base"
+    base, why = base_of(root, branch, oid, head, at, ())
+    if base is None:
+        return None, why
     cands.sort(key=lambda x: (x["file"], x["lines"][0], x["source_id"]))
     for i, c in enumerate(cands, 1):
         c["id"] = "E%d" % i
