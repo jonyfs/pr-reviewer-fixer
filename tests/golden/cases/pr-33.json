@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 33,
+  "base": "cf66bf5c76fa0bb72a057c98dfc7a3219b5a3e08",
+  "head": "637501abc76e8f820d7694f38909d47a6f4603f9",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W2",
+      "file": ".agents/skills/pr-reviewer/scripts/path-floor.sh",
+      "lines": [
+        167,
+        167
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "path-floor.sh does not list Woodpecker's .woodpecker.yaml or Buildkite's default pipeline files as CI configuration, so a change to them gets no security floor."
+    },
+    {
+      "id": "E2",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-reviewer/scripts/scan-hidden.py",
+      "lines": [
+        148,
+        148
+      ],
+      "dimension": "performance",
+      "severity": "WARNING",
+      "description": "The label-use regex in scan-hidden.py rescans up to 999 escaped pairs from every bracket, so a long run of escaped brackets makes the scan take seconds (quadratic time)."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

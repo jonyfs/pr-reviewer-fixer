@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 40,
+  "base": "c1e42b91a3534b992189cd3f16f7185364ad864b",
+  "head": "5b5c131deedfd76a12489b4b13cee75c22500172",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-reviewer/scripts/review-cycle.sh",
+      "lines": [
+        550,
+        550
+      ],
+      "dimension": "reliability",
+      "severity": "WARNING",
+      "description": "halt runs tok() on the extension marker's state and reason, so it reads them differently from budget and from the previous release, although the release says the reading is unchanged."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

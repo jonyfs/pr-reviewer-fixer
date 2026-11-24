@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 73,
+  "base": "f650074432893e1a8c6f9ebb7e28baeb0aac3739",
+  "head": "fdac815c96aae85fbf14c452f988a4b450b7db3d",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W2",
+      "file": "tests/run-all.sh",
+      "lines": [
+        117,
+        117
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "No test covers the other-owner or group/other-writable checks of cache_dir_ok in run-all.sh; removing either check leaves the suite green."
+    },
+    {
+      "id": "E2",
+      "source_id": "W1",
+      "file": "tests/run-cache/run.sh",
+      "lines": [
+        120,
+        120
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "The mode-700 test runs BSD 'stat -f %Lp' first; GNU stat prints file-system status and exits 1, so on Linux the row reads that text plus 700 and fails."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 88,
+  "base": "f9448384b8a3e36a43ed0f1341c2e469880fa65e",
+  "head": "80afe179975526478b9b259220e2806b44d657b9",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W3",
+      "file": "tests/push-guard/run.sh",
+      "lines": [
+        197,
+        197
+      ],
+      "dimension": "reliability",
+      "severity": "WARNING",
+      "description": "On macOS 'ulimit -t' does not stop an exec loop, so a restart-loop regression in push-guard.sh is bounded only by the 300-second watchdog per row instead of 20 seconds."
+    },
+    {
+      "id": "E2",
+      "source_id": "W1",
+      "file": "tests/run-all.sh",
+      "lines": [
+        225,
+        225
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "run-all.sh does not cd to the checkout root, so the gate suite's export-audit rows fail when the run starts from another directory, although the PR says it closes that item."
+    },
+    {
+      "id": "E3",
+      "source_id": "W2",
+      "file": "tests/scan/run.sh",
+      "lines": [
+        40,
+        40
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "The narrowed planted-file check in tests/scan/run.sh no longer catches writes to AGENTS.md, a SKILL.md or the skills' references, which the earlier whole-tree comparison caught."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

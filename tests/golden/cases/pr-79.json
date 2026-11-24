@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 79,
+  "base": "4a12be0dd854a51c10b962eb818f75a041cd4104",
+  "head": "c64544b42a45ca2a9aa45629faae5bcdb9351a14",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W2",
+      "file": ".agents/skills/pr-fixer/scripts/fix-ledger.sh",
+      "lines": [
+        405,
+        405
+      ],
+      "dimension": "correctness",
+      "severity": "WARNING",
+      "description": "Without the pull request's commits present locally, fix-ledger.sh never checks refused findings for a later human fix, yet still marks the row complete and counts them as held."
+    },
+    {
+      "id": "E2",
+      "source_id": "W1",
+      "file": "tests/fix-ledger/run.sh",
+      "lines": [
+        188,
+        188
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "The fix-ledger trust branches (deleted by another login, edited by another login, edited verdict, closure anchoring) have no test that fails when they are broken."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

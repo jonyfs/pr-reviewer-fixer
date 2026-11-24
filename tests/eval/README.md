@@ -66,3 +66,7 @@ defect, and three real bugs this repository had) and fourteen added in 0.16.0 (o
 sample, not a benchmark. Add a case for each defect class you care about before you trust a number,
 and run the same cases again after a change to the skill prose or a change of model. To keep a
 result, commit the printed table with the model id and the date under `docs/evals/`.
+
+Seeded cases are small and made up. `tests/golden/` scores the reviewer on real pull requests of
+this repository instead, with a judge sub-agent matching findings by substance rather than by line;
+see `tests/golden/README.md`.

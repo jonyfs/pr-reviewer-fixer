@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 82,
+  "base": "4a12be0dd854a51c10b962eb818f75a041cd4104",
+  "head": "9144918adb77faece72a2856ee973225bad72d97",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-fixer/scripts/proof-check.sh",
+      "lines": [
+        186,
+        186
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "proof-check.sh's no-leading-slash rule misses an option value such as --output=/abs, and allowlist entries accept any trailing words, so a closure proof can point an allowlisted program outside the checkout."
+    },
+    {
+      "id": "E2",
+      "source_id": "W4",
+      "file": ".agents/skills/pr-fixer/scripts/proof-check.sh",
+      "lines": [
+        264,
+        264
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "proof-check.sh samples entries in an order fixed by a default seed of 0, so the prover can predict which entries are never checked and place a false one there."
+    },
+    {
+      "id": "E3",
+      "source_id": "W2",
+      "file": ".agents/skills/pr-fixer/scripts/proof-check.sh",
+      "lines": [
+        287,
+        287
+      ],
+      "dimension": "reliability",
+      "severity": "WARNING",
+      "description": "proof-check.sh runs commands without their own process group, so a background child makes a passing command look like a timeout and children keep running after the clone is deleted."
+    },
+    {
+      "id": "E4",
+      "source_id": "W3",
+      "file": "tests/proof-check/run.sh",
+      "lines": [
+        72,
+        72
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "proof-check.sh's isolation rules (environment scrub, HOME isolation, timeout, hooksPath, the ~ refusal, the 200-entry limit and others) have no test that fails when the rule is removed."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}
