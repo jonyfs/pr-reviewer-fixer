@@ -275,6 +275,7 @@ scanner reads both as hidden text.
 - [references/report-contract.md](references/report-contract.md) report layout and findings block
 - [references/operating-principles.md](references/operating-principles.md) standing rules and the failures behind them
 - [references/progress-and-notifications.md](references/progress-and-notifications.md) start and finish announcements, channels, dynamic decisions
+- [references/review-metrics.md](references/review-metrics.md) self-agreement over k reports of one head, and the per-unit scorecard
 - [references/improvements-catalog.md](references/improvements-catalog.md) 100 researched improvements with status
 - `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py` the state machine and its gate
   (need `gh`, `python3` 3.9+, `node`)
@@ -283,6 +284,9 @@ scanner reads both as hidden text.
   characters, variation-selector runs, HTML comments other than the markers, link references that
   hide text, `<details>`, invisible HTML) in
   the diff, the pull request text and the commit messages (needs `git`, `python3`)
+- `scripts/review-metrics.sh` read-only, runs no model: `agreement` compares k reports of one head
+  (overlap of finding fingerprints, unstable dimensions), `scorecard` counts findings, verified,
+  refused and debt per dimension and per model from trusted markers ([references/review-metrics.md](references/review-metrics.md))
 - `scripts/check-version.sh` the update notice (never installs); `--decline` records a no
 - `scripts/update.sh` installs the latest release, only after the person said yes
 - `templates/review-gate.yml` the required status check: no model, no secrets (shared with `pr-fixer`)

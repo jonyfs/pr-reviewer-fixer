@@ -117,6 +117,8 @@ All scripts live in each skill's `scripts/` folder.
 | `push-guard.sh <pr>` | Checks a push before it happens (fixer and merge fixer) |
 | `proof-check.sh --pr <pr>` | Re-runs the proofs a fixer closure claims and compares exit codes (fixer; needs an allowlist you set) |
 | `fix-ledger.sh --since DATE` | Records how many fixer commits were kept in a local ledger; `audit` checks how many refusals were wrong (fixer only) |
+| `review-metrics.sh agreement R1 R2 …` | Compares k reports of one head and flags dimensions whose findings do not come back (reviewer only) |
+| `review-metrics.sh scorecard --since DATE` | Counts findings raised, verified, refused and left as debt per dimension and per model, from trusted markers (reviewer only) |
 | `check-version.sh` | Prints a notice when a newer release exists. It never installs |
 | `update.sh --yes --version X` | Updates the installed skills after you say yes |
 
