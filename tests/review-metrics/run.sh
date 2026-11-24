@@ -16,6 +16,11 @@
 #   26  fixed findings as later passes show them: not-applicable or no longer listed after a trusted
 #       closure (fixed), and the same with only mallory's closure (withdrawn, debt); see below.
 #   27  PR 25 with a trusted comment deleted by mallory: left out. 28: deleted by its author: counted.
+#   29  the pass-2 W3 scenario: blocking WARNINGs the reviewer withdrew after a trusted closure stay
+#       withdrawn and the lens is flagged LOW.
+#   30  the not-applicable walk-back (N8): open, n/a, open, n/a with closure 1 only (withdrawn), and
+#       open, n/a, n/a, n/a with closure 1 (fixed).
+#   31  the closure window (N9): a closure for the cycle after the next pass counts for neither rule.
 set -u
 unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
 T="$(cd "$(dirname "$0")" && pwd)"
@@ -91,6 +96,14 @@ report("cache2.md", [("N1", "NOTE", "src/cache.c", 9, "performance", "L2 cache m
 report("cache3.md", [("N1", "NOTE", "src/cache.c", 9, "performance", "L3 cache misses are not counted")])
 report("lref1.md", [("C1", "CRITICAL", "src/auth/session.ts", 47, "security", "Token is not checked (L47)")])
 report("lref2.md", [("C4", "CRITICAL", "src/auth/session.ts", 52, "security", "Token is not checked [L52]")])
+# A bare L-range is a line reference (N9): `L4-L7` and `L10-L12` are left out.
+report("lrange1.md", [("C1", "CRITICAL", "src/auth/session.ts", 47, "security", "Token is not checked in L4-L7")])
+report("lrange2.md", [("C3", "CRITICAL", "src/auth/session.ts", 52, "security", "Token is not checked in L10-L12")])
+# `==` and `!=` are tokens too (N9).
+EQ1 = ("C1", "CRITICAL", "src/range.py", 3, "correctness", "uses == where != is needed")
+EQ2 = ("C2", "CRITICAL", "src/range.py", 3, "correctness", "uses != where == is needed")
+report("eq2.md", [EQ1, EQ2])
+report("eq1.md", [EQ1])
 # A dimension two of three reports leave empty: the pair of empty sets says nothing about it.
 report("sec1.md", [S1])
 report("sec2.md", [S1])
@@ -178,6 +191,11 @@ bash "$RM" agreement --json "$R/cache2.md" "$R/cache3.md" >"$J" 2>/dev/null
 jqk "'L2 cache' and 'L3 cache' are not line references: two findings, overlap 0" "$J" '.overall.mean_pairwise == 0'
 bash "$RM" agreement --json "$R/lref1.md" "$R/lref2.md" >"$J" 2>/dev/null
 jqk "'(L47)' and '[L52]' are line references and are left out: overlap 1.0" "$J" '.overall.mean_pairwise == 1'
+bash "$RM" agreement --json "$R/lrange1.md" "$R/lrange2.md" >"$J" 2>/dev/null
+jqk "a bare range 'L4-L7' or 'L10-L12' is a line reference and is left out: overlap 1.0" "$J" '.overall.mean_pairwise == 1'
+bash "$RM" agreement --json "$R/eq2.md" "$R/eq1.md" >"$J" 2>/dev/null
+jqk "'==' and '!=' are tokens: '== where !=' and '!= where ==' are two findings, overlap 1/2" "$J" \
+  '.reports[0].findings == 2 and .pairs[0].shared == 1 and .pairs[0].union == 2'
 # A pair of reports that both leave a dimension empty is not judged for it.
 bash "$RM" agreement --json "$R/dimA.md" "$R/sec1.md" "$R/sec2.md" >"$J" 2>/dev/null
 jqk "per dimension: a pair where both reports leave it empty is not judged (2 of 3 pairs, mean 0)" "$J" \
@@ -313,6 +331,36 @@ def h25():
 
 pr(27, h25(), deleted=[{"author": "rev-bot", "actor": "mallory"}])
 pr(28, h25(), deleted=[{"author": "rev-bot", "actor": "rev-bot"}])
+# 29: W3. Under block_at=warning, pass 1 raises W1 (w-real) and W2-W4 (w-wrong); trusted closure 1
+# closed only W1; pass 2 PASSED verifies W1 and withdraws W2-W4 (not-applicable). The contract marks a
+# fixed blocking finding verified, so a blocking not-applicable is withdrawn, closure or not.
+pr(29, [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("W1", "WARNING", "open", "w-real"), ("W2", "WARNING", "open", "w-wrong"),
+                                                 ("W3", "WARNING", "open", "w-wrong"), ("W4", "WARNING", "open", "w-wrong")],
+                w=4, block_at=B),
+        closure("rev-bot", 1, SHA[2], 1, 0, 0),
+        verdict("rev-bot", SHA[2], "PASSED", 2, [("W1", "WARNING", "verified", None), ("W2", "WARNING", "not-applicable", None),
+                                                ("W3", "WARNING", "not-applicable", None), ("W4", "WARNING", "not-applicable", None)],
+                block_at=B)])
+# 30: N8, NOTEs only (a blocking entry is never fixed). N1 lens-reopened: open, n/a, open, n/a with
+# closure 1 only: the final not-applicable run starts at pass 4 and no closure precedes it (withdrawn).
+# N2 lens-na-run: open, n/a, n/a, n/a with closure 1: the run starts at pass 2, after closure 1 (fixed).
+pr(30, [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("N1", "NOTE", "open", "lens-reopened"), ("N2", "NOTE", "open", "lens-na-run"),
+                                                 ("C1", "CRITICAL", "open", "lens-c")], c=1, n=2),
+        closure("rev-bot", 1, SHA[2], 1, 0, 0),
+        verdict("rev-bot", SHA[2], "BLOCKED", 2, [("N1", "NOTE", "not-applicable", None), ("N2", "NOTE", "not-applicable", None),
+                                                ("C1", "CRITICAL", "open", None)], c=1),
+        verdict("rev-bot", SHA[3], "BLOCKED", 3, [("N1", "NOTE", "open", None), ("N2", "NOTE", "not-applicable", None),
+                                                ("C1", "CRITICAL", "open", None)], c=1, n=1),
+        verdict("rev-bot", SHA[4], "PASSED", 4, [("N1", "NOTE", "not-applicable", None), ("N2", "NOTE", "not-applicable", None),
+                                                ("C1", "CRITICAL", "verified", None)])])
+# 31: N9. Only closure 2 is trusted (none for cycle 1). N1 lens-incl: open at pass 1, not-applicable at
+# pass 2: closure 2 comes after pass 2, so it is withdrawn. N2 lens-nextstep: open at pass 1, no longer
+# listed at pass 2: closure 2 is not in the step from pass 1 to pass 2, so it is debt.
+pr(31, [verdict("rev-bot", SHA[1], "BLOCKED", 1, [("N1", "NOTE", "open", "lens-incl"), ("N2", "NOTE", "open", "lens-nextstep"),
+                                                 ("C1", "CRITICAL", "open", "lens-c")], c=1, n=2),
+        verdict("rev-bot", SHA[2], "BLOCKED", 2, [("N1", "NOTE", "not-applicable", None), ("C1", "CRITICAL", "open", None)], c=1),
+        closure("rev-bot", 2, SHA[3], 1, 0, 0),
+        verdict("rev-bot", SHA[3], "PASSED", 3, [("N1", "NOTE", "not-applicable", None), ("C1", "CRITICAL", "verified", None)])])
 json.dump([{"number": 21}, {"number": 23}], open(os.path.join(d, "list.json"), "w"))
 PY
 S="$W/score.json"
@@ -353,8 +401,8 @@ bash "$RM" scorecard --json --prs 26,27,28 >"$S2" 2>"$W/score26.err"; rc=$?
 [ "$rc" = 0 ] && row "scorecard 26-28: exit 0" ok || row "scorecard 26-28: exit 0" bad "exit $rc: $(cat "$W/score26.err")"
 jqk "not-applicable after a trusted closure is fixed, not withdrawn" "$S2" "$(dim lens-na)"' | .fixed == 1 and .withdrawn == 0'
 jqk "open, then no longer listed after a trusted closure, is fixed, not debt" "$S2" "$(dim lens-gone)"' | .fixed == 1 and .debt == 0'
-jqk "a blocking WARNING no longer listed after a trusted closure is fixed and accepted" "$S2" \
-  "$(dim lens-wgone)"' | .blocking == 1 and .fixed == 1 and .accepted_rate == 1'
+jqk "a blocking WARNING no longer listed after a trusted closure is not fixed: debt, not accepted" "$S2" \
+  "$(dim lens-wgone)"' | .blocking == 1 and .fixed == 0 and .debt == 1 and .accepted_blocking == 0 and .accepted_rate == 0'
 jqk "not-applicable with only an untrusted closure in between stays withdrawn" "$S2" "$(dim lens-wd)"' | .withdrawn == 1 and .fixed == 0'
 jqk "no longer listed with only an untrusted closure in between stays debt" "$S2" "$(dim lens-drop)"' | .debt == 1 and .fixed == 0'
 jqk "not-applicable counts as fixed only with a closure after the last pass that had it open" "$S2" \
@@ -368,6 +416,25 @@ case "$out" in *$'\033'*) row "scorecard: a dimension holding ESC never reaches 
   *) has "scorecard: a dimension holding ESC never reaches the table raw" "other" "$out" ;; esac
 has "the table has a fixed column" "fixed" "$out"
 has "the legend says what accepted counts" "accepted = verified, fixed or resolved" "$out"
+# W3: blocking WARNINGs withdrawn after a trusted closure stay withdrawn, and the lens is flagged LOW.
+S3="$W/score29.json"
+bash "$RM" scorecard --json --prs 29,30,31 >"$S3" 2>"$W/score29.err"; rc=$?
+[ "$rc" = 0 ] && row "scorecard 29-31: exit 0" ok || row "scorecard 29-31: exit 0" bad "exit $rc: $(cat "$W/score29.err")"
+jqk "W3: a lens with 3 blocking WARNINGs withdrawn after a trusted closure: withdrawn 3, fixed 0, accepted 0/3, flagged LOW" "$S3" \
+  "$(dim w-wrong)"' | .blocking == 3 and .withdrawn == 3 and .fixed == 0 and .accepted_blocking == 0 and .low_acceptance'
+jqk "W3: the WARNING the fixer fixed is still verified" "$S3" "$(dim w-real)"' | .verified == 1 and .accepted_rate == 1'
+out=$(bash "$RM" scorecard --prs 29 2>&1)
+has "W3: the table flags the lens of withdrawn blocking WARNINGs LOW" "LOW: retune or retire" "$(printf '%s\n' "$out" | grep '^w-wrong ')"
+# N8: the walk-back stops at a pass that is not itself not-applicable.
+jqk "N8: open, n/a, open, n/a with closure 1 only is withdrawn: the final not-applicable step has no closure" "$S3" \
+  "$(dim lens-reopened)"' | .withdrawn == 1 and .fixed == 0'
+jqk "N9: open, n/a, n/a, n/a with closure 1 is fixed: the walk-back reaches the start of the not-applicable run" "$S3" \
+  "$(dim lens-na-run)"' | .fixed == 1 and .withdrawn == 0'
+# N9: the closure window is from the earlier pass up to, not including, the later one.
+jqk "N9: not-applicable at pass 2 with only closure 2 (after pass 2) is withdrawn, not fixed" "$S3" \
+  "$(dim lens-incl)"' | .withdrawn == 1 and .fixed == 0'
+jqk "N9: no longer listed at pass 2 with only closure 2 (not in that step) is debt, not fixed" "$S3" \
+  "$(dim lens-nextstep)"' | .debt == 1 and .fixed == 0'
 # N5: the closure marker and the edited and deleted trust filters are copies of fix-ledger.sh's.
 FL="$T/../../.agents/skills/pr-fixer/scripts/fix-ledger.sh"
 if python3 -I - "$RM" "$FL" <<'PY'
