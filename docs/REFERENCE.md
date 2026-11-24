@@ -171,6 +171,14 @@ sequenceDiagram
   cannot read a path from makes the floor unknown, never empty.
 - Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
   the verdict is `PASSED` and the pull request is a draft, the script marks it ready for review.
+- Measures itself with `scripts/review-metrics.sh`, which runs no model and is read-only on GitHub.
+  `agreement` compares k reports that fresh-context reviewers wrote for one head. It fingerprints
+  each finding by file, dimension and normalized claim, ignoring the line, and reports the Jaccard
+  overlap overall and per dimension, flagging the dimensions below a threshold as unstable.
+  `scorecard` reads the trusted verdict and closure markers of a set of pull requests and counts,
+  per dimension and per model and tier: findings raised, blocking, verified after a fix, refused,
+  and left as debt, plus the accepted rate. The marker has no cost field, so cost is reported as not
+  recorded.
 
 ### pr-fixer
 
@@ -787,7 +795,7 @@ The suite needs no network, only bash, python3, node, jq, git, curl, tar, `sha25
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `export-sarif`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `export-sarif`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `review-metrics.sh`, `install.sh`, the review
 eval scorer, the version check, the update script (`tests/update/run.sh`, against a fake release served from local files) and the release script (`tests/release/run.sh`, which drives
 `.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so

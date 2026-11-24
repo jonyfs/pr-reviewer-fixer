@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Fake gh for review-metrics.sh: logs every call and answers from the files in $FAKE_DIR with the
+# fix-ledger suite's read-only fake (tests/fix-ledger/fakegh.py), which exits 1 on any write.
+D="${FAKE_DIR:?}"
+printf '%s\n' "gh $*" >>"$D/calls.log"
+exec python3 -I "$(cd "$(dirname "$0")/../.." && pwd)/fix-ledger/fakegh.py" "$D" "$@"
