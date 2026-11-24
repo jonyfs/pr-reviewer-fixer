@@ -228,27 +228,55 @@ fi
 echo "== all suites: $(( $(date +%s) - run_t0 ))s wall${RUN_ONLY:+ (only: $RUN_ONLY: NOT the full run; a PASSED verdict or a merge needs the full run)}"
 # A suite that fails prints every FAIL or failed line of its log, not only the last three lines, and its whole log is
 # kept in a folder that outlives the run (the run's own folder is removed at exit), so a row that fails only under load
-# can be named and told from a defect. The folder is made at the first failure, under TMPDIR, and its path is printed.
-# Before it is made, the older folders are pruned: this user's newest four are kept (with the new one, the last five
-# failing runs), and older ones are removed, so a host that fails often does not pile up copies of every log (PR 88 N1).
-# Only real folders of this user are touched, never a link or a plain file of the same name.
-KEPT=""
+# can be named and told from a defect. The folder is made at the first failure and its path is printed.
+# It lives in this user's cache folder, beside the suite cache: KEPT_BASE is <cache root>/pr-reviewer-fixer/run-all-failed
+# (XDG_CACHE_HOME or ~/.cache), created with mode 700 and held, with the folder above it, to the cache folder's rule (a
+# real directory, this user's, writable by nobody else; the root as cache_root_ok says), so no other user can plant a
+# name in it. A cache root that is not an absolute path (the run works from the checkout's root) or no root at all
+# keeps no log and removes nothing (PR 88 W4).
+# Before the new folder is made, the older ones are pruned: this user's newest four are kept (with the new one, the
+# last five failing runs), and older ones are removed, so a host that fails often does not pile up copies of every log
+# (PR 88 N1). The names come from the glob, never from parsed ls output: an entry is counted only when its whole name is
+# run-all-failed. and the six letters or digits mktemp puts there (so no newline and no slash), and it is a real
+# directory (not a link) owned by this user. Anything else is skipped, never removed. python3 orders the counted names
+# by mtime and prints the indexes of the older ones; rm gets only "$KEPT_BASE/<checked name>". When python3 fails,
+# nothing is removed (PR 88 W4).
+KEPT="" KEPT_TRIED=0 KEPT_BASE=""
+case "$CACHE_DIR" in /*) KEPT_BASE="${CACHE_DIR%/*}/run-all-failed" ;; esac
+own_dir() { [ -d "$1" ] && [ ! -L "$1" ] && [ -n "$(find "$1" -maxdepth 0 -user "$(id -u)" ! -perm -g+w ! -perm -o+w 2>/dev/null)" ]; }
+kept_base_ok() { own_dir "$KEPT_BASE" && own_dir "${KEPT_BASE%/*}" && cache_root_ok; }
+KEPT_RE='^run-all-failed\.[0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ]{6}$'
 prune_kept() {
-  local d i=0
-  while IFS= read -r d; do
-    [ -d "$d" ] && [ ! -L "$d" ] && [ -O "$d" ] || continue
-    i=$((i + 1)); [ "$i" -le 4 ] || rm -rf -- "$d"
-  done < <(ls -1dt -- "${TMPDIR:-/tmp}"/run-all-failed.* 2>/dev/null)
+  local f i old names=()
+  for f in "$KEPT_BASE"/run-all-failed.*; do
+    f="${f#"$KEPT_BASE"/}"
+    [[ "$f" =~ $KEPT_RE ]] && own_dir "$KEPT_BASE/$f" || continue
+    names+=("$f")
+  done
+  [ "${#names[@]}" -gt 4 ] || return 0
+  old="$(python3 -I -c 'import os, sys
+b, n = sys.argv[1], sys.argv[2:]
+order = sorted(range(len(n)), key=lambda i: os.lstat(os.path.join(b, n[i])).st_mtime_ns, reverse=True)
+print(" ".join(str(i) for i in order[4:]))' "$KEPT_BASE" "${names[@]}" 2>/dev/null)" || return 0
+  for i in $old; do
+    [[ "$i" =~ ^[0-9]+$ ]] && [ "$i" -lt "${#names[@]}" ] || continue
+    rm -rf -- "$KEPT_BASE/${names[$i]}"
+  done
 }
 failed_rows() {
   local n="$1" name="$2" log="$OUT/$1.log" dest rows
-  if [ -z "$KEPT" ]; then prune_kept; KEPT="$(mktemp -d "${TMPDIR:-/tmp}/run-all-failed.XXXXXX" 2>/dev/null)" || KEPT=""; fi
+  if [ "$KEPT_TRIED" = 0 ]; then
+    KEPT_TRIED=1
+    if [ -n "$KEPT_BASE" ] && (umask 077; mkdir -p "$KEPT_BASE") 2>/dev/null && kept_base_ok; then
+      prune_kept; KEPT="$(mktemp -d "$KEPT_BASE/run-all-failed.XXXXXX" 2>/dev/null)" || KEPT=""
+    fi
+  fi
   dest=""
   if [ -n "$KEPT" ]; then
     dest="$KEPT/$n-$(printf %s "$name" | tr -c 'A-Za-z0-9._-' '_').log"
     cp "$log" "$dest" 2>/dev/null || dest=""
   fi
-  echo "   -- ${name} FAILED; full log: ${dest:-not kept (no folder could be made under ${TMPDIR:-/tmp})}"
+  echo "   -- ${name} FAILED; full log: ${dest:-not kept (no folder owned and writable by this user alone could be made under ${KEPT_BASE:-a cache folder: XDG_CACHE_HOME or HOME is unset or not an absolute path})}"
   # A FAIL line, and a failed line unless it counts 0 failed; never a passing row whose name holds the word.
   rows="$(awk '!/^(PASS|ok)[ :|]/ && (/FAIL/ || (/[Ff]ailed/ && !/(^|[^0-9])0 failed/))' "$log" 2>/dev/null)"
   if [ -n "$rows" ]; then
