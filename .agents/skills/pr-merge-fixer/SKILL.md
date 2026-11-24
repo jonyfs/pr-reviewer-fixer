@@ -8,7 +8,7 @@ description: >
   the tier its complexity needs, verifies, pushes without force, and escalates the conflicts it
   cannot decide. A push always triggers a fresh review.
 metadata:
-  version: "0.23.0"
+  version: "0.24.0"
 ---
 
 # PR Merge Fixer

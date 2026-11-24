@@ -357,7 +357,7 @@ never read as "reviewed".
 
 | Script | Job |
 |---|---|
-| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `findings-block`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
+| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `findings-block`, `screen`, `publish`, `export-audit`, `export-sarif`, `ensure-labels`. It owns labels, markers and the budget. |
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
 | `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi, tag and filler characters, variation-selector runs, HTML comments other than the markers, link references that hide text, a `details` tag, invisible HTML) in the diff, the pull request text and the commit messages, and with `--feedback-json` in the fixer's comment work list, as JSON. It strips nothing. |
