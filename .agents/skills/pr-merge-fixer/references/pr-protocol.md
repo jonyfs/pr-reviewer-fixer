@@ -414,6 +414,20 @@ through a pull request. `publish` also appends one line to a per-machine
 `${XDG_STATE_HOME:-$HOME/.local/state}/pr-reviewer-fixer/audit.jsonl`; that copy is a convenience,
 never the evidence.
 
+`review-cycle.sh export-sarif [<n>] [--report <file>] [--out <file>] [--include-closed]` writes the
+findings of one verdict report as SARIF 2.1.0 (to `--out`, else stdout), for a tool that already
+reads it. With `--report` it reads that file and nothing from GitHub; without it, it reads the
+verdict comment of the newest trusted marker on the pull request under the trust rules above, and
+refuses (exit 1) when the allowlist names no login, no trusted marker remains, a trusted comment
+stands edited or deleted by another login, or the head moved after the marker. The findings come
+from `findings-block`, the one reader. One rule per dimension; CRITICAL is `error`, WARNING
+`warning`, NOTE `note`; only the entries the `counts:` line counts are results unless
+`--include-closed` adds the closed ones as suppressed. The fingerprint hashes file, dimension and
+the normalized claim, never the line or the id. Every text field is the model's text about the pull
+request and is written as an escaped JSON string, never as Markdown. Over GitHub's limits (10 MB
+gzip-compressed, 25,000 results or rules per run) it writes nothing and exits 2, as it does for a
+malformed block or an entry it cannot map. It uploads nothing.
+
 ## Comment budget
 
 Per skill run, at most: one status comment (edited in place), one verdict comment per pass, one

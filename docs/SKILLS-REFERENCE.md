@@ -114,6 +114,7 @@ All scripts live in each skill's `scripts/` folder.
 | `review-cycle.sh publish …` | Publishes the verdict for the head (reviewer only) |
 | `review-cycle.sh extend <pr> --n N` | Grants more cycles after your answer |
 | `review-cycle.sh halt <pr> --reason …` | Stops the loop and asks for a person |
+| `review-cycle.sh export-sarif <pr> [--out FILE]` | Writes the verdict's open findings as SARIF 2.1.0, for you to upload; uploads nothing |
 | `push-guard.sh <pr>` | Checks a push before it happens (fixer and merge fixer) |
 | `proof-check.sh --pr <pr>` | Re-runs the proofs a fixer closure claims and compares exit codes (fixer; needs an allowlist you set) |
 | `fix-ledger.sh --since DATE` | Records how many fixer commits were kept in a local ledger; `audit` checks how many refusals were wrong (fixer only) |
