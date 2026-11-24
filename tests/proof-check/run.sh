@@ -34,6 +34,8 @@ printf 'sleep 22.%s\nexit 0\n' "$TOK" >"$W/repo/tests/fg.sh"
 printf 'head -c 70000000 /dev/zero\nexit 0\n' >"$W/repo/tests/big.sh"
 # W5: a foreground sleep that marks, outside the clone, that it started (sig.sh <name> <digit>).
 printf 'touch "%s/started-$1"\nsleep 2$2.%s\nexit 0\n' "$W" "$TOK" >"$W/repo/tests/sig.sh"
+# PR 85 W1: waits (at most 15 s) until the reader of the checker's stdout is gone, then exits 0.
+printf 'for k in $(seq 1 150); do [ -e "%s/reader-gone" ] && exit 0; sleep 0.1; done\nexit 0\n' "$W" >"$W/repo/tests/wait.sh"
 # W3: what the command sees. Distinct exit codes name the rule that broke.
 cat >"$W/repo/tests/env.sh" <<'EOF'
 case "$1" in
@@ -154,6 +156,16 @@ kill -TERM "$pid" 2>/dev/null; wait "$pid"; r=$?
 check "a MISMATCH, then SIGTERM while the next command runs (PR 82 N7) -> 1, the sleep is stopped, no work folder left" \
   eval '[ -e "$W/started-mmterm" ] && [ $r = 1 ] && has "entry 1 MISMATCH" && has "stopped by signal SIGTERM" && has "1 re-run entries did not match before the stop" && gone 25 && [ -z "$(ls -A "$SIGTMP")" ]'
 pkill -f "slee[p] 25.$TOK" 2>/dev/null
+# PR 85 W1: a crash after an entry printed MISMATCH exits 1 as well. head -n 2 closes the checker's
+# stdout, so its next say() raises BrokenPipeError, which goes through _crash. wait.sh holds entry 2
+# until the reader has closed its end of the pipe, so the crash always comes after the MISMATCH.
+rm -rf "$SIGTMP"; mkdir -p "$SIGTMP"; rm -f "$W/reader-gone"
+closure "$W/mmpipe.md" "[$(entry 'bash tests/pass.sh' 1 "$HEAD" "$HEAD_TREE"),$(entry 'bash tests/wait.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
+(cd "$W/repo" && TMPDIR="$SIGTMP" bash "$PC" --file "$W/mmpipe.md" --allow-file "$ALLOW" --timeout 600) </dev/null 2>"$W/err" \
+  | { head -n 2 >"$W/out"; exec 0<&-; touch "$W/reader-gone"; }
+r=${PIPESTATUS[0]}
+check "a MISMATCH, then a crash (stdout closed by head -n 2) while the next entry runs (PR 85 W1) -> 1, no work folder left" \
+  eval '[ -e "$W/reader-gone" ] && [ $r = 1 ] && has "entry 1 MISMATCH" && [ -z "$(ls -A "$SIGTMP")" ]'
 closure "$W/big.md" "[$(entry 'bash tests/big.sh' 0 "$HEAD" "$HEAD_TREE")]" "$HEAD"
 r=$(run "$W/big.md"); check "output past the 64 MiB cap -> 2 (N4)" eval '[ $r = 2 ] && has "MiB"'
 
