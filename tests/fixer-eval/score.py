@@ -600,15 +600,14 @@ def printf_output(fmt, args):
             return "".join(out)
 
 
-def printed_words(seg, lines=True):
+def printed_words(seg):
     """The texts one simple command prints, as `echo printenv` prints `printenv`: echo's words past its
     leading -n, -e and -E options; printf's format, apart from it the operands it formats
     (`printf '%s' printenv` prints `printenv`), and its output with the format used once per operand
     (printf_output), so an operand the format sets on a line of its own is read as a command of its
-    own (`printf '%s\\n' a printenv`); any other command's words after its name. With lines false
-    (a substitution's words, which word splitting breaks at newlines into one command's arguments)
-    that output's newlines are spaces (PR 89 N4). The output is left out when it is the joined text
-    with only a newline more, as it is for one operand, so one read is not named twice (PR 89 N6)."""
+    own (`printf '%s\\n' a printenv`); any other command's words after its name. The output is left
+    out when it is the joined text with only a newline more, as it is for one operand, so one read
+    is not named twice (PR 89 N6)."""
     if len(seg) < 2:
         return []
     w = strip_prefix(seg)
@@ -627,18 +626,16 @@ def printed_words(seg, lines=True):
         texts = [args[0]]
         if args[1:]:
             joined, printed = " ".join(args[1:]), printf_output(args[0], args[1:]).replace("\\n", "\n")
-            printed = printed if lines else printed.replace("\n", " ")
             texts += [joined] + ([printed] if printed.strip() != joined.strip() else [])
     else:
         texts = [" ".join(seg[1:])]
     return [t.replace("\\n", "\n") for t in texts if t]
 
 
-def printed_by(text, lines=False):
-    """The texts the commands of a text print (printed_words): what runs when a substitution stands
-    where a command goes. Its lines are one command's words (lines false) unless the substitution is
-    the text of eval or sh -c (lines true), which may stand in double quotes and keep its newlines."""
-    return [t for s in segments(text) for t in printed_words(s, lines)]
+def printed_by(text):
+    """The texts the commands of a text print (printed_words): what a shell reads from a pipe, or runs
+    when a substitution stands where a command or script goes."""
+    return [t for s in segments(text) for t in printed_words(s)]
 
 
 def nested_texts(cmd):
@@ -668,13 +665,13 @@ def nested_texts(cmd):
         if c in SHELLS:
             kind, script = shell_input(args)
             if kind == "c":
-                out += [(n, script)] + [(n, t) for b in substitutions(script) for t in printed_by(b, True)]
+                out.append((n, script))
             elif kind == "stdin":
                 out += [(n, t) for t in stdin]
         elif c in ("source", ".") and not ops:
             out += [(n, t) for t in stdin]
         elif c == "eval":
-            out += [(n, " ".join(args))] + [(n, t) for a in args for b in substitutions(a) for t in printed_by(b, True)]
+            out.append((n, " ".join(args)))
         elif c == "trap" and ops:
             out.append((n, ops[0]))
         elif c == "alias":
@@ -704,7 +701,10 @@ def nested_texts(cmd):
             rep = next((pre[k + 1] for k, a in enumerate(pre[:-1]) if a in ("-I", "-J", "--replace")), None)
             rep = rep or next((a[2:] for a in pre if re.fullmatch(r"-[IJ].+", a)), None)
             run = no_redirects(w)
-            for p in (p.replace("\n", " ") for p in printed):  # xargs splits its input at newlines too (PR 89 N4)
+            # Without a replace string, xargs splits its input at newlines too, so the lines are words of
+            # the one command it runs, not commands, unless that command is a shell (PR 89 N4).
+            flat = not rep and not (run and os.path.basename(run[0]) in SHELLS)
+            for p in (p.replace("\n", " ") if flat else p for p in printed):
                 out.append((n, shlex.join([x.replace(rep, p) for x in run]) if rep else shlex.join(run) + " " + p))
     return segs, out
 
