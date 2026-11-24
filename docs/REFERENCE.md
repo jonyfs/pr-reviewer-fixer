@@ -622,7 +622,9 @@ file and line as the location, and the scenario (`failure_scenario`, else `scena
 accepted external suppression. A finding with no line points at line 1 and carries
 `line_unknown: true`, because GitHub requires a start line. The fingerprint (`partialFingerprints`,
 under `prReviewerFinding/v1` and `primaryLocationLineHash`) hashes the file, the dimension and the
-normalized claim, so the same finding matches across passes even when its line or id changes. The
+normalized claim, so the same finding matches across passes even when its line or id changes, and
+ends with an occurrence suffix (`:1`, `:2` in report order) so two findings with the same file,
+dimension and claim at different lines stay two alerts. The
 claims are model-written text about the pull request: they are written as escaped JSON strings,
 never as Markdown. A report over GitHub's limits (10 MB gzip-compressed, 25,000 results or rules
 per run) is refused with exit 2 and nothing written, never truncated. Exit 1 is a trust refusal, 2

@@ -2178,9 +2178,11 @@ cmd_findings_block() {
 # endLine; an entry with no line gets startLine 1 and `line_unknown: true`, because GitHub requires a
 # startLine). partialFingerprints carries one hash of file, dimension and the normalized claim (NFKC,
 # casefolded, whitespace collapsed), never the line or the id, so the same finding keeps its
-# fingerprint across passes; it is written under `prReviewerFinding/v1` and under
-# `primaryLocationLineHash`, the only key GitHub matches on. failure_scenario, suggested_fix,
-# owner_proposed and refusal go to properties. Every string from the report is model-written text
+# fingerprint across passes, followed by an occurrence suffix (`:1`, `:2` in report order among the
+# entries, closed ones included, that share those three) so two findings that share them stay
+# apart; it is written under `prReviewerFinding/v1` and under
+# `primaryLocationLineHash`, the only key GitHub matches on. failure_scenario (else scenario),
+# suggested_fix, owner_proposed and refusal go to properties. Every string from the report is model-written text
 # about pull request content: it is emitted through json.dumps (ASCII-escaped) into `text` fields and
 # properties only, never into a `markdown` field, and never evaluated.
 #
@@ -2287,9 +2289,20 @@ if msha and hdr.get("head") and not (msha.startswith(hdr["head"].lower()) or hdr
     bad("the findings block names head %s, but its marker names %s" % (json.dumps(hdr["head"]), msha[:12]))
 include_closed = os.environ["X_CLOSED"] == "1"
 
-rules, rule_ix, results = [], {}, []
+def occurrence_key(e):
+    # The fingerprint's inputs, read the way the mapping below reads them but without its checks, so
+    # an entry that is skipped (closed, without --include-closed) still counts.
+    path = clean(e.get("file") or "")
+    while path.startswith("./"):
+        path = path[2:]
+    return (path, (e.get("dimension") or "general").strip().lower(), norm(clean(e.get("claim") or "")))
+
+rules, rule_ix, results, seen = [], {}, [], {}
 for e in blk.get("entries", []):
     fid = clean(e.get("id") or "")
+    okey = occurrence_key(e)
+    seen[okey] = seen.get(okey, 0) + 1
+    occ = seen[okey]
     tag = json.dumps(fid)
     sev = (e.get("severity") or "").upper()
     if sev not in LEVEL:
@@ -2332,7 +2345,10 @@ for e in blk.get("entries", []):
         rules.append({"id": rid, "name": dim,
                       "shortDescription": {"text": "pr-reviewer finding, dimension %s" % dim},
                       "properties": {"dimension": dim}})
-    fp = hashlib.sha256(("v1\0%s\0%s\0%s" % (path, dim, norm(claim))).encode("utf-8")).hexdigest()
+    # The occurrence suffix (:1, :2 in report order among the entries with this file, dimension and
+    # claim, closed ones included) keeps two such findings at different lines apart, as CodeQL does
+    # for identical line hashes.
+    fp = hashlib.sha256(("v1\0%s\0%s\0%s" % (path, dim, norm(claim))).encode("utf-8")).hexdigest() + ":%d" % occ
     props = {"finding_id": fid, "severity": sev, "status": status, "dimension": dim}
     # Reports write the scenario as `scenario:` (the contract's example says failure_scenario:);
     # failure_scenario wins when both are written.

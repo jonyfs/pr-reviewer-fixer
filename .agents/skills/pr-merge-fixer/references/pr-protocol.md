@@ -423,7 +423,8 @@ stands edited or deleted by another login, or the head moved after the marker. T
 from `findings-block`, the one reader. One rule per dimension; CRITICAL is `error`, WARNING
 `warning`, NOTE `note`; only the entries the `counts:` line counts are results unless
 `--include-closed` adds the closed ones as suppressed. The fingerprint hashes file, dimension and
-the normalized claim, never the line or the id. Every text field is the model's text about the pull
+the normalized claim, never the line or the id, and ends with an occurrence suffix (`:1`, `:2` in
+report order) that keeps two findings sharing those three apart. Every text field is the model's text about the pull
 request and is written as an escaped JSON string, never as Markdown. Over GitHub's limits (10 MB
 gzip-compressed, 25,000 results or rules per run) it writes nothing and exits 2, as it does for a
 malformed block or an entry it cannot map. It uploads nothing.

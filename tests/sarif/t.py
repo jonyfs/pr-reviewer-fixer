@@ -318,13 +318,30 @@ def fp(e):
     return results(d_)[0]["partialFingerprints"] if p_.returncode == 0 else None
 
 base = fp(entry("C1", line="10", claim='"Expired token accepted"'))
-check("partialFingerprints: prReviewerFinding/v1 and primaryLocationLineHash, the same 64-hex hash",
-      base and re.fullmatch(r"[0-9a-f]{64}", base["prReviewerFinding/v1"]) and base["primaryLocationLineHash"] == base["prReviewerFinding/v1"], base)
+check("partialFingerprints: prReviewerFinding/v1 and primaryLocationLineHash, the same 64-hex hash with occurrence :1",
+      base and re.fullmatch(r"[0-9a-f]{64}:1", base["prReviewerFinding/v1"]) and base["primaryLocationLineHash"] == base["prReviewerFinding/v1"], base)
 check("fingerprint: another line, another id, other case and spacing in the claim -> the same (stable across passes)",
       base == fp(entry("W7", sev="WARNING", line="99", claim='"  expired   TOKEN accepted "')), base)
 check("fingerprint: another claim -> different", base != fp(entry("C1", claim='"Expired token rejected"')), base)
 check("fingerprint: another file -> different", base != fp(entry("C1", file="src/b.py")), base)
 check("fingerprint: another dimension -> different", base != fp(entry("C1", dim="reliability")), base)
+# W2 of PR 92: the same file, dimension and claim at two lines are two findings, so two fingerprints.
+# An occurrence suffix (:1, :2 in report order, as CodeQL does) tells them apart; it counts every
+# entry of the block, so --include-closed does not shift the suffix of an open one.
+twins = report([entry("W1", sev="WARNING", file="tests/a.py", line="10", dim="testing", claim='"missing test for the error branch"'),
+                entry("W2", sev="WARNING", file="tests/a.py", line="80", dim="testing", claim='"Missing test for the  error branch"')])
+p, doc = export(twins)
+tfp = [r["partialFingerprints"]["primaryLocationLineHash"] for r in results(doc)] if doc else []
+check("fingerprint: two findings with one file, dimension and claim at lines 10 and 80 -> distinct (:1 and :2)",
+      len(tfp) == 2 and tfp[0] != tfp[1] and tfp[0].endswith(":1") and tfp[1].endswith(":2")
+      and tfp[0].split(":")[0] == tfp[1].split(":")[0], tfp)
+p, doc = export(report([entry("W1", sev="WARNING", status="verified", file="tests/a.py", dim="testing", claim='"missing test for the error branch"'),
+                        entry("W2", sev="WARNING", file="tests/a.py", line="80", dim="testing", claim='"missing test for the error branch"')]))
+p2, doc2 = export(report([entry("W1", sev="WARNING", status="verified", file="tests/a.py", dim="testing", claim='"missing test for the error branch"'),
+                          entry("W2", sev="WARNING", file="tests/a.py", line="80", dim="testing", claim='"missing test for the error branch"')]), "--include-closed")
+check("fingerprint: the occurrence counts every entry, so --include-closed leaves the open one's fingerprint as it was",
+      doc and doc2 and results(doc)[0]["partialFingerprints"] == results(doc2)[1]["partialFingerprints"]
+      and results(doc)[0]["partialFingerprints"]["primaryLocationLineHash"].endswith(":2"), (err(p), err(p2)))
 
 # ---- GitHub limits: refused whole, never truncated ------------------------------------------------
 many = report([entry("N%d" % i, sev="NOTE", line=str(i % 900 + 1), dim="style", claim='"n%d"' % i) for i in range(25001)])
