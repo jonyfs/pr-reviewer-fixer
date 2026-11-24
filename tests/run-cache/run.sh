@@ -185,6 +185,14 @@ rm -rf "${CD2%/*}"; : > "${CD2%/*}"
 out="$(bash "$R2/tests/run-all.sh" 2>&1)"; r=$?
 rm -f "${CD2%/*}"
 check "a green run whose key cannot be written says it is not recorded" eval '[ $r = 0 ] && printf %s "$out" | grep -q "could not be made or written"'
+# PR 85 N5, PR 88 W1: a run started outside the checkout runs every suite from the checkout's root (the gate suite's
+# export-audit rows resolve the repository from the working directory). One stub records the folder it runs in.
+cp "$R2/tests/scan/run.sh" "$W/scan-stub.bak"
+printf '#!/usr/bin/env bash\npwd -P >"%s/stub-pwd"\nexit 0\n' "$W" >"$R2/tests/scan/run.sh"; rm -f "$W/stub-pwd"
+out="$(cd / && bash "$R2/tests/run-all.sh" --fresh 2>&1)"; r=$?
+cp "$W/scan-stub.bak" "$R2/tests/scan/run.sh"
+check "a run started outside the checkout runs its suites from the checkout's root" \
+  eval '[ $r = 0 ] && [ "$(cat "$W/stub-pwd" 2>/dev/null)" = "$(cd "$R2" && pwd -P)" ]'
 # PR 85 N5, PR 86 N1, PR 87 N5: a failing suite names its failing rows and keeps its log. One stub fails with its FAIL row
 # first and six passing rows after it (one whose name holds FAIL), so the last three lines of its log do not hold the row.
 cp "$R2/tests/scan/run.sh" "$W/scan-stub.bak"

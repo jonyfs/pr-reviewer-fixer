@@ -10,6 +10,10 @@ unset REVIEW_BLOCK_AT PUSH_GUARD_ALLOW_SENSITIVE
 P="${TEST_TAG:+$TEST_TAG-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
+# Every suite runs from the checkout's root, wherever the run was started: some rows resolve the repository from the
+# working directory (the gate suite's export-audit rows), so a run started outside the checkout failed them (PR 85 N5,
+# PR 88 W1).
+cd "$ROOT" || { echo "run-all: cannot enter $ROOT" >&2; exit 2; }
 fail=0
 # No workflow, template, action, script or test may call a model or name a provider key. Review and
 # fix run as agents in a person's own harness session, never in GitHub Actions.
