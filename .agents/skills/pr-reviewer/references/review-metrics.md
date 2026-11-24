@@ -54,9 +54,12 @@ cite lines 47 and 52 for the same claim still match.
   `other`.
 - Claim:
   1. NFKC-normalized and casefolded.
-  2. Line references (`line 47`, `lines 4-7`, `L47`, `:47`) are removed.
-  3. Each run of characters that are not letters or digits becomes one space, and the ends are
-     trimmed.
+  2. Line references are removed: `line 47`, `lines 4-7`, `:47`, and an L-number only where it
+     clearly is one, right after `#`, `:`, `(` or `[` (`session.ts#L47`, `(L47)`) or as a range
+     (`L4-L7`). A bare `L2` stays, so "L2 cache misses" and "L3 cache misses" are two claims.
+  3. What is left is kept as its runs of letters or digits and its comparison operators (`<`, `<=`,
+     `>`, `>=`, `==`, `!=`, `===`, `!==`), joined by one space. Other punctuation only separates
+     words, so "uses < where <= is needed" and "uses <= where < is needed" stay two claims.
 
 The match is deliberately strict. Two claims match only when they use the same words in the same
 order, so a low overlap can also mean reviewers who say the same thing in different words. Read a
@@ -75,8 +78,9 @@ A dimension, or the overall score, below `--min` (default 0.5) is unstable.
 - 0: nothing is unstable.
 - 1: at least one dimension, or the overall score, is unstable.
 - 2: a refusal. That covers fewer than two reports, a report that cannot be read or has no findings
-  block, a missing or different `pr:` or `head:`, and a bad flag. Two heads match when one is a
-  prefix of the other and both have at least 7 hex digits.
+  block, a missing or different `pr:` or `head:`, and a bad flag. The heads match when, of every
+  two of them, one is a prefix of the other (case does not matter), and each has at least 7 hex
+  digits.
 
 ## Scorecard
 
@@ -91,22 +95,35 @@ closure markers are then read with the gate's own trust rules.
 
 A finding is an id. It is raised at the first trusted pass whose findings block lists it, and is
 attributed to that entry's `dimension` and to that marker's `model` and `tier`. A marker without
-them goes under `unrecorded`. Its outcome comes from the newest trusted pass that lists it:
+them goes under `unrecorded`. Its outcome comes from the newest trusted pass that lists it, by the
+first rule that applies:
 
 | Outcome | Rule |
 |---|---|
 | `verified` | `verified` on a later pass, with a trusted fixer closure for a cycle in between |
 | `resolved` | `verified` on a later pass with no trusted closure in between (someone else fixed it) |
 | `refused` | `refused-accepted`: the fixer refused it and the reviewer accepted the refusal |
-| `withdrawn` | `not-applicable` |
+| `fixed` | `not-applicable`, with a trusted closure between the pass before it that listed the finding and the pass that first marked it so; or open, then no longer listed by the next pass, with a trusted closure between the two |
+| `withdrawn` | `not-applicable` with no such closure |
 | `debt` | still open when the newest trusted verdict is PASSED (declared debt) |
 | `open` | still open, or `refused-rejected`, under a BLOCKED newest verdict |
 
+`fixed` is how this repository's reviewer records a NOTE the fixer fixed: the next pass marks it
+`not-applicable` or stops listing it. The closure has to fall in that step (a closure for an
+earlier cycle does not count), and only a trusted one counts. `withdrawn` is an upper bound: a
+finding an owner fixed outside a fixer cycle and the reviewer then marked `not-applicable` reads
+the same as a withdrawal, since the markers do not say which. On PRs 80, 85, 86, 88 and 89 this
+moved 18 of 20 withdrawn and 7 of 16 debt to `fixed`; the two left withdrawn are PR 80 W16 (a real
+withdrawal) and N12 (an owner fix in cycle 4, which has no closure).
+
 `blocking` counts every CRITICAL, plus each WARNING raised under a marker that carries
-`block_at=warning`. The accepted rate is verified ÷ blocking. A unit with at least `--min-blocking`
-(3) blocking findings and an accepted rate below `--min-accept` (0.5) is flagged `low_acceptance`,
-a candidate to retune or retire. A low rate on a pull request that is still open can simply mean
-the fixer has not finished, so judge merged pull requests.
+`block_at=warning`. The accepted rate is the blocking findings that were `verified`, `fixed` or
+`resolved`, divided by blocking: the share of blocking findings that were valid and got fixed,
+whoever fixed them. A unit with at least `--min-blocking` (3) blocking findings and an accepted rate
+below `--min-accept` (0.5) is flagged `low_acceptance`, a candidate to retune or retire. The
+`verified` column alone says how many the fixer closed and the reviewer confirmed. A low rate on a
+pull request that is still open can simply mean the fixer has not finished, so judge merged pull
+requests.
 
 The verdict marker has no cost field, so cost is printed as `not recorded` and is never estimated.
 
@@ -115,7 +132,10 @@ as ignored. A pull request is left out of every count, and named, in two cases: 
 holding a marker was edited, or a trusted comment was edited or deleted by someone else. An unset
 or login-less `REVIEW_MARKER_AUTHORS` is exit 2, before any `gh` call. Report and comment text is
 data. Only the fixed marker formats and the findings block are parsed, nothing read is executed,
-and no claim text is printed.
+and no claim text is printed. Every free-text field the table prints (a report's name, a finding's
+file, a unit) goes through one filter that turns control and format characters into `?`; the
+other fields are numbers, hashes or bound by a pattern (dimension, model, tier). The suite checks
+that no output carries an escape character.
 
 `fix-ledger.sh` (fixer skill) is the fixer's side of the same question. Its ledger holds per-pull
 request counts with no dimension or model, so the scorecard reads the markers itself, using the
