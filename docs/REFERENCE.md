@@ -182,14 +182,19 @@ sequenceDiagram
 - Can, when you opt in, run a CRITICAL candidate's repro with `scripts/repro-sandbox.sh`. It is off
   unless you set `REVIEW_REPRO=1`. The repro (an existing test, or a short script the reviewer
   writes) runs in a scratch clone at the head, with an empty environment (no `GH_TOKEN`, no SSH
-  agent, no credential helper), stdin closed, a wall-clock and CPU bound, and no network. No network
-  is enforced: `sandbox-exec` on macOS (which also confines writes to the scratch folder and hides
-  your home), `bwrap` on Linux (writes confined), else `unshare -rn` (network only). Where none of
-  them works, the script refuses with `no network sandbox here; repro skipped` (exit 4) and never
-  runs the repro unsandboxed. The result goes in the finding's optional `repro:` field:
-  `reproduced`, `not-reproduced` or `skipped`. It is evidence for the reviewer. It never changes a
-  severity or the verdict. `lint-report` refuses any other value; reports without the field are
-  unchanged.
+  agent, no credential helper), stdin closed, a new session, a wall-clock, CPU, file-size and
+  process-count bound, and no network. The sandbox is called by a fixed path: `/usr/bin/sandbox-exec`
+  on macOS, with a profile that denies everything by default (no network, no system service such as
+  LaunchServices, the pasteboard or the keychain; writes only in the run's folder; your home
+  hidden), or `/usr/bin/bwrap` on Linux (every namespace unshared, only the system folders bound
+  read-only, /tmp, /run and /home empty, the run's folder the only writable path). `unshare -rn` is
+  not enough and is refused. Where no sandbox works, the script refuses with `no network sandbox
+  here; repro skipped` (exit 4) and never runs the repro unsandboxed. The result goes in the
+  finding's optional `repro:` field: `reproduced`, `not-reproduced` or `skipped` (the first word of
+  the script's line). A run that never started, hit a limit or left a process behind is `skipped`;
+  `--expect fail` should be paired with `--expect-log` and the assertion message, since a missing
+  dependency fails a test too. It is evidence for the reviewer. It never changes a severity or the
+  verdict. `lint-report` refuses any other value; reports without the field are unchanged.
 
 ### pr-fixer
 
@@ -749,10 +754,14 @@ flowchart TD
   forgery. They do not stop the author of a marker from deleting it and posting another. Signing the marker would, and
   it is on the backlog. They do not make a legal record.
 - Model id and tier in the marker and in the compliance records are self-attested.
-- The opt-in repro (`repro-sandbox.sh`) runs pull request code. Its sandbox blocks the network on
-  every backend it accepts, but only `sandbox-exec` (macOS) hides your home from reads, and `unshare`
-  (Linux without `bwrap`) confines neither reads nor writes. Its rows in the test suite are skipped
-  where no sandbox works, such as an Ubuntu host that blocks unprivileged user namespaces.
+- The opt-in repro (`repro-sandbox.sh`) runs pull request code. Its sandbox blocks the network and
+  confines writes to the run's folder on both backends it accepts; Linux without `bwrap` gets no
+  run at all. It still reads the system folders (on macOS also /Library, Homebrew and Xcode; on
+  Linux /etc), so a secret kept there is readable inside, though it cannot leave. It limits time,
+  CPU, file size and process count, not memory. On macOS a leftover process is found through
+  `sandbox_check(3)` with `/usr/bin/python3`; without it the result is `skipped`. Its rows in the
+  test suite are skipped where no sandbox works, such as an Ubuntu host that blocks unprivileged
+  user namespaces, and the Linux rows have not run where this change was written (macOS).
 - An AI verdict is not a human review. It reduces the chance that an obvious defect reaches the
   merge. It does not replace accountable review for high-risk changes.
 - Model names and harness paths change. The data here is dated 2026-10-14.

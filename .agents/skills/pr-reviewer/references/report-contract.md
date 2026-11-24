@@ -196,7 +196,9 @@ The fixer's closure comment uses a smaller vocabulary per finding: `closed`, `re
 Optional field `repro:`: the result of the opt-in execution check, written only when
 `scripts/repro-sandbox.sh` ran (or refused) for that entry, usually a CRITICAL candidate. It is one of
 `reproduced` (the repro exited as the finding predicts: a failing test, a crash, a given exit code),
-`not-reproduced`, or `skipped` (opt-in off, no network sandbox on the host, timeout). It is evidence
+`not-reproduced`, or `skipped` (opt-in off, no sandbox on the host, timeout, the repro never started,
+a limit or a leftover process). The script prints `repro: <word> (<reason>)`; the field takes the
+first word only. It is evidence
 for the reviewer and the fixer: it never raises or lowers a severity by itself and never changes the
 verdict rule ([severity-and-verdict.md](severity-and-verdict.md)). A CRITICAL that is
 `not-reproduced` still needs its failure scenario judged on the code; a `skipped` one is judged as if
@@ -211,14 +213,40 @@ with no `repro:` field anywhere is valid as before.
     repro: reproduced
 ```
 
-The script runs the repro in a scratch clone at `--sha`, with `env -i` (a fixed PATH, HOME and
-TMPDIR in the scratch folder, no token, no SSH agent, git's system and global config off), stdin
-from /dev/null, `timeout` and `ulimit -t`, and no network: `sandbox-exec` on macOS (writes confined
-to the scratch folder, the caller's home unreadable), `bwrap --unshare-net` on Linux (the root
-read-only), else `unshare -rn` (network only). With none working it prints `no network sandbox here;
-repro skipped` and exits 4; it never falls back to an unsandboxed run. The repro is given as
-`--cmd-file` or as argv after `--`, never as a string the script builds. Its log (`--log`) is pull
-request output: screen it before quoting it in a report.
+The script runs the repro in a scratch clone at `--sha`, inside a `box/` folder that is the only
+path the repro can write, with `env -i` (a fixed PATH, HOME and TMPDIR in box, no token, no SSH
+agent, git's system and global config off), stdin from /dev/null, a new session, `timeout`, `ulimit
+-t`, `-f` and `-u` (the uid's process count plus 256), and a sandbox called by a fixed path:
+`/usr/bin/sandbox-exec` on macOS with a profile that starts from `(deny default)` (exec and fork,
+signals to itself, reads of the system folders, reads and writes in box; no network and no
+mach-lookup, so no LaunchServices, pasteboard, keychain or Apple Events), `/usr/bin/bwrap` on Linux
+(every namespace unshared, only /usr, /etc and the /bin, /sbin and /lib folders bound read-only,
+tmpfs on /tmp, /run, /var/run and /home, `--die-with-parent`, `--new-session`, `--clearenv`, box the
+only writable bind). `unshare -rn` is not enough (it confines neither reads nor writes) and is
+refused like no sandbox: the script prints `no network sandbox here; repro skipped` and exits 4; it
+never falls back to an unsandboxed run. It also refuses (exit 2) when HOME does not resolve to a
+folder. The output and status files sit outside box and reach the repro only as open descriptors, so
+it cannot replace or block them. The repro is given as `--cmd-file` or as argv after `--`, never as
+a string the script builds. Its log (`--log`) is pull request output: screen it before quoting it in
+a report.
+
+When the result is `skipped` rather than evidence: the repro never started (the wrapper writes a
+sentinel just before it execs the repro; a sandbox that aborts first leaves none), the timeout (124,
+137), a command that could not run (126, 127), the script's own CPU or file-size limit (152, 153), or
+a process of the repro that outlived it outside its session (found and killed) or survived the kill.
+`--expect fail` counts any other non-zero exit, so a missing dependency (`ModuleNotFoundError`, a
+package the fresh clone lacks) reads as `reproduced`: pair `fail` with `--expect-log <fixed string>`,
+the assertion message the finding predicts, and the result is `reproduced` only when the log holds it.
+
+Limits that remain. On macOS a process the repro leaves behind is found through `sandbox_check(3)`
+(this run's sandbox: box readable, the scratch folder not), which needs `/usr/bin/python3`; without
+it the result is `skipped`. Signals go only to the process itself, so a test that signals its own
+children fails inside. The profile allows reads of /usr, /System, /Library, /private/etc and the
+runtime folders (/opt/homebrew, Xcode): a secret kept there is readable, though nothing can leave
+without network. On Linux the bwrap backend is built from bwrap's documented flags and its rows run
+only where bwrap works (they skip elsewhere, and CI does not run this suite); /etc is bound read-only, so world-readable files there are visible;
+runtimes outside /usr (/opt, a home-installed toolchain) are not; and the process cap is per uid, as
+on macOS. Neither backend limits memory.
 
 Optional fields: a security finding may carry `owasp:` (a category id such as `A01:2025`,
 `API3:2023`, `LLM01:2025` or `ASI02:2026`) and `cwe:` (such as `CWE-639`), as described in
