@@ -277,6 +277,8 @@ for name, text in (
     ("an absolute path", report([entry("C1", file="/etc/passwd")])),
     ("a backslash path", report([entry("C1", file="src\\a.py")])),
     ("a URL as the path", report([entry("C1", file="https://example.com/a.py")])),
+    ("a path with a control character in it", report([entry("C1", file="src/a\x01b.py")])),
+    ("a drive-letter path", report([entry("C1", file="C:/a.py")])),
     ("a line in Arabic-Indic digits", report([entry("C1", line="\u0661\u0662")])),
     ("a line that is not a number", report([entry("C1", line="near the top")])),
     ("a backwards range", report([entry("C1", line="12-10")])),
@@ -363,11 +365,13 @@ def marker(sha=H, verdict="BLOCKED", pass_=2):
     return "<!-" + "- adversarial-review: sha=%s verdict=%s pass=%d critical=1 warning=0 note=0 -->\n\n" % (sha, verdict, pass_)
 
 
-def setup(comments, head=H, edited=()):
+def setup(comments, head=H, edited=(), edited_by=()):
     d = os.path.join(W, "fake"); shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
     open(os.path.join(d, "calls.log"), "w").close()
     if edited:
         open(os.path.join(d, "edited-ids"), "w").write("\n".join(edited) + "\n")
+    if edited_by:
+        open(os.path.join(d, "edited-by"), "w").write("\n".join(edited_by) + "\n")
     json.dump({"number": 7, "headRefOid": head, "labels": [{"name": "review:blocked"}], "comments": comments,
                "state": "OPEN"}, open(os.path.join(d, "pr.json"), "w"))
     return d
@@ -400,6 +404,23 @@ check("pr mode: an allowlist with no login -> exit 1, refused", p.returncode == 
 d = setup([good], edited=("IC_0",))
 p = run(["7"], d)
 check("pr mode: the only trusted marker comment was edited -> exit 1, refused", p.returncode == 1 and "no trusted marker" in err(p), err(p))
+# W3 of PR 92: a trusted marker edited by another login refuses the export, even when a later
+# trusted marker at the head is intact (the guard, not the missing marker, is what refuses).
+first = c(marker(pass_=1) + report([entry("C1", claim='"pass one"')], header="version: 1\npr: 7\nhead: aaaaaaaaaaaa\npass: 1\nverdict: BLOCKED\n"))
+d = setup([first, good], edited=("IC_0",), edited_by=("IC_0 mallory",))
+p = run(["7"], d)
+check("pr mode: an older trusted marker edited by another login -> exit 1, refused as a foreign edit, nothing written",
+      p.returncode == 1 and "REFUSED" in err(p) and "mallory" in err(p) and not p.stdout, (p.returncode, err(p)))
+d = setup([first, good], edited=("IC_0",), edited_by=("IC_0 " + ME,))
+p = run(["7"], d)
+check("pr mode: the same marker edited by its author -> the export of the marker at the head, exit 0",
+      p.returncode == 0 and "from the trusted comment" in p.stdout.decode(), (p.returncode, err(p)))
+# W3 of PR 92: the comment's block names another head than its marker.
+moved = c(marker() + report([entry("C1", claim='"x"')], header="version: 1\npr: 7\nhead: bbbbbbbbbbbb\npass: 2\nverdict: BLOCKED\n"))
+d = setup([moved])
+p = run(["7"], d)
+check("pr mode: the findings block names head bbbbbbbbbbbb but its marker names aaaa... -> exit 2, nothing written",
+      p.returncode == 2 and "names head" in err(p) and not p.stdout, (p.returncode, err(p)))
 bad_body = c(marker() + "prose, and the findings block never closes\n```findings\nfindings: []\n")
 d = setup([bad_body])
 p = run(["7"], d)
