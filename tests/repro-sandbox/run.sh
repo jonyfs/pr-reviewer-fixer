@@ -329,7 +329,9 @@ EOF
   timeout 90 env REVIEW_REPRO=1 "$R" --repo "$W/src" --timeout 10 --log "$W/log" \
     --sha "$FIX" --expect fail --cmd-file "$W/cmd-walk.sh" >"$W/out" 2>&1; r=$?
   walk_seen=0
-  for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "$WALK" >/dev/null && walk_seen=1; sleep 0.1; done
+  # pgrep -f misses a walker that lives only ~20 ms per pid (PR 97 N6); a ps snapshot of every command
+  # line sees it, so the row samples ps instead.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do ps -axo command= | grep -F -- "$WALK" | grep -v -F 'grep -F' >/dev/null && walk_seen=1; sleep 0.1; done
   check "W2: a walker forking every 20 ms does not outlive the script, and the result is skipped" \
     eval '[ $walk_seen = 0 ] && [ $r = 3 ] && has "repro: skipped" "$W/out"'
   for _ in 1 2 3 4 5 6 7 8 9 10; do pkill -KILL -f "$WALK" 2>/dev/null || break; done

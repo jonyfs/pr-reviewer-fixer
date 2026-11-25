@@ -341,6 +341,14 @@ def by_reaper(hits):
             return True
         time.sleep(0.001)
     return False
+def freeze(hits):
+    # SIGSTOP first: a stopped process forks nothing, so a fast fork walker cannot outrun the kill that
+    # follows (PR 97 W2). A stopped process is still ours, so the next scan sees it and the kill lands.
+    for p in hits:
+        try:
+            os.kill(p, 19)
+        except OSError:
+            pass
 found = left = 0
 changed = not box_ok()
 empty, deadline = 0, time.monotonic() + 15
@@ -351,8 +359,15 @@ while empty < 2:
         continue
     empty = 0
     found += len(hits)
+    freeze(hits)
     if time.monotonic() > deadline:
-        left = len(hits)
+        for p in hits:
+            try:
+                os.kill(p, 9)
+            except OSError:
+                pass
+        # Report what is still in the sandbox after the last kill, not what the first scan saw (PR 97 W2).
+        left = len([p for p in pids() if p != me and p != rpid and ours(p)])
         break
     if reaper == "used" and by_reaper(hits):
         continue
