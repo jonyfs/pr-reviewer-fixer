@@ -206,6 +206,7 @@ start "fetch-feedback.py"                        env TEST_TAG="${P}run" python3 
 start "behaviour-diff.sh"                        env TEST_TAG="${P}run" bash "$HERE/behaviour-diff/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "review eval scorer"                       env TEST_TAG="${P}run" bash "$HERE/eval/selftest.sh"
 start "fixer eval scorer"                        env TEST_TAG="${P}run" bash "$HERE/fixer-eval/selftest.sh"
+start "golden set scorer"                        env TEST_TAG="${P}run" bash "$HERE/golden/selftest.sh"
 start "install.sh"                                env TEST_TAG="${P}run" bash "$HERE/install/run.sh" "$ROOT/install.sh"
 start "install-remote.sh"                         env TEST_TAG="${P}run" bash "$HERE/remote/run.sh"
 start "remote-review.sh"                          env TEST_TAG="${P}run" bash "$HERE/remote-review/run.sh"

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 44,
+  "base": "8f19f4eee04675816b3e689a7406245f1aa1f89f",
+  "head": "5ee868f903b97e0106dae07a4e7036660d926893",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-reviewer/SKILL.md",
+      "lines": [
+        112,
+        112
+      ],
+      "dimension": "architecture",
+      "severity": "WARNING",
+      "description": "The Version Notice makes every dispatched reviewer sub-agent ask the person and run update.sh in the middle of the loop, and harness-loop.md never gives that question to the loop agent."
+    },
+    {
+      "id": "E2",
+      "source_id": "W3",
+      "file": ".agents/skills/pr-reviewer/scripts/update.sh",
+      "lines": [
+        103,
+        103
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "update.sh and check-version.sh take the download and release base URLs from the environment with no flag, so one variable chooses the version, the checksums and the archive whose install.sh then runs as the person."
+    },
+    {
+      "id": "E3",
+      "source_id": "W2",
+      "file": ".agents/skills/pr-reviewer/scripts/update.sh",
+      "lines": [
+        142,
+        142
+      ],
+      "dimension": "documentation",
+      "severity": "WARNING",
+      "description": "The docs say any update failure leaves the old install unchanged, but install.sh replaces one skill at a time, so a later failure leaves a mixed install and the message does not say to run update.sh again."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

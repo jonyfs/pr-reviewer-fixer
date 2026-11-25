@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 78,
+  "base": "4a12be0dd854a51c10b962eb818f75a041cd4104",
+  "head": "acf75f2b887f7fc2468b6dd470584b54f35b877f",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-fixer/scripts/behaviour-diff.sh",
+      "lines": [
+        207,
+        207
+      ],
+      "dimension": "reliability",
+      "severity": "WARNING",
+      "description": "When behaviour-diff.sh is stopped by TERM or INT, the probe it started in its own session keeps running, because killpg runs only on the timeout path."
+    },
+    {
+      "id": "E2",
+      "source_id": "W3",
+      "file": ".agents/skills/pr-fixer/scripts/behaviour-diff.sh",
+      "lines": [
+        257,
+        257
+      ],
+      "dimension": "correctness",
+      "severity": "WARNING",
+      "description": "A probe that cannot start at either commit is reported as 'same' and the run exits 0, although nothing was compared."
+    },
+    {
+      "id": "E3",
+      "source_id": "W2",
+      "file": "tests/behaviour-diff/run.sh",
+      "lines": [
+        117,
+        117
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "Several controls behaviour-diff.sh claims (killpg on every exit, the hooksPath override, the stderr comparison, stdin from /dev/null) have no test: a mutant removing each still passes the suite."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

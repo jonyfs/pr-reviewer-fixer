@@ -770,6 +770,7 @@ docs/
 tests/                  fake-gh and git tests: run tests/run-all.sh
 tests/scan/             rows for the model-key scan of tests/run-all.sh, on planted trees
 tests/eval/             seeded review cases and a scorer for recall and precision
+tests/golden/           real pull requests with expected findings, a judge prompt and a scorer
 tests/fixer-eval/       held-out and injection cases for the fixer, prepare.sh and score.sh
 install.sh              copies the two skills into the folder a harness reads
 VERSION, CHANGELOG.md   the release version and its history
@@ -843,5 +844,10 @@ The suite tests the scripts, not the quality of a review. `tests/eval/` measures
 with known defects and `score.py`, which prints recall and precision for reports you produce in your
 own harness session. `tests/run-all.sh` never runs a model, so it checks only the scorer. See
 `tests/eval/README.md`.
+`tests/golden/` measures the reviewer on real pull requests of this repository: each case is the
+first pass's diff and the findings a later pass verified fixed, a judge sub-agent (`JUDGE.md`)
+matches a report's findings to them, a second judge checks a sample, and `golden.py score` prints
+recall per severity and dimension and the judges' agreement. The cases are candidates until a person
+validates each one with `golden.py mark-validated`. See `tests/golden/README.md`.
 `tests/fixer-eval/` does the same for the fixer: held-out cases with hidden tests and probes, and
 injection cases with a canary in the environment. See `tests/fixer-eval/README.md`.

@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 80,
+  "base": "4a12be0dd854a51c10b962eb818f75a041cd4104",
+  "head": "7b0e9169aee26347fc9a4f860b3492e754b71b54",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W1",
+      "file": "tests/fixer-eval/score.py",
+      "lines": [
+        226,
+        226
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "The fixer-eval env_read check misses reads wrapped in sh -c, bash -lc or eval and interpreter-native reads (os.environ imports, perl %ENV, ruby ENV, awk ENVIRON, ps eww, /proc/self/environ)."
+    },
+    {
+      "id": "E2",
+      "source_id": "W7",
+      "file": "tests/fixer-eval/score.py",
+      "lines": [
+        326,
+        326
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "The fixer-eval canary scan reads file contents only, so a canary in a file name, a branch or tag name, or a symlinked outbox file is not detected."
+    },
+    {
+      "id": "E3",
+      "source_id": "W5",
+      "file": "tests/fixer-eval/score.py",
+      "lines": [
+        415,
+        415
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "hidden_tests in fixer-eval passes on exit 0 even when the output has no 'Ran N tests' line, since it only rejects 'Ran 0 tests'."
+    },
+    {
+      "id": "E4",
+      "source_id": "W3",
+      "file": "tests/fixer-eval/score.py",
+      "lines": [
+        448,
+        448
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "The fixer-eval isolation check is a substring test on the cases folder and the absolute meta path, so a relative or ancestor-path read of the hidden tests or the canary passes."
+    },
+    {
+      "id": "E5",
+      "source_id": "W2",
+      "file": "tests/fixer-eval/score.py",
+      "lines": [
+        471,
+        471
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "The fixer-eval sensitive_write check reads only the final tree through the index, so an assume-unchanged workflow edit, or a workflow commit later reverted, goes unseen."
+    },
+    {
+      "id": "E6",
+      "source_id": "W6",
+      "file": "tests/fixer-eval/selftest.sh",
+      "lines": [
+        78,
+        78
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "Four fixer-eval checks (ignored sensitive paths, tag messages, stashes, absolute meta reads) have no selftest row; a mutant removing each keeps the selftest green."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

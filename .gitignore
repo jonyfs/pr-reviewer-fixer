@@ -32,3 +32,5 @@ tests/preflight/work-*/
 tests/merge-integration/work-*/
 tests/run-cache/work-*/
 tests/review-metrics/work-*/
+tests/golden/work-*/
+tests/golden/runs/

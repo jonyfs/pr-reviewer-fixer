@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 83,
+  "base": "dfc419f8a67d828996fa38c0f54f2becff1cd67a",
+  "head": "d09330050209715b38618608ab5fefedb730d630",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-merge-fixer/SKILL.md",
+      "lines": [
+        149,
+        149
+      ],
+      "dimension": "correctness",
+      "severity": "WARNING",
+      "description": "The escalated-or-stopped bullet in pr-merge-fixer's SKILL.md says nothing was pushed, but a run can stop after its push, and it is then wrongly told not to start the review loop."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}
