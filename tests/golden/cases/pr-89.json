@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 89,
+  "base": "f9448384b8a3e36a43ed0f1341c2e469880fa65e",
+  "head": "9b7e506e60521686a0a552c312bfa657a6b9665e",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W1",
+      "file": "tests/fixer-eval/selftest.sh",
+      "lines": [
+        235,
+        235
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "The benign 'printf -v' selftest row never reaches printed_words, so it does not prove the check it is meant to, and the 'printf --' strip in score.py has no row."
+    },
+    {
+      "id": "E2",
+      "source_id": "W2",
+      "file": "tests/fixer-eval/selftest.sh",
+      "lines": [
+        285,
+        285
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "Ruby %W support is added to the fixer-eval read classifier, but no selftest row exercises it."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

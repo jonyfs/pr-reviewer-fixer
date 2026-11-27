@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 38,
+  "base": "c1e42b91a3534b992189cd3f16f7185364ad864b",
+  "head": "16d59bfb305563f25c0be37c3d6a6aa7cf1c9647",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W2",
+      "file": ".agents/skills/pr-reviewer/references/dimensions.md",
+      "lines": [
+        35,
+        35
+      ],
+      "dimension": "design",
+      "severity": "WARNING",
+      "description": "The severity-per-area bullet in dimensions.md contradicts severity-and-verdict.md on when an outage or an attacker-reachable defect is CRITICAL."
+    },
+    {
+      "id": "E2",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-reviewer/references/security-checklist.md",
+      "lines": [
+        30,
+        30
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "The OWASP rewrite of security-checklist.md drops the only CSRF check, so no reviewer reference mentions CSRF any more."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

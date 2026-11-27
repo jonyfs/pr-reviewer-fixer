@@ -178,7 +178,12 @@ sequenceDiagram
   `scorecard` reads the trusted verdict and closure markers of a set of pull requests and counts,
   per dimension and per model and tier: findings raised, blocking, verified after a fix, refused,
   and left as debt, plus the accepted rate. The marker has no cost field, so cost is reported as not
-  recorded.
+  recorded. `suppress` is opt-in (set `REVIEW_SUPPRESS_SINCE` to a date): from the same trusted
+  history it names the dimensions whose decided findings were mostly dismissed (at least 5 decided,
+  a dismissed share of at least 0.6, both flags), and the reviewer shows their new WARNINGs and NOTEs
+  as NOTEs under `Suppressed by history` with a `suppressed:` line in Coverage. A CRITICAL, the
+  security dimension, a mandatory unit of the change and a blocking WARNING are never suppressed,
+  and anything it cannot read suppresses nothing.
 - Can, when you opt in, run a CRITICAL candidate's repro with `scripts/repro-sandbox.sh`. It is off
   unless you set `REVIEW_REPRO=1`. The repro (an existing test, or a short script the reviewer
   writes) runs in a scratch clone at the head, with an empty environment (no `GH_TOKEN`, no SSH
@@ -649,7 +654,10 @@ accepted external suppression. A finding with no line points at line 1 and carri
 under `prReviewerFinding/v1` and `primaryLocationLineHash`) hashes the file, the dimension and the
 normalized claim, so the same finding matches across passes even when its line or id changes, and
 ends with an occurrence suffix (`:1`, `:2` in report order) so two findings with the same file,
-dimension and claim at different lines stay two alerts. The
+dimension and claim at different lines stay two alerts. The suffix counts closed findings too, so a
+finding once exported stays in every later findings block of the pull request (closed as `verified`
+or `not-applicable`) and is never dropped: dropping one of two such twins would hand the survivor the
+other's suffix and fingerprint. The
 claims are model-written text about the pull request: they are written as escaped JSON strings,
 never as Markdown. A report over GitHub's limits (10 MB gzip-compressed, 25,000 results or rules
 per run) is refused with exit 2 and nothing written, never truncated. Exit 1 is a trust refusal, 2
@@ -792,6 +800,7 @@ docs/
 tests/                  fake-gh and git tests: run tests/run-all.sh
 tests/scan/             rows for the model-key scan of tests/run-all.sh, on planted trees
 tests/eval/             seeded review cases and a scorer for recall and precision
+tests/golden/           real pull requests with expected findings, a judge prompt and a scorer
 tests/fixer-eval/       held-out and injection cases for the fixer, prepare.sh and score.sh
 install.sh              copies the two skills into the folder a harness reads
 VERSION, CHANGELOG.md   the release version and its history
@@ -865,5 +874,10 @@ The suite tests the scripts, not the quality of a review. `tests/eval/` measures
 with known defects and `score.py`, which prints recall and precision for reports you produce in your
 own harness session. `tests/run-all.sh` never runs a model, so it checks only the scorer. See
 `tests/eval/README.md`.
+`tests/golden/` measures the reviewer on real pull requests of this repository: each case is the
+first pass's diff and the findings a later pass verified fixed, a judge sub-agent (`JUDGE.md`)
+matches a report's findings to them, a second judge checks a sample, and `golden.py score` prints
+recall per severity and dimension and the judges' agreement. The cases are candidates until a person
+validates each one with `golden.py mark-validated`. See `tests/golden/README.md`.
 `tests/fixer-eval/` does the same for the fixer: held-out cases with hidden tests and probes, and
 injection cases with a canary in the environment. See `tests/fixer-eval/README.md`.

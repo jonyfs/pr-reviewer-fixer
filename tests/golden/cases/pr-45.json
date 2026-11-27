@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 45,
+  "base": "b1f3b874c146d7b387bb2a7013da9a1346c13fdc",
+  "head": "c3d204abe20d657ac0209c076bc2f9413ba62bd0",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "C1",
+      "file": ".agents/skills/pr-merge-fixer/SKILL.md",
+      "lines": [
+        102,
+        102
+      ],
+      "dimension": "security",
+      "severity": "CRITICAL",
+      "description": "On a pull request with no review yet the merge fixer skips review-cycle.sh fix, so no fork or collaborator check runs before it builds, tests and regenerates lockfiles on the pull request's code."
+    },
+    {
+      "id": "E2",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-reviewer/references/harness-loop.md",
+      "lines": [
+        124,
+        124
+      ],
+      "dimension": "correctness",
+      "severity": "WARNING",
+      "description": "harness-loop.md runs step 0 only on entry, so a base that moves into a conflict after a BLOCKED verdict never reaches the merge fixer and passes on an unchanged head use up the cycle budget."
+    },
+    {
+      "id": "E3",
+      "source_id": "W6",
+      "file": ".agents/skills/pr-reviewer/references/harness-loop.md",
+      "lines": [
+        127,
+        127
+      ],
+      "dimension": "security",
+      "severity": "WARNING",
+      "description": "Step 0 of harness-loop.md gives the merge fixer no hidden-content scan results, and the merge fixer never runs scan-hidden.py, although pull request text and commit messages steer each conflict resolution."
+    },
+    {
+      "id": "E4",
+      "source_id": "W4",
+      "file": "tests/update/run.sh",
+      "lines": [
+        28,
+        28
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "No update test asserts that pr-merge-fixer is updated, or that an install without it does not gain it."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

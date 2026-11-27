@@ -6,15 +6,18 @@
 #   review-metrics.sh agreement [--min X] [--json] [--out FILE] <report> <report> [<report>...]
 #   review-metrics.sh scorecard (--prs 21,25 | --since YYYY-MM-DD) [--limit N] [--min-accept X]
 #                               [--min-blocking N] [--json] [--out FILE]
+#   review-metrics.sh suppress (--prs 21,25 | --since YYYY-MM-DD) [--limit N] [--min-decided N]
+#                              [--min-dismissed X] [--mandatory U,V] [--report FILE
+#                              (--floor BASE HEAD | --floor-files FILE)] [--json] [--out FILE]
 #
 # AGREEMENT (self-agreement, catalog item 96). k >= 2 verdict reports of the same pull request and the
 # same head, written by k fresh-context reviewers that did not see each other (the loop agent runs them;
 # this script never calls a model, see references/review-metrics.md). Each report's findings block is
-# read through `review-cycle.sh findings-block`, the one parser the other scripts use; the `pr:`,
-# `head:`, `dimension:` and `claim:` fields it does not print are read from the same block by the same
-# line rules, and a report whose ids differ between the two readings is refused. Only entries that
-# count (status open, refused-rejected or none) are compared: a verified entry carried forward is not
-# a finding of this review.
+# read through `review-cycle.sh findings-block`, the one parser the other scripts use, and only
+# through it: the `pr:` and `head:` of its header and each entry's `dimension:` and `claim:` are the
+# values it prints (a double-quoted value that is one JSON string decoded, so `\u00e9` and the
+# literal letter are one claim). Only entries that count (status open, refused-rejected or none) are
+# compared: a verified entry carried forward is not a finding of this review.
 #
 #   Fingerprint: sha256 of file, dimension and normalized claim; the line, the id and the severity are
 #   left out. The file loses a leading `./`. The dimension is lowercased, and anything but
@@ -52,7 +55,8 @@
 #   debt       still open when the pull request's newest trusted verdict is PASSED (declared debt)
 #   open       still open (or refused-rejected) under a BLOCKED newest verdict
 # Blocking: every CRITICAL, and a WARNING raised under a marker with `block_at=warning`. Accepted rate:
-# blocking findings verified, fixed or resolved, over blocking (a valid finding someone fixed). A unit
+# blocking findings verified or resolved, over blocking (a valid finding someone fixed; fixed is never
+# blocking, so it is not in the rate). A unit
 # with at least --min-blocking (3) blocking findings and an accepted rate below --min-accept (0.5) is
 # flagged `low_acceptance`, a candidate to retune or retire. Cost: the verdict marker has no cost
 # field, so it is printed as "not recorded" and never estimated.
@@ -64,6 +68,22 @@
 # someone else, is left out of every count and named. An unset or login-less list is exit 2 before
 # any gh call. Report and comment text is data: only the fixed marker formats and the findings block
 # are parsed, nothing read is executed, and no claim text is printed (a fingerprint is a short hash).
+#
+# SUPPRESS (opt-in category suppression, catalog item 26). The scorecard's history, per category:
+# accepted (verified, resolved, fixed: suppress's own SUPPRESS_ACCEPTED) against dismissed (refused,
+# withdrawn); debt and open are neither. A category is a dimension label mapped onto the eighteen
+# rows of references/dimensions.md (`docs` is documentation, `data_integrity` is data-integrity); a
+# label holding the word security is security, and any other label is `other`. A category with at
+# least --min-decided (5) decided findings and a dismissed share of at least --min-dismissed (0.6)
+# is suppressed, except security, `none` and `other`, and the category of every mandatory unit of
+# the change (path-floor.sh over --floor BASE HEAD or --floor-files FILE, the report's
+# `mandatory_units:`, --mandatory). With --report, each counted finding of that draft report is
+# `demote` (a WARNING, to NOTE), `list` (a NOTE, shown under suppressed) or `keep`: a CRITICAL
+# always, and a WARNING whenever REVIEW_BLOCK_AT is set to anything but `critical`, so the verdict
+# never changes. FAIL OPEN: anything unreadable (no trusted login, a pull request gh could not read,
+# a pull request left out for an edited trusted marker or an unreadable trusted findings block, the
+# report, the floor, a bad flag, an unexpected error) prints `suppressed: none (fail open:
+# <reason>)`, keeps every finding, and exits 2. No state: nothing is written but stdout or --out.
 #
 # OUTPUT. A table, or one JSON object with --json, to stdout or to --out FILE (written whole; nothing
 # else is written). Read-only on GitHub. Scorecard exit codes: 0 when every pull request was read, 2
@@ -86,7 +106,15 @@ COUNTED = ("", "open", "refused-rejected")
 COST = "not recorded"
 
 
+LAST = {"msg": ""}
+
+
+class FailedOpen(SystemExit):
+    """`suppress` already printed its fail-open answer; nothing more to print."""
+
+
 def die(msg, code=2):
+    LAST["msg"] = msg
     print("review-metrics: " + msg, file=sys.stderr)
     sys.exit(code)
 
@@ -127,19 +155,24 @@ def number(flag, v, lo=0.0, hi=1.0):
 
 
 def parse_args(argv):
-    if not argv or argv[0] not in ("agreement", "scorecard"):
+    if not argv or argv[0] not in ("agreement", "scorecard", "suppress"):
         die("usage: review-metrics.sh agreement [--min X] [--json] [--out FILE] <report> <report>... | "
-            "scorecard (--prs N,M | --since YYYY-MM-DD) [--limit N] [--min-accept X] [--min-blocking N] [--json] [--out FILE]")
+            "scorecard (--prs N,M | --since YYYY-MM-DD) [--limit N] [--min-accept X] [--min-blocking N] [--json] [--out FILE] | "
+            "suppress (--prs N,M | --since YYYY-MM-DD) [--limit N] [--min-decided N] [--min-dismissed X] [--mandatory U,V] "
+            "[--report FILE (--floor-files FILE | --floor BASE HEAD)] [--json] [--out FILE]")
     o = {"cmd": argv[0], "json": False, "out": None, "min": 0.5, "files": [], "prs": None, "since": None,
-         "limit": 200, "min_accept": 0.5, "min_blocking": 3}
+         "limit": 200, "min_accept": 0.5, "min_blocking": 3, "min_decided": 5, "min_dismissed": 0.6,
+         "mandatory": [], "report": None, "floor_files": None, "floor_base": None, "floor_head": None}
     flags = {"agreement": {"--min", "--json", "--out"},
-             "scorecard": {"--prs", "--since", "--limit", "--min-accept", "--min-blocking", "--json", "--out"}}[o["cmd"]]
+             "scorecard": {"--prs", "--since", "--limit", "--min-accept", "--min-blocking", "--json", "--out"},
+             "suppress": {"--prs", "--since", "--limit", "--min-decided", "--min-dismissed", "--mandatory", "--report",
+                          "--floor-files", "--floor", "--json", "--out"}}[o["cmd"]]
     rest, i = argv[1:], 0
     while i < len(rest):
         a = rest[i]
         if not a.startswith("--"):
             if o["cmd"] != "agreement":
-                die("scorecard takes no file argument (%r)" % safe(a))
+                die("%s takes no file argument (%r)" % (o["cmd"], safe(a)))
             o["files"].append(a)
             i += 1
             continue
@@ -160,7 +193,22 @@ def parse_args(argv):
             o["min"] = number(a, v)
         elif a == "--min-accept":
             o["min_accept"] = number(a, v)
-        elif a in ("--min-blocking", "--limit"):
+        elif a == "--min-dismissed":
+            o["min_dismissed"] = number(a, v)
+        elif a in ("--report", "--floor-files"):
+            if not v:
+                die("%s needs a file" % a)
+            o[a[2:].replace("-", "_")] = v
+        elif a == "--floor":
+            if i >= len(rest) or not v or not rest[i]:
+                die("--floor takes two revisions, BASE HEAD")
+            o["floor_base"], o["floor_head"] = v, rest[i]
+            i += 1
+        elif a == "--mandatory":
+            if not re.fullmatch(r"[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*", v, re.ASCII):
+                die("--mandatory takes unit names separated by commas, such as security,reliability")
+            o["mandatory"] = [dimension(x) for x in v.split(",")]
+        elif a in ("--min-blocking", "--limit", "--min-decided"):
             if not re.fullmatch(r"[1-9][0-9]{0,5}", v, re.ASCII):
                 die("%s takes a positive whole number" % a)
             o[a[2:].replace("-", "_")] = int(v)
@@ -180,8 +228,10 @@ def parse_args(argv):
             except ValueError:
                 die("--since takes a date as YYYY-MM-DD")
             o["since"] = v
-    if o["cmd"] == "scorecard" and (o["prs"] is None) == (o["since"] is None):
-        die("scorecard takes exactly one of --prs 21,25 or --since YYYY-MM-DD")
+    if o["cmd"] != "agreement" and (o["prs"] is None) == (o["since"] is None):
+        die("%s takes exactly one of --prs 21,25 or --since YYYY-MM-DD" % o["cmd"])
+    if o["floor_files"] is not None and o["floor_base"] is not None:
+        die("give the path floor once: --floor-files FILE or --floor BASE HEAD")
     if o["cmd"] == "agreement" and len(o["files"]) < 2:
         die("agreement needs at least two reports of the same pull request and head (k >= 2)")
     return o
@@ -210,38 +260,9 @@ def findings_block(path):
         return 2, None
 
 
-def block_extras(text):
-    """The fields findings-block does not print, read from the same block by the same line rules:
-    top-level `pr:` and `head:`, and per entry (in order) `dimension:` and `claim:`."""
-    lines = [ln[:-1] if ln.endswith("\r") else ln for ln in text.split("\n")]
-    last = max((i for i, ln in enumerate(lines) if ln.strip(" \t")), default=None)
-    first = next((i for i, ln in enumerate(lines) if ln == "```findings"), None)
-    meta, entries, section, e = {}, [], None, None
-    if last is None or first is None:
-        return meta, entries
-    for ln in lines[first + 1:last]:
-        if re.match(r"\s*(#|$)", ln):
-            continue
-        top = re.match(r"([A-Za-z_][A-Za-z0-9_-]*):[ \t]*(.*?)[ \t]*$", ln)
-        if top:
-            section, e = top.group(1), None
-            if section in ("pr", "head"):
-                meta[section] = top.group(2).strip("\"'")
-            continue
-        if section == "findings":
-            s = re.match(r"\s*-\s+id:\s*(\S+)", ln)
-            if s:
-                e = {"id": s.group(1).strip("\"'")}
-                entries.append(e)
-                continue
-            kv = re.match(r"\s{2,}(dimension|claim):\s*(.*?)\s*$", ln)
-            if kv and e is not None:
-                e[kv.group(1)] = kv.group(2).strip("\"'")
-    return meta, entries
-
-
 def entries_of(body):
-    """The entries of a comment's or file's findings block with dimension and claim, or None."""
+    """(header, entries) of a comment's or file's findings block as findings-block prints them, or
+    (None, None). Nothing is read from the block past findings-block."""
     fd, tmp = tempfile.mkstemp(prefix="review-metrics-", suffix=".md")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -254,13 +275,10 @@ def entries_of(body):
             pass
     if rc or not isinstance(blk, dict):
         return None, None
-    meta, extra = block_extras(body)
-    base = blk.get("entries") or []
-    if [x.get("id") for x in base] != [x.get("id") for x in extra]:
+    meta, ents = blk.get("header"), blk.get("entries")
+    if not isinstance(meta, dict) or not isinstance(ents, list) or not all(isinstance(e, dict) for e in ents):
         return None, None
-    for b, x in zip(base, extra):
-        b["dimension"], b["claim"] = x.get("dimension"), x.get("claim")
-    return meta, base
+    return meta, ents
 
 
 # ---- agreement ----------------------------------------------------------------------------------
@@ -306,8 +324,8 @@ def agreement(o):
         meta, ents = entries_of(text)
         if ents is None:
             die("%s has no readable findings block (review-cycle.sh findings-block refused it)" % safe(p))
-        pr = meta.get("pr", "")
-        head = meta.get("head", "").lower()
+        pr = str(meta.get("pr") or "")
+        head = str(meta.get("head") or "").lower()
         if not re.fullmatch(r"[0-9]+", pr, re.ASCII) or not re.fullmatch(r"[0-9a-f]{7,40}", head, re.ASCII):
             die("%s: the findings block needs `pr:` (a number) and `head:` (7 to 40 hex digits)" % safe(p))
         fps = {}
@@ -440,6 +458,7 @@ def read_pr(n, gate):
             if fid not in found:
                 sev = str(e.get("severity") or "").upper()
                 found[fid] = {"id": fid, "raised_at": p, "severity": sev, "dimension": dimension(e.get("dimension")),
+                              "label": str(e.get("dimension") or ""),
                               "model": ("%s/%s" % (v["model"], v["tier"])) if v["model"] else "unrecorded",
                               "blocking": sev == "CRITICAL" or (sev == "WARNING" and v["block_at"] == "warning")}
             found[fid]["last_pass"], found[fid]["status"] = p, str(e.get("status") or "open")
@@ -481,7 +500,9 @@ def read_pr(n, gate):
 
 
 OUTCOMES = ("verified", "fixed", "resolved", "refused", "withdrawn", "debt", "open")
-ACCEPTED = ("verified", "fixed", "resolved")
+# What the accepted rate counts. fixed is never blocking (a blocking finding the fixer fixed is marked
+# verified), so it is not listed; the legend is built from this tuple.
+ACCEPTED = ("verified", "resolved")
 
 
 def tally(rows, key, o):
@@ -515,11 +536,8 @@ def table(title, units):
     return lines
 
 
-def scorecard(o):
-    gate = load_gate()
-    if not gate.allowlist():
-        die("REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. "
-            "Set it to the login the harness publishes as: gh api user --jq .login")
+def list_prs(o):
+    """--prs as given, or the pull requests merged since --since, as fix-ledger.sh lists them."""
     if not any(os.access(os.path.join(d, "gh"), os.X_OK) for d in os.environ.get("PATH", "").split(os.pathsep) if d):
         die("gh is not installed, INCONCLUSIVE")
     prs = o["prs"]
@@ -534,8 +552,18 @@ def scorecard(o):
             die("gh pr list could not list the merged pull requests")
         prs = sorted({int(x["number"]) for x in got if isinstance(x, dict) and isinstance(x.get("number"), int)})
         if len(got) >= o["limit"]:
+            o["truncated"] = True
             print("review-metrics: gh returned --limit %d pull requests; there may be more, raise --limit" % o["limit"],
                   file=sys.stderr)
+    return prs
+
+
+def scorecard(o):
+    gate = load_gate()
+    if not gate.allowlist():
+        die("REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted. "
+            "Set it to the login the harness publishes as: gh api user --jq .login")
+    prs = list_prs(o)
     rows, failed = [], []
     for n in prs:
         r = read_pr(n, gate)
@@ -557,8 +585,9 @@ def scorecard(o):
             out.append("could not read: " + ", ".join("#%d" % n for n in failed))
         out.append("ignored: %d untrusted marker(s), %d edited and %d deleted trusted comment(s)" % (
             res["ignored"]["untrusted_markers"], res["ignored"]["edited_trusted"], res["ignored"]["deleted_trusted"]))
-        out.append("accepted = verified, fixed or resolved / blocking; fixed (non-blocking only) and withdrawn are upper bounds (see the reference); "
-                   "cost: not recorded (the verdict marker has no cost field)")
+        accepted = ", ".join(ACCEPTED[:-1]) + " or " + ACCEPTED[-1]
+        out.append("accepted = %s / blocking; fixed (non-blocking only) and withdrawn are upper bounds (see the reference); "
+                   "cost: not recorded (the verdict marker has no cost field)" % accepted)
         out.append("")
         out.append("by dimension")
         out += table("dimension", res["by_dimension"])
@@ -574,7 +603,226 @@ def scorecard(o):
     return 0
 
 
+# ---- suppress -----------------------------------------------------------------------------------
+# What may never be suppressed, whatever its history: the security dimension, and the two buckets
+# that are not one category (no dimension, or a label outside the vocabulary below).
+NEVER = {"security": "the security dimension", "none": "no dimension, not one category",
+         "other": "a label outside references/dimensions.md, not one category"}
+# suppress keeps its own accepted outcomes: the scorecard's ACCEPTED may change (open PR 94 narrows
+# it), and a NOTE is accepted only as `fixed`, so without it a NOTE-heavy category looks dismissed.
+SUPPRESS_ACCEPTED = ("verified", "resolved", "fixed")
+DISMISSED = ("refused", "withdrawn")
+# The categories: the eighteen rows of references/dimensions.md, each name of a row (and a few
+# common short forms) mapped onto one canonical name. Any other label is `other`, never suppressed.
+VOCABULARY = {
+    "correctness": ("correctness", "functionality"),
+    "design": ("design", "architecture"),
+    "complexity": ("complexity",),
+    "maintainability": ("maintainability", "readability"),
+    "security": ("security",),
+    "performance": ("performance", "perf"),
+    "testing": ("testing", "tests", "test", "coverage"),
+    "error-handling": ("error-handling", "errors"),
+    "concurrency": ("concurrency",),
+    "api": ("api", "backward-compat", "backward-compatibility", "compatibility", "contract"),
+    "documentation": ("documentation", "docs", "doc"),
+    "dependencies": ("dependencies", "dependency", "deps"),
+    "observability": ("observability",),
+    "data-integrity": ("data-integrity", "data", "migrations", "migration"),
+    "reliability": ("reliability", "resilience"),
+    "scalability": ("scalability", "capacity"),
+    "operability": ("operability", "deployability"),
+    "privacy": ("privacy", "data-protection"),
+}
+CANONICAL = {alias: name for name, aliases in VOCABULARY.items() for alias in aliases}
+# A label holding `security`, or one of these words between hyphens, is the security dimension.
+SECURITY_WORDS = {"appsec", "infosec", "secops", "devsecops", "sec", "owasp", "vuln", "vulnerability", "vulnerabilities"}
+
+
+def category(v):
+    """The suppress category of a dimension label: NFKC, lowercase, spaces and `_` read as `-`; a
+    label holding the word security (or a security word) is `security`; a name of dimensions.md is
+    its row's name; empty is `none`; anything else is `other`."""
+    v = re.sub(r"[\s_]+", "-", unicodedata.normalize("NFKC", str(v or "")).strip().lower()).strip("-")
+    if not v:
+        return "none"
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", v, re.ASCII):
+        return "other"
+    if "security" in v or SECURITY_WORDS & set(v.split("-")):
+        return "security"
+    return CANONICAL.get(v, "other")
+
+
+def fail_open(o, reason, findings=None):
+    """Suppress nothing, say so on stdout (or --out), exit 2. Every refusal of `suppress` ends here."""
+    reason = safe(reason, 300)
+    res = {"fail_open": True, "reason": reason, "suppressed": [], "categories": [], "findings": [],
+           "coverage": ["suppressed: none (fail open: %s)" % reason]}
+    for e in findings or []:
+        res["findings"].append({"id": safe(e.get("id"), 40), "dimension": category(e.get("dimension")),
+                                "severity": safe(str(e.get("severity") or "").upper(), 20), "action": "keep",
+                                "reason": "fail open"})
+    if o.get("json"):
+        text = json.dumps(res, sort_keys=True) + "\n"
+    else:
+        text = "\n".join(res["coverage"] + ["finding %s %s %s: keep (fail open)" % (f["id"], f["dimension"], f["severity"])
+                                            for f in res["findings"]]) + "\n"
+    try:
+        emit(o, text)
+    except SystemExit:
+        sys.stdout.write(text)
+    print("review-metrics: suppress: " + reason + "; nothing is suppressed", file=sys.stderr)
+    raise FailedOpen(2)
+
+
+def floor_units(o):
+    """The units path-floor.sh makes mandatory for this change, or None when the floor is unknown."""
+    if o["floor_files"] is not None:
+        cmd = ("bash", os.path.join(HERE, "path-floor.sh"), "--files", o["floor_files"])
+    else:
+        cmd = ("bash", os.path.join(HERE, "path-floor.sh"), o["floor_base"], o["floor_head"])
+    rc, out = run(cmd)
+    if rc != 0:
+        return None
+    return {dimension(ln.split(" ", 1)[0]) for ln in out.splitlines() if ln.strip()}
+
+
+def protects(units, cat):
+    """A mandatory unit protects its own category (`data-integrity` protects `data_integrity`, `data`
+    and `migrations`, which are the same category)."""
+    return cat in {category(u) for u in units}
+
+
+def suppress(o):
+    report = None
+    if o["report"] is not None:
+        if o["floor_files"] is None and o["floor_base"] is None:
+            fail_open(o, "--report needs the change's path floor (--floor-files FILE or --floor BASE HEAD)")
+        try:
+            with open(o["report"], encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            fail_open(o, "cannot read the report %s" % o["report"])
+        _, report = entries_of(text)
+        if report is None:
+            fail_open(o, "the report %s has no readable findings block" % o["report"])
+    counted = [e for e in report or [] if str(e.get("status") or "") in COUNTED]
+    mandatory = set(o["mandatory"])
+    if o["floor_files"] is not None or o["floor_base"] is not None:
+        fl = floor_units(o)
+        if fl is None:
+            fail_open(o, "path-floor.sh could not read the change's paths, so the floor is unknown", counted)
+        mandatory |= fl
+    if o["report"] is not None:
+        _, blk = findings_block(o["report"])
+        for u in (blk or {}).get("mandatory_units") or []:
+            if isinstance(u, dict) and u.get("unit"):
+                mandatory.add(dimension(str(u["unit"])))
+    gate = load_gate()
+    if not gate.allowlist():
+        fail_open(o, "REVIEW_MARKER_AUTHORS is not set or lists no login, so no marker can be trusted", counted)
+    prs = list_prs(o)
+    if o.get("truncated"):
+        fail_open(o, "gh returned --limit %d pull requests, so the history may be incomplete" % o["limit"], counted)
+    rows, failed = [], []
+    for n in prs:
+        r = read_pr(n, gate)
+        (failed.append(n) if r is None else rows.append(r))
+    if failed:
+        fail_open(o, "could not read pull request(s) %s, so the history is incomplete" % ",".join(map(str, failed)), counted)
+    left = [r for r in rows if not r["complete"]]
+    if left:
+        # Leaving a pull request out only removes evidence, and can only push a category toward
+        # dismissed: an incomplete history suppresses nothing.
+        fail_open(o, "pull request(s) %s left out (%s), so the history is incomplete" % (
+            ",".join(str(r["pr"]) for r in left), "; ".join("#%d: %s" % (r["pr"], "; ".join(r["reasons"])) for r in left)),
+            counted)
+    done = rows
+    where = ("since %s" % o["since"]) if o["since"] else ("over %d pull request%s" % (len(done), "" if len(done) == 1 else "s"))
+    cats = {}
+    for f in (f for r in done for f in r["findings"]):
+        d = category(f["label"])
+        c = cats.setdefault(d, {"dimension": d, "accepted": 0, "dismissed": 0, "neither": 0})
+        c["accepted" if f["outcome"] in SUPPRESS_ACCEPTED else "dismissed" if f["outcome"] in DISMISSED else "neither"] += 1
+    out_cats, suppressed = [], []
+    for d in sorted(cats):
+        c = cats[d]
+        c["decided"] = c["accepted"] + c["dismissed"]
+        c["share"] = round(c["dismissed"] / c["decided"], 4) if c["decided"] else None
+        if d in NEVER:
+            why = "never suppressed: " + NEVER[d]
+        elif protects(mandatory, d):
+            why = "never suppressed: a mandatory unit of this change"
+        elif c["decided"] < o["min_decided"]:
+            why = "kept: %d decided, fewer than %d" % (c["decided"], o["min_decided"])
+        elif c["dismissed"] < o["min_dismissed"] * c["decided"]:
+            why = "kept: dismissed share below %.2f" % o["min_dismissed"]
+        else:
+            why = "suppressed"
+            suppressed.append(d)
+        c["suppressed"], c["reason"] = why == "suppressed", why
+        out_cats.append(c)
+    coverage = ["suppressed: %s (dismissed %d of %d %s)" % (d, cats[d]["dismissed"], cats[d]["decided"], where)
+                for d in suppressed] or ["suppressed: none"]
+    # A WARNING blocks under REVIEW_BLOCK_AT=warning; any value but unset or `critical` is read as
+    # warning, so a misspelt setting never lets suppression turn a BLOCKED verdict into PASSED.
+    warn_blocks = (os.environ.get("REVIEW_BLOCK_AT") or "critical") != "critical"
+    findings = []
+    for e in counted:
+        d, sev = category(e.get("dimension")), safe(str(e.get("severity") or "").upper(), 20)
+        if d not in suppressed:
+            act, why = "keep", "category not suppressed"
+        elif sev == "CRITICAL":
+            act, why = "keep", "a CRITICAL is never suppressed"
+        elif sev == "WARNING" and warn_blocks:
+            act, why = "keep", "a WARNING blocks under REVIEW_BLOCK_AT=warning"
+        elif sev == "WARNING":
+            act, why = "demote", "demote to NOTE"
+        elif sev == "NOTE":
+            act, why = "list", "list under suppressed"
+        else:
+            act, why = "keep", "unknown severity"
+        findings.append({"id": safe(e.get("id"), 40), "dimension": d, "severity": sev, "action": act, "reason": why})
+    res = {"fail_open": False, "reason": None, "prs": prs, "complete": [r["pr"] for r in done],
+           "left_out": [r["pr"] for r in rows if not r["complete"]], "history": where,
+           "thresholds": {"min_decided": o["min_decided"], "min_dismissed": o["min_dismissed"]},
+           "mandatory": sorted(mandatory), "categories": out_cats, "suppressed": suppressed,
+           "coverage": coverage, "findings": findings}
+    if o["json"]:
+        text = json.dumps(res, sort_keys=True) + "\n"
+    else:
+        out = ["review-metrics suppress: %s%d of %d pull request(s) counted%s; suppressed when at least %d "
+               "decided and a dismissed share of at least %.2f" % (
+                   ("merged since %s, " % o["since"]) if o["since"] else "", len(done), len(prs),
+                   "".join("; #%d left out" % n for n in res["left_out"]),
+                   o["min_decided"], o["min_dismissed"])]
+        for c in out_cats:
+            out.append("category %s: accepted %d, dismissed %d, %d neither; %s" % (
+                c["dimension"], c["accepted"], c["dismissed"], c["neither"], c["reason"]))
+        out += coverage
+        for f in findings:
+            out.append("finding %s %s %s: %s" % (f["id"], f["dimension"], f["severity"],
+                                                 f["reason"] if f["action"] != "keep" else "keep (%s)" % f["reason"]))
+        text = "\n".join(out) + "\n"
+    emit(o, text)
+    return 0
+
+
 def main():
+    if ARGS[:1] == ["suppress"]:
+        # Every refusal of `suppress`, a bad flag included, still answers: nothing is suppressed.
+        o = {"json": "--json" in ARGS, "out": None}
+        try:
+            o = parse_args(ARGS)
+            return suppress(o)
+        except FailedOpen:
+            raise
+        except SystemExit as e:
+            if e.code in (0, None):
+                raise
+            fail_open(o, LAST["msg"] or "refused")
+        except Exception as e:  # an unforeseen error is a doubt, and on doubt nothing is suppressed
+            fail_open(o, "unexpected error (%s)" % type(e).__name__)
     o = parse_args(ARGS)
     return agreement(o) if o["cmd"] == "agreement" else scorecard(o)
 

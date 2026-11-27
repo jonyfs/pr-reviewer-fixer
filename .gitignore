@@ -33,3 +33,5 @@ tests/merge-integration/work-*/
 tests/run-cache/work-*/
 tests/review-metrics/work-*/
 tests/repro-sandbox/work-*/
+tests/golden/work-*/
+tests/golden/runs/

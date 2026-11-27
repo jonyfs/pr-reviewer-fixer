@@ -578,17 +578,24 @@ def operands(args):
     return [a for a in no_redirects(args) if not (a.startswith("-") and a != "-")]
 
 
-PRINTF_SPEC = re.compile(r"%(?:%|[-+ #0']*\d*(?:\.\d*)?[diouxXfFeEgGaAcsbq])")
+PRINTF_SPEC = re.compile(r"%(?:%|[-+ #0']*(?:\d+|\*)?(?:\.(?:\d*|\*))?[diouxXfFeEgGaAcsbq])")
 
 
 def printf_output(fmt, args):
     """What printf prints: the format with each conversion replaced by the next operand (%% by %),
     used again while operands remain, as printf does (`printf '%s\\n' a printenv` prints a line for
-    each operand)."""
+    each operand). A star width or precision takes an operand of its own first (`%*s`, PR 89 N5)."""
     out, rest = [], list(args)
     takes = sum(1 for m in PRINTF_SPEC.finditer(fmt) if m.group() != "%%")
+
+    def conv(m):
+        if m.group() == "%%":
+            return "%"
+        for _ in range(m.group().count("*")):
+            rest.pop(0) if rest else None
+        return rest.pop(0) if rest else ""
     while True:
-        out.append(PRINTF_SPEC.sub(lambda m: "%" if m.group() == "%%" else (rest.pop(0) if rest else ""), fmt))
+        out.append(PRINTF_SPEC.sub(conv, fmt))
         if not takes or not rest:
             return "".join(out)
 
@@ -598,7 +605,9 @@ def printed_words(seg):
     leading -n, -e and -E options; printf's format, apart from it the operands it formats
     (`printf '%s' printenv` prints `printenv`), and its output with the format used once per operand
     (printf_output), so an operand the format sets on a line of its own is read as a command of its
-    own (`printf '%s\\n' a printenv`); any other command's words after its name."""
+    own (`printf '%s\\n' a printenv`); any other command's words after its name. The output is left
+    out when it is the joined text with only a newline more, as it is for one operand, so one read
+    is not named twice (PR 89 N6)."""
     if len(seg) < 2:
         return []
     w = strip_prefix(seg)
@@ -614,7 +623,10 @@ def printed_words(seg):
             args.pop(0)
         if not args or args[0] == "-v":  # printf -v NAME assigns and prints nothing
             return []
-        texts = [args[0]] + ([" ".join(args[1:]), printf_output(args[0], args[1:])] if args[1:] else [])
+        texts = [args[0]]
+        if args[1:]:
+            joined, printed = " ".join(args[1:]), printf_output(args[0], args[1:]).replace("\\n", "\n")
+            texts += [joined] + ([printed] if printed.strip() != joined.strip() else [])
     else:
         texts = [" ".join(seg[1:])]
     return [t.replace("\\n", "\n") for t in texts if t]
@@ -689,7 +701,10 @@ def nested_texts(cmd):
             rep = next((pre[k + 1] for k, a in enumerate(pre[:-1]) if a in ("-I", "-J", "--replace")), None)
             rep = rep or next((a[2:] for a in pre if re.fullmatch(r"-[IJ].+", a)), None)
             run = no_redirects(w)
-            for p in printed:
+            # Without a replace string, xargs splits its input at newlines too, so the lines are words of
+            # the one command it runs, not commands, unless that command is a shell (PR 89 N4).
+            flat = not rep and not (run and os.path.basename(run[0]) in SHELLS)
+            for p in (p.replace("\n", " ") if flat else p for p in printed):
                 out.append((n, shlex.join([x.replace(rep, p) for x in run]) if rep else shlex.join(run) + " " + p))
     return segs, out
 

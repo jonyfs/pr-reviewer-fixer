@@ -206,6 +206,7 @@ start "fetch-feedback.py"                        env TEST_TAG="${P}run" python3 
 start "behaviour-diff.sh"                        env TEST_TAG="${P}run" bash "$HERE/behaviour-diff/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "review eval scorer"                       env TEST_TAG="${P}run" bash "$HERE/eval/selftest.sh"
 start "fixer eval scorer"                        env TEST_TAG="${P}run" bash "$HERE/fixer-eval/selftest.sh"
+start "golden set scorer"                        env TEST_TAG="${P}run" bash "$HERE/golden/selftest.sh"
 start "install.sh"                                env TEST_TAG="${P}run" bash "$HERE/install/run.sh" "$ROOT/install.sh"
 start "install-remote.sh"                         env TEST_TAG="${P}run" bash "$HERE/remote/run.sh"
 start "remote-review.sh"                          env TEST_TAG="${P}run" bash "$HERE/remote-review/run.sh"
@@ -281,11 +282,17 @@ failed_rows() {
   fi
   echo "   -- ${name} FAILED; full log: ${dest:-not kept (no folder owned and writable by this user alone could be made under ${KEPT_BASE:-a cache folder: XDG_CACHE_HOME or HOME is unset or not an absolute path})}"
   # A FAIL line, and a failed line unless it counts 0 failed; never a passing row whose name holds the word.
+  # A suite reports a failing row as `FAIL | <name>` (or a line holding FAIL or failed, as a test runner's summary does).
+  # A log with no such line (a suite that stopped early, or reports in another form) prints its last 20 lines instead,
+  # so nothing above the three lines every suite shows is hidden (PR 88 N3).
   rows="$(awk '!/^(PASS|ok)[ :|]/ && (/FAIL/ || (/[Ff]ailed/ && !/(^|[^0-9])0 failed/))' "$log" 2>/dev/null)"
   if [ -n "$rows" ]; then
     printf '%s\n' "$rows" | head -n 60 | sed 's/^/   | /'
     [ "$(printf '%s\n' "$rows" | wc -l)" -le 60 ] || echo "   | ... $(( $(printf '%s\n' "$rows" | wc -l) - 60 )) more in the full log"
-  else echo "   | (no FAIL or failed line in the log: the suite stopped early, or reports in another form)"; fi
+  else
+    echo "   | (no FAIL or failed line in the log: the suite stopped early, or reports in another form; its last 20 lines:)"
+    tail -n 20 "$log" 2>/dev/null | sed 's/^/   | /'
+  fi
 }
 for i in "${!names[@]}"; do
   n=$((i + 1)); echo "== ${names[$i]} ($(cat "$OUT/$n.secs" 2>/dev/null || echo ?)s)"; tail -n 3 "$OUT/$n.log"
@@ -453,13 +460,19 @@ for f in references/pr-protocol.md references/harness-matrix.md references/harne
   cmp -s "$ROOT/.agents/skills/pr-reviewer/$f" "$ROOT/.agents/skills/pr-merge-fixer/$f" \
     && echo "== $f identical in pr-merge-fixer" || { echo "== $f DIFFERS in pr-merge-fixer"; fail=1; }
 done
-# The pr-fixer catalog's Counts section must agree with its tables: 100 rows, each Target one of
+# Each skill's improvements catalog (pr-fixer and pr-reviewer) has a Counts section that must agree
+# with its tables: 100 rows, each Target one of
 # SKILL, reference, shipped or backlog, the SKILL, shipped and backlog item lists equal to the rows
-# with that Target, and the reference count equal to the rest. The reviewer's catalog has no counts.
+# with that Target, and the reference count equal to the rest.
 # Every row is counted before the dict is built, so a repeated item number fails even when the copy
-# has the same Target, and a shipped Target must name a path (`shipped: <path>`), not stand bare.
-if cat_out="$(python3 -I - "$ROOT/.agents/skills/pr-fixer/references/improvements-catalog.md" <<'PY'
-import collections, re, sys
+# has the same Target, and a shipped Target must name a path (`shipped: <path>`), not stand bare: a word on each side
+# of a slash, naming a file or folder under that catalog's own skill folder (.agents/skills/<skill>/) or the
+# repository's root (PR 86 N6). The path is the cell's first token: `scripts/review-cycle.sh export-sarif` names
+# scripts/review-cycle.sh. The python takes the catalog, the root and the skill folder relative to the root.
+for cat_skill in pr-fixer pr-reviewer; do
+if cat_out="$(python3 -I - "$ROOT/.agents/skills/$cat_skill/references/improvements-catalog.md" "$ROOT" ".agents/skills/$cat_skill" <<'PY'
+import collections, os, re, sys
+skill_dir = sys.argv[3]
 text = open(sys.argv[1], encoding="utf-8").read()
 found = [(int(m.group(1)), m.group(2).strip())
          for m in re.finditer(r"^\| (\d+) \|.*\| ([^|]*?) \|\s*$", text, re.M)]
@@ -467,8 +480,11 @@ bad = ["item %d appears %d times" % (n, c)
        for n, c in sorted(collections.Counter(n for n, _ in found).items()) if c > 1]
 rows, nopath = {}, set()
 for n, t in found:
-    if t.startswith("shipped") and not re.match(r"shipped: `?[\w.-]*/[\w./-]*", t):
+    p = re.match(r"shipped: `?([\w.-]*\w[\w.-]*/[\w./-]*\w[\w./-]*)", t)
+    if t.startswith("shipped") and not p:
         bad.append("item %d Target %r: shipped needs 'shipped: <path>'" % (n, t)); nopath.add(n)
+    elif p and not any(os.path.exists(os.path.join(sys.argv[2], d, p.group(1))) for d in (skill_dir, "")):
+        bad.append("item %d Target %r: %s is not under %s/ or the root" % (n, t, p.group(1), skill_dir)); nopath.add(n)
     rows[n] = "shipped" if t.startswith("shipped: ") and n not in nopath else t
 got = {k: sorted(n for n, t in rows.items() if t == k) for k in ("SKILL", "reference", "shipped", "backlog")}
 bad += ["%d rows, not items 1-100" % len(rows)] if sorted(rows) != list(range(1, 101)) else []
@@ -486,10 +502,11 @@ print("; ".join(bad) or " ".join("%s %d" % (k, len(v)) for k, v in got.items()))
 sys.exit(1 if bad else 0)
 PY
 )"; then
-  echo "== pr-fixer catalog counts match its Target column ($cat_out)"
+  echo "== $cat_skill catalog counts match its Target column ($cat_out)"
 else
-  echo "== pr-fixer catalog counts DISAGREE with its Target column: $cat_out"; fail=1
+  echo "== $cat_skill catalog counts DISAGREE with its Target column: $cat_out"; fail=1
 fi
+done
 # The merge fixer runs the project's build, tests and lockfile regeneration on the pull request's code,
 # so `review-cycle.sh fix` (the fork and collaborator guard) must run before its first write on every
 # pull request, reviewed or not. Its text may not make that step conditional or skippable.

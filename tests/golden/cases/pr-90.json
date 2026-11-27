@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 90,
+  "base": "3bbc11e1d6e10de9c45242d05fad77d039266ad1",
+  "head": "dc8316e3c97d936b36684dd404d8e8177e6865ec",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W2",
+      "file": ".agents/skills/pr-reviewer/scripts/review-metrics.sh",
+      "lines": [
+        406,
+        406
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "Eight of 18 mutants of review-metrics.sh survive the whole suite (deleted-comment trust rule, per-dimension pair filter, heads check, safe(), id drift guard and others), so those rules are untested."
+    },
+    {
+      "id": "E2",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-reviewer/scripts/review-metrics.sh",
+      "lines": [
+        434,
+        434
+      ],
+      "dimension": "correctness",
+      "severity": "WARNING",
+      "description": "review-metrics.sh scorecard counts a NOTE the fixer fixed as withdrawn (marked not-applicable after a closure) or as debt (dropped under a PASSED verdict), so the accepted rate is understated."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}
