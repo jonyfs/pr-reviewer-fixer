@@ -33,20 +33,29 @@ are cited in the protocol.
   the start line (`Orchestrator below standard: <model>; ...`) and moves merge and verify to one
   `standard` sub-agent. No setting of the person's is changed. In `pr-reviewer/SKILL.md` ("Announce
   and Adapt"), `progress-and-notifications.md` and `execution-profiles.md`.
+- **The review loop passes the profile too.** `harness-loop.md` (all three copies): every dispatch
+  of a skill passes `model`, `effort` and a profile, never inherited, at least at `standard`, and the
+  fixers at `deep` when the path floor printed security at `max` or a security-sensitive script is
+  touched. `pr-merge-fixer/references/orchestration.md` scores a security-sensitive file `deep`, and
+  no other row (the test-folder row included) lowers it.
+- **`docs/REFERENCE.md`** ("Model and effort" and the limits list) describes the profiles, the deep
+  row, the orchestrator floor and the two dates.
 - **`harness-matrix.md` (all three copies): Claude Code re-checked on 2026-11-27.** The `fable`
   alias is Fable 5.2 (`claude-fable-5-2`); aliases resolve to other models on Bedrock, Foundry and
   Claude Platform on AWS; neither effort settings key accepts `max`; defaults, precedence, the
   sub-agent model order with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, and `CLAUDE_CODE_SUBAGENT_EFFORT`.
-  The exact Sonnet 5.5 and Haiku 5.5 ids stay `unverified`. Each source now carries its own date;
+  `Edit(path)` permission rules do not bind a script that writes files itself (the permissions page,
+  new source 31). The exact Sonnet 5.5 and Haiku 5.5 ids stay `unverified`. Each source now carries its own date;
   the header date is the newest of them, and the rows not re-opened keep 2026-10-14.
 - **GitHub practices in `pr-protocol.md` (all three copies), each with its docs URL.** Alerts in the
   pull request description only, at most one, never nested (not in comments, where a quote is
   forbidden); no emoji shortcodes in comments; agents never hide comments; no check-run annotations
-  (only a GitHub App can write a check run); comments and label changes posted one at a time, a
-  second apart, with one retry after a secondary rate limit.
+  (declined: only a GitHub App can write a check run); comments and thread replies posted one at a
+  time, a second apart, with one retry after a secondary rate limit.
 - **`tests/run-all.sh`.** A check finds every dispatch call (`Agent(` fence) and fails one without
   an explicit model, an explicit effort or a named profile, and a fixer SKILL.md with none; every
-  file with a dispatch call or brief must name the read-only probe profile; each probe brief must
+  file with a dispatch call or brief (a fenced brief, or the review loop's quoted "Follow" brief)
+  must name the read-only probe profile; each probe brief must
   keep writes in the scratchpad; the matrix's `Checked:` date must equal its newest source date and
   each `execution-profiles.md` must repeat it. Wording rows pin the profile rows, the orchestrator
   line and the cited URLs.

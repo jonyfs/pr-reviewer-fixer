@@ -7,7 +7,8 @@ Tags: [#pr #fix #models #effort #reference]
 
 Stated here and nowhere else. Model names change monthly: the harness column was checked on
 **2026-11-27** against official docs ([harness-matrix.md](harness-matrix.md) dates each source and
-lists the unverified items). Prefer aliases where the harness has them.
+lists the unverified items; only the Claude Code pages were re-opened on that date, the others on
+2026-10-14). Prefer aliases where the harness has them.
 
 ## Tiers
 

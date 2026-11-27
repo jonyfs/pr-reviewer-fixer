@@ -686,8 +686,14 @@ GitHub accepts up to 25,000 results per run but keeps only the top 5,000, ranked
 Each unit of work is given a tier, and the tier maps to a model and an effort setting for the harness
 in use. Deep tier goes to security, design and correctness review and to conflict resolution.
 Standard goes to bounded analysis and scoped edits. Fast goes to pattern checks and transcription. The
-dispatcher passes `model` and `effort` on every call because declaring them in a file alone does
-nothing in most harnesses. Current mappings are in
+dispatcher passes `model`, `effort` and a profile on every call, never inheriting them, because
+declaring them in a file alone does nothing in most harnesses. The profiles are `read-only review`,
+`writer`, and `read-only probe`, for a sub-agent that runs code but writes only inside the scratchpad
+path its brief names, never in the repository. A fixer or merge-fixer unit that writes a
+security-sensitive file (the scripts that handle signals, sandboxes, the gate, push guards or tokens,
+and every path the path floor gives security at `max`) runs at deep; the merge fixer still escalates
+such a file. The orchestrator needs at least the standard tier: a session below it says so in its
+start line and hands merge and verify to a standard sub-agent. Current mappings are in
 [`pr-reviewer/references/execution-profiles.md`](../.agents/skills/pr-reviewer/references/execution-profiles.md) and a
 dated matrix of harness options is in
 [`pr-reviewer/references/harness-matrix.md`](../.agents/skills/pr-reviewer/references/harness-matrix.md). Model names
@@ -778,7 +784,8 @@ flowchart TD
   user namespaces, and the Linux rows have not run where this change was written (macOS).
 - An AI verdict is not a human review. It reduces the chance that an obvious defect reaches the
   merge. It does not replace accountable review for high-risk changes.
-- Model names and harness paths change. The data here is dated 2026-10-14.
+- Model names and harness paths change. The harness paths here are dated 2026-10-14. The Claude Code
+  model and effort fields were re-checked on 2026-11-27; `harness-matrix.md` dates each source.
 - Research, not guarantees. The catalogs in `references/improvements-catalog.md` are researched
   ideas with sources. Only the items marked `SKILL` shaped the rules. The rest are options.
 

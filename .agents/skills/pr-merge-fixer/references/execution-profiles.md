@@ -6,7 +6,8 @@ Tags: [#pr #merge #models #effort #reference]
 # Execution Profiles
 
 Model names change monthly. The harness column was checked on **2026-11-27** against official docs
-([harness-matrix.md](harness-matrix.md) dates each source and lists the unverified items). Prefer aliases where the
+([harness-matrix.md](harness-matrix.md) dates each source and lists the unverified items; only the
+Claude Code pages were re-opened on that date, the others on 2026-10-14). Prefer aliases where the
 harness has them.
 
 ## Tiers
@@ -50,8 +51,10 @@ check) as call parameters on every dispatch; never inherit. Declaring them in fr
 does nothing where the harness reads them from the call. On Claude Code the call's `model` is an
 alias, not a full id or `inherit`, and the per-call `effort` needs v2.1.292 or later
 ([sub-agents](https://code.claude.com/docs/en/sub-agents), checked 2026-11-27). A read-only probe
-writes only inside the scratchpad path its brief names, never in the repository (the reviewer's
-`execution-profiles.md`, "Read-only probe profile"). Each unit writes only its own files; one
+runs commands and writes only inside the scratchpad path its brief names, never in the repository:
+its working directory, `TMPDIR` and `XDG_CACHE_HOME` are under that path, it makes no commit, push or
+comment, and it returns the commands it ran, their exit codes and the deciding output. On Claude Code
+that limit is set by the brief and the environment, not by the tool list. Each unit writes only its own files; one
 agent makes the commit.
 
 ## Fallbacks

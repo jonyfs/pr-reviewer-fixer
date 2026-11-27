@@ -94,8 +94,8 @@ protocol takes from it. The protocol blocks above stay exact; none of these chan
   Source: https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-checks
 - Posting as an automated client. GitHub: make write requests one after another, not at once, and
   wait at least a second between them; in general no more than 80 content-generating requests a
-  minute and 500 an hour, web actions included. Adopted: an agent posts its comments, thread
-  replies and label changes one at a time, at least one second apart, and on a 403 or 429 secondary
+  minute and 500 an hour, web actions included. Adopted: an agent posts its comments and thread
+  replies one at a time, at least one second apart, and on a 403 or 429 secondary
   rate limit waits for `retry-after` or `x-ratelimit-reset` before one retry, then stops and says
   so. The comment budget keeps a run far below those limits.
   Sources: https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api

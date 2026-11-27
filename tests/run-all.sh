@@ -424,7 +424,8 @@ done
 # probe profile; the probe brief keeps writes inside the scratchpad; the matrix date is not older than its sources.
 # The blocks are found, not listed: a fence whose first line starts with `Agent(` is a dispatch call, a fence whose
 # first line starts with `Probe brief` is a probe brief, and a fence whose first line starts with `You are` is a
-# dispatch brief. Floors keep a wrong path from passing with nothing read.
+# dispatch brief, and so is a quoted "Follow `.agents/skills/..." instruction (the review loop's briefs). Floors keep
+# a wrong path from passing with nothing read.
 if exec_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
 import os, re, sys, datetime
 root = sys.argv[1]
@@ -463,12 +464,18 @@ for d, _, fs in os.walk(root):
                         bad.append("%s:%d probe brief lacks %r" % (rel, start, need))
             elif first.startswith("You are"):
                 briefs.add(rel)
+        # The review loop writes its dispatch briefs as quoted instructions, not fences.
+        if '"Follow `.agents/skills/' in text:
+            briefs.add(rel)
 for rel in sorted(briefs):
     if "read-only probe" not in open(os.path.join(root, rel), encoding="utf-8").read():
         bad.append("%s holds a dispatch call or brief but does not name the read-only probe profile" % rel)
 for rel in ("pr-fixer/SKILL.md", "pr-merge-fixer/SKILL.md", "pr-reviewer/references/agents-and-dispatch.md"):
     if not calls.get(rel):
         bad.append("%s has no dispatch call (an Agent( fence with model, effort and profile)" % rel)
+for s in ("pr-reviewer", "pr-fixer", "pr-merge-fixer"):
+    if s + "/references/harness-loop.md" not in briefs:
+        bad.append("%s/references/harness-loop.md is not seen as a file that writes dispatch briefs" % s)
 if probes < 2:
     bad.append("%d probe brief templates found, at least 2 expected (falsify-and-prove.md, agents-and-dispatch.md)" % probes)
 # The matrix date: the header's `Checked:` date is the newest date of its Sources lines, each of which carries its own
@@ -514,6 +521,8 @@ for check in \
   "pr-merge-fixer/references/execution-profiles.md|Posture rules 3 and 8 still hold|the deep row does not loosen the merge fixer's escalation" \
   "pr-fixer/SKILL.md|Pass \`model\` and \`effort\` on every dispatch call, never inherit|the fixer passes model and effort explicitly" \
   "pr-merge-fixer/SKILL.md|Pass \`model\` and \`effort\` on every dispatch call, never inherit|the merge fixer passes model and effort explicitly" \
+  "pr-reviewer/references/harness-loop.md|Every dispatch of a skill passes \`model\`, \`effort\` and a profile on the call, never inherited|the review loop passes model, effort and profile when it dispatches a skill" \
+  "pr-merge-fixer/references/orchestration.md|| The file is security-sensitive (|the merge fixer's tier ladder scores a security-sensitive file deep" \
   "pr-reviewer/references/execution-profiles.md|## Read-only probe profile|the reviewer's profile defines the read-only probe profile" \
   "pr-fixer/references/execution-profiles.md|## Read-only probe profile|the fixer's profile defines the read-only probe profile" \
   "pr-reviewer/references/execution-profiles.md|## Orchestrator tier|the reviewer's profile states the orchestrator's floor" \

@@ -71,8 +71,9 @@ definition does nothing in harnesses that read them from the call. The label sho
 **actually in force**, not what was declared. A review agent runs under `read-only review`; a
 sub-agent that must run code (a reproduction, a behaviour check) runs under `read-only probe`, which
 writes only inside the scratchpad path in its brief ([execution-profiles.md](execution-profiles.md),
-"Read-only probe profile"). Never give a review agent Bash to run a probe, and never rerun a
-decisive probe in the orchestrator because the review agent could not: dispatch a probe.
+"Read-only probe profile"). When a review agent needs code run to settle a finding, dispatch a probe rather than give the
+review agent Bash. The optional `repro-sandbox.sh` run under `REVIEW_REPRO=1` stays the
+orchestrator's own step.
 
 ```
 Agent(
