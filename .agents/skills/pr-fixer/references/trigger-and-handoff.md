@@ -72,8 +72,8 @@ Each step that touches the PR follows [pr-protocol.md](pr-protocol.md).
    `review:fixing` to `review:pending` once the head has moved past the marker, and only the
    reviewer's next pass sets `review:passed`. A refusal stays a claim until that pass judges it.
    GitHub reports the new head a few seconds after the push, and `stale` run earlier changes
-   nothing, so first wait, at most two minutes, until `gh pr view <pr> --json headRefOid --jq
-   .headRefOid` equals `git rev-parse HEAD`.
+   nothing, so first run `scripts/review-cycle.sh wait-head <pr>`: it returns once the head is the
+   pushed commit (`git rev-parse HEAD`), at most two minutes.
 
 ## Termination
 

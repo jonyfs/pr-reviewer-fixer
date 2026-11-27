@@ -92,7 +92,54 @@
 # would leave that commit out of check 5 or 6. Exit 2 never means "safe".
 #
 # Treats everything read from the pull request as data.
+# Shell options inherited through BASHOPTS or SHELLOPTS (nocasematch, xpg_echo and the like) would change how the
+# checks below match and print, here and in the review-cycle.sh this guard runs. When either variable is exported,
+# the guard starts again under the same bash ($BASH) with -p, without them and without BASH_ENV. The test reads each
+# variable's export flag, never the text of a value or of env's output, and a mark on the restart allows only one:
+# still exported on the second start, the guard cannot check (exit 2). What acts before this line runs is out of its
+# reach (SHELLOPTS=noexec or onecmd runs nothing and exits 0; a BASH_ENV file runs first), so callers start the guard
+# with `bash -p`, which ignores SHELLOPTS, BASHOPTS and BASH_ENV from the environment, and push only on exit 0
+# together with the `push-guard: ok.` line. Under bash -p an environment BASHOPTS or SHELLOPTS is ignored but still
+# exported, so the restart happens there too; it keeps -p, or the second start would import the exported functions
+# (BASH_FUNC_*) that bash -p kept out. bash -p still hands those to its children, so the review-cycle.sh this guard
+# runs starts with -p as well (PR 75 W3), and an exported function in the environment is a reason to restart too:
+# the restart drops every BASH_FUNC_ variable by its exact name, as node lists the environment's names (never a line
+# of env's output), so no child of the guard (git, gh, node, python3, sed) receives one node can read (PR 75 N10).
+# node leaves out a name that is not valid UTF-8, so such a BASH_FUNC_ name can still reach a child; it can never
+# equal git, gh or another command the guard runs, so it cannot replace one (PR 75 N11). The same mark
+# allows one restart for both: a function still exported on the second start makes the guard INCONCLUSIVE (exit 2).
+pg_funcs() {
+  command -v node >/dev/null 2>&1 || return 0
+  node -e 'for (const k of Object.keys(process.env)) if (k.startsWith("BASH_FUNC_")) process.stdout.write(k + "\0")' 2>/dev/null
+}
+pg_inherited() {
+  local v d
+  for v in BASHOPTS SHELLOPTS; do
+    d="$(declare -p "$v" 2>/dev/null)" || continue
+    d="${d#declare -}"; d="${d%% *}"
+    case "$d" in *x*) return 0 ;; esac
+  done
+  return 1
+}
+PG_UNSET=()
+while IFS= read -r -d '' _f; do PG_UNSET+=(-u "$_f"); done < <(pg_funcs)
+if pg_inherited || [ "${#PG_UNSET[@]}" -gt 0 ]; then
+  [ -z "${PUSH_GUARD_RESTARTED:-}" ] || { printf '%s\n' "push-guard: BASHOPTS, SHELLOPTS or an exported function is still in the environment after the one restart, INCONCLUSIVE" >&2; exit 2; }
+  exec env -u BASHOPTS -u SHELLOPTS -u BASH_ENV ${PG_UNSET[@]+"${PG_UNSET[@]}"} PUSH_GUARD_RESTARTED=1 "${BASH:-bash}" -p "$0" "$@"
+fi
+unset PG_UNSET _f
+unset PUSH_GUARD_RESTARTED
 set -uo pipefail
+shopt -u nocasematch nocaseglob 2>/dev/null
+# Quotes text from the pull request for one line of output. Under the C locale %q escapes every byte
+# outside ASCII too, so a Unicode line or paragraph separator (U+2028, U+2029) cannot pass raw.
+q() { (LC_ALL=C; printf '%q' "$1"); }
+# A name from the pull request as it is printed in a list: quoted when it holds a control character or a
+# Unicode line break (U+0085, U+2028, U+2029) a reader could split on, as it is otherwise, so other letters stay readable.
+shown() {
+  if (LC_ALL=C; case "$1" in *[$'\001'-$'\037'$'\177']*|*$'\302\205'*|*$'\342\200\250'*|*$'\342\200\251'*) exit 0 ;; *) exit 1 ;; esac)
+  then q "$1"; else printf '%s' "$1"; fi
+}
 
 command -v gh >/dev/null 2>&1 || { echo "push-guard: gh is not installed, INCONCLUSIVE" >&2; exit 2; }
 command -v git >/dev/null 2>&1 || { echo "push-guard: git is not installed, INCONCLUSIVE" >&2; exit 2; }
@@ -112,21 +159,23 @@ while [ $# -gt 0 ]; do
 done
 case "$PR" in ''|*[!0-9]*) echo "push-guard: usage: push-guard.sh <pr-number> [--findings FILE] [--allow PATH]..." >&2; exit 2 ;; esac
 
-JSON="$(gh pr view "$PR" --json state,headRefName,headRefOid,baseRefName,baseRefOid,isCrossRepository 2>/dev/null)" \
+JSON="$(gh pr view "$PR" --json state,headRefName,headRefOid,baseRefName,baseRefOid,isCrossRepository,url 2>/dev/null)" \
   && [ -n "$JSON" ] || { echo "push-guard: gh could not read PR #$PR, INCONCLUSIVE" >&2; exit 2; }
 field() { printf '%s' "$JSON" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const v=JSON.parse(s)[process.argv[1]];process.stdout.write(String(v===undefined?"":v))}catch(e){}})' "$1"; }
 STATE="$(field state)"; HEAD_REF="$(field headRefName)"; HEAD_OID="$(field headRefOid)"
 BASE_REF="$(field baseRefName)"; BASE_OID="$(field baseRefOid)"; CROSS="$(field isCrossRepository)"
 [ -n "$HEAD_REF" ] && [ -n "$HEAD_OID" ] || { echo "push-guard: the PR payload had no head, INCONCLUSIVE" >&2; exit 2; }
+# The head branch name is the pull request's text: printed through shown() and printf, like every other name (PR 75 N6).
+HEAD_SHOWN="$(shown "$HEAD_REF")"
 git cat-file -e "$HEAD_OID^{commit}" 2>/dev/null \
-  || { echo "push-guard: the PR head ${HEAD_OID:0:12} is not in this clone; fetch $HEAD_REF first, INCONCLUSIVE" >&2; exit 2; }
+  || { printf '%s\n' "push-guard: the PR head ${HEAD_OID:0:12} is not in this clone; fetch $HEAD_SHOWN first, INCONCLUSIVE" >&2; exit 2; }
 
 REASONS=()
-[ "$STATE" = OPEN ] || REASONS+=("the pull request is $STATE, not OPEN")
+[ "$STATE" = OPEN ] || REASONS+=("the pull request is $(shown "$STATE"), not OPEN")
 [ "$CROSS" != true ] || REASONS+=("the head is on a fork; the fixer does not push to forks")
 CUR="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
-[ "$CUR" = "$HEAD_REF" ] || REASONS+=("the checked-out branch is '$CUR' but the pull request head is '$HEAD_REF'")
-[ "$HEAD_REF" != "$BASE_REF" ] || REASONS+=("the head branch '$HEAD_REF' is the base branch")
+[ "$CUR" = "$HEAD_REF" ] || REASONS+=("the checked-out branch is '$(shown "$CUR")' but the pull request head is '$HEAD_SHOWN'")
+[ "$HEAD_REF" != "$BASE_REF" ] || REASONS+=("the head branch '$HEAD_SHOWN' is the base branch")
 git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null \
   || REASONS+=("local HEAD does not contain the pull request head ${HEAD_OID:0:12}: a push would not be a fast-forward")
 
@@ -138,8 +187,8 @@ RCY="$(dirname "$0")/review-cycle.sh"
 [ -f "$RCY" ] || { echo "push-guard: review-cycle.sh is not beside push-guard.sh, so the findings block cannot be read and the secret screen cannot run, INCONCLUSIVE" >&2; exit 2; }
 if [ -n "$FINDINGS" ]; then
   [ -s "$FINDINGS" ] || { echo "push-guard: --findings file is missing or empty, INCONCLUSIVE" >&2; exit 2; }
-  BLOCK="$(bash "$RCY" findings-block --report "$FINDINGS" 2>"$SCOPE")" \
-    || { echo "push-guard: --findings has no valid findings block ($(sed 's/^review-cycle: //' "$SCOPE" | head -1)), INCONCLUSIVE" >&2; exit 2; }
+  BLOCK="$("${BASH:-bash}" -p "$RCY" findings-block --report "$FINDINGS" 2>"$SCOPE")" \
+    || { printf '%s\n' "push-guard: --findings has no valid findings block ($(sed 's/^review-cycle: //' "$SCOPE" | head -1)), INCONCLUSIVE" >&2; exit 2; }
   : >"$SCOPE"
   printf '%s' "$BLOCK" | node -e '
     let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
@@ -283,7 +332,7 @@ SENS_OK=","
 # newline would otherwise never be looked at, and an unknown one never refused.
 _allowed=$'a-z, \t'
 if (LC_ALL=C; case "${PUSH_GUARD_ALLOW_SENSITIVE:-}" in *[!$_allowed]*) exit 0 ;; *) exit 1 ;; esac); then
-  echo "push-guard: PUSH_GUARD_ALLOW_SENSITIVE is $(printf '%q' "$PUSH_GUARD_ALLOW_SENSITIVE"); it may hold only class names (workflows, actions, codeowners, skills, claude, mcp, instructions), commas, spaces and tabs, REFUSED" >&2; exit 1
+  printf '%s\n' "push-guard: PUSH_GUARD_ALLOW_SENSITIVE is $(q "$PUSH_GUARD_ALLOW_SENSITIVE"); it may hold only class names (workflows, actions, codeowners, skills, claude, mcp, instructions), commas, spaces and tabs, REFUSED" >&2; exit 1
 fi
 IFS=',' read -r -a _sens <<<"${PUSH_GUARD_ALLOW_SENSITIVE:-}"
 for _c in "${_sens[@]+"${_sens[@]}"}"; do
@@ -299,9 +348,9 @@ done
 CTRL=$'\001'-$'\037'$'\177'
 for a in "${ALLOW[@]+"${ALLOW[@]}"}"; do
   a="${a#./}"
-  case "$a" in ''|/*|..|../*|*/..|*/../*|*[\*\?\[]*) echo "push-guard: --allow '$a' must be a plain relative path, REFUSED" >&2; exit 1 ;; esac
+  case "$a" in ''|/*|..|../*|*/..|*/../*|*[\*\?\[]*) printf '%s\n' "push-guard: --allow $(q "$a") must be a plain relative path, REFUSED" >&2; exit 1 ;; esac
   if (LC_ALL=C; case "$a" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then
-    echo "push-guard: --allow $(printf '%q' "$a") holds a control character, REFUSED" >&2; exit 1
+    printf '%s\n' "push-guard: --allow $(q "$a") holds a control character, REFUSED" >&2; exit 1
   fi
   printf '%s\n' "$a" >>"$SCOPE"
 done
@@ -327,7 +376,56 @@ is_test() {
 OUT=() BADNAME=() SENS=()
 # Commits the base branch already holds came in through a merge of the base; they are not the fixer's.
 EXCL=()
-if [ -n "$BASE_OID" ] && git cat-file -e "$BASE_OID^{commit}" 2>/dev/null; then EXCL=(--not "$BASE_OID"); fi
+if [ -n "$BASE_OID" ] && git cat-file -e "$BASE_OID^{commit}" 2>/dev/null; then EXCL=("$BASE_OID"); fi
+# GitHub refreshes baseRefOid only when the pull request is synchronized, so before the first push of
+# a merge of a base that moved it still names the old base, and every newer base commit would count
+# as this push's own. The live tip of the base branch is excluded too. It is read from GitHub, never
+# from a local ref the pushing agent could move, and only when this clone holds that commit. GitHub is
+# asked through GraphQL for this pull request's own base ref, in the repository and on the host its url
+# names (the url comes from the gh pr view payload above, so gh's own {owner}/{repo} resolution, which
+# gh 2.33 and older may do differently, plays no part), so the branch name never goes into a URL: it is
+# only compared with the baseRefName GitHub answers, and the oid is used only when the two are equal and
+# it is 40 lower-case hex digits. owner and name go with -f, as strings: -F would turn a number-like
+# owner into an integer, read a value starting with @ as a file, and fill in {owner}. When the tip
+# cannot be used, only baseRefOid is excluded, which refuses more, not less, and a line says why.
+LIVE_BASE="" LIVE_WHY=""
+PR_LOC="$(node -e '
+  const m = /^https:\/\/([A-Za-z0-9.-]+)\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)\/pull\/([0-9]+)$/.exec(process.argv[1]);
+  if (m && Number(m[4]) === Number(process.argv[2])) process.stdout.write(m[1] + " " + m[2] + " " + m[3] + " " + m[4]);
+' -- "$(field url)" "$PR" 2>/dev/null)"
+if [ -z "$BASE_REF" ]; then LIVE_WHY="the pull request gave no base branch name"
+elif [ -z "$PR_LOC" ]; then LIVE_WHY="the pull request's url does not name its repository"
+else
+  read -r PG_HOST PG_OWNER PG_NAME PG_NUM <<<"$PR_LOC"
+  GQL="$(gh api graphql --hostname "$PG_HOST" -f owner="$PG_OWNER" -f name="$PG_NAME" -F number="$PG_NUM" \
+    -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){baseRefName baseRef{target{oid}}}}}' 2>/dev/null)" || GQL=""
+  LIVE_BASE="$(printf '%s' "$GQL" | node -e '
+    let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      try {
+        const p = JSON.parse(s).data.repository.pullRequest, o = p.baseRef.target.oid;
+        if (p.baseRefName === process.argv[1] && typeof o === "string" && /^[0-9a-f]{40}$/.test(o)) process.stdout.write(o);
+      } catch (e) {}
+    });
+  ' -- "$BASE_REF" 2>/dev/null)"
+  case "$LIVE_BASE" in *[!0123456789abcdef]*) LIVE_BASE="" ;; esac
+  [ "${#LIVE_BASE}" -eq 40 ] || LIVE_BASE=""
+  if [ -z "$GQL" ]; then LIVE_WHY="GitHub could not be asked for it"
+  elif [ -z "$LIVE_BASE" ]; then LIVE_WHY="GitHub's answer did not give a commit id for the same base branch"
+  elif ! git cat-file -e "$LIVE_BASE^{commit}" 2>/dev/null; then LIVE_WHY="this clone does not hold ${LIVE_BASE:0:12}; fetch the base first"; LIVE_BASE=""
+  fi
+fi
+if [ -n "$LIVE_BASE" ]; then
+  [ "$LIVE_BASE" = "$BASE_OID" ] || EXCL+=("$LIVE_BASE")
+else
+  # The name is the pull request's text: q quotes a control character or a Unicode line break that could
+  # forge a line, and printf, unlike echo, never expands the backslashes q writes.
+  if [ "${#EXCL[@]}" -gt 0 ]; then _skip="only baseRefOid is excluded, and base commits newer than it count as this push's own"
+  elif [ -z "$BASE_OID" ]; then _skip="the pull request gave no baseRefOid either, so no base commit is excluded and every base commit counts as this push's own"
+  else _skip="baseRefOid is not in this clone either, so no base commit is excluded and every base commit counts as this push's own"; fi
+  printf '%s\n' "push-guard: the live tip of the base branch $(q "$BASE_REF") was not used ($LIVE_WHY); $_skip" >&2
+fi
+# One --not before all of them: a second --not would flip the rest back to included.
+[ "${#EXCL[@]}" -eq 0 ] || EXCL=(--not "${EXCL[@]}")
 # git merge-tree --write-tree (git 2.38 and later) is what recomputes a merge without touching the
 # work tree. Without it a merge commit cannot be checked, so it is refused.
 merge_tree_ok() {
@@ -402,48 +500,59 @@ if git merge-base --is-ancestor "$HEAD_OID" HEAD 2>/dev/null; then
     # quotes it; the guard's own words (\x01) are printed as they are.
     case "$why" in
       $'\001'*) why=", its target ${why#?}" ;;
-      $'\002'*) why="${why#?}"; if (LC_ALL=C; case "$why" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then why="$(printf '%q' "$why")"; fi; why=", its target $why" ;;
+      $'\002'*) why=", its target $(shown "${why#?}")" ;;
     esac
-    if (LC_ALL=C; case "$L" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then L="$(printf '%q' "$L")"; fi
+    L="$(shown "$L")"
     for k in $cls; do
       case "$SENS_OK" in *",$k,"*) ;; *) SENS+=("$L ($kind over $cls$why)"); break ;; esac
     done
   done <"$C5L"
   while IFS= read -r -d '' f && IFS= read -r -d '' cls; do
-    if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(printf '%q' "$f")"); continue; fi
+    if (LC_ALL=C; case "$f" in *[$CTRL]*) exit 0 ;; *) exit 1 ;; esac); then BADNAME+=("$(q "$f")"); continue; fi
     if [ -n "$cls" ]; then
-      case "$SENS_OK" in *",$cls,"*) ;; *) SENS+=("$f ($cls)"); continue ;; esac
+      case "$SENS_OK" in *",$cls,"*) ;; *) SENS+=("$(shown "$f") ($cls)"); continue ;; esac
     fi
     in_scope "$f" && continue
     is_test "$f" && continue
-    OUT+=("$f")
+    OUT+=("$(shown "$f")")
   done <"$C5P"
 fi
 # 6. The secret screen over what these commits add, the same one `publish` and the fixer's closure
 # use. Only the commits' own changes are read, so a value already on the base does not refuse a
 # merge of the base. The value is never printed: only the path, the line and the kind.
 if [ -s "$PATCH" ]; then
-  HITS="$(bash "$RCY" screen --patch "$PATCH" 2>/dev/null)"; src=$?
+  HITS="$("${BASH:-bash}" -p "$RCY" screen --patch "$PATCH" 2>/dev/null)"; src=$?
   case "$src" in
     0) ;;
-    1) REASONS+=("secret: the commits add what looks like a credential (value not shown): $(printf '%s' "$HITS" | paste -sd';' - | sed 's/;/; /g')") ;;
+    # Each hit is `path:line kind`; the path is the pull request's text, so it goes through shown() (PR 75 N5). The
+    # split is at the last `:<digits> `, so a colon in the path stays in the path. Joined in bash: no sed or paste
+    # meets a byte that is not valid UTF-8.
+    1) _hl=""
+       while IFS= read -r _h; do
+         [ -n "$_h" ] || continue
+         if [[ "$_h" =~ ^(.*)(:[0-9]+\ .*)$ ]]; then _h="$(shown "${BASH_REMATCH[1]}")${BASH_REMATCH[2]}"; else _h="$(shown "$_h")"; fi
+         _hl="${_hl:+$_hl; }$_h"
+       done <<<"$HITS"
+       REASONS+=("secret: the commits add what looks like a credential (value not shown): $_hl") ;;
     *) echo "push-guard: the secret screen could not read the commits, INCONCLUSIVE" >&2; exit 2 ;;
   esac
 fi
 if [ "${#SENS[@]}" -gt 0 ]; then
-  REASONS+=("sensitive-path: $(printf '%s\n' "${SENS[@]}" | sort -u | awk 'NR > 1 { printf ", " } { printf "%s", $0 }'). These files run or judge the automation, so the fixer does not push them even when a finding names them: escalate to a person (who may set PUSH_GUARD_ALLOW_SENSITIVE=<class>)")
+  # The lists are sorted and joined under the C locale: a name that is not valid UTF-8 makes sort fail on macOS under a
+  # UTF-8 locale, and the list would print no name (PR 75 N4).
+  REASONS+=("sensitive-path: $(printf '%s\n' "${SENS[@]}" | LC_ALL=C sort -u | LC_ALL=C awk 'NR > 1 { printf ", " } { printf "%s", $0 }'). These files run or judge the automation, so the fixer does not push them even when a finding names them: escalate to a person (who may set PUSH_GUARD_ALLOW_SENSITIVE=<class>)")
 fi
 if [ "${#BADNAME[@]}" -gt 0 ]; then
   REASONS+=("touched paths with a control character in the name, never pushed: ${BADNAME[*]}")
 fi
 if [ "${#OUT[@]}" -gt 0 ]; then
-  REASONS+=("files outside the findings' scope: $(printf '%s\n' "${OUT[@]}" | sort -u | paste -sd' ' -)")
+  REASONS+=("files outside the findings' scope: $(printf '%s\n' "${OUT[@]}" | LC_ALL=C sort -u | LC_ALL=C paste -sd' ' -)")
 fi
 
 if [ "${#REASONS[@]}" -gt 0 ]; then
   echo "push-guard: REFUSED. Do not push #$PR:" >&2
-  for r in "${REASONS[@]}"; do echo "  - $r" >&2; done
+  for r in "${REASONS[@]}"; do printf '  - %s\n' "$r" >&2; done
   exit 1
 fi
-echo "push-guard: ok. #$PR, branch $HEAD_REF, fast-forward from ${HEAD_OID:0:12}, every touched file in scope."
+printf '%s\n' "push-guard: ok. #$PR, branch $HEAD_SHOWN, fast-forward from ${HEAD_OID:0:12}, every touched file in scope."
 exit 0

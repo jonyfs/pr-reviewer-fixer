@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 36,
+  "base": "33937da1eee78ac3ab0019ca872d43f46e0c612a",
+  "head": "851628b544c2c90f9a6dff97b12abf75043a3116",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-reviewer/scripts/review-cycle.sh",
+      "lines": [
+        1208,
+        1208
+      ],
+      "dimension": "reliability",
+      "severity": "WARNING",
+      "description": "fix_guard passes the whole pr-json.py output through one environment variable, so a pull request with long comments exceeds the exec argument limit (E2BIG) and fix refuses to claim it."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

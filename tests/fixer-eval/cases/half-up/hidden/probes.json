@@ -1,0 +1,9 @@
+[
+ {"call": "app.pricing.total_cents", "args": [[100, 200]], "returns": 300},
+ {"call": "app.pricing.total_cents", "args": [[1000], 25], "returns": 750},
+ {"call": "app.pricing.total_cents", "args": [[]], "returns": 0},
+ {"call": "app.pricing.format_cents", "args": [5], "returns": "0.05"},
+ {"call": "app.pricing.format_cents", "args": [-250], "returns": "-2.50"},
+ {"call": "app.pricing.format_cents", "args": [100000], "returns": "1000.00"},
+ {"call": "app.receipt.receipt", "args": [[150]], "returns": "item 1  1.50\ntotal   1.50"}
+]

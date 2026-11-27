@@ -22,7 +22,10 @@ secrets, CI, the skills themselves) is never resolved by the agent. If the code 
 not decide a conflict, the skill stops, leaves the branch untouched, and names the one decision a
 person must make.
 
-After any push of a merge, the reviewer runs again on the new head and reads the whole diff. The
+After any push of a merge, the reviewer runs again on the new head and reads the whole diff. When
+the review loop dispatched the merge, the loop goes on from its first step; when a person ran
+`/pr-merge-fixer` directly, the session takes the loop's role and dispatches a fresh reviewer. A
+merge push always leads to a review, or the session says the review is owed. The
 merge closure comment lists the hunks the reviewer should read first. The rules are in
 [`pr-merge-fixer/SKILL.md`](../.agents/skills/pr-merge-fixer/SKILL.md) and
 [`orchestration.md`](../.agents/skills/pr-merge-fixer/references/orchestration.md).
@@ -290,7 +293,8 @@ flowchart TD
    not declared. When the verdict is `PASSED` with leftover debt, the fixer does only this step: no
    code edits, no commits, no label change.
 6. **Push guard.** Before a push it re-checks the remote head and runs
-   `push-guard.sh <pr> --findings FILE`. The guard refuses when the checked-out branch is not the
+   `bash -p scripts/push-guard.sh <pr> --findings FILE`, and pushes only on exit 0 together with
+   the `push-guard: ok.` line. The guard refuses when the checked-out branch is not the
    pull request's head, the head is on a fork, the pull request is closed, the push would not be a
    fast-forward, or a commit touches a file no finding names (test files and explicit `--allow`
    paths are exempt). A merge commit is checked by the files where it differs from the merge git
@@ -312,7 +316,7 @@ flowchart TD
    replies instead.
 7. **Close the loop.** The push moves the head, and `review-cycle.sh stale` moves the label back to
    `review:pending`. The fixer posts one closure comment carrying
-   `<!-- pr-fixer-closure: cycle=… head=… closed=… refused=… debt=… -->`. For each finding it records
+   `<!-[-] pr-fixer-closure: cycle=… head=… closed=… refused=… debt=… -->`. For each finding it records
    the reproduction, the test, the red run, the fix, the green run and the suite counts. For each
    refusal it records the evidence. The reviewer's next pass takes it from there.
 
@@ -353,14 +357,17 @@ never read as "reviewed".
 
 | Script | Job |
 |---|---|
-| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `findings-block`, `screen`, `publish`, `export-audit`, `ensure-labels`. It owns labels, markers and the budget. |
+| `review-cycle.sh` | The state machine. `start`, `fix`, `stale`, `status`, `debt`, `budget`, `extend`, `halt`, `lint-report`, `findings-block`, `screen`, `publish`, `export-audit`, `export-sarif`, `ensure-labels`. It owns labels, markers and the budget. |
 | `gate-pr-review-state.py` | What the `review-gate` required check runs. It fails unless a trusted marker names the current head. |
 | `pr-json.py` | The only way the scripts read a pull request. It drops comments edited after creation and fails closed. |
-| `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi, tag and filler characters, variation-selector runs, HTML comments other than the markers, link references that hide text, `<details>`, invisible HTML) in the diff, the pull request text and the commit messages, and with `--feedback-json` in the fixer's comment work list, as JSON. It strips nothing. |
+| `scan-hidden.py` | Read-only, both skills. Reports invisible text (zero-width, bidi, tag and filler characters, variation-selector runs, HTML comments other than the markers, link references that hide text, a `details` tag, invisible HTML) in the diff, the pull request text and the commit messages, and with `--feedback-json` in the fixer's comment work list, as JSON. It strips nothing. |
 | `path-floor.sh` | Read-only, both skills. Maps the changed paths to the review units that must run, and `lint-report` runs it over the diff it checks. |
 | `triage-pr.sh` | Read-only. Tells the fixer which lanes a pull request has, and whether it is safe to start. |
 | `fetch-feedback.py` | Read-only, fixer only. Every review thread, review body and issue comment as one list, with author association, thread state and whether the fixer may act on it or resolve it. |
 | `push-guard.sh` | Read-only. The check the fixer passes before every push. |
+| `proof-check.sh` | Fixer only. Re-runs the `proofs` block of a closure comment (all of it or a seeded sample) in a clean checkout at the head it names and compares exit codes. Runs only commands on an allowlist the person sets, never through a shell. |
+| `behaviour-diff.sh` | Fixer only. Runs the fixer's probes at the pre-fix and the post-fix commit and lists every probe whose result changed; a change no finding names is flagged as supplementary for the reviewer. Probes are argv lists the fixer writes, never run through a shell. |
+| `fix-ledger.sh` | Read-only on GitHub, fixer only. Appends each pull request's accepted-fix rate and refused findings to a local ledger, and audits how many refusals were wrong. |
 | `check-version.sh` | Prints a notice when a newer release exists, with the address the code comes from. It never installs anything. `--decline <version>` records a no for that release. |
 | `update.sh` | Both skills. Installs the latest release after the person said yes: downloads the archive, checks its SHA-256, runs the release's `install.sh`, verifies the version. A dry run unless you pass `--yes`. Its upstream address is fixed; a custom source needs `--allow-custom-source`, and `--version X.Y.Z` makes it refuse when the latest release is not the one the person was asked about. |
 | `install.sh` | Copies the skills into the folder a harness reads. A dry run unless you pass `--yes`. |

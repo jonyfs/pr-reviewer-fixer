@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 92,
+  "base": "3bbc11e1d6e10de9c45242d05fad77d039266ad1",
+  "head": "54502e5e855b8de2080b7c3d907696605edd7f23",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W3",
+      "file": ".agents/skills/pr-reviewer/scripts/review-cycle.sh",
+      "lines": [
+        2211,
+        2211
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "export-sarif's refusal of a pull request whose trusted comment was edited by another login has no test (deleting it keeps t.py green), nor do the block-head, control-character path and drive-letter checks."
+    },
+    {
+      "id": "E2",
+      "source_id": "W2",
+      "file": ".agents/skills/pr-reviewer/scripts/review-cycle.sh",
+      "lines": [
+        2330,
+        2330
+      ],
+      "dimension": "correctness",
+      "severity": "WARNING",
+      "description": "Two distinct findings with the same file, dimension and normalized claim at different lines get the same primaryLocationLineHash, so GitHub treats them as one result."
+    },
+    {
+      "id": "E3",
+      "source_id": "W1",
+      "file": ".agents/skills/pr-reviewer/scripts/review-cycle.sh",
+      "lines": [
+        2332,
+        2332
+      ],
+      "dimension": "correctness",
+      "severity": "WARNING",
+      "description": "export-sarif copies only failure_scenario into the SARIF properties, but real reports write scenario:, so every real failure scenario is dropped."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

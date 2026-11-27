@@ -70,11 +70,11 @@ Each agent comment starts with one marker line. The scripts read these markers, 
 
 | Marker | Written by | Meaning |
 |---|---|---|
-| `<!-- adversarial-review: sha=… verdict=… pass=… -->` | reviewer | The verdict for one commit, with its counts |
-| `<!-- pr-fixer-closure: cycle=… head=… -->` | fixer | Its work in one cycle |
-| `<!-- pr-merge-fixer-closure: head=… resolved=… escalated=… -->` | merge fixer | The conflicts it resolved or escalated |
-| `<!-- pr-skill-status: skill=… … -->` | any | The live status of one run, edited in place |
-| `<!-- pr-skill-extension: state=granted\|halted … -->` | `extend` or `halt` | Your answer to the cycle question |
+| `<!-[-] adversarial-review: sha=… verdict=… pass=… -->` | reviewer | The verdict for one commit, with its counts |
+| `<!-[-] pr-fixer-closure: cycle=… head=… -->` | fixer | Its work in one cycle |
+| `<!-[-] pr-merge-fixer-closure: head=… resolved=… escalated=… -->` | merge fixer | The conflicts it resolved or escalated |
+| `<!-[-] pr-skill-status: skill=… … -->` | any | The live status of one run, edited in place |
+| `<!-[-] pr-skill-extension: state=granted\|halted … -->` | `extend` or `halt` | Your answer to the cycle question |
 
 Only comments from a login in `REVIEW_MARKER_AUTHORS` count, and an edited comment does not count.
 
@@ -99,6 +99,7 @@ A critical finding must include a failing scenario. A warning that blocks must i
 | `FIXER_TRUSTED_LOGINS` | none | Bot logins whose review comments the fixer may act on |
 | `PUSH_GUARD_ALLOW_SENSITIVE` | none | Lets the fixer touch a sensitive class of file, such as `skills`. Set it yourself, only when you mean to |
 | `PR_SKILLS_NO_UPDATE_CHECK` | unset | Set to `1` to stop the update notice |
+| `REVIEW_SUPPRESS_SINCE` | unset (off) | A date. The reviewer then shows findings of categories your trusted history mostly dismissed as NOTEs under `Suppressed by history`. Never a CRITICAL, security, a mandatory unit or a blocking warning |
 
 ## Scripts
 
@@ -114,7 +115,14 @@ All scripts live in each skill's `scripts/` folder.
 | `review-cycle.sh publish …` | Publishes the verdict for the head (reviewer only) |
 | `review-cycle.sh extend <pr> --n N` | Grants more cycles after your answer |
 | `review-cycle.sh halt <pr> --reason …` | Stops the loop and asks for a person |
+| `review-cycle.sh export-sarif <pr> [--out FILE]` | Writes the verdict's open findings as SARIF 2.1.0, for you to upload; uploads nothing |
 | `push-guard.sh <pr>` | Checks a push before it happens (fixer and merge fixer) |
+| `proof-check.sh --pr <pr>` | Re-runs the proofs a fixer closure claims and compares exit codes (fixer; needs an allowlist you set) |
+| `behaviour-diff.sh <base> <head> <probes>` | Runs the same probes before and after a fix and flags changes no finding names (fixer only) |
+| `fix-ledger.sh --since DATE` | Records how many fixer commits were kept in a local ledger; `audit` checks how many refusals were wrong (fixer only) |
+| `review-metrics.sh agreement R1 R2 …` | Compares k reports of one head and flags dimensions whose findings do not come back (reviewer only) |
+| `review-metrics.sh scorecard --since DATE` | Counts findings raised, verified, refused and left as debt per dimension and per model, from trusted markers (reviewer only) |
+| `review-metrics.sh suppress --since DATE` | Names the dimensions the trusted history mostly dismissed; with `--report FILE --floor BASE HEAD`, says which findings to show as suppressed NOTEs. Opt-in, read-only, fails open (reviewer only) |
 | `check-version.sh` | Prints a notice when a newer release exists. It never installs |
 | `update.sh --yes --version X` | Updates the installed skills after you say yes |
 

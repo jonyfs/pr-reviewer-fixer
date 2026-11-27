@@ -1,0 +1,6 @@
+{
+ "kind": "heldout",
+ "defect": "state: a memo cache keys on positional arguments only, so keyword arguments get a stale answer",
+ "scope": ["app/cache.py"],
+ "counts": {"critical": 0, "warning": 1, "note": 0}
+}

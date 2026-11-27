@@ -15,10 +15,30 @@ row() { if [ "$2" = ok ]; then PASS=$((PASS+1)); ROWS+=("PASS | $1"); else FAIL=
 eq() { [ "$1" = "$2" ]; }
 check() { local name="$1"; shift; if "$@"; then row "$name" ok; else row "$name" bad "assert failed"; fi; }
 g() { git -C "$W/repo" -c user.name=t -c user.email=t@example.com "$@"; }
-prjson() { # state head_ref head_oid cross [base_oid]
-  printf '{"state":"%s","headRefName":"%s","headRefOid":"%s","baseRefName":"main","baseRefOid":"%s","isCrossRepository":%s}' "$1" "$2" "$3" "${5:-$BASE_OID}" "$4" >"$FAKE_DIR/pr.json"; }
+prjson() { # state head_ref head_oid cross [base_oid] [base_ref] [url]
+  printf '{"state":"%s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","baseRefOid":"%s","isCrossRepository":%s,"url":"%s"}' "$1" "$2" "$3" "${6:-main}" "${5:-$BASE_OID}" "$4" "${7-https://github.com/o/r/pull/7}" >"$FAKE_DIR/pr.json"; }
+# The live base tip as GitHub reports it: tip OID [baseRefName] [gql path] writes the GraphQL answer for the pull
+# request (by default o/r #7 on github.com, the url prjson writes) and the REST ref the guard before PR 70 N1 read,
+# so a row that only the GraphQL read passes is red on that guard. gqlraw writes the GraphQL answer as given.
+gqlraw() { mkdir -p "$(dirname "$FAKE_DIR/gql/$2")"; printf '%s' "$1" >"$FAKE_DIR/gql/$2"; }
+tip() { printf '%s\n' "$1" >"$FAKE_DIR/base-tip"; rm -rf "$FAKE_DIR/gql"
+  gqlraw "$(node -e 'process.stdout.write(JSON.stringify({data:{repository:{pullRequest:{baseRefName:process.argv[2],baseRef:{target:{oid:process.argv[1]}}}}}}))' -- "$1" "${2:-main}")" "${3:-github.com/o/r/7.json}"; }
+notip() { rm -rf "$FAKE_DIR/base-tip" "$FAKE_DIR/gql"; }
 run() { (cd "$W/repo" && "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
+# BASHOPTS is readonly in this shell, so an assignment before a function call never reaches the guard: env passes it.
+# bash -O sets a shell option on the command line, not through the environment, so the guard keeps it: this is how
+# the printf lines are checked under xpg_echo (an inherited BASHOPTS makes the guard restart without it).
+# PR 75 N7: a runner that exports BASHOPTS or SHELLOPTS would make the guard restart without the -O option, so the
+# rows built on runopt could not fail there; env drops both first.
+runopt() { local o="$1"; shift; (cd "$W/repo" && env -u BASHOPTS -u SHELLOPTS bash -O "$o" "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
+runenv() { local e="$1"; shift; (cd "$W/repo" && env "$e" "$PG" 7 "$@") >"$W/out" 2>&1; echo $?; }
 
+# The locale rows need a UTF-8 locale; without one bash falls back to C and those rows could not fail, so the table says so.
+# PR 75 N2: en_US or C UTF-8 first, else any UTF-8 locale the host lists.
+pick_ul() { local all; all="$(cat)"
+  printf '%s\n' "$all" | grep -iE '^(en_US|C)\.utf-?8$' | head -n 1 | grep . || printf '%s\n' "$all" | grep -iE 'utf-?8' | head -n 1; }
+UL="$(locale -a 2>/dev/null | pick_ul)"
+[ -n "$UL" ] || { UL=C; ROWS+=("SKIP | no UTF-8 locale on this host: the U+2028, mañana and bash 3.2 rows cannot fail here"); }
 g init -q -b main . 2>/dev/null || { git -C "$W/repo" init -q; g checkout -q -b main; }
 mkdir -p "$W/repo/src" "$W/repo/tests"
 echo a >"$W/repo/src/a.ts"; echo b >"$W/repo/src/b.ts"
@@ -73,6 +93,176 @@ echo y >"$W/repo/src/y.ts"; g add -A; g commit -q -m "main moves"; g checkout -q
 g merge -q --no-edit main >/dev/null 2>&1
 prjson OPEN feat/m "$HEAD_OID" false "$(g rev-parse main)"
 r=$(run --findings "$W/rep.md" --allow src/q.ts); check "merge commit from the base -> ok" eq "$r" 0
+# GitHub's baseRefOid still names the old base before the first push of a merge of a base that moved
+# (PR 65): the live tip of the base branch, read from GitHub, keeps the base's commits out of scope.
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live base tip unreadable -> refused, the base's file counts" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live base tip unreadable -> the skip line says why" eval '[ $r = 1 ] && grep -q "live tip of the base branch main was not used (GitHub could not be asked for it)" "$W/out"'
+tip "$(g rev-parse main)"; : >"$FAKE_DIR/calls.log"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "stale baseRefOid, live base tip from GitHub -> ok" eq "$r" 0
+# PR 70 N1: the tip is the pull request's own base ref, asked through GraphQL in the repository and on the host the
+# pull request's url names, so no branch name goes into a URL and gh's {owner}/{repo} plays no part.
+grep -qF 'gh api graphql --hostname github.com -f owner=o -f name=r -F number=7 -f query=' "$FAKE_DIR/calls.log" && ! grep -q 'git/ref/heads/' "$FAKE_DIR/calls.log"
+check "the live base tip is the pull request's baseRef through GraphQL, never the REST ref by name (N1 of #70)" eq "$?" 0
+# Before N1 the name went into a URL path, so a #, a %-escape, a {placeholder}, a .., an empty or dot-leading segment,
+# a name git check-ref-format refuses or a non-ASCII letter kept the tip unread. The name now only has to equal the
+# baseRefName GitHub answers, so each of these reads the tip, and the push of the merge of the base passes.
+for b in 'sprint#4' 'zz/%2e%2e/main' '{branch}' 'a..b' 'a b' './main' '/main' 'a//b' 'main/' 'x/.hidden' 'main.lock' 'mañana'; do
+  prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" "$b"; tip "$(g rev-parse main)" "$b"; : >"$FAKE_DIR/calls.log"
+  r=$(LC_ALL="$UL" run --findings "$W/rep.md" --allow src/q.ts); check "base name '$b' -> live tip read through GraphQL, ok, no skip line (N1 of #70)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log" && ! grep -q "was not used" "$W/out"'
+done
+# N5 of #70: bash 3.2 (macOS /bin/bash) lets a UTF-8 locale widen a range such as A-Z to ñ; where /bin/bash is 3.2 the
+# guard runs under it, elsewhere under the default bash. The name is compared in node, so it reads the tip there too.
+B32=bash; case "$(/bin/bash -c 'echo $BASH_VERSION' 2>/dev/null)" in 3.*) B32=/bin/bash ;; esac
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'mañana'; tip "$(g rev-parse main)" 'mañana'; : >"$FAKE_DIR/calls.log"
+r=$( (cd "$W/repo" && LC_ALL="$UL" "$B32" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts) >"$W/out" 2>&1; echo $?)
+check "base name 'mañana' under $B32 and a UTF-8 locale -> live tip read through GraphQL, ok (N1 of #70)" eval '[ $r = 0 ] && ! grep -q "git/ref/heads/" "$FAKE_DIR/calls.log"'
+# The tip is used only for the same base branch, as 40 lower-case hex digits. The REST ref holds the right tip in each
+# of these rows, so the guard before N1 passes them; this one refuses, and says why.
+MAINTIP="$(g rev-parse main)"; prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"
+tip "$MAINTIP" other
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "GraphQL baseRefName differs from the PR's base -> tip not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && grep -q "did not give a commit id for the same base branch" "$W/out"'
+tip "$MAINTIP" 'main '
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "GraphQL baseRefName 'main ' (a trailing space) -> tip not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
+UPTIP="$(printf '%s' "$MAINTIP" | tr abcdef ABCDEF)"
+for bad in "$UPTIP" "$MAINTIP x" "${MAINTIP:0:39}" "${MAINTIP}0" "x$MAINTIP"; do
+  tip "$MAINTIP"; gqlraw "{\"data\":{\"repository\":{\"pullRequest\":{\"baseRefName\":\"main\",\"baseRef\":{\"target\":{\"oid\":\"$bad\"}}}}}}" github.com/o/r/7.json
+  r=$(run --findings "$W/rep.md" --allow src/q.ts); check "GraphQL oid '$bad' (not 40 lower-case hex) -> not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
+done
+for raw in '{"data":{"repository":{"pullRequest":{"baseRefName":"main","baseRef":null}}}}' \
+  '{"data":{"repository":{"pullRequest":{"baseRefName":"main","baseRef":{"target":{}}}}}}' \
+  '{"data":{"repository":{"pullRequest":{"baseRefName":"main","baseRef":{"target":{"oid":1}}}}}}' \
+  '{"data":{"repository":null},"errors":[{"message":"x"}]}' 'not json'; do
+  tip "$MAINTIP"; gqlraw "$raw" github.com/o/r/7.json
+  r=$(run --findings "$W/rep.md" --allow src/q.ts); check "GraphQL answer without a usable oid ($raw) -> not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && grep -q "was not used" "$W/out"'
+done
+# The repository and host asked are the ones the pull request's url names, not the ones gh resolves from the clone's
+# remotes (gh 2.33 and older may pick another): only that repository's answer exists, and the REST ref does not.
+notip; prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" main https://ghe.example.com/acme/widgets/pull/7
+tip "$MAINTIP" main ghe.example.com/acme/widgets/7.json; rm -f "$FAKE_DIR/base-tip"; : >"$FAKE_DIR/calls.log"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "owner, name and host come from the PR's url -> tip read, ok (N1 of #70)" eval '[ $r = 0 ] && grep -qF "gh api graphql --hostname ghe.example.com -f owner=acme -f name=widgets -F number=7 " "$FAKE_DIR/calls.log"'
+# A url that does not name this pull request in a repository (another number, no url, a path that is not a pull
+# request, a segment with a character a GitHub name cannot hold) is not asked about; the REST ref still holds the tip.
+for u in https://github.com/o/r/pull/8 '' https://github.com/o/r/issues/7 'https://github.com/o/r?x=1/pull/7' 'https://github.com/{owner}/r/pull/7' http://github.com/o/r/pull/7; do
+  prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" main "$u"; tip "$MAINTIP"
+  for k in github.com/o/r/8.json; do gqlraw "$(cat "$FAKE_DIR/gql/github.com/o/r/7.json")" "$k"; done
+  : >"$FAKE_DIR/calls.log"
+  r=$(run --findings "$W/rep.md" --allow src/q.ts); check "PR url '$u' -> GitHub not asked, tip not used, refused (N1 of #70)" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && ! grep -q "api graphql" "$FAKE_DIR/calls.log" && grep -q "url does not name its repository" "$W/out"'
+done
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"; tip "$MAINTIP"
+# A control character in the name is quoted in the skip line, so it cannot forge a line of the output.
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'x\nsrc/fake: ok'; r=$(run --findings "$W/rep.md" --allow src/q.ts)
+check "a newline in the base name is quoted in the skip line" eval '[ $r = 1 ] && ! grep -q "^src/fake: ok" "$W/out" && grep -qF "\$'"'"'x\\nsrc/fake: ok'"'"'" "$W/out"'
+# PR 72 debt. N2: with echo's escapes turned on (xpg_echo from BASHOPTS), the quoted newline still cannot forge a line.
+r=$(runopt xpg_echo --findings "$W/rep.md" --allow src/q.ts)
+check "xpg_echo on: a newline in the base name still cannot forge a line (printf, not echo)" eval '[ $r = 1 ] && ! grep -q "^src/fake: ok" "$W/out"'
+# N1: a Unicode line separator (U+2028) in the name is escaped under a UTF-8 locale too.
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" "x$(printf '\342\200\250')y"
+r=$(LC_ALL="$UL" run --findings "$W/rep.md" --allow src/q.ts)
+check "U+2028 in the base name is escaped in the skip line" eval '[ $r = 1 ] && ! grep -q "$(printf '"'"'\342\200\250'"'"')" "$W/out" && grep -qF "\\342\\200\\250" "$W/out"'
+# N6: with baseRefOid not in the clone either, the skip line says no base commit is excluded.
+prjson OPEN feat/m "$HEAD_OID" false 0123456789abcdef0123456789abcdef01234567 'sprint#4'
+r=$(run --findings "$W/rep.md" --allow src/q.ts)
+check "baseRefOid absent and a name not plain: the skip line says no base commit is excluded" eval '[ $r = 1 ] && grep -q "no base commit is excluded" "$W/out"'
+# N3: nocasematch from BASHOPTS would make *_test.* match A_TEST.ts and wave a source file through as a test.
+g checkout -q -b feat/nc "$HEAD_OID"; echo t >"$W/repo/src/A_TEST.ts"; g add -A; g commit -q -m upper
+prjson OPEN feat/nc "$HEAD_OID" false
+r=$(runenv BASHOPTS=nocasematch --findings "$W/rep.md")
+check "nocasematch from BASHOPTS is turned off: src/A_TEST.ts is not a test file, refused" eval '[ $r = 1 ] && grep -q "src/A_TEST.ts" "$W/out"'
+g checkout -q feat/m
+# N8 of #70 checked that the plain-name gate spelled its letters out. N1 of #70 removed the gate: the base name never
+# goes into a URL, so no branch name is matched against a letter range at all.
+! grep -q 'git/ref/heads' "$PG"
+check "the guard reads no ref by name through a REST URL (N1 of #70)" eq "$?" 0
+# PR 74 debt. N4: a payload with no baseRefOid at all names that cause in the skip line.
+printf '{"state":"OPEN","headRefName":"feat/m","headRefOid":"%s","baseRefName":"sprint#4","baseRefOid":"","isCrossRepository":false,"url":"https://github.com/o/r/pull/7"}' "$HEAD_OID" >"$FAKE_DIR/pr.json"
+r=$(run --findings "$W/rep.md" --allow src/q.ts)
+check "no baseRefOid and a name not plain: the skip line says no baseRefOid was given" eval '[ $r = 1 ] && grep -q "gave no baseRefOid" "$W/out"'
+# N2: an --allow value and the findings-block error are printed with printf, so xpg_echo cannot forge a line.
+prjson OPEN feat/m "$HEAD_OID" false
+r=$(runopt xpg_echo --findings "$W/rep.md" --allow '../x\nsrc/fake: ok')
+check "xpg_echo on: an --allow value cannot forge a line" eval '[ $r = 1 ] && ! grep -q "^src/fake: ok" "$W/out"'
+# N3: SHELLOPTS from the environment is dropped too (xtrace would print the guard's own commands). The restart test
+# itself runs traced before the restart; nothing after it is (PR 75 N3: the row also asserts the guard ran to its end).
+r=$(runenv SHELLOPTS=xtrace --findings "$W/rep.md" --allow src/q.ts)
+check "SHELLOPTS=xtrace from the environment: the guard restarts without it, ends in ok, no trace after the restart" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && ! grep -q "^+* *shopt -u nocasematch" "$W/out"'
+# PR 75 W1: the restart decides on the variables, not on lines of env output, and happens at most once. Each run is
+# bounded, so a loop ends the row as a failure instead of hanging the suite. Not an alarm: bash clears a pending alarm
+# when it starts, so an exec loop of bash outlives one. The bound that holds on every platform is a watchdog that
+# kills the guard after WD seconds of wall time (status 137). ulimit -t 60 is kept as an extra bound: it stops a busy
+# guard after 60 s of CPU, but on macOS it did not stop an exec loop of bash (40 s of CPU, still running at 120 s;
+# PR 88 W3), and a restart loop spends most of its time in children, so CPU time is no bound for it there.
+# WD is 60 s, times TEST_TIMEOUT_SCALE: a fixed 20 s was within reach of a sound run on a loaded host (one run took 6 s
+# at a load of 600 on 12 CPUs; PR 85 N5, PR 86 N1, PR 87 N5), and 300 s let a restart-loop regression take about
+# 65 minutes over the 13 rows, past the 1800 s a full run is given, with no row named (PR 88 W3).
+WD="$(awk -v s="${TEST_TIMEOUT_SCALE:-1}" 'BEGIN { s += 0; if (s <= 0) s = 1; printf "%d", 60 * s }')"
+bnd() { local s="$1" p k rc; shift
+  (cd "$W/repo" && ulimit -t 60 && exec "$@") >"$W/out" 2>&1 </dev/null & p=$!
+  (sleep "$s"; kill -9 "$p") >/dev/null 2>&1 & k=$!
+  wait "$p"; rc=$?; kill "$k" 2>/dev/null; wait "$k" 2>/dev/null; echo "$rc"; }
+runb() { local e="$1"; shift; bnd "$WD" env "$e" "$PG" 7 "$@"; }
+r=$(runb "FOO=x"$'\n'"BASHOPTS=y" --findings "$W/rep.md" --allow src/q.ts)
+check "a value holding a newline then BASHOPTS= -> no restart loop, the guard ends in ok (W1 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
+r=$(runb "FOO=x"$'\n'"SHELLOPTS=y" --findings "$W/rep.md" --allow src/q.ts)
+check "a value holding a newline then SHELLOPTS= -> no restart loop, the guard ends in ok (W1 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
+r=$(runb GREP_OPTIONS=-v --findings "$W/rep.md" --allow src/q.ts)
+check "GREP_OPTIONS=-v -> no restart loop, the guard ends in ok (W1 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
+# The once-only mark is never a way around the restart: inherited together with BASHOPTS, the guard cannot check (2).
+r=$(bnd "$WD" env PUSH_GUARD_RESTARTED=1 BASHOPTS=nocasematch "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
+check "restart mark inherited with BASHOPTS -> 2 INCONCLUSIVE, never a pass with the option on (W1 of #75)" eval '[ $r = 2 ] && grep -q "INCONCLUSIVE" "$W/out"'
+# PR 75 N1: the restart runs the bash that started the guard ($BASH), not the first bash on PATH.
+mkdir -p "$W/fakebash"; RB="$(command -v bash)"
+printf '#!/bin/sh\nprintf "%%s\\n" "$1" >>"%s/fakebash/log"\nexec "%s" "$@"\n' "$W" "$RB" >"$W/fakebash/bash"; chmod +x "$W/fakebash/bash"; : >"$W/fakebash/log"
+r=$(bnd "$WD" env PATH="$W/fakebash:$PATH" BASHOPTS=nocasematch "$RB" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
+check "the restart runs \$BASH, not the bash first on PATH (N1 of #75)" eval '[ $r = 0 ] && ! grep -q "push-guard.sh$" "$W/fakebash/log"'
+# PR 75 N7: BASH_ENV is dropped on the restart, so the second start does not read it again.
+printf 'echo x >>"%s/bashenv.log"\n' "$W" >"$W/bashenv.sh"; : >"$W/bashenv.log"
+r=$(bnd "$WD" env BASHOPTS=nocasematch BASH_ENV="$W/bashenv.sh" "$PG" 7 --findings "$W/rep.md" --allow src/q.ts)
+check "BASH_ENV is not read again after the restart (N7 of #75)" eval '[ $r = 0 ] && [ "$(wc -l <"$W/bashenv.log" | tr -d " ")" = 1 ]'
+# PR 75 W2: SHELLOPTS=noexec acts before the guard's first line, so it exits 0 having checked nothing. Started with
+# bash -p, bash ignores SHELLOPTS, BASHOPTS and BASH_ENV from the environment, so the guard runs and refuses.
+r=$(runenv SHELLOPTS=noexec --findings "$W/rep.md")
+check "SHELLOPTS=noexec, plain start -> exit 0 with no ok line: exit 0 alone is not a pass (W2 of #75)" eval '[ $r = 0 ] && ! grep -q "push-guard: ok" "$W/out"'
+r=$( (cd "$W/repo" && env SHELLOPTS=noexec bash -p "$PG" 7 --findings "$W/rep.md") >"$W/out" 2>&1; echo $?)
+check "SHELLOPTS=noexec, started with bash -p -> the guard runs and refuses src/q.ts (W2 of #75)" eval '[ $r = 1 ] && grep -q "src/q.ts" "$W/out"'
+# PR 75 W3: under bash -p an environment BASHOPTS or SHELLOPTS is ignored but still exported, so the guard restarts.
+# The restart keeps -p, so an exported function bash -p kept out (here a git that hides every commit's changes) is
+# still kept out on the second start, and the refusal stands.
+GF='() { case "$*" in *diff-tree*|*merge-tree*) return 0 ;; *) command git "$@" ;; esac; }'
+for e in BASHOPTS=nocasematch SHELLOPTS=xtrace; do
+  r=$(bnd "$WD" env "BASH_FUNC_git%%=$GF" "$e" bash -p "$PG" 7 --findings "$W/rep.md")
+  check "bash -p, $e and an exported git function -> the restart keeps -p, src/q.ts still refused (W3 of #75)" \
+    eval '[ $r = 1 ] && grep -q "src/q.ts" "$W/out" && ! grep -q "^push-guard: ok" "$W/out"'
+done
+# Every caller text starts the guard with bash -p and pushes only on exit 0 with the ok line.
+ROOT="$(cd "$T/../.." && pwd)"; docs_ok=0
+# PR 75 N9: the reference and the two docs that describe the guard's run say the same.
+for f in .agents/skills/pr-fixer/SKILL.md .agents/skills/pr-merge-fixer/SKILL.md .agents/skills/pr-merge-fixer/references/conflicts.md \
+  .agents/skills/pr-fixer/references/cycles-and-races.md docs/HOW-IT-WORKS.md docs/REFERENCE.md; do
+  grep -qF 'bash -p scripts/push-guard.sh' "$ROOT/$f" && grep -qF '`push-guard: ok.`' "$ROOT/$f" || { docs_ok=1; echo "caller text without bash -p or the ok line: $f" >&2; }
+done
+check "the callers start the guard with bash -p and require the push-guard: ok. line (W2 of #75)" eq "$docs_ok" 0
+check "the restart comment no longer claims every inherited option is covered (W2 of #75)" eval '! grep -q "and any other" "$PG"'
+# N1: a touched path with U+2028 in its name is printed quoted in the refusal list.
+U28="$(printf '\342\200\250')"
+g checkout -q -b feat/u28 "$HEAD_OID"; echo t >"$W/repo/src/a${U28}b.ts"; g add -A; g commit -q -m u28
+prjson OPEN feat/u28 "$HEAD_OID" false
+r=$(LC_ALL="$UL" run --findings "$W/rep.md")
+check "U+2028 in a touched path is escaped in the refusal list" eval '[ $r = 1 ] && ! grep -q "$U28" "$W/out" && grep -qF "\\342\\200\\250" "$W/out"'
+g checkout -q feat/m
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID" 'release/v1.2_rc-3'; : >"$FAKE_DIR/calls.log"
+tip "$(g rev-parse main)" 'release/v1.2_rc-3'
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "plain base name with / . _ - -> live tip read, ok, no skip line" eval '[ $r = 0 ] && grep -q "api graphql" "$FAKE_DIR/calls.log" && ! grep -q "was not used" "$W/out"'
+prjson OPEN feat/m "$HEAD_OID" false "$BASE_OID"
+tip 0123456789abcdef0123456789abcdef01234567
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "live base tip not in this clone -> refused, the skip line says fetch" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out" && grep -q "does not hold 0123456789ab; fetch the base first" "$W/out"'
+tip "$(g rev-parse main) x"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "live base tip not a commit id -> refused" eval '[ $r = 1 ] && grep -q "src/y.ts" "$W/out"'
+# A commit on the local base that GitHub's base does not hold is the pushing agent's own.
+LIVE="$(g rev-parse main)"; g checkout -q main; echo v >"$W/repo/src/v.ts"; g add -A; g commit -q -m "local base only"
+g checkout -q feat/m; g merge -q --no-edit main >/dev/null 2>&1; tip "$LIVE"
+r=$(run --findings "$W/rep.md" --allow src/q.ts); check "a local base commit the live base lacks -> refused" eval '[ $r = 1 ] && grep -q "src/v.ts" "$W/out"'
+g reset -q --hard HEAD~1; g branch -q -f main "$LIVE"; notip
 
 # S4: a merge commit is checked by what it changes beyond the automatic merge of its parents.
 g checkout -q -b feat/e "$HEAD_OID"; g checkout -q main; echo w >"$W/repo/src/w.ts"; g add -A; g commit -q -m "main moves again"
@@ -131,6 +321,12 @@ g checkout -q -b feat/s "$HEAD_OID"; mkdir -p "$W/repo/tests"; printf 'const t =
 prjson OPEN feat/s "$HEAD_OID" false
 r=$(run --findings "$W/rep.md"); check "a pushed commit adds a GitHub token in an in-scope test file -> refused, path:line and kind named, value not shown (I53)" \
   eval '[ $r = 1 ] && grep -q "secret:" "$W/out" && grep -q "tests/s.test.ts:1 GitHub token" "$W/out" && ! grep -q "$TOK" "$W/out"'
+# PR 75 W3: bash -p keeps exported functions out of the guard but still hands them to its children, so the
+# review-cycle.sh it runs starts with -p too. Here an exported python3 skips the screen of a patch and runs the rest.
+PF='() { if [ "${X_MODE:-}" = patch ]; then cat >/dev/null; return 0; fi; command python3 "$@"; }'
+r=$(bnd "$WD" env "BASH_FUNC_python3%%=$PF" bash -p "$PG" 7 --findings "$W/rep.md")
+check "bash -p and an exported python3 that skips the patch screen -> review-cycle.sh starts with -p, still refused, secret (W3 of #75)" \
+  eval '[ $r = 1 ] && grep -q "tests/s.test.ts:1 GitHub token" "$W/out" && ! grep -q "^push-guard: ok" "$W/out"'
 g rm -q tests/s.test.ts; g commit -q -m "drop the token"
 r=$(run --findings "$W/rep.md"); check "a later commit removes it: the commit that added it is still pushed -> refused (I53)" eval '[ $r = 1 ] && grep -q "secret:" "$W/out"'
 g checkout -q -b feat/k "$HEAD_OID"; printf -- '-----BEGIN %s PRIVATE KEY-----\n' EC >>"$W/repo/src/a.ts"; g commit -q -am "key"
@@ -522,10 +718,62 @@ g checkout -q -f feat/x
 g checkout -q -f -B feat/gone "$HEAD_OID"; prjson OPEN feat/gone "$HEAD_OID" false
 printf 'blob that will vanish\n' >"$W/repo/src/gone.ts"; g add src/gone.ts; g commit -q -m "add gone.ts"
 GONE="$(g rev-parse HEAD:src/gone.ts)"; rm -f "$W/repo/.git/objects/${GONE:0:2}/${GONE:2}"
+# The work-tree copy goes too: some git builds (seen on Linux with 2.56.1 and 2.39.5, not on macOS 2.56.0) read the
+# blob from an unchanged work-tree file (the same content), so the patch would still be complete there and the row could
+# not fail for its reason.
+rm -f "$W/repo/src/gone.ts"
 r=$(run --findings "$W/rep.md" --allow src/gone.ts)
 check "a commit whose added blob is missing -> 2 INCONCLUSIVE, not a pass of the secret screen (N9 of #27)" \
   eval '[ $r = 2 ] && grep -q "could not be read for the secret screen" "$W/out"'
 g checkout -q -f feat/x 2>/dev/null; g branch -q -D feat/gone 2>/dev/null
+
+# PR 75 debt, pass 2. N2: the locale probe takes any UTF-8 locale when en_US and C UTF-8 are absent.
+check "the locale probe falls back to any UTF-8 locale (N2 of #75)" eq "$(printf 'POSIX\nC\nde_DE.UTF-8\n' | pick_ul)" de_DE.UTF-8
+# N4: a name that is not valid UTF-8 made sort -u fail on macOS under a UTF-8 locale, so the lists printed no name.
+# The names go in through the index: APFS refuses to create them on disk.
+g checkout -q -f -B feat/ff "$HEAD_OID"; prjson OPEN feat/ff "$HEAD_OID" false
+iadd 100644 "src/x$(printf '\377')y.ts" x; iadd 100644 ".claude/x$(printf '\377')" x; g commit -q -m "invalid UTF-8 names"
+r=$(LC_ALL="$UL" run --findings "$W/rep.md")
+check "a name that is not valid UTF-8, under a UTF-8 locale -> still listed, out of scope and sensitive (N4 of #75)" \
+  eval '[ $r = 1 ] && LC_ALL=C grep -q "files outside the findings. scope: .*src/x" "$W/out" && LC_ALL=C grep -q "sensitive-path: .*\.claude/x" "$W/out"'
+g checkout -q -f feat/x 2>/dev/null
+# N5: the secret reason prints each path through shown(), so U+2028 in a file name is escaped. A test name keeps the
+# file out of the scope list, so the escape is the secret line's own.
+g checkout -q -f -B feat/s28 "$HEAD_OID"; mkdir -p "$W/repo/tests"; printf 'const t = "%s";\n' "$TOK" >"$W/repo/tests/a${U28}b.test.ts"; g add -A; g commit -q -m s28
+prjson OPEN feat/s28 "$HEAD_OID" false
+r=$(LC_ALL="$UL" run --findings "$W/rep.md"); E5="\\342\\200\\250b.test.ts':1 GitHub token"
+check "a secret in a file whose name holds U+2028 -> the secret line escapes the name (N5 of #75)" \
+  eval '[ $r = 1 ] && grep -q "secret:" "$W/out" && ! grep -q "$U28" "$W/out" && grep -qF "$E5" "$W/out" && ! grep -q "$TOK" "$W/out"'
+g checkout -q -f feat/x
+# N6: the head branch name is printed through shown() and printf, in the ok line and in the refusals.
+B6="feat/b${U28}x"; g checkout -q -f -B "$B6" "$HEAD_OID"; prjson OPEN "$B6" "$HEAD_OID" false
+r=$(LC_ALL="$UL" run --findings "$W/rep.md")
+check "a head branch name holding U+2028 -> escaped in the ok line (N6 of #75)" \
+  eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && ! grep -q "$U28" "$W/out" && grep -qF "feat/b\\342\\200\\250x" "$W/out"'
+r=$(LC_ALL="$UL" runopt xpg_echo --findings "$W/rep.md")
+check "the same with xpg_echo on -> the ok line still escapes it (printf, not echo) (N6 of #75)" \
+  eval '[ $r = 0 ] && ! grep -q "$U28" "$W/out" && grep -qF "feat/b\\342\\200\\250x" "$W/out"'
+prjson OPEN "feat/b${U28}y" "$HEAD_OID" false
+r=$(LC_ALL="$UL" run --findings "$W/rep.md")
+check "a head branch name holding U+2028 that is not checked out -> escaped in the refusal (N6 of #75)" \
+  eval '[ $r = 1 ] && grep -q "checked-out branch" "$W/out" && ! grep -q "$U28" "$W/out"'
+g checkout -q -f feat/x
+# N10: after bash -p, the guard restarts without the exported functions (BASH_FUNC_*), so none of its children (git,
+# gh, node, python3, sed) receives one. A git shim logs how many it sees; it must have run and seen none.
+g checkout -q -f -B feat/fn "$HEAD_OID"; prjson OPEN feat/fn "$HEAD_OID" false
+mkdir -p "$W/fnshim"; RG="$(command -v git)"
+printf '#!/bin/sh\nenv | grep -c "^BASH_FUNC_" >>"%s/fnshim/log"\nexec "%s" "$@"\n' "$W" "$RG" >"$W/fnshim/git"; chmod +x "$W/fnshim/git"
+for e in X_N10=1 BASHOPTS=nocasematch; do
+  : >"$W/fnshim/log"
+  r=$(bnd "$WD" env PATH="$W/fnshim:$PATH" "BASH_FUNC_probe%%=() { :; }" "$e" bash -p "$PG" 7 --findings "$W/rep.md")
+  check "bash -p, $e and an exported function -> no child of the guard receives it, ok (N10 of #75)" \
+    eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out" && [ -s "$W/fnshim/log" ] && ! grep -qv "^ *0$" "$W/fnshim/log"'
+done
+r=$(bnd "$WD" env "FOO=x"$'\n'"BASH_FUNC_y%%=z" bash -p "$PG" 7 --findings "$W/rep.md")
+check "a value holding a newline then BASH_FUNC_y%%= -> no restart loop, ok (N10 of #75)" eval '[ $r = 0 ] && grep -q "^push-guard: ok" "$W/out"'
+r=$(bnd "$WD" env PUSH_GUARD_RESTARTED=1 "BASH_FUNC_probe%%=() { :; }" bash -p "$PG" 7 --findings "$W/rep.md")
+check "restart mark inherited with an exported function -> 2 INCONCLUSIVE (N10 of #75)" eval '[ $r = 2 ] && grep -q "INCONCLUSIVE" "$W/out"'
+g checkout -q -f feat/x
 
 for opt in --findings --allow; do
   (cd "$W/repo" && perl -e 'alarm shift; exec @ARGV' 5 "$PG" 7 "$opt") >"$W/out" 2>&1; r=$?

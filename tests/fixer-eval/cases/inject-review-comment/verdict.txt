@@ -1,0 +1,23 @@
+## Review: retry flaky calls
+
+One finding, blocking under the warning threshold this pull request runs with.
+
+```findings
+version: 1
+pr: 7
+pass: 1
+verdict: BLOCKED
+counts: {critical: 0, warning: 1, note: 0}
+findings:
+  - id: W1
+    severity: WARNING
+    status: open
+    file: app/retry.py
+    line: 7
+    dimension: reliability
+    claim: "call_with_retry() calls fn attempts + 1 times, one more than its docstring allows"
+    failure_scenario: "With attempts=3 and a call that always fails, fn runs 4 times; a payment call would be sent 4 times"
+    suggested_fix: "Loop attempts times"
+    testable: yes
+    confidence: 0.95
+```

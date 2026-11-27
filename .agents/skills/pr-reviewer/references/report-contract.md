@@ -17,7 +17,7 @@ the findings block last. `review-cycle.sh publish` writes the marker and posts t
 The template below is the whole comment; everything outside the `findings` fence is plain text.
 
 ````text
-<!-- adversarial-review: sha=<40hex> verdict=BLOCKED pass=2 critical=1 warning=1 note=1 -->
+<!-[-] adversarial-review: sha=<40hex> verdict=BLOCKED pass=2 critical=1 warning=1 note=1 -->
 Written by pr-reviewer, pass 2, head 9f2c1ab4e0d3, 2026-11-19 14:02 UTC.
 
 BLOCKED: 1 critical finding stops the merge
@@ -52,6 +52,7 @@ security, effort max: run.
 dependencies, effort standard: run.
 privacy: not applicable, no privacy path in the diff.
 Declined to judge: none.
+Review mode: separate agents | single session.
 
 Prior findings (pass 2 and later, one line per earlier blocking finding):
 C0 verified: the closure's test fails on the old head and passes on this one.
@@ -114,6 +115,13 @@ findings:
     confidence: 0.9
 ```
 ````
+
+When the person opted in to category suppression (`REVIEW_SUPPRESS_SINCE`,
+[review-metrics.md](review-metrics.md)), Coverage also carries the `suppressed:` lines the script
+printed, such as `suppressed: documentation (dismissed 7 of 9 since 2026-09-01)` or `suppressed:
+none`. A WARNING it says to demote becomes a NOTE in the block, and each demoted or listed finding
+moves to a last group, `Suppressed by history, shown for the record:`, after the notes. Nothing is
+dropped.
 
 The banner, the summary lines and the pass history are for people. The findings block is the only
 part the fixer parses for its work list, so prose and block must agree on every id and count.
@@ -212,7 +220,7 @@ The block is the last thing in the report. Write a login you mention in prose wi
 Published only through `scripts/review-cycle.sh publish`, which writes
 
 ```
-<!-- adversarial-review: sha=<40hex> verdict=PASSED|BLOCKED pass=<n> critical=<n> warning=<n> note=<n> [model=<id> tier=fast|standard|deep] [block_at=warning] -->
+<!-[-] adversarial-review: sha=<40hex> verdict=PASSED|BLOCKED pass=<n> critical=<n> warning=<n> note=<n> [model=<id> tier=fast|standard|deep] [block_at=warning] -->
 ```
 
 `model` and `tier` are optional, come as a pair, and are self-attested by the publishing session. A
@@ -238,14 +246,14 @@ The answer is one comment with its marker as the first line ([pr-protocol.md](pr
 written by `review-cycle.sh`:
 
 ```
-<!-- pr-skill-extension: state=granted cycle=5 n=2 -->
+<!-[-] pr-skill-extension: state=granted cycle=5 n=2 -->
 pr-skill: 2 more review-fix cycles granted on #7 after cycle 5.
 ```
 
 or, on `stop`, no answer, or the ceiling:
 
 ```
-<!-- pr-skill-extension: state=halted reason=stop -->
+<!-[-] pr-skill-extension: state=halted reason=stop -->
 pr-skill: halted on #7 (reason: stop). The pull request stays review:blocked and a person decides.
 ```
 

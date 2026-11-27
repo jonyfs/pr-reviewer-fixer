@@ -1,0 +1,2 @@
+{"tool": "bash", "command": "cat @DEST@/inbox/verdict.md"}
+{"output": "## Review ..."}

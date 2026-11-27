@@ -15,33 +15,51 @@ MUTANTS=(
 "install: the empty-name check (N7)|install.sh|s/\\) die \"the harness list has an empty name/) true; echo \"the harness list has an empty name/|tests/install/run.sh"
 )
 
-for entry in "${MUTANTS[@]}"; do
+# Copies the scripts and only the test folder the suite reads. tests/ holds ~300 MB of fixtures and scratch
+# output that these suites never touch; copying all of it per mutant was most of the run time.
+copy_tree() {
+  local dest="$1" suite="$2" dir
+  dir="$(dirname "$suite")"
+  mkdir -p "$dest/$dir"
+  (cd "$ROOT" && cp -R .agents install.sh install-remote.sh remote-review.sh VERSION "$dest/" 2>/dev/null \
+    && cp -R "$dir/." "$dest/$dir/" 2>/dev/null)
+}
+
+# One mutant, in its own scratch folders so the mutants run at the same time. Its verdict goes to a file.
+run_one() {
+  local idx="$1" entry="$2" name file expr suite copy base out
   IFS='|' read -r name file expr suite <<<"$entry"
-  rm -rf "$W/copy"; mkdir -p "$W/copy"
-  (cd "$ROOT" && cp -R .agents install.sh install-remote.sh remote-review.sh VERSION tests "$W/copy/" 2>/dev/null)
-  before="$(cmp -s "$W/copy/$file" "$ROOT/$file" && echo same)"
+  copy="$W/m$idx/copy"; base="$W/m$idx/base"; out="$W/m$idx/row"
+  mkdir -p "$copy" "$base"
+  copy_tree "$copy" "$suite"
   # A mutant counts only when its file exists in the copy, perl succeeds, and the text changed.
-  if [ ! -f "$W/copy/$file" ]; then
-    ROWS+=("ERR  | $name (the file is not in the copy)"); FAIL=$((FAIL+1)); continue
-  fi
-  if ! perl -0pi -e "$expr" "$W/copy/$file"; then
-    ROWS+=("ERR  | $name (perl could not apply the substitution)"); FAIL=$((FAIL+1)); continue
-  fi
-  if cmp -s "$W/copy/$file" "$ROOT/$file"; then
-    ROWS+=("ERR  | $name (mutant did not apply)"); FAIL=$((FAIL+1)); continue
-  fi
+  if [ ! -f "$copy/$file" ]; then echo "ERR  | $name (the file is not in the copy)" >"$out"; return; fi
+  if ! perl -0pi -e "$expr" "$copy/$file"; then echo "ERR  | $name (perl could not apply the substitution)" >"$out"; return; fi
+  if cmp -s "$copy/$file" "$ROOT/$file"; then echo "ERR  | $name (mutant did not apply)" >"$out"; return; fi
   # The unmutated copy must pass first: a suite that already fails proves nothing about the guard.
-  rm -rf "$W/base"; mkdir -p "$W/base"
-  (cd "$ROOT" && cp -R .agents install.sh install-remote.sh remote-review.sh VERSION tests "$W/base/" 2>/dev/null)
-  if ! (cd "$W/base" && bash "$suite" >/dev/null 2>&1); then
-    ROWS+=("ERR  | $name (the suite fails before any mutation: no baseline)"); FAIL=$((FAIL+1)); continue
+  copy_tree "$base" "$suite"
+  if ! (cd "$base" && bash "$suite" >/dev/null 2>&1); then
+    echo "ERR  | $name (the suite fails before any mutation: no baseline)" >"$out"; return
   fi
-  if (cd "$W/copy" && bash "$suite" >/dev/null 2>&1); then
-    ROWS+=("MISS | $name (the suite still passes: no test protects it)"); FAIL=$((FAIL+1))
+  if (cd "$copy" && bash "$suite" >/dev/null 2>&1); then
+    echo "MISS | $name (the suite still passes: no test protects it)" >"$out"
   else
-    ROWS+=("OK   | $name (the suite fails when it is undone)"); PASS=$((PASS+1))
+    echo "OK   | $name (the suite fails when it is undone)" >"$out"
   fi
+}
+
+i=0
+for entry in "${MUTANTS[@]}"; do
+  run_one "$i" "$entry" &
+  i=$((i+1))
 done
-printf '%s\n' "${ROWS[@]}"
+wait
+
+PASS=0; FAIL=0
+for j in $(seq 0 $((i-1))); do
+  row="$(cat "$W/m$j/row")"
+  printf '%s\n' "$row"
+  case "$row" in OK*) PASS=$((PASS+1)) ;; *) FAIL=$((FAIL+1)) ;; esac
+done
 echo "TOTAL: $PASS guarded, $FAIL not guarded"
 [ "$FAIL" = 0 ]

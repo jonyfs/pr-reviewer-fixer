@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.21.0"
+  version: "0.24.0"
 ---
 
 # PR Reviewer
@@ -172,7 +172,12 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
    become a `question:` with stated confidence, or are dropped.
 7. **Count and decide.** `critical`, `warning`, `note`. The verdict follows the arithmetic.
 8. **Publish.** Write the report (format and size rule in
-   [references/report-contract.md](references/report-contract.md)), run
+   [references/report-contract.md](references/report-contract.md)). Optional, only when
+   `REVIEW_SUPPRESS_SINCE` is set to a date: run `scripts/review-metrics.sh suppress --since
+   "$REVIEW_SUPPRESS_SINCE" --report FILE --floor <base> <head>`, apply its `demote` and `list`
+   lines, recount, and copy its `suppressed:` lines into Coverage; it never touches a CRITICAL,
+   security, a mandatory unit or a blocking WARNING, and exit 2 changes nothing
+   ([references/review-metrics.md](references/review-metrics.md)). Then run
    `scripts/review-cycle.sh lint-report <pr> --report FILE` and fix every problem it prints (a
    finding whose file or line the diff does not show, a `counts:` line that disagrees with the
    entries, or a mandatory unit of the path floor not listed as run), then run
@@ -243,6 +248,7 @@ scanner reads both as hidden text.
 - [ ] Failing required check read; no PASSED over an unexplained one
 - [ ] Review agents made no write of any kind
 - [ ] Large changes: size warning, partitioned review, depth map, split recommended
+- [ ] Coverage note carries a `Review mode:` line, `separate agents` or `single session` (a single-session review says so); 
 - [ ] Coverage note carries a `Declined to judge:` line, even when it says `none`; a PASSED never
       hides a region the review did not read
 - [ ] `lint-report` exits 0: every finding names a file and line the diff shows, and every unit
@@ -274,6 +280,7 @@ scanner reads both as hidden text.
 - [references/report-contract.md](references/report-contract.md) report layout and findings block
 - [references/operating-principles.md](references/operating-principles.md) standing rules and the failures behind them
 - [references/progress-and-notifications.md](references/progress-and-notifications.md) start and finish announcements, channels, dynamic decisions
+- [references/review-metrics.md](references/review-metrics.md) self-agreement over k reports of one head, and the per-unit scorecard
 - [references/improvements-catalog.md](references/improvements-catalog.md) 100 researched improvements with status
 - `scripts/review-cycle.sh`, `scripts/gate-pr-review-state.py` the state machine and its gate
   (need `gh`, `python3` 3.9+, `node`)
@@ -282,6 +289,10 @@ scanner reads both as hidden text.
   characters, variation-selector runs, HTML comments other than the markers, link references that
   hide text, `<details>`, invisible HTML) in
   the diff, the pull request text and the commit messages (needs `git`, `python3`)
+- `scripts/review-metrics.sh` read-only, runs no model: `agreement` compares k reports of one head
+  (overlap of finding fingerprints, unstable dimensions), `scorecard` counts findings, verified,
+  refused and debt per dimension and per model from trusted markers, `suppress` (opt-in) names the
+  categories the trusted history mostly dismissed ([references/review-metrics.md](references/review-metrics.md))
 - `scripts/check-version.sh` the update notice (never installs); `--decline` records a no
 - `scripts/update.sh` installs the latest release, only after the person said yes
 - `templates/review-gate.yml` the required status check: no model, no secrets (shared with `pr-fixer`)

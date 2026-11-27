@@ -144,7 +144,7 @@ sequenceDiagram
   read in depth.
 - Takes the hits of `scripts/scan-hidden.py` (zero-width and bidi characters, Unicode tag
   characters, blank fillers, runs of variation selectors, HTML comments other than the protocol's
-  markers, link reference definitions that hide text, `<details>` blocks, invisible HTML)
+  markers, link reference definitions that hide text, `details` blocks, invisible HTML)
   in the added lines, the pull request text, its comments and the commit messages, and judges each
   as a candidate CRITICAL prompt-injection finding. The scanner strips nothing.
 - Runs `review-cycle.sh screen --diff <base> <head>` over the lines the pull request adds. Each
@@ -171,6 +171,19 @@ sequenceDiagram
   cannot read a path from makes the floor unknown, never empty.
 - Publishes the verdict through `scripts/review-cycle.sh`, which binds it to the head commit. When
   the verdict is `PASSED` and the pull request is a draft, the script marks it ready for review.
+- Measures itself with `scripts/review-metrics.sh`, which runs no model and is read-only on GitHub.
+  `agreement` compares k reports that fresh-context reviewers wrote for one head. It fingerprints
+  each finding by file, dimension and normalized claim, ignoring the line, and reports the Jaccard
+  overlap overall and per dimension, flagging the dimensions below a threshold as unstable.
+  `scorecard` reads the trusted verdict and closure markers of a set of pull requests and counts,
+  per dimension and per model and tier: findings raised, blocking, verified after a fix, refused,
+  and left as debt, plus the accepted rate. The marker has no cost field, so cost is reported as not
+  recorded. `suppress` is opt-in (set `REVIEW_SUPPRESS_SINCE` to a date): from the same trusted
+  history it names the dimensions whose decided findings were mostly dismissed (at least 5 decided,
+  a dismissed share of at least 0.6, both flags), and the reviewer shows their new WARNINGs and NOTEs
+  as NOTEs under `Suppressed by history` with a `suppressed:` line in Coverage. A CRITICAL, the
+  security dimension, a mandatory unit of the change and a blocking WARNING are never suppressed,
+  and anything it cannot read suppresses nothing.
 
 ### pr-fixer
 
@@ -185,11 +198,18 @@ sequenceDiagram
   never force-pushing over other people's commits. See `.agents/skills/pr-fixer/references/conflicts.md`.
 - Classifies failing CI as transient, pre-existing on the base branch, or genuine, and reruns only
   what a rerun can fix. See `.agents/skills/pr-fixer/references/ci-failures.md`.
-- Runs `scripts/push-guard.sh` before every push. It refuses a wrong branch, a fork, a push that is
+- Runs `bash -p scripts/push-guard.sh` before every push, and pushes only on exit 0 together with
+  the `push-guard: ok.` line. It refuses a wrong branch, a fork, a push that is
   not a fast-forward and a commit that touches a file no finding names. A merge commit counts the
   files it changes beyond git's automatic merge of its parents (a conflict resolution, or an edit
   slipped into the merge), which needs git 2.38 or later; commits the base already holds are not
-  checked. It also screens the lines those commits add, reading a file git treats as binary as
+  checked. "The base" is both the pull request's `baseRefOid` and the base branch's tip as GitHub
+  reports it now, since `baseRefOid` still names the old base until the first push after the base
+  moved. A local ref is never trusted for this. The live tip is the pull request's own base ref, read
+  through GraphQL in the repository and on the host the pull request's `url` names, so the branch name
+  never goes into a URL; it is used only when GitHub's `baseRefName` equals the base name, the commit
+  id is 40 lower-case hex digits and the clone holds that commit. Otherwise only `baseRefOid` is
+  excluded, and the guard prints a line saying why. It also screens the lines those commits add, reading a file git treats as binary as
   text, and refuses one that adds what looks like a token or a private key. Before each commit the fixer runs `review-cycle.sh screen --staged`, the
   same screen over the staged diff. It refuses any commit that touches `.github/workflows/**`,
   `.github/scripts/**`, CI files outside GitHub (`.gitlab-ci.yml`, `.circleci/**`, a `Jenkinsfile`
@@ -240,9 +260,9 @@ flowchart LR
 | Artifact | Written by | Purpose |
 |---|---|---|
 | Label `review:*` | `review-cycle.sh` only | State at a glance in the PR list |
-| Verdict comment with `<!-- adversarial-review: sha=... -->` | reviewer, through the script | The authority. The label is its projection |
+| Verdict comment with `<!-[-] adversarial-review: sha=... -->` | reviewer, through the script | The authority. The label is its projection |
 | `findings` block at the end of the verdict | reviewer | The fixer's work list |
-| Closure comment with `<!-- pr-fixer-closure: ... -->` | fixer, after `review-cycle.sh screen` passes it | Reproduction, test, red, fix, green, suite counts per finding |
+| Closure comment with `<!-[-] pr-fixer-closure: ... -->` | fixer, after `review-cycle.sh screen` passes it | Reproduction, test, red, fix, green, suite counts per finding |
 | `pr-debt` block in the PR body | fixer, after `review-cycle.sh screen` passes it | Owner for every warning and note |
 | Extension answer (`state=granted` or `state=halted`) | `review-cycle.sh extend` or `halt`, after a person answered in the session | Continue or stop after the cycle budget |
 
@@ -604,6 +624,46 @@ directory that resolves, symbolic links followed, outside the repository it runs
 [`docs/compliance-records/README.md`](./compliance-records/README.md) for what a record does and
 does not prove.
 
+`review-cycle.sh export-sarif [<pr>] [--report FILE] [--out FILE] [--include-closed]` writes the
+findings of one verdict report as SARIF 2.1.0, for a tool that already reads it, such as GitHub code
+scanning. It reads a report file, or the trusted verdict comment at the head of the pull request
+under the same trust rules as `export-audit`. Each finding becomes a result: `error` for CRITICAL,
+`warning` for WARNING, `note` for NOTE, one rule per review dimension, the claim as the message, the
+file and line as the location, and the scenario (`failure_scenario`, else `scenario`),
+`suggested_fix` and `owner_proposed` as properties. By default only open findings are exported (no status, `open`, `refused-rejected`).
+`--include-closed` adds `verified`, `refused-accepted` and `not-applicable` findings, each with an
+accepted external suppression. A finding with no line points at line 1 and carries
+`line_unknown: true`, because GitHub requires a start line. The fingerprint (`partialFingerprints`,
+under `prReviewerFinding/v1` and `primaryLocationLineHash`) hashes the file, the dimension and the
+normalized claim, so the same finding matches across passes even when its line or id changes, and
+ends with an occurrence suffix (`:1`, `:2` in report order) so two findings with the same file,
+dimension and claim at different lines stay two alerts. The suffix counts closed findings too, so a
+finding once exported stays in every later findings block of the pull request (closed as `verified`
+or `not-applicable`) and is never dropped: dropping one of two such twins would hand the survivor the
+other's suffix and fingerprint. The
+claims are model-written text about the pull request: they are written as escaped JSON strings,
+never as Markdown. A report over GitHub's limits (10 MB gzip-compressed, 25,000 results or rules
+per run) is refused with exit 2 and nothing written, never truncated. Exit 1 is a trust refusal, 2
+a usage error or a report it cannot read or map.
+
+The script uploads nothing, and no workflow runs it. To upload by hand, either commit the file to a
+branch and use `github/codeql-action/upload-sarif` in a workflow of your own, or send it with the
+REST API (the file gzip-compressed, then base64-encoded). The request body is built in a file and
+sent on standard input, since the encoded file passed as one argument fails with "Argument list too
+long" well below the 10 MB the export allows:
+
+```bash
+review-cycle.sh export-sarif 123 --out review.sarif
+gzip -c review.sarif | base64 | tr -d '\n' > review.sarif.b64
+jq -n --rawfile sarif review.sarif.b64 \
+  --arg commit_sha "$(gh pr view 123 --json headRefOid --jq .headRefOid)" \
+  --arg ref refs/pull/123/head \
+  '{commit_sha: $commit_sha, ref: $ref, sarif: $sarif}' |
+  gh api --method POST repos/{owner}/{repo}/code-scanning/sarifs --input -
+```
+
+GitHub accepts up to 25,000 results per run but keeps only the top 5,000, ranked by severity.
+
 ## Model and effort
 
 Each unit of work is given a tier, and the tier maps to a model and an effort setting for the harness
@@ -698,7 +758,8 @@ flowchart TD
 .agents/skills/
   pr-reviewer/          the reviewer skill (SKILL.md, references/, scripts/, templates/)
   pr-fixer/             the fixer skill (SKILL.md, references/, scripts/, templates/)
-.github/workflows/      the review-gate check and the release workflow. No workflow calls a model
+.github/workflows/      the review-gate check, the release workflow and suite-check.yml (run-all.sh --only push-guard
+                        on each pull request: the push-guard suite and the shared-file checks). No workflow calls a model
 .github/scripts/        release.sh, the release workflow's logic, tested by tests/release/run.sh
 docs/
   HOW-IT-WORKS.md       what the two skills do, step by step, with diagrams
@@ -709,6 +770,8 @@ docs/
 tests/                  fake-gh and git tests: run tests/run-all.sh
 tests/scan/             rows for the model-key scan of tests/run-all.sh, on planted trees
 tests/eval/             seeded review cases and a scorer for recall and precision
+tests/golden/           real pull requests with expected findings, a judge prompt and a scorer
+tests/fixer-eval/       held-out and injection cases for the fixer, prepare.sh and score.sh
 install.sh              copies the two skills into the folder a harness reads
 VERSION, CHANGELOG.md   the release version and its history
 ```
@@ -722,14 +785,26 @@ purpose, so each skill works alone. `tests/run-all.sh` checks that they match.
 ## Tests
 
 ```bash
-bash tests/run-all.sh
+bash tests/run-all.sh          # the full run; an identical tree that already passed is not run again
+bash tests/run-all.sh --fresh  # the full run, every suite: the one before a PASSED verdict or a merge
+bash tests/run-all.sh --only words  # the suites whose name holds one of the words: for iteration only
 ```
 
-The suite needs no network, only bash, python3, node, jq, git, curl, tar and `sha256sum`. It drives the scripts against a fake `gh` and covers label transitions,
+The cache lives in `$XDG_CACHE_HOME` or `~/.cache` and is off when neither is set, and also when its folder
+(`pr-reviewer-fixer/run-all`) or the folder above it (`pr-reviewer-fixer`) is a link, has another owner, or is
+writable by its group or others (it is created with mode 700); the run says so, and `chmod 700` on both folders, or
+removing them, turns it back on. It is off too when the cache root itself (`$XDG_CACHE_HOME` or `~/.cache`, whoever
+owns it) is writable by its group or others and has no sticky bit (a sticky root such as `/tmp` is allowed); the run
+says so, and `chmod go-w` or `chmod +t` on the root turns it back on. Its key covers the commit, the
+uncommitted and untracked files, the toolchain and the user's git configuration, but not the system git
+configuration, the repository's own `.git/config` or `.git/info/attributes`: after a change there (a clean filter,
+for example), run `--fresh`. A tree that changed during the run is not recorded as passed, and the run says so.
+
+The suite needs no network, only bash, python3, node, jq, git, curl, tar, `sha256sum` and GNU `timeout` (coreutils; the tests call `timeout` by that name and do not fall back to `gtimeout`, so on macOS put Homebrew coreutils' `timeout` on `PATH`). It drives the scripts against a fake `gh` and covers label transitions,
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `scan-hidden.py`, `fetch-feedback.py`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `export-sarif`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `review-metrics.sh`, `install.sh`, the review
 eval scorer, the version check, the update script (`tests/update/run.sh`, against a fake release served from local files) and the release script (`tests/release/run.sh`, which drives
 `.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so
@@ -769,3 +844,10 @@ The suite tests the scripts, not the quality of a review. `tests/eval/` measures
 with known defects and `score.py`, which prints recall and precision for reports you produce in your
 own harness session. `tests/run-all.sh` never runs a model, so it checks only the scorer. See
 `tests/eval/README.md`.
+`tests/golden/` measures the reviewer on real pull requests of this repository: each case is the
+first pass's diff and the findings a later pass verified fixed, a judge sub-agent (`JUDGE.md`)
+matches a report's findings to them, a second judge checks a sample, and `golden.py score` prints
+recall per severity and dimension and the judges' agreement. The cases are candidates until a person
+validates each one with `golden.py mark-validated`. See `tests/golden/README.md`.
+`tests/fixer-eval/` does the same for the fixer: held-out cases with hidden tests and probes, and
+injection cases with a canary in the environment. See `tests/fixer-eval/README.md`.

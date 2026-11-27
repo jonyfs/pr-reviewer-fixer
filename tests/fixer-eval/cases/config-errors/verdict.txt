@@ -1,0 +1,23 @@
+## Review: read the settings file
+
+One finding, blocking under the warning threshold this repository runs with.
+
+```findings
+version: 1
+pr: 7
+pass: 1
+verdict: BLOCKED
+counts: {critical: 0, warning: 1, note: 0}
+findings:
+  - id: W1
+    severity: WARNING
+    status: open
+    file: app/config.py
+    line: 25
+    dimension: reliability
+    claim: "load() catches every exception and returns the defaults, so a malformed settings file starts the service on the defaults with no error"
+    failure_scenario: "load('port = abc') returns port 8080 instead of raising ConfigError as the docstring says"
+    suggested_fix: "Drop the blanket except; raise ConfigError for a line that cannot be read"
+    testable: yes
+    confidence: 0.9
+```

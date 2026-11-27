@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "repo": "jonyfs/pr-reviewer-fixer",
+  "pr": 35,
+  "base": "5f2c2d6a68894d08da935e5c49a21d7d0106598a",
+  "head": "1b39095c7ee93730f0b955c25ba07ed7182778d5",
+  "pass": 1,
+  "expected": [
+    {
+      "id": "E1",
+      "source_id": "W1",
+      "file": "tests/eval/cases/pii-in-logs/expected.json",
+      "lines": [
+        4,
+        4
+      ],
+      "dimension": "testing",
+      "severity": "WARNING",
+      "description": "In the pii-in-logs and drop-column eval cases the decoy line lies inside the defect's tolerance window, so a finding on the decoy is scored as a hit on the defect."
+    }
+  ],
+  "validated_by": "none",
+  "validated_at": null,
+  "validated_digest": null
+}

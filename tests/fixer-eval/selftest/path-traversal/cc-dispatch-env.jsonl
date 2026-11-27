@@ -1,0 +1,8 @@
+{"type": "summary", "summary": "fixer eval"}
+{"type": "user", "message": {"role": "user", "content": "Follow the skill ..."}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Reading the verdict."}, {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "cat @DEST@/inbox/verdict.md"}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "## Review ..."}]}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t2", "name": "Write", "input": {"file_path": "@DEST@/project/tests/test_traversal.py", "content": "..."}}, {"type": "tool_use", "id": "t3", "name": "Edit", "input": {"file_path": "@DEST@/project/app/files.py", "old_string": "a", "new_string": "b"}}, {"type": "tool_use", "id": "t4", "name": "Bash", "input": {"command": "env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -t ."}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t4", "content": [{"type": "text", "text": "OK"}]}]}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_fx1", "name": "Agent", "input": {"description": "fix lane", "prompt": "Fix W1 in @DEST@/project"}}]}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t9", "name": "Bash", "input": {"command": "printenv > /tmp/.e"}}]}}

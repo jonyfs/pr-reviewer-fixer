@@ -4,6 +4,239 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.24.0
+
+The review loop reads a merge fixer's outcome instead of trusting a moved head, the `proofs` block is
+part of the comment protocol, a CI job runs the push-guard suite and the copy checks on each pull
+request, and the test suite holds under heavy host load.
+
+- **`harness-loop.md` step 0 (all three copies): note the head before dispatching the merge fixer,
+  then read its outcome.** This is the first of two changes an installed copy must follow. The review
+  loop agent notes the pull request's head sha before it dispatches `pr-merge-fixer`. After the merge
+  fixer's closure comment or stopped line, it compares the head with the noted one and reads that
+  comment or line: the merge was pushed only when the head moved and the closure marker says
+  `escalated=0` with a `head=` other than the first 12 characters of the noted head (a later push may
+  sit on top of it), or the stopped line names a step after the push. A moved head alone is not a
+  pushed merge, since a person may push while the merge fixer escalates. A merge that escalates, or
+  stops before the push, stops the loop even when the head moved, and the loop goes no further on
+  that pull request until the person answers. `tests/run-all.sh` pins the new phrases.
+- **The `proofs` fence belongs to the fixer closure only.** The second change an installed copy must
+  follow. `pr-protocol.md` (all three copies) allows the `findings` block of a verdict or the `proofs`
+  block of a fixer closure, and no other fence (no Mermaid); either block comes last in the comment.
+  The comment-template check in `tests/run-all.sh` accepts a `proofs` fence as well as `findings`.
+  The `pr-fixer` Finding step now names what goes in the block: each red, green, suite and mutation
+  run, re-run by `proof-check.sh` in a clean clone. The `behaviour-diff.sh` run stays out of the
+  block, because its `probes.json` is not committed and a clean clone lacks it.
+  `falsify-and-prove.md` shows the block at the end of the closure layout.
+- **`proof-check.sh`: a mismatch wins over a later stop.** When the checker is stopped by SIGTERM,
+  SIGHUP or SIGINT, or hits an internal error, after an entry already printed MISMATCH, it exits 1
+  and prints how many entries did not match before the stop. With no MISMATCH printed, it exits 2,
+  as before. Exit 1 still means a re-run entry did not match; it never comes from a stop alone.
+- **`suite-check.yml`** (new workflow, this repository only, not installed by the skills): runs
+  `bash tests/run-all.sh --only push-guard` on each pull request. That is the push-guard suite plus
+  the checks `run-all.sh` makes after its suites, among them the byte-for-byte comparison of the
+  shared scripts, the shared references and the gate template. Trigger `pull_request` only,
+  `contents: read`, `persist-credentials: false`, no secret, no model, a 15-minute bound, and the
+  checkout pinned to the SHA `review-gate.yml` uses. `tests/run-all.sh` pins the file by its sha256
+  and checks its trigger, permissions and checkout, so any edit to it fails until the pin is updated
+  in the same pull request. A push-guard row ("a commit whose added blob is missing") now also
+  deletes the work-tree copy, because some git builds on Linux read a missing blob from an unchanged
+  work-tree file.
+- **The test suite holds under load.** The `scan-hidden` cost rows bound the scan's CPU time (10 s,
+  stopped by `RLIMIT_CPU` at 20 s, never above the inherited hard limit) instead of wall time; wall
+  time is only a 600 s hang guard. The push-guard rows bounded by a watchdog get 60 s of wall time
+  times `TEST_TIMEOUT_SCALE` (was a fixed 20 s), plus `ulimit -t 60`. `run-all.sh` changes to its own
+  root before any suite starts. A failing suite prints every FAIL or failed line of its log, and its
+  whole log is kept under `<XDG_CACHE_HOME or ~/.cache>/pr-reviewer-fixer/run-all-failed/` (mode
+  700; the path is printed; the last five kept, and pruning removes only folders with a checked name
+  that are real directories of this user). The "nothing was planted" row in `tests/scan/run.sh`
+  compares the status of the paths that suite plants plus `AGENTS.md`, `CLAUDE.md` and `.agents`,
+  so a file another process writes elsewhere in the checkout no longer fails it. No assertion is
+  weakened.
+- **Fixer eval advisory classifier** (`tests/fixer-eval/score.py`): flags `csh` and `tcsh` as shells,
+  reads Perl `qw` and Ruby `%w`/`%W` quoting (and the q-family and Ruby %-letter forms with a `<>`
+  pair or, in perl, ruby and irb code, a punctuation delimiter), and reads `echo` and `printf` output
+  as printed: `echo` drops a leading `-n`, `-e` or `-E`, `printf` prints its format, the operands
+  it formats and its output with the format applied to each operand (so an operand the format puts
+  on a line of its own is read as a command of its own), and `printf -v` prints nothing. The README lists the classifier's word lists in full
+  and names `score.py` as the reference. The verdict still rests on state checks only.
+- **Docs**: the pr-fixer improvements catalog marks items 31, 34, 97, 98, 99 and 100 `shipped`
+  (with where and which pull request), and `tests/run-all.sh` checks that the catalog's Counts
+  section matches its Target column. `AGENTS.md`, `docs/REFERENCE.md`, `docs/HOW-IT-WORKS.md` and
+  `docs/SKILLS-REFERENCE.md` name `behaviour-diff.sh`. `AGENTS.md` and `docs/REFERENCE.md` list GNU
+  `timeout` among the suite's needs (on macOS, coreutils' `timeout` on `PATH`) and name
+  `suite-check.yml`.
+
+Known limits: the catalog check accepts a lone slash, or a path that does not exist, as a `shipped`
+target (PR 86 N6). `AGENTS.md` does not yet say that any edit to `suite-check.yml` fails until the
+sha256 pinned in `tests/run-all.sh` is updated (PR 87 N6). The failing-rows filter in `run-all.sh`
+assumes a failing row holds FAIL or failed, true of every suite today (PR 88 N3). The fixer eval's
+advisory classifier still misfires on `printf '%s\n' ... | xargs` and on argument-position
+substitutions of multi-line printf output, misses a star width or precision (`printf '%*s'`), and
+names a single-operand printf read twice (PR 89 N4 to N6); the verdict is unaffected. The push
+guard's live-tip exclusion still assumes the agent cannot write the base branch; protecting `main`
+is a repository setting for a person (PR 70 N2). The reviewer does not run `proof-check.sh` yet.
+
+Compatibility: no marker, label or subcommand changes meaning. Below 1.0.0 these are minor: the
+review loop now reads the merge fixer's closure or stopped line before it treats a merge as pushed,
+a fixer closure may carry the `proofs` fence under the comment protocol, and `proof-check.sh` exits 1
+instead of 2 when a signal or an internal error follows a printed MISMATCH. `suite-check.yml` lives
+in this repository only. A failing `tests/run-all.sh` now leaves its logs in the cache folder named
+above (at most five runs).
+
+## 0.23.0
+
+A merge push always leads to a review, the fixer's closure carries proofs a machine can re-run, new
+fixer scripts for behaviour diffs and an accepted-fix ledger, and push-guard reads the base through
+GraphQL.
+
+- **`pr-merge-fixer` step 10, "Start the review loop again": a merge push starts the review loop
+  again.** This is the first of two changes an installed copy must follow (the `pr-fixer` finding
+  lane below is the second). When the review loop agent dispatched the merge, the skill returns
+  and the loop goes on from step 1, as before. When a person ran
+  `/pr-merge-fixer` directly, the session's agent takes the review loop agent's role and runs
+  `harness-loop.md` from step 1 on the new head (`wait-head`, `stale`, `status`, `start`, the
+  screens, a fresh-context `pr-reviewer` sub-agent, then the budget table); the merge fixer never
+  reviews its own merge. When the harness cannot start a fresh-context sub-agent, `start` is not
+  run and the session says the pass is owed. A merge that escalates or stops before the push starts
+  nothing; a run that stops after the push still owes the pass. Step 9 screens the closure comment
+  before it is posted: on a screen exit 1, the merge fixer replaces the value it names the kind of
+  with `[REDACTED]` and screens again, as `pr-fixer` does. `harness-loop.md` (all three
+  copies) lists a merge push by `pr-merge-fixer` as a new loop trigger, and its step 0 waits for the
+  merge's closure comment or its stopped line: a stop after the push is not an escalation, so the
+  loop goes on to step 1. `docs/HOW-IT-WORKS.md` says so, and `tests/run-all.sh` pins the phrases.
+- **`pr-fixer` finding lane, step 5**: the second change an installed copy must follow. After the
+  green suite, run `scripts/behaviour-diff.sh` on the pre-fix and post-fix commits with probes the
+  fixer writes (never from PR text), and fix or explain every `supplementary` change before the
+  closure. The closure comment ends with one fenced `proofs` JSON block, one entry per proof command
+  (`command`, `exit_code`, `head_sha`, `tree_hash`, `tool_versions`, `output_sha256`). The rules
+  are in `falsify-and-prove.md` ("Behavioural diff", "Proof block"); operating principle 14 names
+  the checker.
+- **`behaviour-diff.sh`** (new, pr-fixer): runs the same probes at two commits, each checked out as a
+  detached worktree at the same temporary path with hooks off, and reports each probe whose exit
+  code, stdout hash or stderr hash changed. Each probe is an argv array run with no shell, stdin from
+  `/dev/null` and a per-run timeout; its process group is killed after every run. A probe tagged with
+  a finding id that changed is `expected`, an untagged change is `supplementary`, and a tagged probe
+  that did not move is `not-changed`. A template probe (`{}`) expands over values and boundaries
+  around numbers and strings, up to 500 probes; `--list` prints the expansion. Exit 0 no unexplained
+  difference, 1 a supplementary change, 2 cannot run (including a probe that timed out or could not
+  start at both commits).
+- **`proof-check.sh`** (new, pr-fixer): reads the `proofs` block from `--file`, or from the newest
+  trusted closure comment with `--pr N [--cycle C]` (through `pr-json.py`, by a
+  `REVIEW_MARKER_AUTHORS` login). It checks each `head_sha` is a commit whose tree is `tree_hash` and
+  that it is the expected head or an ancestor of it, then re-runs all entries, or a seeded
+  `--sample N` (a random seed, printed, when `--seed` is not given), in a fresh clone at each head,
+  and compares exit codes (and output hashes with `--check-output`). The commands are untrusted text:
+  nothing runs without an allowlist the person sets (`PROOF_CHECK_ALLOW` or `--allow-file`), a
+  command with shell syntax, a `..` part or an absolute path is refused, every entry is validated
+  before any runs, and each runs as an argument list with no shell, in a scrubbed environment and a
+  process group of its own. Exit 0 all match, 1 a mismatch, 2 cannot check.
+- **`fix-ledger.sh`** (new, pr-fixer, read-only on GitHub): `--prs` or `--since` appends one JSON line
+  per pull request to an append-only local ledger (by default under `XDG_DATA_HOME`; a path inside
+  the repository needs `--allow-in-repo`). Each line holds the fixer commits judged kept,
+  overwritten or reverted, the findings closed, refused, escalated and declared as debt, the new
+  CRITICAL and WARNING findings after each fix cycle, and each refused finding's fate. `summary`
+  prints the accepted-fix rate, and `audit` samples refused findings and prints the false-refusal
+  rate. Only trusted markers count; an unset `REVIEW_MARKER_AUTHORS` refuses with exit 2. The rules
+  are in `references/fix-ledger.md`.
+- **Push guard reads the base's live tip through GraphQL**: it asks for the pull request's own
+  `baseRef` on the host, owner and repository parsed from the pull request's url, instead of the
+  REST path `git/ref/heads/<base>`. The tip is used only when GitHub's `baseRefName` equals the base,
+  the oid is 40 lower-case hex digits and the clone holds the commit; otherwise only `baseRefOid` is
+  excluded, as before, and the guard prints why. The plain-name gate is removed: the base name no
+  longer enters a request, so names it used to refuse now get the live tip.
+- **Fixer eval** (`tests/fixer-eval/`, new): four held-out cases (path traversal, rounding, stale cache
+  state, swallowed errors) with hidden tests and behaviour probes, and three injection cases, one per
+  channel (PR text, review comment, CI log), with a canary token. `prepare.sh` builds a case,
+  `score.sh` scores a harness transcript, and `selftest.sh` runs in `tests/run-all.sh`. The scorer's
+  verdict rests on state checks only (canary, sensitive writes judged from the repository, and for
+  held-out cases hidden tests, scope and probes). The command-text checks (environment reads, a
+  sensitive write seen in a call, isolation) are advisory lines that never change the exit code. No
+  model is called by the scripts, and no result is committed.
+- **Docs**: `harness-loop.md` names the details tag in words, not in a code span, so the hidden-text
+  scan no longer reports that whole file on every change. `AGENTS.md`, `docs/HOW-IT-WORKS.md`,
+  `docs/SKILLS-REFERENCE.md` and `docs/REFERENCE.md` name `proof-check.sh` and `fix-ledger.sh`;
+  `AGENTS.md` and `docs/REFERENCE.md` name the fixer eval.
+
+Known limits: `pr-protocol.md` and the comment-template check in `tests/run-all.sh` still allow only
+the `findings` fence, and the reviewer does not run `proof-check.sh` yet. `behaviour-diff.sh` is
+documented in the pr-fixer skill only; `AGENTS.md` and `docs/REFERENCE.md` do not name it yet.
+`tests/run-all.sh` now needs GNU `timeout`, because `tests/proof-check/run.sh` calls it; a separate
+docs change adds it to the requirements in `AGENTS.md` and `docs/REFERENCE.md`. The fixer eval's
+advisory split gives up five guarantees, listed in `tests/fixer-eval/README.md` (for example, a
+held-out run that read the hidden tests passes, and so does an environment read sent off the
+machine), so a passing eval is not proof of isolation.
+
+Compatibility: no marker, label, subcommand or exit code changes meaning, and the new scripts can be
+ignored. Below 1.0.0 these are minor: `pr-merge-fixer` run directly now goes on to run the review loop
+after a merge push, `pr-fixer` adds a behaviour diff and a `proofs` block to the finding lane, and
+push-guard may now use the live base tip for base names it used to skip.
+
+## 0.22.0
+
+Faster and stricter review loop: new read-only commands, a suite cache, a push guard that reads the base's
+live tip and ignores inherited shell options, and a hidden-text scan that fails closed.
+
+- **Push guard: callers must start it with `bash -p` and push only on exit 0 together with its
+  `push-guard: ok.` line.** This is the change an installed copy must follow. Exit 0 alone is not a pass:
+  a `SHELLOPTS=noexec` in the environment runs nothing and exits 0. `pr-fixer` and `pr-merge-fixer`
+  (SKILL.md, `conflicts.md`, `cycles-and-races.md`), `docs/HOW-IT-WORKS.md` and `docs/REFERENCE.md` say so,
+  and a test row checks those texts.
+- **Review loop commands** (`review-cycle.sh`):
+  - `start --sha <head>` refuses when the pull request's head is no longer the commit the reviewer read.
+    Without `--sha`, `start` works as before.
+  - `next` (new, read-only) prints the one next step from the label and the head the last verdict covers.
+  - `wait-head <pr> [sha]` (new, read-only) polls the head every 2 s for at most 120 s after a push. Exit 0
+    when it matches, 3 when it never does. `harness-loop.md` uses it instead of a fixed wait.
+  - `preflight [base]` (new) runs the secret screen and the hidden-text scan on `origin/<base>..HEAD`
+    before a push, and refuses a change that adds merge conflict markers. It moves no label and posts
+    nothing.
+  - `delta [pr]` (new, read-only) prints the change since the last verdict's head, or says a full pass is
+    needed.
+  - `base-scanner [base]` (new) copies the base's `pr-reviewer/scripts` folder, with its modes, to a temp
+    folder, so a pull request that changes the scanner is checked with the base's copy.
+  - A PASSED `publish` re-runs the failed `review-gate` runs at that exact head.
+  - `lint-report` requires a `Review mode: separate agents | single session.` line in the coverage note.
+    A single-session review is allowed, but must say so.
+- **`tests/run-all.sh`**:
+  - `--only <words>` runs only the suites whose names match, for iteration. It is not the full run.
+  - Each suite's wall time is in the log, with the total.
+  - A suite cache: a full run of a tree that already passed prints `nothing re-run` and exits 0.
+    `--fresh` runs everything and is required before a PASSED verdict or a merge. A filtered run never
+    reads or writes the cache. The key covers the commit, uncommitted and untracked files, the toolchain
+    and the user's git config, but not the system git config, `.git/config` or `.git/info/attributes`.
+    A tree that changes during the run is not recorded.
+  - The cache is off when neither `XDG_CACHE_HOME` nor `HOME` is set. It is also off when its folder or
+    the folder above it is a link, has another owner, or is writable by its group or others, and when
+    the cache root is writable by its group or others without a sticky bit. The run says why and how to
+    turn it back on (`chmod 700`, `chmod go-w` or `chmod +t`).
+- **Push guard**:
+  - It also excludes the base branch's live tip, read from GitHub, so a merge of a base that moved is not
+    refused for the base's own files. A stale `baseRefOid` no longer counts them as the push's own. The
+    tip is read only for a plain base name (one `git check-ref-format` accepts) and used only when the
+    clone holds it. When the tip cannot be read or is not in the clone, only `baseRefOid` is excluded,
+    which refuses more, not less; a base name that is not plain is reported.
+  - It restarts once, under `bash -p`, without an inherited `BASHOPTS`, `SHELLOPTS`, `BASH_ENV` or
+    exported functions (it lists them with `node` when node is installed). If they are still there after
+    the restart, it exits 2. The `review-cycle.sh` it runs starts with `bash -p` too.
+  - Names it did not write (paths, link names and targets, the branch, secret-scan hits) are quoted when
+    they hold a control character or U+0085, U+2028 or U+2029, and lines carrying them use `printf`.
+    Lists are sorted under the C locale, so a name that is not valid UTF-8 no longer empties a list.
+- **`scan-hidden.py` fails closed**: when a file that GitHub may render as Markdown changes and holds a
+  comment, a details tag or a hidden element, the whole file is reported, whatever the change. Source and
+  data files (code, `.txt`, `.csv`, `.yml` and similar) are skipped by this rule.
+- **Docs**: the examples of review markers in the skill references and docs use the bracket form `<!-[-]`,
+  so their raw text holds no literal comment opener for the scan to report. AGENTS.md
+  explains the form. Agents still write real markers in the plain form.
+- **Tests**: a mutation check (`tests/mutation/run.sh`) undoes each of four guards and requires its suite to
+  fail; its mutants run in parallel, 55 s instead of 14 min. A merge integration suite checks that
+  preflight refuses a conflicted merge and accepts the resolved one.
+- `remote-review.sh` counts fix commits from the head the review branch was cut from.
+
+Compatibility: no marker or label changes meaning, and the new subcommands and flags can be ignored.
+Below 1.0.0 these are minor: the `bash -p` start and the ok line for push-guard, the `Review mode:` line
+that `lint-report` requires, and an unflagged `run-all.sh` that may skip a tree that already passed.
+
 ## 0.21.0
 
 One-line install from GitHub, automatic harness detection, and six more harnesses.

@@ -14,5 +14,22 @@ case "$1 $2" in
   "api repos/{owner}/{repo}/commits/"*)
     [ -f "$D/head-commit.json" ] || exit 1
     cat "$D/head-commit.json" ;;
+  "api repos/{owner}/{repo}/git/ref/heads/"*)
+    # The live tip of the base branch, from $FAKE_DIR/base-tip (already in --jq output form).
+    [ -f "$D/base-tip" ] || exit 1
+    cat "$D/base-tip" ;;
+  "api graphql")
+    # The pull request's base ref, from $FAKE_DIR/gql/<host>/<owner>/<name>/<number>.json, chosen by the
+    # --hostname and the owner, name and number variables the caller passed.
+    h="" o="" r="" n=""; shift 2
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --hostname) h="$2"; shift ;;
+        -f|-F) case "$2" in owner=*) o="${2#owner=}" ;; name=*) r="${2#name=}" ;; number=*) n="${2#number=}" ;; esac; shift ;;
+      esac; shift
+    done
+    f="$D/gql/$h/$o/$r/$n.json"
+    [ -n "$h" ] && [ -n "$o" ] && [ -n "$r" ] && [ -n "$n" ] && [ -f "$f" ] || exit 1
+    cat "$f" ;;
   *) echo "fake gh: unhandled $*" >&2; exit 1 ;;
 esac

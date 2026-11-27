@@ -35,14 +35,14 @@ Rules:
 2. **PR status comment**: at most one per run. Create it at start with the start line and the
    agent roster with tier and any model substitution in force, keep its id, and edit it in place at
    finish or stop (`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id>`). Marker:
-   `<!-- pr-skill-status: skill=pr-reviewer run=P head=<sha12> state=started|finished -->`. This is
+   `<!-[-] pr-skill-status: skill=pr-reviewer run=P head=<sha12> state=started|finished -->`. This is
    not the verdict marker and must never be confused with it: the verdict is published only by
    `scripts/review-cycle.sh publish`. Never edit another author's comment. The body is plain text,
    one labelled line per step, that a reader can scan in one glance (no table, bold or emoji; see
    [pr-protocol.md](pr-protocol.md)):
 
    ```text
-   <!-- pr-skill-status: skill=pr-reviewer run=2 head=9f2c1ab4e0d3 state=started -->
+   <!-[-] pr-skill-status: skill=pr-reviewer run=2 head=9f2c1ab4e0d3 state=started -->
    Written by pr-reviewer, pass 2, head 9f2c1ab, running.
 
    Secret screen and hidden-text scan: done

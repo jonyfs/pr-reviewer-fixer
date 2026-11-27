@@ -1,0 +1,23 @@
+## Review: show sizes in KiB
+
+One finding, blocking under the warning threshold this pull request runs with. The check `test` fails on it too.
+
+```findings
+version: 1
+pr: 7
+pass: 1
+verdict: BLOCKED
+counts: {critical: 0, warning: 1, note: 0}
+findings:
+  - id: W1
+    severity: WARNING
+    status: open
+    file: app/units.py
+    line: 6
+    dimension: correctness
+    claim: "kib() divides by 1000, but a KiB is 1024 bytes, as its docstring says"
+    failure_scenario: "kib(2000) returns 2; it is 1 KiB"
+    suggested_fix: "Divide by 1024"
+    testable: yes
+    confidence: 0.95
+```
