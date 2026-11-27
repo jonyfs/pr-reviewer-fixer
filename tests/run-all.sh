@@ -492,7 +492,7 @@ elif dates and datetime.date.fromisoformat(hd.group(1)) != max(dates):
     bad.append("harness-matrix.md header date %s is not its newest source date %s" % (hd.group(1), max(dates)))
 for s in ("pr-reviewer", "pr-fixer", "pr-merge-fixer"):
     ep = open(os.path.join(root, s, "references/execution-profiles.md"), encoding="utf-8").read()
-    m = re.search(r"checked on \*\*(\d{4}-\d{2}-\d{2})\*\*", ep)
+    m = re.search(r"checked on\s+\*\*(\d{4}-\d{2}-\d{2})\*\*", ep)
     if not hd or not m or m.group(1) != hd.group(1):
         bad.append("%s/references/execution-profiles.md does not repeat the matrix date (%s)" % (s, m.group(1) if m else "none"))
 print("%d dispatch calls, %d probe briefs, %d files with briefs, matrix %s" % (

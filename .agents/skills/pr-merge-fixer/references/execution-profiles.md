@@ -5,8 +5,8 @@ Tags: [#pr #merge #models #effort #reference]
 
 # Execution Profiles
 
-Model names change monthly. The harness column was retrieved on **2026-10-14** from official docs
-([harness-matrix.md](harness-matrix.md) lists sources and unverified items). Prefer aliases where the
+Model names change monthly. The harness column was checked on **2026-11-27** against official docs
+([harness-matrix.md](harness-matrix.md) dates each source and lists the unverified items). Prefer aliases where the
 harness has them.
 
 ## Tiers
@@ -27,6 +27,13 @@ harness has them.
 | Lockfile, generated, vendored | none | yes, by regeneration | The output is produced, not written |
 | Final verification (build and tests) | standard | no | Reads output and reports it |
 | Closure table and comment | fast | no | Transcribes decisions already made |
+| Security-sensitive file | deep | only when a person allowed the class | Classified at deep, never lower. Posture rules 3 and 8 still hold: the file escalates to a person, and it is resolved, at deep, only when a person set `PUSH_GUARD_ALLOW_SENSITIVE` for that class. A fast-tier fix to a signal-handling script shipped a bug the next review blocked (commit 4061e69) |
+
+A file is security-sensitive when `scripts/path-floor.sh` gives it security at `max`, or when it is
+a script that handles signals, sandboxes, the gate, push guards or tokens (`review-cycle.sh`,
+`push-guard.sh`, `repro-sandbox.sh`, `proof-check.sh`, `behaviour-diff.sh`,
+`gate-pr-review-state.py`, `path-floor.sh`, `scan-hidden.py`, `templates/review-gate.yml`). The
+reviewer's `execution-profiles.md` states the same row.
 
 ## Per-harness setting
 
@@ -38,8 +45,13 @@ harness has them.
 
 ## Applying a profile
 
-Pass `model` and `effort` as call parameters on every dispatch. Declaring them in frontmatter alone
-does nothing where the harness reads them from the call. Each unit writes only its own files; one
+Pass `model`, `effort` and the profile (`writer`, or `read-only probe` for a unit that only runs a
+check) as call parameters on every dispatch; never inherit. Declaring them in frontmatter alone
+does nothing where the harness reads them from the call. On Claude Code the call's `model` is an
+alias, not a full id or `inherit`, and the per-call `effort` needs v2.1.292 or later
+([sub-agents](https://code.claude.com/docs/en/sub-agents), checked 2026-11-27). A read-only probe
+writes only inside the scratchpad path its brief names, never in the repository (the reviewer's
+`execution-profiles.md`, "Read-only probe profile"). Each unit writes only its own files; one
 agent makes the commit.
 
 ## Fallbacks

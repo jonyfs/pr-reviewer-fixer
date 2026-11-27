@@ -1,6 +1,6 @@
 # Harness model and effort matrix
 
-Retrieved: 2026-10-14. All facts come from pages opened on that date (URLs in Sources). Model names here are the names those pages print. Where a page printed a display name but no API id, the id is marked `unverified`. Re-check before shipping: Codex retires GPT-5.5 for ChatGPT sign-in on 2026-10-14 and Copilot retired several models on 2026-10-02.
+Checked: 2026-11-27. That is the newest date in Sources, where each page carries the date it was last opened: the Claude Code model and sub-agent pages (1, 2) were re-opened on 2026-11-27 and the Claude Code row and its tier cells updated; every other row still rests on pages opened on 2026-10-14 and was not re-checked. Model names here are the names those pages print. Where a page printed a display name but no API id, the id is marked `unverified`. Re-check before shipping: Codex retires GPT-5.5 for ChatGPT sign-in on 2026-10-14 and Copilot retired several models on 2026-10-02.
 
 ## Matrix
 
@@ -8,7 +8,7 @@ Tier shorthand: flagship = deep, mid = standard, fast = fast.
 
 | Harness | Flagship | Mid | Fast | Effort / thinking control | Subagents and per-subagent model/effort | Read-only / sandbox / approval | Context that matters | Src |
 |---|---|---|---|---|---|---|---|---|
-| Claude Code | `fable` alias (Fable 5.1, id `claude-fable-5-1`); `opus` alias = Opus 5.5 | `sonnet` alias = Sonnet 5.5 | `haiku` alias = Haiku 5.5 | `--effort`, `/effort`, env `CLAUDE_CODE_EFFORT_LEVEL`, settings `effortLevel` or per-model `modelSettings`. Levels low, medium, high, xhigh, max. Default medium on Opus/Sonnet/Haiku 5.5, high on most others | Yes. Markdown subagent frontmatter has `model` (alias, full id, or `inherit`) and `effort`. Model order: per-call param, frontmatter, `CLAUDE_CODE_SUBAGENT_MODEL`, parent. Also `isolation: worktree`, `tools`, `disallowedTools`, `permissionMode` | `permissionMode`: default, acceptEdits, auto, dontAsk, bypassPermissions, plan. Tool allowlist per subagent for read-only | Opus 4.7+ and Sonnet 5/5.5 have native 1M window. Cursor and Kiro pages list 1M for the same models | 1, 2 |
+| Claude Code | `fable` alias = Fable 5.2 (`claude-fable-5-2`; Fable 5 in Claude apps gateway sessions); `opus` alias = Opus 5.5 (`claude-opus-5-5`) on the Anthropic API, Bedrock, Google Cloud and Claude Platform on AWS, Opus 4.6 on Microsoft Foundry | `sonnet` alias = Sonnet 5.5 on the Anthropic API and Google Cloud; Sonnet 4.6 on Claude Platform on AWS; Sonnet 4.5 on Bedrock, Agent Platform and Foundry. Sonnet 5.5 id `unverified` (the page points to the models overview) | `haiku` alias = Haiku 5.5 on the Anthropic API, Haiku 4.5 on the other providers. Haiku 5.5 id `unverified` | `--effort`, `/effort`, env `CLAUDE_CODE_EFFORT_LEVEL`, settings `effortLevel` (low to xhigh) or per-model `modelSettings`; neither settings key accepts `max`. Levels low, medium, high, xhigh, max on Fable, Opus 5.5, Sonnet 5.5, Haiku 5.5 and Opus 4.7 to 5; no xhigh on Opus 4.6 and Sonnet 4.6. Default medium on Fable 5.2 and the 5.5 models, xhigh on Opus 4.7, high on the others. Precedence: env, session pick, `--effort`, settings, model default | Yes. Frontmatter `model` (`sonnet`, `opus`, `haiku`, `fable`, a full id, or `inherit`) and `effort`. Model order: per-call `model` (an alias only on the Agent call, not a full id or `inherit`), frontmatter, `CLAUDE_CODE_SUBAGENT_MODEL`, parent; `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` (v2.1.257+) overrides both the frontmatter and the call. Per-call `effort` on non-fork sub-agents needs v2.1.292+; `CLAUDE_CODE_EFFORT_LEVEL` beats it; with neither, the spawner's effort, then `CLAUDE_CODE_SUBAGENT_EFFORT`. Also `isolation: worktree`, `tools`, `disallowedTools`, `permissionMode`, `maxTurns` | `permissionMode`: default (alias `manual`), acceptEdits, auto, dontAsk, bypassPermissions, plan. Tool allowlist per subagent for read-only; no path-scoped write rule in the tool list | Native 1M window on Fable models, Sonnet 5 and later, Haiku 5.5, Opus 4.7 and later; Opus 4.6 and Sonnet 4.6 need `[1m]` | 1, 2 |
 | OpenAI Codex CLI | `gpt-6-astra` | `gpt-6.1-sol` (docs say use when available) | `gpt-6-luna` | `model_reasoning_effort` in config.toml: low, medium, high, xhigh, max, ultra (Luna up to max, no ultra). CLI `-m`/`--model`, `/model` for effort. Action input `effort` | Yes. `~/.codex/agents/*.toml` or `.codex/agents/*.toml` with `name`, `description`, `developer_instructions`, optional `model`, `model_reasoning_effort`. Defaults `agents.default_subagent_model`, `agents.default_subagent_reasoning_effort`, `agents.max_threads`. Subagents inherit sandbox from parent; cannot set `sandbox_mode` per agent | `sandbox_mode`: read-only, workspace-write, danger-full-access. `approval_policy`: on-request, never, granular table. Action: `permission-profile: ":workspace"` | `model_context_window` key exists; size per model `unverified` | 3, 4, 5 |
 | GitHub Copilot CLI | Claude Opus 5.5, GPT-6 Astra, Fable 5.1 (display names; ids `unverified`) | Claude Sonnet 5.5, GPT-6.1 Sol | Claude Haiku 5.5, GPT-6 Luna, Gemini 3.8 Flash | `--effort=LEVEL` / `--reasoning-effort=LEVEL`: low, medium, high, xhigh, max (`max` for Anthropic only). Also user config. `/model` or `--model` | Custom agents with frontmatter `reasoningEffort` (low, medium, high; inherits if unset). Model per agent field: `unverified` | `--allow-tool`, `--deny-tool`, `--allow-all-tools`, `/allow-all`, Shift+Tab cycles standard/plan/autopilot | 1M window on selected models in VS Code and CLI only; configurable reasoning on VS Code, CLI, cloud agent | 6, 7 |
 | Copilot cloud agent | Same catalog as above | same | same | Configurable reasoning available in cloud agent. Whether a model can be chosen depends on how the task starts | Custom agents and skills; per-agent model `unverified` | Works on one branch, one PR per task, repo-scoped | `unverified` | 6, 8 |
@@ -86,7 +86,7 @@ of the matrix above (see [harness-loop.md](harness-loop.md)). No GitHub Action r
 
 ## Unverified
 
-- Exact API model ids for Copilot, Cursor, Windsurf, Kiro and Gemini entries; the pages print display names only. Verified ids: Claude Code `claude-fable-5`, `claude-fable-5-1`, `claude-opus-5-5`; Codex `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-luna`, `gpt-5.5`; Cursor `composer-2`, `composer-2.5`, `claude-opus-5`, `gpt-5.6-sol`.
+- Exact API model ids for Copilot, Cursor, Windsurf, Kiro and Gemini entries; the pages print display names only. Verified ids: Claude Code `claude-fable-5`, `claude-fable-5-1`, `claude-fable-5-2`, `claude-opus-5-5`, `claude-sonnet-5` (2026-11-27; the exact Sonnet 5.5 and Haiku 5.5 ids are `unverified`, the model-config page names no id for them); Codex `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-luna`, `gpt-5.5`; Cursor `composer-2`, `composer-2.5`, `claude-opus-5`, `gpt-5.6-sol`.
 - Copilot custom-agent `model` field; Copilot cloud agent context size; per-model Codex context sizes.
 - Gemini CLI approval flags and current default model ids.
 - Amp per-mode model table (the modes page returned 404; the Dial page says to see Modes).
@@ -99,33 +99,33 @@ of the matrix above (see [harness-loop.md](harness-loop.md)). No GitHub Action r
 
 ## Sources
 
-1. https://code.claude.com/docs/en/model-config (aliases, effort, defaults, context)
-2. https://code.claude.com/docs/en/sub-agents (frontmatter, model resolution)
-3. https://learn.chatgpt.com/docs/models (redirect target of developers.openai.com/codex/models; models, retirements)
-4. https://learn.chatgpt.com/docs/agent-configuration/subagents
-5. https://learn.chatgpt.com/docs/config-file/config-reference
-6. https://docs.github.com/en/copilot/reference/ai-models/supported-models
-7. https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference (permissions; effort flag and `reasoningEffort` read from search excerpt of this page)
-8. https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent
-9. https://docs.github.com/en/copilot/concepts/agents/code-review
-10. https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/
-11. https://geminicli.com/docs/cli/model/ and https://github.com/google-gemini/gemini-cli
-12. https://github.com/google-antigravity/antigravity-cli/blob/main/CHANGELOG.md
-13. https://cursor.com/docs/subagents and https://cursor.com/docs/models
-14. https://cursor.com/docs/bugbot (search excerpt)
-15. https://github.com/marketplace/actions/cursor-action
-16. https://docs.devin.ai/desktop/models (redirect from docs.windsurf.com/windsurf/models)
-17. https://docs.cline.bot/getting-started/what-is-cline and https://docs.cline.bot/cline-cli/overview
-18. https://roocodeinc.github.io/Roo-Code/features/custom-modes
-19. https://aider.chat/docs/config/reasoning.html
-20. https://opencode.ai/docs/agents/
-21. https://opencode.ai/docs/github/
-22. https://ampcode.com/manual and https://ampcode.com/docs/models-and-subagents
-23. https://ampcode.com/docs/cli/execute-mode
-24. https://kiro.dev/docs/cli/ and https://kiro.dev/docs/cli/chat/model-selection/
-25. https://kiro.dev/docs/models/available-models/
-26. https://zed.dev/docs/ai/agent-settings
-27. https://junie.jetbrains.com/docs/junie-on-github.html
-28. https://junie.jetbrains.com/docs/automated-code-reviews.html (search result summary only)
-29. https://code.claude.com/docs/en/github-actions
-30. https://learn.chatgpt.com/docs/github-action (search excerpt)
+1. https://code.claude.com/docs/en/model-config (aliases, effort, defaults, context) (checked 2026-11-27)
+2. https://code.claude.com/docs/en/sub-agents (frontmatter, model resolution) (checked 2026-11-27)
+3. https://learn.chatgpt.com/docs/models (redirect target of developers.openai.com/codex/models; models, retirements) (checked 2026-10-14)
+4. https://learn.chatgpt.com/docs/agent-configuration/subagents (checked 2026-10-14)
+5. https://learn.chatgpt.com/docs/config-file/config-reference (checked 2026-10-14)
+6. https://docs.github.com/en/copilot/reference/ai-models/supported-models (checked 2026-10-14)
+7. https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference (permissions; effort flag and `reasoningEffort` read from search excerpt of this page) (checked 2026-10-14)
+8. https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent (checked 2026-10-14)
+9. https://docs.github.com/en/copilot/concepts/agents/code-review (checked 2026-10-14)
+10. https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/ (checked 2026-10-14)
+11. https://geminicli.com/docs/cli/model/ and https://github.com/google-gemini/gemini-cli (checked 2026-10-14)
+12. https://github.com/google-antigravity/antigravity-cli/blob/main/CHANGELOG.md (checked 2026-10-14)
+13. https://cursor.com/docs/subagents and https://cursor.com/docs/models (checked 2026-10-14)
+14. https://cursor.com/docs/bugbot (search excerpt) (checked 2026-10-14)
+15. https://github.com/marketplace/actions/cursor-action (checked 2026-10-14)
+16. https://docs.devin.ai/desktop/models (redirect from docs.windsurf.com/windsurf/models) (checked 2026-10-14)
+17. https://docs.cline.bot/getting-started/what-is-cline and https://docs.cline.bot/cline-cli/overview (checked 2026-10-14)
+18. https://roocodeinc.github.io/Roo-Code/features/custom-modes (checked 2026-10-14)
+19. https://aider.chat/docs/config/reasoning.html (checked 2026-10-14)
+20. https://opencode.ai/docs/agents/ (checked 2026-10-14)
+21. https://opencode.ai/docs/github/ (checked 2026-10-14)
+22. https://ampcode.com/manual and https://ampcode.com/docs/models-and-subagents (checked 2026-10-14)
+23. https://ampcode.com/docs/cli/execute-mode (checked 2026-10-14)
+24. https://kiro.dev/docs/cli/ and https://kiro.dev/docs/cli/chat/model-selection/ (checked 2026-10-14)
+25. https://kiro.dev/docs/models/available-models/ (checked 2026-10-14)
+26. https://zed.dev/docs/ai/agent-settings (checked 2026-10-14)
+27. https://junie.jetbrains.com/docs/junie-on-github.html (checked 2026-10-14)
+28. https://junie.jetbrains.com/docs/automated-code-reviews.html (search result summary only) (checked 2026-10-14)
+29. https://code.claude.com/docs/en/github-actions (checked 2026-10-14)
+30. https://learn.chatgpt.com/docs/github-action (search excerpt) (checked 2026-10-14)

@@ -8,7 +8,7 @@ description: >
   the tier its complexity needs, verifies, pushes without force, and escalates the conflicts it
   cannot decide. A push always triggers a fresh review.
 metadata:
-  version: "0.24.1"
+  version: "0.25.2"
 ---
 
 # PR Merge Fixer
@@ -62,6 +62,21 @@ Written by pr-merge-fixer, ran at <UTC time>, base <base> merged into the head.
 | Model, effort | Chosen per unit by the ladder in [references/orchestration.md](references/orchestration.md) and passed on the dispatch call | A semantic merge on a cheap tier fails silently; a lockfile on a deep tier wastes money |
 | Tools | Read, Edit, Write, Grep, Glob, Bash (git, the project's build and test) | It must resolve and then run the code |
 | Concurrency | One writer per branch. Units that touch different files may be classified in parallel, but the merge is written by one agent, in one commit | Two writers on one index corrupt it |
+
+Pass `model` and `effort` on every dispatch call, never inherit, with the unit's profile: `writer`
+for a unit that resolves a file, `read-only probe` for one that only runs a check (it writes only
+inside the scratchpad path in its brief, never in the repository). A security-sensitive file is
+classified at `deep` and still escalates (rules 3 and 8). Values:
+[references/execution-profiles.md](references/execution-profiles.md).
+
+```text
+Agent(
+  description: "<unit> of the merge on PR #<n>",
+  model: <alias from execution-profiles.md>, effort: <from execution-profiles.md>,
+  profile: writer | read-only probe,
+  prompt: <the file, both sides, the PR text, the base commits that touched it, the scan hits>
+)
+```
 
 ## Posture Rules
 

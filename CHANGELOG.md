@@ -4,6 +4,53 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.25.2
+
+Model and effort are stated per dispatch and never inherited, fixers that write security-sensitive
+files run at `deep`, sub-agents that run probes get a read-only probe profile, the orchestrator has
+a `standard` floor, the harness matrix's Claude Code row is re-checked, and five GitHub practices
+are cited in the protocol.
+
+- **Security-sensitive files run at `deep` in the fixers.** `pr-reviewer/references/execution-profiles.md`
+  has a row for the fixer and merge fixer on security-sensitive files (what `path-floor.sh` gives
+  security at `max`, and the scripts that handle signals, sandboxes, the gate, push guards or
+  tokens, named in a list). The fixer's and the merge fixer's own profiles repeat it, since an
+  installed fixer reads only its own folder: in `pr-fixer` the lane stays at `deep` (no step down
+  after the red test, a check repair starts there); in `pr-merge-fixer` the file is classified at
+  `deep` and still escalates, as posture rules 3 and 8 say. Evidence: commit 4061e69, co-authored by
+  a fast-tier model, shipped a signal-19 bug in `repro-sandbox.sh` that the next review blocked.
+- **Every dispatch passes `model`, `effort` and a profile.** `pr-fixer/SKILL.md` and
+  `pr-merge-fixer/SKILL.md` carry a dispatch call with the three, and the reviewer's call names
+  `profile: read-only review`. "Applying a profile" says the Claude Code Agent call takes an alias,
+  not a full id or `inherit`, and that the per-call effort needs v2.1.292 or later; a new fallback
+  row covers a person's environment that forces a value.
+- **Read-only probe profile.** A probe sub-agent runs commands and writes only inside the scratchpad
+  path its brief names, never in the repository. Defined in the reviewer's and the fixer's
+  `execution-profiles.md`, with a probe brief template in `agents-and-dispatch.md` and in
+  `falsify-and-prove.md`. On Claude Code the limit is set by the brief, the working directory and
+  the environment, not by the tool list, and the report says so.
+- **Orchestrator floor.** The orchestrator needs at least `standard`. A session below it says so in
+  the start line (`Orchestrator below standard: <model>; ...`) and moves merge and verify to one
+  `standard` sub-agent. No setting of the person's is changed. In `pr-reviewer/SKILL.md` ("Announce
+  and Adapt"), `progress-and-notifications.md` and `execution-profiles.md`.
+- **`harness-matrix.md` (all three copies): Claude Code re-checked on 2026-11-27.** The `fable`
+  alias is Fable 5.2 (`claude-fable-5-2`); aliases resolve to other models on Bedrock, Foundry and
+  Claude Platform on AWS; neither effort settings key accepts `max`; defaults, precedence, the
+  sub-agent model order with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, and `CLAUDE_CODE_SUBAGENT_EFFORT`.
+  The exact Sonnet 5.5 and Haiku 5.5 ids stay `unverified`. Each source now carries its own date;
+  the header date is the newest of them, and the rows not re-opened keep 2026-10-14.
+- **GitHub practices in `pr-protocol.md` (all three copies), each with its docs URL.** Alerts in the
+  pull request description only, at most one, never nested (not in comments, where a quote is
+  forbidden); no emoji shortcodes in comments; agents never hide comments; no check-run annotations
+  (only a GitHub App can write a check run); comments and label changes posted one at a time, a
+  second apart, with one retry after a secondary rate limit.
+- **`tests/run-all.sh`.** A check finds every dispatch call (`Agent(` fence) and fails one without
+  an explicit model, an explicit effort or a named profile, and a fixer SKILL.md with none; every
+  file with a dispatch call or brief must name the read-only probe profile; each probe brief must
+  keep writes in the scratchpad; the matrix's `Checked:` date must equal its newest source date and
+  each `execution-profiles.md` must repeat it. Wording rows pin the profile rows, the orchestrator
+  line and the cited URLs.
+
 ## 0.24.1
 
 Documentation only: the last example lines that held a literal HTML comment opener or a literal

@@ -19,6 +19,11 @@ they already look, that a review is running, what it is doing, and when it is do
 | Stopped early | `pr-reviewer: stopped on PR #N: <reason>. Next action: <one action>.` | Session output, the status comment (edited in place), push notification |
 | Halted | `pr-skill: halted on PR #N. <reason sentence>` | The answer comment (marker first), session output, push notification, always |
 
+Orchestrator below standard: when the session model is below the `standard` tier, the start line
+ends with `Orchestrator below standard: <model>; merge and verify run in a standard sub-agent.`
+([execution-profiles.md](execution-profiles.md), "Orchestrator tier"). The status comment carries
+the same line. Nothing in the person's settings is changed.
+
 Rules:
 
 - Start line comes **before** the first read of the diff, so a crash leaves a trace.

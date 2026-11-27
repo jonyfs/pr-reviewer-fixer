@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.24.1"
+  version: "0.25.2"
 ---
 
 # PR Reviewer
@@ -102,6 +102,13 @@ line of the verdict comment, not a separate comment. It also
 decides each run from facts (trigger, pass number, size, draft state, harness capabilities, budget)
 and states what it decided. Lines, channels and the decision table:
 [references/progress-and-notifications.md](references/progress-and-notifications.md).
+
+The orchestrator (this session: dispatch, merge, verify, publish) needs at least the `standard`
+tier. If the session model is below the `standard` tier, the start line says so
+(`Orchestrator below standard: <model>; merge and verify run in a standard sub-agent.`) and the
+merge and verify work moves to one sub-agent dispatched at the `standard` setting; the session
+publishes what it returns. Never change the person's settings to raise the session's tier.
+Details: [references/execution-profiles.md](references/execution-profiles.md) ("Orchestrator tier").
 
 ## Version Notice
 
