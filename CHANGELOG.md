@@ -4,6 +4,19 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.24.1
+
+Documentation only: the last example lines that held a literal HTML comment opener or a literal
+details tag in a code span are written in the bracket form PR 69 introduced, so `scan-hidden.py`
+reports none of them and needs no exemption. The scanner and its tests are unchanged.
+
+- **Bracket form for the last 9 example lines.** The details tag becomes `<detail[s]>` in
+  `pr-fixer/references/posture-and-config.md`, `pr-reviewer/SKILL.md` (two lines), this changelog
+  (two lines) and `docs/designs/communication-0.20.0.md` (three lines), and the comment opener in
+  the 0.8.4 entry on marker whitespace becomes `<!-[-]`. The raw text of these files
+  holds no literal opener or tag; the two real comments in `docs/designs/iso-alignment-0.3.0.md`
+  stay and are still reported, on purpose.
+
 ## 0.24.0
 
 The review loop reads a merge fixer's outcome instead of trusting a moved head, the `proofs` block is
