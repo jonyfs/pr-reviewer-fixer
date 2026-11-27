@@ -4,6 +4,19 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.24.1
+
+Documentation only: the last example lines that held a literal HTML comment opener or a literal
+details tag in a code span are written in the bracket form PR 69 introduced, so `scan-hidden.py`
+reports none of them and needs no exemption. The scanner and its tests are unchanged.
+
+- **Bracket form for the last 9 example lines.** The details tag becomes `<detail[s]>` in
+  `pr-fixer/references/posture-and-config.md`, `pr-reviewer/SKILL.md` (two lines), this changelog
+  (two lines) and `docs/designs/communication-0.20.0.md` (three lines), and the comment opener in
+  the 0.8.4 entry on marker whitespace becomes `<!-[-]`. The raw text of these files
+  holds no literal opener or tag; the two real comments in `docs/designs/iso-alignment-0.3.0.md`
+  stay and are still reported, on purpose.
+
 ## 0.24.0
 
 The review loop reads a merge fixer's outcome instead of trusting a moved head, the `proofs` block is
@@ -302,7 +315,7 @@ Design and the list of improvements: [docs/designs/communication-0.20.0.md](docs
   The verdict has labelled summary lines ending with `Next:`, a three-line reading guide,
   acceptance conditions as `A<n> met:` or `A<n> open:` lines, and one line per finding. The fixer's
   closure has one checkpoint line per step of each finding, with its evidence.
-- **Formatting rules** (`pr-protocol.md`): one comment order, one word legend, and no `<details>`
+- **Formatting rules** (`pr-protocol.md`): one comment order, one word legend, and no `<detail[s]>`
   blocks or emoji with a variation selector, which `scan-hidden.py` reports as hidden text.
   `tests/run-all.sh` fails when a comment template in the skills holds a table row, a heading,
   bold, a bullet or a fenced block other than `findings`.
@@ -922,7 +935,7 @@ Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items
 
 - `scripts/scan-hidden.py`, shipped in both skills: reports zero-width characters and BOMs, bidi
   overrides and isolates (U+202A-U+202E, U+2066-U+2069), Unicode tag characters
-  (U+E0000-U+E007F), HTML comments other than the five protocol marker forms, `<details>` blocks
+  (U+E0000-U+E007F), HTML comments other than the five protocol marker forms, `<detail[s]>` blocks
   and invisibly styled HTML in the diff's added lines, the PR title, body and comments (through
   `pr-json.py`) and the commit messages. JSON output, exit 1 on hits, 2 when an input cannot be
   read. It strips nothing. The verdict marker regex is imported from the gate. Homoglyphs are not
@@ -1305,7 +1318,7 @@ Closes the 17 notes PR #27 declared as debt (N1-N14, N18-N20) and the open items
   need not: they read no number and decide no trust. `\d` took non-ASCII digits, which `int()`
   then parsed, so the gate read `pass=١` as pass 1 while `status` read no marker at all. Whitespace inside a marker is now the six ASCII characters (space, tab, LF, CR, FF,
   VT) in every reader: the node regex in `parse()` and the bash `MARKER_RE` spell them out instead of
-  `\s` and `[[:space:]]`, so a no-break or ideographic space after `<!--` is no marker to `status`,
+  `\s` and `[[:space:]]`, so a no-break or ideographic space after `<!-[-]` is no marker to `status`,
   `marker`, the gate, `budget` and `export-audit` alike, under any locale.
 
 ### Fixed
