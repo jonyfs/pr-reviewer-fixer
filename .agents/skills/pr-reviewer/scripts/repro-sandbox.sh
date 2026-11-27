@@ -63,11 +63,13 @@
 #     the same profile text and parameters, another profile and an unsandboxed one all get EPERM).
 #     kill(-1) is not used: kill(-1, 0) succeeds from a process alone in its instance, so its
 #     confinement cannot be shown without risking every process of the user.
-#   - The scan repeats (list the pids in-process, check, kill) with no pause between rounds until two
-#     rounds in a row find nothing, at most 15 s. The script kills directly only when the reaper is
-#     gone (the repro may kill or stop it, since it shares the instance) and only while box is still
-#     the directory the script made (lstat: same device and inode, not a symlink). When box was
-#     replaced or removed, the script sends no signal itself.
+#   - The scan repeats (list the pids in-process, check each, and send each match to the reaper the
+#     moment it matches, so a fast fork walker has no time to fork; PR 97 W2) with no pause between
+#     rounds until two rounds in a row find nothing, at most 15 s. The script kills directly only
+#     when the reaper is gone (the repro may kill or stop it, since it shares the instance), only
+#     while box is still the directory the script made (lstat: same device and inode, not a
+#     symlink), and only after asking again, right before the signal, that the pid is the run's.
+#     When box was replaced or removed, the script sends no signal itself.
 #   Any process found, one left at the bound, a box replaced or removed, or a scan that could not run
 #   makes the result `skipped`. Remaining limit: a repro that kills or stops the reaper and also
 #   replaces box leaves its survivors running (named on stderr, result skipped).
@@ -268,9 +270,10 @@ kill_run() {
     [ "$rpid" != 0 ] && kill -0 "$rpid" 2>/dev/null || break
     sleep 0.2
   done
-  local f1="$scan_found" l1="$scan_left" b1="$scan_box" r1="$scan_reaper" o1="$scan_ok"
+  local f1="$scan_found" b1="$scan_box" r1="$scan_reaper" o1="$scan_ok"
   scan_parse "$(instance_scan 0)"
-  scan_found=$((f1 + scan_found)); scan_left=$((l1 > scan_left ? l1 : scan_left))
+  # left is the second scan's count: it ran last, so it is what is still running (PR 97 N8).
+  scan_found=$((f1 + scan_found))
   [ "$b1" = intact ] || scan_box="$b1"
   scan_reaper="$r1"; [ "$o1" = 1 ] || scan_ok=0
 }
@@ -281,16 +284,16 @@ scan_parse() {
     scan_ok=0
   fi
 }
-# instance_scan <reaper pid or 0>: one python3 process that repeats (list every pid in-process, check,
-# kill) with no pause between rounds until two rounds in a row find nothing, at most 15 s. A pid is
-# the run's when sandbox_check(3) says it may read the marker (nonce A) and may not read nonce B; both
+# instance_scan <reaper pid or 0>: one python3 process that repeats (list every pid in-process, check
+# each, kill each match at once) with no pause between rounds until two rounds in a row find nothing,
+# at most 15 s. A pid is the run's when sandbox_check(3) says it may read the marker (nonce A) and may not read nonce B; both
 # are literal paths in S, which the repro can neither write nor replace. The kill goes through the
 # reaper (fd 7, acked in reap.out), which the kernel confines to this sandbox instance; only with no
 # reaper does the scan kill directly, and only while box is the directory the script made.
 instance_scan() {
   [ -x /usr/bin/python3 ] || { echo none; return; }
   /usr/bin/python3 -I -c '
-import ctypes, os, stat, sys, time
+import ctypes, os, signal, stat, sys, time
 lib = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
 chk = lib.sandbox_check
 chk.restype = ctypes.c_int
@@ -329,60 +332,73 @@ def acks():
 reaper = "none"
 if rpid > 1 and ours(rpid):
     reaper = "used"
-def by_reaper(hits):
-    before = acks()
+def send(p):
+    # One line per pid, written the moment ours(p) is true: a fast fork walker gets no time to fork
+    # between the match and the kill (PR 97 W2). The pipe is non-blocking, so a reaper the repro stopped
+    # cannot hang the scan once the pipe is full; that write fails and the reaper counts as gone.
     try:
-        os.write(7, (" ".join(map(str, hits)) + "\n").encode())
+        os.write(7, b"%d\n" % p)
+        return True
     except OSError:
         return False
+def acked(want):
     end = time.monotonic() + 2
     while time.monotonic() < end:
-        if acks() > before:
+        if acks() >= want:
             return True
         time.sleep(0.001)
     return False
-def freeze(hits):
-    # SIGSTOP first: a stopped process forks nothing, so a fast fork walker cannot outrun the kill that
-    # follows (PR 97 W2). A stopped process is still ours, so the next scan sees it and the kill lands.
-    for p in hits:
+def direct(p):
+    # The script signals itself only when the reaper is gone and box is still the directory it made,
+    # and asks ours(p) again right before the signal, so a pid freed and reused since the listing is
+    # not hit (PR 97 W3, N9). The signal is named: numbers differ between systems (PR 97 W2).
+    if box_ok() and ours(p):
         try:
-            os.kill(p, 19)
+            os.kill(p, signal.SIGKILL)
         except OSError:
             pass
+def survivors():
+    return [p for p in pids() if p != me and p != rpid and ours(p)]
+if reaper == "used":
+    try:
+        os.set_blocking(7, False)
+    except OSError:
+        reaper = "gone"
 found = left = 0
+rest = []
 changed = not box_ok()
 empty, deadline = 0, time.monotonic() + 15
 while empty < 2:
-    hits = [p for p in pids() if p != me and p != rpid and ours(p)]
+    hits, sent, before = [], 0, acks()
+    for p in pids():   # newest first
+        if p == me or p == rpid or not ours(p):
+            continue
+        hits.append(p)
+        if reaper == "used":
+            if send(p):
+                sent += 1
+                continue
+            reaper = "gone"
+        if box_ok():
+            direct(p)
+        else:
+            changed = True
     if not hits:
         empty += 1
         continue
     empty = 0
     found += len(hits)
-    freeze(hits)
-    if time.monotonic() > deadline:
-        for p in hits:
-            try:
-                os.kill(p, 9)
-            except OSError:
-                pass
-        # Report what is still in the sandbox after the last kill, not what the first scan saw (PR 97 W2).
-        left = len([p for p in pids() if p != me and p != rpid and ours(p)])
-        break
-    if reaper == "used" and by_reaper(hits):
-        continue
-    if reaper == "used":
+    if sent and not acked(before + sent):
         reaper = "gone"
-    if not box_ok():
-        changed, left = True, len(hits)
+    if (changed and reaper != "used") or time.monotonic() > deadline:
+        # No one may kill what is left, or the bound is reached: report what is still in the sandbox
+        # after the last kill, not what this round saw (PR 97 W2, N7).
+        time.sleep(0.05)
+        rest = survivors()
+        left = len(rest)
         break
-    for p in hits:
-        try:
-            os.kill(p, 9)
-        except OSError:
-            pass
 if left:
-    sys.stderr.write("repro-sandbox: still in the sandbox after the scan: %s\n" % " ".join(map(str, hits)))
+    sys.stderr.write("repro-sandbox: still in the sandbox after the scan: %s\n" % " ".join(map(str, rest)))
 if changed or not box_ok():
     changed = True
 print("found=%d left=%d box=%s reaper=%s" % (found, left, "changed" if changed else "intact", reaper))
