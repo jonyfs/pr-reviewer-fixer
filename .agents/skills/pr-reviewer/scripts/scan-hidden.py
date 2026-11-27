@@ -86,7 +86,6 @@ EXIT CODES: 0 nothing found, 1 at least one hit, 2 an input could not be read (g
 failed, a file is missing); then nothing is printed on stdout. Exit 2 never means clean.
 """
 import bisect
-import hashlib
 import importlib.util
 import json
 import os
@@ -278,48 +277,6 @@ def esc(s):
     return ascii(s)[1:-1][:120]
 
 
-# The allowlist: exact lines that show a comment or details tag as documentation, not as hidden text.
-# A line is excused only when its path and the sha256 of its whole text match an entry, and only the
-# html-comment and details kinds are excused. Any change to the line changes the hash. A missing file
-# excuses nothing (fail closed).
-ALLOW_FILE = os.path.join(HERE, "scan-hidden.allow")
-EXCUSABLE = ("html-comment", "details")
-
-
-def load_allow():
-    entries = set()
-    try:
-        with open(ALLOW_FILE, encoding="utf-8") as f:
-            for ln in f:
-                if ln.startswith("#") or "\t" not in ln:
-                    continue
-                path, digest = ln.rstrip("\r\n").split("\t", 1)
-                entries.add((path, digest.strip()))
-    except OSError:
-        pass
-    return entries
-
-
-ALLOW = load_allow()
-
-
-def excused(path, line_text):
-    digest = hashlib.sha256(line_text.encode("utf-8", "replace")).hexdigest()
-    return (path, digest) in ALLOW
-
-
-def drop_excused(hits, path, text):
-    """Remove the excusable hits that sit on an allowlisted line of this file."""
-    lines = text.split("\n")
-    kept = []
-    for h in hits:
-        n = h.get("line", 0)
-        if h["kind"] in EXCUSABLE and 1 <= n <= len(lines) and excused(path, lines[n - 1]):
-            continue
-        kept.append(h)
-    return kept
-
-
 def scan_text(text, verdict_re, source, where, line_offset=0):
     """Every hit in one text. `where(line)` names the location of a line number."""
     hits = []
@@ -430,8 +387,7 @@ def scan_diff(base, head, verdict_re):
                 rem_new -= 1
                 if path is not None:
                     p = path
-                    found = scan_text(raw[1:], verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), line_offset=n - 1)
-                    hits += [h for h in found if not (h["kind"] in EXCUSABLE and excused(p, raw[1:]))]
+                    hits += scan_text(raw[1:], verdict_re, "diff", lambda l, p=p: "%s:%d" % (p, l), line_offset=n - 1)
                 n += 1
             elif raw.startswith("-"):
                 rem_old -= 1
@@ -570,9 +526,8 @@ def main(argv):
             elif opt == "--commits":
                 hits += scan_commits(vals[0], vals[1], verdict_re)
             else:
-                body = open(vals[0], encoding="utf-8", errors="replace").read()
-                hits += drop_excused(scan_text(body, verdict_re, "file", lambda l, f=vals[0]: "%s:%d" % (f, l)),
-                                     vals[0], body)
+                hits += scan_text(open(vals[0], encoding="utf-8", errors="replace").read(), verdict_re,
+                                  "file", lambda l, f=vals[0]: "%s:%d" % (f, l))
             sources.append(opt[2:] + " " + " ".join(vals))
     except (Unreadable, OSError, ValueError, subprocess.TimeoutExpired) as e:
         print("scan-hidden: could not read an input, INCONCLUSIVE: %s" % e, file=sys.stderr)

@@ -365,31 +365,6 @@ lone = os.path.join(W, "lone"); os.makedirs(lone); shutil.copy(SH, lone)
 p = subprocess.run([sys.executable, "-I", os.path.join(lone, "scan-hidden.py"), "--file", write("z.md", "x\n")], capture_output=True, text=True)
 check("without the gate beside it (no verdict regex to reuse) -> exit 2", p.returncode == 2 and "verdict marker regex" in p.stderr, p.stderr)
 
-# ---- the allowlist: an exact line shown as documentation is excused; nothing else is ----------------
-AL = os.path.join(W, "allow-dir"); os.makedirs(AL)
-for _f in os.listdir(SCRIPTS):
-    if _f.endswith((".py", ".sh")) and not _f.startswith("zz"):
-        shutil.copy(os.path.join(SCRIPTS, _f), AL)
-LINE = "keep " + "<" + "!-- ok --> shown"  # spelled in pieces so this file holds no whole opener
-import hashlib as _h
-open(os.path.join(AL, "scan-hidden.allow"), "w").write("# test\nx.md\t%s\n" % _h.sha256(LINE.encode()).hexdigest())
-def scan_in(name, body):
-    path = os.path.join(W, "al", name)
-    os.makedirs(os.path.dirname(path), exist_ok=True); open(path, "w", encoding="utf-8").write(body)
-    p = subprocess.run([sys.executable, "-I", os.path.join(AL, "scan-hidden.py"), "--file", name],
-                       capture_output=True, text=True, cwd=os.path.join(W, "al"))
-    return p.returncode, (json.loads(p.stdout) if p.stdout.strip() else None)
-rc, out = scan_in("x.md", LINE + "\n")
-check("an allowlisted line for its path is excused", rc == 0 and (out or {}).get("count") == 0, out)
-rc, out = scan_in("x.md", LINE + " more\n")
-check("the same line changed is reported again", rc == 1 and (out or {}).get("count") == 1, out)
-rc, out = scan_in("y.md", LINE + "\n")
-check("an allowlisted line in another path is reported", rc == 1 and (out or {}).get("count") == 1, out)
-rc, out = scan_in("x.md", LINE + ZW + "\n")
-check("an invisible character on an allowlisted line is still reported", rc == 1 and "zero-width" in (out or {}).get("kinds", {}), out)
-rc, out, _e = scan("--file", write("noallow.md", LINE + "\n"))
-check("no allowlist file in the scanner's folder: nothing is excused", rc == 1, out)
-
 # ---- fail closed on a construct (PR 67): a change above every construct is passed; a change at or after one, or a removed line, is reported
 FC = os.path.join(W, "fc"); os.makedirs(FC)
 def gfc(*a):
