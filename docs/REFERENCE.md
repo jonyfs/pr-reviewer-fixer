@@ -184,6 +184,23 @@ sequenceDiagram
   as NOTEs under `Suppressed by history` with a `suppressed:` line in Coverage. A CRITICAL, the
   security dimension, a mandatory unit of the change and a blocking WARNING are never suppressed,
   and anything it cannot read suppresses nothing.
+- Can, when you opt in, run a CRITICAL candidate's repro with `scripts/repro-sandbox.sh`. It is off
+  unless you set `REVIEW_REPRO=1`. The repro (an existing test, or a short script the reviewer
+  writes) runs in a scratch clone at the head, with an empty environment (no `GH_TOKEN`, no SSH
+  agent, no credential helper), stdin closed, a new session, a wall-clock, CPU, file-size and
+  process-count bound, and no network. The sandbox is called by a fixed path: `/usr/bin/sandbox-exec`
+  on macOS, with a profile that denies everything by default (no network, no mach service such as
+  LaunchServices, the pasteboard or the keychain; writes only in the run's folder; your home
+  hidden; launchd still answers read queries such as `launchctl print gui/<uid>`, which lists your
+  services), or `/usr/bin/bwrap` on Linux (every namespace unshared, only the system folders bound
+  read-only, /tmp, /run and /home empty, the run's folder the only writable path). `unshare -rn` is
+  not enough and is refused. Where no sandbox works, the script refuses with `no network sandbox
+  here; repro skipped` (exit 4) and never runs the repro unsandboxed. The result goes in the
+  finding's optional `repro:` field: `reproduced`, `not-reproduced` or `skipped` (the first word of
+  the script's line). A run that never started, hit a limit or left a process behind is `skipped`;
+  `--expect fail` should be paired with `--expect-log` and the assertion message, since a missing
+  dependency fails a test too. It is evidence for the reviewer. It never changes a severity or the
+  verdict. `lint-report` refuses any other value; reports without the field are unchanged.
 
 ### pr-fixer
 
@@ -746,6 +763,19 @@ flowchart TD
   forgery. They do not stop the author of a marker from deleting it and posting another. Signing the marker would, and
   it is on the backlog. They do not make a legal record.
 - Model id and tier in the marker and in the compliance records are self-attested.
+- The opt-in repro (`repro-sandbox.sh`) runs pull request code. Its sandbox blocks the network and
+  confines writes to the run's folder on both backends it accepts; Linux without `bwrap` gets no
+  run at all. It still reads the system folders (on macOS also /Library, Homebrew and Xcode; on
+  Linux /etc), so a secret kept there is readable inside, though it cannot leave. It limits time,
+  CPU, file size and process count, not memory. On macOS launchd still answers read queries through
+  the bootstrap port inside the sandbox (`launchctl print gui/<uid>` lists your services, their pids
+  and state; changes are refused), and that text can reach the repro's log. A leftover process is
+  found through `sandbox_check(3)` with `/usr/bin/python3`, by two marker paths the repro cannot
+  touch, and killed by a reaper confined to the run's own sandbox instance; without python3 the
+  result is `skipped`. A repro that kills or stops that reaper and also replaces its box folder can
+  leave a process running (the result is `skipped` and the process is named). Its rows in the
+  test suite are skipped where no sandbox works, such as an Ubuntu host that blocks unprivileged
+  user namespaces, and the Linux rows have not run where this change was written (macOS).
 - An AI verdict is not a human review. It reduces the chance that an obvious defect reaches the
   merge. It does not replace accountable review for high-risk changes.
 - Model names and harness paths change. The data here is dated 2026-10-14.
@@ -804,7 +834,7 @@ The suite needs no network, only bash, python3, node, jq, git, curl, tar, `sha25
 the refusals (a `BLOCKED` with no CRITICAL, a stale commit, an oversized report, a report that holds a
 token, a forged marker),
 triage decisions, the cycle-budget logic (`budget`, `extend`, `halt`), the comment-edit and allowlist
-checks, the `fix` guard, `export-audit`, `export-sarif`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `review-metrics.sh`, `install.sh`, the review
+checks, the `fix` guard, `export-audit`, `export-sarif`, `lint-report`, `screen`, `path-floor.sh`, `push-guard.sh`, `proof-check.sh`, `behaviour-diff.sh`, `scan-hidden.py`, `fetch-feedback.py`, `fix-ledger.sh`, `review-metrics.sh`, `repro-sandbox.sh`, `install.sh`, the review
 eval scorer, the version check, the update script (`tests/update/run.sh`, against a fake release served from local files) and the release script (`tests/release/run.sh`, which drives
 `.github/scripts/release.sh` through every state a release can be in). The suites run at the same time,
 each in its own scratch directory (`TEST_TAG` names it; `work-*/` and `state-*/` are gitignored), so

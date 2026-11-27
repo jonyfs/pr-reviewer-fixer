@@ -108,7 +108,8 @@
 #                          declined, and fails a report that holds a token or private key. When
 #                          path-floor.sh (beside this script) finds mandatory units in the changed
 #                          paths, the `findings` block's `mandatory_units` field must list each with
-#                          `status: run`, `effort: max` where the floor says max. The floor comes
+#                          `status: run`, `effort: max` where the floor says max. An entry's optional
+#                          `repro:` must be reproduced, not-reproduced or skipped. The floor comes
 #                          from a structured file list only: the PR's API file list with a number,
 #                          else --files (NUL-separated) or --base/--head; --diff alone is exit 2.
 #                          The anchors read `gh pr diff --color=never`, or --diff. Run before
@@ -2033,8 +2034,8 @@ PY
 # (a quoted example counts, so quote it without that line); and a line inside the block that starts
 # with three backticks, which would close the fence early when it renders.
 #
-# Prints one JSON object: `entries` (each finding's id and its file, line, severity, status and
-# scenario fields, from the `findings:` list, plus the free-text fields claim, dimension,
+# Prints one JSON object: `entries` (each finding's id and its file, line, severity, status,
+# scenario and repro fields, from the `findings:` list (a field the entry does not write is absent), plus the free-text fields claim, dimension,
 # failure_scenario, scenario_text (the `scenario:` value decoded like the others, beside the
 # quote-stripped `scenario`), suggested_fix, owner_proposed and refusal that `export-sarif` reads; a
 # double-quoted free-text value is decoded as a JSON string), `counts` ({critical, warning, note} or
@@ -2117,7 +2118,7 @@ for ln in body:
             e = {"id": s.group(1).strip("\"'")}
             entries.append(e)
             continue
-        kv = re.match(r"\s{2,}(file|line|severity|status|scenario):\s*(.*?)\s*$", ln)
+        kv = re.match(r"\s{2,}(file|line|severity|status|scenario|repro):\s*(.*?)\s*$", ln)
         if kv and e is not None:
             e[kv.group(1)] = kv.group(2).strip("\"'")
             if kv.group(1) == "scenario":
@@ -2580,6 +2581,10 @@ entries = blk["entries"]
 problems = []
 for f in entries:
     fid = f["id"]
+    # `repro:` is optional evidence from repro-sandbox.sh; when written it is one of three words.
+    # It is checked before any skip below, so a not-applicable entry cannot carry another value.
+    if "repro" in f and f["repro"] not in ("reproduced", "not-reproduced", "skipped"):
+        problems.append("%s: repro `%s` is not one of reproduced, not-reproduced, skipped" % (fid, f["repro"]))
     path, line = f.get("file"), f.get("line")
     if (f.get("status") or "open") in ("not-applicable",):
         continue

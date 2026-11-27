@@ -123,6 +123,7 @@ All scripts live in each skill's `scripts/` folder.
 | `review-metrics.sh agreement R1 R2 …` | Compares k reports of one head and flags dimensions whose findings do not come back (reviewer only) |
 | `review-metrics.sh scorecard --since DATE` | Counts findings raised, verified, refused and left as debt per dimension and per model, from trusted markers (reviewer only) |
 | `review-metrics.sh suppress --since DATE` | Names the dimensions the trusted history mostly dismissed; with `--report FILE --floor BASE HEAD`, says which findings to show as suppressed NOTEs. Opt-in, read-only, fails open (reviewer only) |
+| `REVIEW_REPRO=1 repro-sandbox.sh --repo DIR --sha SHA --expect fail --expect-log TEXT -- CMD` | Runs a CRITICAL candidate's repro in a no-network sandbox and prints `repro: reproduced`, `not-reproduced` or `skipped`; refuses with exit 4 where no sandbox works (reviewer only, opt-in) |
 | `check-version.sh` | Prints a notice when a newer release exists. It never installs |
 | `update.sh --yes --version X` | Updates the installed skills after you say yes |
 
