@@ -29,8 +29,27 @@ cleanup_probes() {
   fi
   pkill -KILL -f "pr97probe-$$" 2>/dev/null
   pkill -KILL -f "^/bin/sleep $SLP\$" 2>/dev/null
+  kill_walker
   return 0
 }
+# The walker of the W2 row and the trapper of the W3 row print their process group to --log. ps cannot
+# read a sandboxed process's argv, so the rows and the cleanup find them by that group, never by their
+# command line (PR 97 W4).
+walk_pgid="" trap_pgid=""
+group_alive() {
+  [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -gt 1 ] || return 1
+  ps -axo pid=,ppid=,pgid=,comm= | awk -v g="$1" '$3 == g && /perl/ { n++ } END { exit n ? 0 : 1 }'
+}
+walker_alive() { group_alive "$walk_pgid"; }
+kill_group() {
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    group_alive "$1" || return 0
+    kill -KILL -- "-$1" 2>/dev/null
+    sleep 0.1
+  done
+}
+kill_walker() { kill_group "$walk_pgid"; kill_group "$trap_pgid"; }
 trap cleanup_probes EXIT
 PASS=0; FAIL=0; SKIP=0; ROWS=()
 row() { if [ "$2" = ok ]; then PASS=$((PASS+1)); ROWS+=("PASS | $1"); else FAIL=$((FAIL+1)); ROWS+=("FAIL | $1 (${3:-})"); fi; }
@@ -162,7 +181,7 @@ if [ "$prc" != 0 ]; then
   for n in reproduced not-reproduced clone-at-sha git-inside env network-local network-public write-outside \
            home-read python3-clt python3-path launchservices pasteboard keychain run-masked log-symlink log-fifo \
            expect-log-unchecked expect-log-checked sandbox-abort ulimit-kill timeout setsid-survivor rmbox-survivor \
-           fork-walker box-swap-decoy exit-137 nproc-cap \
+           fork-walker box-swap-decoy signal-trap exit-137 nproc-cap \
            no-interpolation argv-file-name exit-127 crash exit-n no-scratch-left; do
     skip "sandboxed row $n" "no sandbox on this host: $(head -n 1 "$W/probe")"
   done
@@ -321,20 +340,22 @@ EOF
     eval '! pgrep -f "^/bin/sleep $SLP\$" >/dev/null && [ $r = 3 ] && has "repro: skipped" "$W/out"'
   cleanup_probes
   # W2 (pass 2): a walker that forks every 20 ms and lets its parent exit, so each pid lives briefly.
-  # It stops by itself at an absolute deadline (per-process limits restart in each child); the tag
-  # in its argv lets the row see it and the cleanup end it.
+  # It prints its process group, which every later generation keeps, and stops by itself at an absolute
+  # deadline past the script's worst case (the clone, the 10 s wall, 5 s kill-after and two 15 s scans),
+  # so a walker the script missed is still there when the row looks (PR 97 W4).
   WALK="pr97walk-$$"
-  printf '/usr/bin/perl -MPOSIX -e '\''my ($end) = @ARGV; fork and exit; POSIX::setsid(); while (time < $end) { select(undef, undef, undef, 0.02); my $p = fork; exit 0 if $p; exit 1 unless defined $p }'\'' "%s" "%s"\nexit 1\n' \
-    "$(( $(date +%s) + 20 ))" "$WALK" >"$W/cmd-walk.sh"
-  timeout 90 env REVIEW_REPRO=1 "$R" --repo "$W/src" --timeout 10 --log "$W/log" \
+  printf '/usr/bin/perl -MPOSIX -e '\''my ($end) = @ARGV; fork and exit; POSIX::setsid(); $| = 1; print "walker-pgid=", getpgrp(), "\\n"; while (time < $end) { select(undef, undef, undef, 0.02); my $p = fork; exit 0 if $p; exit 1 unless defined $p }'\'' "%s" "%s"\nexit 1\n' \
+    "$(( $(date +%s) + 80 ))" "$WALK" >"$W/cmd-walk.sh"
+  timeout 120 env REVIEW_REPRO=1 "$R" --repo "$W/src" --timeout 10 --log "$W/log" \
     --sha "$FIX" --expect fail --cmd-file "$W/cmd-walk.sh" >"$W/out" 2>&1; r=$?
+  walk_pgid="$(sed -n 's/^walker-pgid=\([0-9][0-9]*\)$/\1/p' "$W/log" | head -n 1)"
+  # No group in the log is a failure: a row that cannot name the walker cannot say it is gone.
+  walk_named=0; [[ "$walk_pgid" =~ ^[0-9]+$ ]] && [ "$walk_pgid" -gt 1 ] && walk_named=1
   walk_seen=0
-  # pgrep -f misses a walker that lives only ~20 ms per pid (PR 97 N6); a ps snapshot of every command
-  # line sees it, so the row samples ps instead.
-  for _ in 1 2 3 4 5 6 7 8 9 10; do ps -axo command= | grep -F -- "$WALK" | grep -v -F 'grep -F' >/dev/null && walk_seen=1; sleep 0.1; done
-  check "W2: a walker forking every 20 ms does not outlive the script, and the result is skipped" \
-    eval '[ $walk_seen = 0 ] && [ $r = 3 ] && has "repro: skipped" "$W/out"'
-  for _ in 1 2 3 4 5 6 7 8 9 10; do pkill -KILL -f "$WALK" 2>/dev/null || break; done
+  for _ in 1 2 3 4 5 6 7 8 9 10; do walker_alive && walk_seen=1; sleep 0.1; done
+  check "W2: a walker forking every 20 ms does not outlive the script (group ${walk_pgid:-none}), and the result is skipped" \
+    eval '[ $walk_named = 1 ] && [ $walk_seen = 0 ] && [ $r = 3 ] && has "repro: skipped" "$W/out"'
+  kill_walker
   # C4: the repro replaces box with a symlink to a folder that a decoy process (started here, under its
   # own sandbox profile that may read that folder and not the scratch folder) can read. The script
   # must never kill the decoy, must not touch the folder, and must report skipped.
@@ -354,6 +375,31 @@ EOF
     kill -KILL "$DECOY" 2>/dev/null; pkill -KILL -f "^/bin/sleep $DSLP\$" 2>/dev/null; wait "$DECOY" 2>/dev/null
   else
     skip "C4: a box swapped for a symlink never gets a decoy process killed" "sandbox_check is macOS only, backend $BACKEND"
+  fi
+  # W3: with the reaper stopped and box replaced, the script itself sends no signal (header,
+  # report-contract.md, docs/REFERENCE.md); the survivor is the documented remaining limit. The repro
+  # stops every other process of its instance started after its shell (kill 0 reaches only the
+  # instance; the range skips older zombies, which kill 0 also reaches), that is the reaper, names each, then leaves a setsid survivor that traps every signal a handler can catch and prints
+  # its name. A trapped line is a signal the script sent itself (at 294cbdd: 19, SIGCONT on macOS,
+  # before box_ok). With the reaper stopped nothing kills the survivor, so the line always lands.
+  # The row then kills what the repro stopped and the survivor's group (PR 97 W3).
+  if [ "$BACKEND" = sandbox-exec ]; then
+    mkdir -p "$W/w3dir"
+    printf 'B="$(cd .. && pwd -P)"\n/usr/bin/perl -e '\''$| = 1; my $q = getppid(); for my $p ($q + 1 .. $q + 5000) { next if $p == $$; print "stopped-$p\\n" if kill(0, $p) && kill("STOP", $p) }'\''\n/usr/bin/perl -MPOSIX -e '\''my ($end) = @ARGV; fork and exit; POSIX::setsid(); $| = 1; for my $s (qw(CONT HUP INT QUIT TERM USR1 USR2 ALRM TSTP TTIN TTOU WINCH)) { $SIG{$s} = sub { print "trapped-$_[0]\\n" } } print "trapper-pgid=", getpgrp(), "\\n"; while (time < $end) { sleep 1 }'\'' "%s"\n/bin/sleep 1\ncd /; rm -rf "$B"; ln -s "%s" "$B"; echo "ln-rc=$?"; exit 1\n' \
+      "$(( $(date +%s) + 80 ))" "$W/w3dir" >"$W/cmd-trap.sh"
+    TOUT=10 sb --sha "$FIX" --expect fail --cmd-file "$W/cmd-trap.sh"; r=$?
+    trap_pgid="$(sed -n 's/^trapper-pgid=\([0-9][0-9]*\)$/\1/p' "$W/log" | head -n 1)"
+    trap_named=0; [[ "$trap_pgid" =~ ^[0-9]+$ ]] && [ "$trap_pgid" -gt 1 ] && trap_named=1
+    stopped="$(sed -n 's/^stopped-\([0-9][0-9]*\)$/\1/p' "$W/log" | tr '\n' ' ')"
+    sleep 0.5
+    check "W3: with the reaper stopped (${stopped:-none}) and box replaced, the survivor gets no signal from the script (group ${trap_pgid:-none}, $(grep -c '^trapped-' "$W/log") trapped), and the result is skipped" \
+      eval '[ $trap_named = 1 ] && [ -n "$stopped" ] && ! grep -q "^trapped-" "$W/log" && grep -q "^ln-rc=0$" "$W/log" && [ $r = 3 ] && has "repro: skipped" "$W/out"'
+    for p in $stopped; do
+      [ "$(ps -o comm= -p "$p" 2>/dev/null)" ] && ps -o comm= -p "$p" | grep -q perl && kill -KILL "$p" 2>/dev/null
+    done
+    kill_group "$trap_pgid"
+  else
+    skip "W3: with the reaper stopped and box replaced, the survivor gets no signal from the script" "the instance scan is macOS only, backend $BACKEND"
   fi
   # N5: a repro that SIGKILLs itself exits 137 like the timeout's KILL; the result says both.
   sb --sha "$FIX" --expect crash -- /bin/sh -c 'kill -KILL $$'; r=$?
