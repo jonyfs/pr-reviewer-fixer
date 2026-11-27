@@ -419,6 +419,115 @@ for check in \
   grep -qF "$phrase" "$ROOT/.agents/skills/$rel" \
     && echo "== $why" || { echo "== MISSING from $rel: $why"; fail=1; }
 done
+# 0.25.2 execution rules. Each dispatch call in the skills passes its model, its effort and its profile, and never
+# inherits; the fixers name a dispatch call; every file that holds a dispatch call or a brief names the read-only
+# probe profile; the probe brief keeps writes inside the scratchpad; the matrix date is not older than its sources.
+# The blocks are found, not listed: a fence whose first line starts with `Agent(` is a dispatch call, a fence whose
+# first line starts with `Probe brief` is a probe brief, and a fence whose first line starts with `You are` is a
+# dispatch brief. Floors keep a wrong path from passing with nothing read.
+if exec_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
+import os, re, sys, datetime
+root = sys.argv[1]
+profiles = ("read-only review", "read-only probe", "writer")
+calls, probes, briefs, bad = {}, 0, set(), []
+for d, _, fs in os.walk(root):
+    for name in sorted(fs):
+        if not name.endswith(".md"):
+            continue
+        path = os.path.join(d, name); rel = os.path.relpath(path, root)
+        text = open(path, encoding="utf-8").read(); lines = text.split("\n"); i = 0
+        while i < len(lines):
+            m = re.match(r"^\s*(`{3,})", lines[i])
+            if not m:
+                i += 1; continue
+            close = re.compile(r"^\s*`{%d,}\s*$" % len(m.group(1))); start = i + 1; i += 1; body = []
+            while i < len(lines) and not close.match(lines[i]):
+                body.append(lines[i]); i += 1
+            i += 1
+            first = next((t.strip() for t in body if t.strip()), ""); blk = "\n".join(body)
+            if first.startswith("Agent("):
+                calls[rel] = calls.get(rel, 0) + 1; briefs.add(rel)
+                mm = re.search(r"\bmodel:\s*([^,\n]+)", blk); ee = re.search(r"\beffort:\s*([^,\n]+)", blk)
+                pp = re.search(r"\bprofile:\s*([^,\n]+)", blk)
+                if not mm or "inherit" in mm.group(1):
+                    bad.append("%s:%d dispatch call without an explicit model" % (rel, start))
+                if not ee or "inherit" in ee.group(1):
+                    bad.append("%s:%d dispatch call without an explicit effort" % (rel, start))
+                if not pp or not any(p in pp.group(1) for p in profiles):
+                    bad.append("%s:%d dispatch call names no profile (%s)" % (rel, start, ", ".join(profiles)))
+            elif first.startswith("Probe brief"):
+                probes += 1; briefs.add(rel)
+                for need in ("Profile: read-only probe", "Write only inside <scratchpad>",
+                             "never in the repository"):
+                    if need not in blk:
+                        bad.append("%s:%d probe brief lacks %r" % (rel, start, need))
+            elif first.startswith("You are"):
+                briefs.add(rel)
+for rel in sorted(briefs):
+    if "read-only probe" not in open(os.path.join(root, rel), encoding="utf-8").read():
+        bad.append("%s holds a dispatch call or brief but does not name the read-only probe profile" % rel)
+for rel in ("pr-fixer/SKILL.md", "pr-merge-fixer/SKILL.md", "pr-reviewer/references/agents-and-dispatch.md"):
+    if not calls.get(rel):
+        bad.append("%s has no dispatch call (an Agent( fence with model, effort and profile)" % rel)
+if probes < 2:
+    bad.append("%d probe brief templates found, at least 2 expected (falsify-and-prove.md, agents-and-dispatch.md)" % probes)
+# The matrix date: the header's `Checked:` date is the newest date of its Sources lines, each of which carries its own
+# `(checked YYYY-MM-DD)`, and each execution-profiles.md repeats the header's date.
+mx = open(os.path.join(root, "pr-reviewer/references/harness-matrix.md"), encoding="utf-8").read()
+hd = re.search(r"^Checked: (\d{4}-\d{2}-\d{2})", mx, re.M)
+src = mx.split("\n## Sources", 1)[-1] if "\n## Sources" in mx else ""
+rows = [l for l in src.split("\n") if re.match(r"^\d+\. ", l)]
+dates = []
+for l in rows:
+    m = re.search(r"\(checked (\d{4}-\d{2}-\d{2})\)\s*$", l)
+    if not m:
+        bad.append("harness-matrix.md source without its own (checked YYYY-MM-DD): %s" % l[:60])
+    else:
+        dates.append(datetime.date.fromisoformat(m.group(1)))
+if len(rows) < 20:
+    bad.append("harness-matrix.md lists %d sources, at least 20 expected" % len(rows))
+if not hd:
+    bad.append("harness-matrix.md has no 'Checked: YYYY-MM-DD' header line")
+elif dates and datetime.date.fromisoformat(hd.group(1)) != max(dates):
+    bad.append("harness-matrix.md header date %s is not its newest source date %s" % (hd.group(1), max(dates)))
+for s in ("pr-reviewer", "pr-fixer", "pr-merge-fixer"):
+    ep = open(os.path.join(root, s, "references/execution-profiles.md"), encoding="utf-8").read()
+    m = re.search(r"checked on \*\*(\d{4}-\d{2}-\d{2})\*\*", ep)
+    if not hd or not m or m.group(1) != hd.group(1):
+        bad.append("%s/references/execution-profiles.md does not repeat the matrix date (%s)" % (s, m.group(1) if m else "none"))
+print("%d dispatch calls, %d probe briefs, %d files with briefs, matrix %s" % (
+    sum(calls.values()), probes, len(briefs), hd.group(1) if hd else "undated"))
+for b in bad:
+    print(b)
+sys.exit(1 if bad else 0)
+PY
+)"; then
+  echo "== dispatch calls pass model, effort and profile; probe profile named; matrix date current ($(printf '%s\n' "$exec_out" | head -n 1))"
+else
+  echo "== dispatch, probe profile or matrix date rule broken:"; printf '%s\n' "$exec_out" | sed 's/^/   /'; fail=1
+fi
+# 0.25.2 profile rows and wording: each must stay in its file.
+for check in \
+  "pr-reviewer/references/execution-profiles.md|| Fixer and merge fixer on security-sensitive files | none | deep |the reviewer's profile names the security-sensitive fixer row at deep" \
+  "pr-fixer/references/execution-profiles.md|| Any lane on a security-sensitive file | deep, never lowered |the fixer runs security-sensitive files at deep" \
+  "pr-merge-fixer/references/execution-profiles.md|| Security-sensitive file | deep |the merge fixer classifies security-sensitive files at deep" \
+  "pr-merge-fixer/references/execution-profiles.md|Posture rules 3 and 8 still hold|the deep row does not loosen the merge fixer's escalation" \
+  "pr-fixer/SKILL.md|Pass \`model\` and \`effort\` on every dispatch call, never inherit|the fixer passes model and effort explicitly" \
+  "pr-merge-fixer/SKILL.md|Pass \`model\` and \`effort\` on every dispatch call, never inherit|the merge fixer passes model and effort explicitly" \
+  "pr-reviewer/references/execution-profiles.md|## Read-only probe profile|the reviewer's profile defines the read-only probe profile" \
+  "pr-fixer/references/execution-profiles.md|## Read-only probe profile|the fixer's profile defines the read-only probe profile" \
+  "pr-reviewer/references/execution-profiles.md|## Orchestrator tier|the reviewer's profile states the orchestrator's floor" \
+  "pr-reviewer/SKILL.md|If the session model is below the \`standard\` tier|the start line says when the session model is below standard" \
+  "pr-reviewer/references/progress-and-notifications.md|Orchestrator below standard:|the start line template names the orchestrator substitution" \
+  "pr-reviewer/references/pr-protocol.md|https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax|the alert and emoji rule cites GitHub's syntax page" \
+  "pr-reviewer/references/pr-protocol.md|https://docs.github.com/en/communities/moderating-comments-and-conversations/managing-disruptive-comments|the hide rule cites GitHub's moderation page" \
+  "pr-reviewer/references/pr-protocol.md|https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-checks|the check-run decision cites GitHub's checks guide" \
+  "pr-reviewer/references/pr-protocol.md|https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api|the serial-posting rule cites GitHub's REST practices" \
+  "pr-reviewer/references/pr-protocol.md|https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api|the serial-posting rule cites GitHub's content limits"; do
+  rel="${check%%|*}"; rest="${check#*|}"; phrase="${rest%|*}"; why="${rest##*|}"
+  grep -qF -- "$phrase" "$ROOT/.agents/skills/$rel" \
+    && echo "== $why" || { echo "== MISSING from $rel: $why"; fail=1; }
+done
 # One version for both skills: VERSION, each SKILL.md metadata.version and the newest CHANGELOG entry.
 v_root="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 v_rev="$("$ROOT/.agents/skills/pr-reviewer/scripts/check-version.sh" --installed)"
