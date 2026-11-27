@@ -31,11 +31,12 @@ Each unit gets one score per row. The highest score wins.
 | Class is 🧠 semantic, or hunks touch the same lines | deep |
 | The base commit that touched the file says why it changed (a fix, a contract change) | deep |
 | The file is in a test folder only, and the hunks add cases | fast |
+| The file is security-sensitive ([execution-profiles.md](execution-profiles.md): what `path-floor.sh` gives security at `max`, and the scripts that handle signals, sandboxes, the gate, push guards or tokens) | deep, and it escalates unless a person allowed its class with `PUSH_GUARD_ALLOW_SENSITIVE`. No other row lowers it, the test-folder row included |
 | The unit has failed verification once | one tier up, at most once |
 | The unit has failed verification twice | escalate |
 
 Effort follows the tier: deep is `high`, standard `medium`, fast `low`. A unit that is only a test
-file never goes deep.
+file never goes deep, unless it is security-sensitive.
 
 ## 3. Write the choice down
 

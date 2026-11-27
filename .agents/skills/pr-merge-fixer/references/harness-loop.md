@@ -145,7 +145,15 @@ its finish line, and not while a sub-agent is running. A dispatched reviewer or 
 Version Notice in its own `SKILL.md`: it never runs the check, never asks the person and never
 updates, so the reviewer still writes nothing in the working tree. Every dispatch brief says so in
 one clause, "You were dispatched by the review loop agent: skip the Version Notice.", the
-debt-only one in step 6 included. For a project-scope install the
+debt-only one in step 6 included.
+
+Every dispatch of a skill passes `model`, `effort` and a profile on the call, never inherited from
+the session: the reviewer under `read-only review`, the fixer and the merge fixer under `writer`,
+each at least at the `standard` setting (the orchestrator floor), and the fixer and the merge fixer
+at `deep` when `path-floor.sh` printed a security line at `max` or the pull request touches a
+security-sensitive script. A sub-agent that only runs a probe gets the `read-only probe` profile and
+writes only inside the scratchpad path its brief names, never in the repository. Values and the
+file list: `execution-profiles.md` of each skill. For a project-scope install the
 skill folders sit inside the repository's working tree, so an update there is a change to files
 outside the pull request; the person says yes to it knowingly or does not.
 

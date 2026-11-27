@@ -67,6 +67,40 @@ breaks when the branch is deleted after merge; a commit permalink never does, an
 as the comment's `sha=`. A relative link is fine only in a file of the repository, where GitHub resolves
 it against that file.
 
+GitHub practices, each checked on 2026-11-27 against the page named on its line, and what the
+protocol takes from it. The protocol blocks above stay exact; none of these changes a marker.
+
+- Alerts (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` on a quoted line). GitHub:
+  use one only when it is crucial, one or two per page, never two in a row, and never nested in
+  another element. Adopted for the pull request description only: at most one alert, outside the
+  debt block, never inside a `<detail[s]>` block or any other element, and never in place of the
+  label or the verdict. Not in comments: an alert is a quote, which the comment rules forbid.
+  Source: https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax
+- Status emoji. GitHub renders a `:shortcode:` between colons as an emoji (same page). Adopted as a
+  rule: an agent comment carries no emoji shortcode either (`:warning:`, `:x:`,
+  `:white_check_mark:`); the state is written with the legend's words.
+  Source: https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax
+- Hiding (minimizing) outdated comments. GitHub: anyone with write access may hide a pull request
+  comment that is outdated, resolved or off-topic, and anyone with read access can still expand it.
+  Adopted: hiding is a person's moderation act, so an agent never hides a comment. A verdict, a
+  closure or an extension answer is history the scripts read, and the status comment is edited in
+  place, so no agent comment is left behind to hide. A hidden comment is still read:
+  `scan-hidden.py` scans minimized comments too.
+  Source: https://docs.github.com/en/communities/moderating-comments-and-conversations/managing-disruptive-comments
+- Check-run summaries and annotations. GitHub: a check run carries a Markdown summary and
+  line annotations, and only a GitHub App can write one. Declined: the skills act through the
+  person's own `gh` login, not an App, so the status lives in the label, the required gate check
+  (`review-gate.yml`, which runs no model) and the one status comment, and no annotation is written.
+  Source: https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-checks
+- Posting as an automated client. GitHub: make write requests one after another, not at once, and
+  wait at least a second between them; in general no more than 80 content-generating requests a
+  minute and 500 an hour, web actions included. Adopted: an agent posts its comments and thread
+  replies one at a time, at least one second apart, and on a 403 or 429 secondary
+  rate limit waits for `retry-after` or `x-ratelimit-reset` before one retry, then stops and says
+  so. The comment budget keeps a run far below those limits.
+  Sources: https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api
+  and https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
+
 Summary shape, the same in all three skills: a title line with the outcome in six words or fewer,
 then labelled lines whose last is `Next:`, then the detail. The reviewer's template is in its
 `report-contract.md` ("Summary standard"); the fixer's and the merge fixer's are in their closure

@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: "0.24.1"
+  version: "0.25.2"
 ---
 
 # PR Fixer
@@ -46,6 +46,22 @@ runs first when a branch conflicts); opening a pull request; architecture delibe
 | Model, effort | Per lane, from [references/execution-profiles.md](references/execution-profiles.md), passed on the dispatch call | A deep lane on a cheap tier fails silently |
 | Tools | Read, Edit, Write, Grep, Glob, Bash | It must measure against the running system, not only edit |
 | Concurrency | One writing lane at a time per branch | Two writers collide; a history rewrite invalidates work built on the old history |
+
+Pass `model` and `effort` on every dispatch call, never inherit, with the lane's profile: `writer`
+for a lane that edits, `read-only probe` for one that only runs code to answer a question (it
+writes only inside the scratchpad path in its brief, never in the repository). A lane that writes a
+security-sensitive file (the scripts that handle signals, sandboxes, the gate, push guards or
+tokens, and every path `path-floor.sh` gives security at `max`) runs at `deep` for the whole lane.
+Values and the file list: [references/execution-profiles.md](references/execution-profiles.md).
+
+```text
+Agent(
+  description: "<lane> for PR #<n>",
+  model: <alias from execution-profiles.md>, effort: <from execution-profiles.md>,
+  profile: writer | read-only probe,
+  prompt: <the lane's brief; a probe uses the Probe brief in falsify-and-prove.md>
+)
+```
 
 ## Posture Rules (load [references/posture-and-config.md](references/posture-and-config.md))
 
