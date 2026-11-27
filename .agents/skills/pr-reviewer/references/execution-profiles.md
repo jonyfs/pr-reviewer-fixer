@@ -95,8 +95,9 @@ probe profile closes that gap without giving the probe write access to the check
 
 On Claude Code and on the other harnesses without a path-scoped write rule, the limit to the
 scratchpad is set by the brief, the working directory and the environment, not by the tool list:
-say so in the report. Codex `workspace-write` with the scratchpad as the workspace is the one
-structural form listed in [harness-matrix.md](harness-matrix.md). The brief template is in
+say so in the report. Codex `workspace-write` started with the scratchpad as its workspace would
+make the limit structural ([harness-matrix.md](harness-matrix.md) lists the sandbox modes); that
+use is not tested here. The brief template is in
 [agents-and-dispatch.md](agents-and-dispatch.md) ("Probe brief").
 
 ## Orchestrator tier
