@@ -23,7 +23,7 @@ Merge conflicts that the agents can resolve must not reach that person at all.
 | Constraint | Why it limits the design |
 |---|---|
 | `pr-json.py`, `review-cycle.sh findings-block` and the filters read markers at the start of a comment, and the findings block must be the last fenced block | Banners and emoji go after the marker line, never before it. Nothing is wrapped around the findings block |
-| `scan-hidden.py` reports `<details>`, HTML comments other than the markers and runs of variation selectors in PR comments, and a hit is a candidate CRITICAL | No `<details>` in any agent comment. No emoji that carry U+FE0F (`⚠️`, `✔️`, `ℹ️`). Use `🔴 🟡 🔵 ✅ ⛔ 🔧 🤖 🧭` instead, which carry no selector |
+| `scan-hidden.py` reports `<detail[s]>`, HTML comments other than the markers and runs of variation selectors in PR comments, and a hit is a candidate CRITICAL | No `<detail[s]>` in any agent comment. No emoji that carry U+FE0F (`⚠️`, `✔️`, `ℹ️`). Use `🔴 🟡 🔵 ✅ ⛔ 🔧 🤖 🧭` instead, which carry no selector |
 | GitHub rejects a comment over 65536 characters; `publish` refuses a marker plus report over 60000 bytes | Tables are cheap in bytes. Long prose still moves to an overflow comment |
 | Each skill installs alone, so shared scripts and shared references are copies | The merge fixer gets its own copies; `run-all.sh` checks every copy |
 | Skills never call each other; they talk through the pull request | The merge fixer is dispatched by the review loop agent, not by `pr-fixer`. Its artifacts are a closure comment and a label-free marker |
@@ -38,7 +38,7 @@ Merge conflicts that the agents can resolve must not reach that person at all.
 | 1 | Banner under the marker: `🤖 Written by pr-reviewer · pass N · head sha`, so a reader knows who wrote the report | `report-contract.md`, `SKILL.md` Output |
 | 2 | Summary table at the top: verdict, counts, blocking count, head, next action | `report-contract.md` |
 | 3 | Acceptance conditions as checkboxes (`- [ ]` open, `- [x]` met), never rewritten | `report-contract.md` |
-| 4 | Findings as tables per severity (id, location, dimension, claim), with the detail as short sections below. No `<details>` | `report-contract.md` |
+| 4 | Findings as tables per severity (id, location, dimension, claim), with the detail as short sections below. No `<detail[s]>` | `report-contract.md` |
 | 5 | A "How to read this review" block of three bullets for the human who reviews after the agent | `report-contract.md` |
 | 6 | Mermaid pass-history chart in the verdict comment, placed before the findings block | `report-contract.md` |
 | 7 | One emoji legend (`🔴 CRITICAL`, `🟡 WARNING`, `🔵 NOTE`, `✅ PASSED`, `⛔ BLOCKED`), defined once, with no selector characters | `pr-protocol.md`, `report-contract.md` |
@@ -63,7 +63,7 @@ Merge conflicts that the agents can resolve must not reach that person at all.
 |---|---|---|
 | 17 | Status comment as a small table (state, skill, pass or cycle, head, agents and tiers) | `progress-and-notifications.md` |
 | 18 | Fixed order for every agent comment: marker, banner, summary, detail, next action | `pr-protocol.md` |
-| 19 | Scanner-safe formatting rule written down: no `<details>`, no FE0F symbols, no HTML comments besides markers | `pr-protocol.md`, `AGENTS.md` |
+| 19 | Scanner-safe formatting rule written down: no `<detail[s]>`, no FE0F symbols, no HTML comments besides markers | `pr-protocol.md`, `AGENTS.md` |
 | 20 | Mermaid used where it adds a picture (cycle state, merge plan), never for a list a table already shows | `report-contract.md`, `falsify-and-prove.md` |
 
 ### Merge handling (new `pr-merge-fixer`)

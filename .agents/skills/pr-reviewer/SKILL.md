@@ -235,7 +235,7 @@ the fenced `findings` block are the only exceptions. In this order (layout and t
    first;
 9. the fenced machine-readable `findings` block, last, for `pr-fixer` and `pr-merge-fixer`.
 
-Nothing is wrapped in `<details>`, and no comment carries an emoji with a variation selector: the
+Nothing is wrapped in `<detail[s]>`, and no comment carries an emoji with a variation selector: the
 scanner reads both as hidden text.
 
 ## Key Checks Before Publishing
@@ -287,7 +287,7 @@ scanner reads both as hidden text.
 - `scripts/pr-json.py` the one way the scripts read a pull request (drops edited comments, fails closed)
 - `scripts/scan-hidden.py` read-only: reports invisible text (zero-width, bidi, tag and filler
   characters, variation-selector runs, HTML comments other than the markers, link references that
-  hide text, `<details>`, invisible HTML) in
+  hide text, `<detail[s]>`, invisible HTML) in
   the diff, the pull request text and the commit messages (needs `git`, `python3`)
 - `scripts/review-metrics.sh` read-only, runs no model: `agreement` compares k reports of one head
   (overlap of finding fingerprints, unstable dimensions), `scorecard` counts findings, verified,
