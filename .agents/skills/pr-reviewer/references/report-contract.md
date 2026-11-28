@@ -353,16 +353,20 @@ its reason, and the choices `continue N` or `stop`.
 The answer is one comment with its marker as the first line ([pr-protocol.md](pr-protocol.md)),
 written by `review-cycle.sh`:
 
-```
+```markdown
 <!-[-] pr-skill-extension: state=granted cycle=5 n=2 -->
-pr-skill: 2 more review-fix cycles granted on #7 after cycle 5.
+> [!NOTE]
+> ✅ **pr-skill granted 2 more review-fix cycles on #7** after cycle 5
 ```
 
 or, on `stop`, no answer, or the ceiling:
 
-```
+```markdown
 <!-[-] pr-skill-extension: state=halted reason=stop -->
-pr-skill: halted on #7 (reason: stop). The pull request stays review:blocked and a person decides.
+> [!CAUTION]
+> ⛔ **pr-skill halted on #7** (reason: stop)
+
+The pull request stays `review:blocked` with `review:needs-human`, and a person decides.
 ```
 
 `reason=ceiling` says the hard ceiling was reached and comes with no question. A halt also adds

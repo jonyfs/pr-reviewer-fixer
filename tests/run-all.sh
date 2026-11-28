@@ -334,10 +334,11 @@ if ! rich_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
 import os, re, sys
 LEGEND = set("🤖🔧🔀🔴🟡🔵✅⛔❌⏳🚫🔶⚪📖🎯🧭🔁📈🧾📁")
 markers = ("<!-[-] adversarial-review:", "<!-[-] pr-fixer-closure:", "<!-[-] pr-merge-fixer-closure:",
-           "<!-[-] pr-skill-status:")
+           "<!-[-] pr-skill-status:", "<!-[-] pr-skill-extension:")
 kind_of = {"<!-[-] adversarial-review:": "verdict", "<!-[-] pr-fixer-closure:": "fixer",
-           "<!-[-] pr-merge-fixer-closure:": "merge", "<!-[-] pr-skill-status:": "status"}
-alerts_need = {"verdict": 1, "fixer": 1, "merge": 1, "status": 0}
+           "<!-[-] pr-merge-fixer-closure:": "merge", "<!-[-] pr-skill-status:": "status",
+           "<!-[-] pr-skill-extension:": "extension"}
+alerts_need = {"verdict": 1, "fixer": 1, "merge": 1, "status": 0, "extension": 1}
 last_fence = {"verdict": "findings", "fixer": "proofs"}
 EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿⬀-⯿⏩-⏺←-⇿⌀-⏿■-◿]")
 HTML = re.compile(r"</?(details|summary|div|span|p|br|img|a|script|style|table|thead|tbody|tr|td|th|input|font|sub|sup|kbd|b|i|u|s|center|hr|blockquote|iframe|svg|picture|video|abbr|ins|del|mark|dl|dt|dd|ul|ol|li|h[1-6])\b", re.I)
@@ -370,7 +371,7 @@ for d, _, fs in os.walk(sys.argv[1]):
             kind = kind_of[next(k for k in markers if first.startswith(k))]
             found += 1; seen_kinds.add(kind)
             where = "%s:%d (%s)" % (path, nonblank[0][0], kind)
-            if not re.match(r"^[^\s*]+ \*\*Written by pr-[a-z-]+\*\*", nonblank[1][1].strip()):
+            if kind != "extension" and not re.match(r"^[^\s*]+ \*\*Written by pr-[a-z-]+\*\*", nonblank[1][1].strip()):
                 bad.append("%s: the second line is not the banner `<emoji> **Written by pr-...**`" % where)
             fences, inner, alert_n, tables, fence_lang = [], None, 0, [], None
             tbl = None
@@ -442,7 +443,7 @@ for d, _, fs in os.walk(sys.argv[1]):
                     if not re.search(r"^%s (closed|refused|escalated|open):" % fid, text, re.M):
                         bad.append("%s: %s has no `%s closed|refused|escalated|open:` line at the left edge" % (where, fid, fid))
 print(found)
-for k in ("verdict", "fixer", "merge", "status"):
+for k in ("verdict", "fixer", "merge", "status", "extension"):
     if k not in seen_kinds:
         bad.append("no %s template found" % k)
 if proofs_seen < 1:

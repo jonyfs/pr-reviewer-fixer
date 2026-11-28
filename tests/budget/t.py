@@ -128,6 +128,8 @@ p = run(["extend", "7", "--n", "2"], d)
 posted = comments_posted(d)
 check("extend --n 2 at cycle 5 posts a granted marker", p.returncode == 0 and "<!-- pr-skill-extension: state=granted cycle=5 n=2 -->" in posted[-1], p.stderr)
 p2 = run(["budget", "7"], d, MAX_REVIEW_CYCLES="5", MAX_REVIEW_CYCLES_HARD="10")
+check("the granted comment is an alert that names the number, the cycles and the cycle it follows",
+      posted[-1].split("\n")[1:3] == ["> [!NOTE]", "> \u2705 **pr-skill granted 2 more review-fix cycles on #7** after cycle 5"], posted[-1])
 check("budget honours the marker extend posted", "B_NEXT=fix" in p2.stdout and "B_ALLOWED=7" in p2.stdout, p2.stdout)
 
 d = setup(hist([3, 3, 2, 2, 2, 2]), labels=("review:blocked", "review:needs-human"))
@@ -152,6 +154,10 @@ pr = json.load(open(os.path.join(d, "pr.json")))
 check("halt --reason stop adds the label and posts the halted marker",
       p.returncode == 0 and "review:needs-human" in " ".join(l["name"] for l in pr["labels"])
       and "<!-- pr-skill-extension: state=halted reason=stop -->" in pr["comments"][-1]["body"], p.stderr)
+hb = pr["comments"][-1]["body"].split("\n")
+check("the halt comment is a CAUTION alert that names the number and the label a person reads",
+      hb[1:3] == ["> [!CAUTION]", "> \u26d4 **pr-skill halted on #7** (reason: stop)"]
+      and "`review:blocked`" in pr["comments"][-1]["body"] and "`review:needs-human`" in pr["comments"][-1]["body"], pr["comments"][-1]["body"])
 
 d = budget(hist([1] * 6) + [G(5, 5)], authors="")
 check("allowlist unset: budget answers none and trusts nothing", d.get("next") == "none" and "REVIEW_MARKER_AUTHORS" in d.get("why", ""), str(d))
