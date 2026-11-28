@@ -1,0 +1,14 @@
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,11 @@
++.PHONY: build deploy
++IMAGE ?= registry.example.com/edge/gateway
++TAG ?= $(shell git rev-parse --short HEAD)
++
++build:
++	docker build -t $(IMAGE):$(TAG) .
++	docker push $(IMAGE):$(TAG)
++
++deploy: build
++	kubectl -n edge set image deploy/gateway gateway=$(IMAGE):$(TAG)
++	kubectl -n edge rollout status deploy/gateway --timeout=120s || (kubectl -n edge rollout undo deploy/gateway; exit 1)

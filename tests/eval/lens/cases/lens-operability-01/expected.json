@@ -1,0 +1,14 @@
+{
+ "description": "Dockerfile floating latest tag: Dockerfile base image uses the floating latest tag so builds are not reproducible and a rebuild can pull a breaking major version.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "Dockerfile",
+   "line": 3,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "Dockerfile base image uses the floating latest tag so builds are not reproducible and a rebuild can pull a breaking major version."
+  }
+ ],
+ "decoys": []
+}

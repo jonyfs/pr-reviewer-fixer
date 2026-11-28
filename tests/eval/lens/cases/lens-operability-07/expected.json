@@ -1,0 +1,14 @@
+{
+ "description": "systemd secret in unit file: A database password is written into the unit file (readable, in version control); CRITICAL because it exposes a secret at deploy time.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "deploy/ledger.service",
+   "line": 11,
+   "tolerance": 2,
+   "min_severity": "CRITICAL",
+   "note": "A database password is written into the unit file (readable, in version control); CRITICAL because it exposes a secret at deploy time."
+  }
+ ],
+ "decoys": []
+}

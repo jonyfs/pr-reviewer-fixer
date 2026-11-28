@@ -1,0 +1,14 @@
+{
+  "description": "The backup writes the contacts unencrypted into a world-readable shared folder.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "Sources/Backup/ContactBackup.swift",
+      "line": 11,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "contacts written as plain JSON to /Users/Shared without encryption or file protection"
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,5 @@
+{
+ "description": "Clean version of 'Makefile deploy with no rollout check' case with the defect fixed.",
+ "defects": [],
+ "decoys": []
+}

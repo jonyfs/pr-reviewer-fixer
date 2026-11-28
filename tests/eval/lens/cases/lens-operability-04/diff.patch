@@ -1,0 +1,20 @@
+--- /dev/null
++++ b/infra/database.tf
+@@ -0,0 +1,17 @@
++resource "aws_db_instance" "billing" {
++  identifier             = "billing-primary"
++  engine                 = "postgres"
++  engine_version         = "15.5"
++  instance_class         = "db.r6g.large"
++  allocated_storage      = 200
++  storage_encrypted      = true
++  multi_az               = true
++  username               = "billing_admin"
++  manage_master_user_password = true
++  db_subnet_group_name   = aws_db_subnet_group.billing.name
++  vpc_security_group_ids = [aws_security_group.billing_db.id]
++  backup_retention_period = 14
++  deletion_protection    = false
++  skip_final_snapshot    = false
++  final_snapshot_identifier = "billing-primary-final"
++}

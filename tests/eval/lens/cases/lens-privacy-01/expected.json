@@ -1,0 +1,14 @@
+{
+  "description": "Signup collects the date of birth, which no feature uses (data minimisation).",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/accounts/signup.py",
+      "line": 18,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "date_of_birth is collected and stored although nothing in the feature needs it"
+    }
+  ],
+  "decoys": []
+}

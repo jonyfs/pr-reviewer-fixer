@@ -1,0 +1,1 @@
+Adds a compose file to run the uploader worker.

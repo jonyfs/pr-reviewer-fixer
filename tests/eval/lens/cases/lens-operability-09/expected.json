@@ -1,0 +1,14 @@
+{
+ "description": "Ansible serial 100 percent: The play updates all hosts at once (serial 100%), so a bad release takes the whole fleet down with no healthy hosts left.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "ansible/deploy-app.yml",
+   "line": 4,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "The play updates all hosts at once (serial 100%), so a bad release takes the whole fleet down with no healthy hosts left."
+  }
+ ],
+ "decoys": []
+}

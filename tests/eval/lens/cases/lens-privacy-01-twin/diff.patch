@@ -1,0 +1,26 @@
+diff --git a/src/accounts/signup.py b/src/accounts/signup.py
+new file mode 100644
+--- /dev/null
++++ b/src/accounts/signup.py
+@@ -0,0 +1,21 @@
++from dataclasses import dataclass
++from datetime import date
++
++from .store import save_account
++
++
++@dataclass
++class SignupForm:
++    email: str
++    display_name: str
++    date_of_birth: date | None = None
++
++
++def register(form: SignupForm) -> dict:
++    account = {
++        "email": form.email.strip().lower(),
++        "display_name": form.display_name.strip(),
++        "locale": "en",
++    }
++    save_account(account)
++    return {"ok": True, "email": account["email"]}

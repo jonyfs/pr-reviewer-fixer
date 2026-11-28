@@ -1,0 +1,1 @@
+Adds a backup of the local contacts so they survive a reinstall.

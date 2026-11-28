@@ -1,0 +1,14 @@
+{
+ "description": "Terraform DB deletion protection off: Deletion protection is disabled on the production database, so a stray destroy or plan change can delete it; CRITICAL because it can cause data loss in production.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "infra/database.tf",
+   "line": 14,
+   "tolerance": 2,
+   "min_severity": "CRITICAL",
+   "note": "Deletion protection is disabled on the production database, so a stray destroy or plan change can delete it; CRITICAL because it can cause data loss in production."
+  }
+ ],
+ "decoys": []
+}

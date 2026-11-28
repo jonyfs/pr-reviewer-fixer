@@ -1,0 +1,24 @@
+diff --git a/src/Profiles/ProfileCache.cs b/src/Profiles/ProfileCache.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Profiles/ProfileCache.cs
+@@ -0,0 +1,19 @@
++using System;
++using Microsoft.Extensions.Caching.Memory;
++
++namespace Example.Profiles;
++
++public class ProfileCache
++{
++    private readonly IMemoryCache _cache;
++    public ProfileCache(IMemoryCache cache) => _cache = cache;
++
++    public void Put(Profile profile)
++    {
++        _cache.Set($"profile:{profile.Id}", profile);
++    }
++
++    public Profile? Get(string id) => _cache.TryGetValue($"profile:{id}", out Profile? p) ? p : null;
++}
++
++public record Profile(string Id, string Email, string Phone, string Address);

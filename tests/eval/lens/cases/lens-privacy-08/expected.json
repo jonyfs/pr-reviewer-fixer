@@ -1,0 +1,14 @@
+{
+  "description": "The export endpoint loads the user by an id from the request with no check that the requester owns it.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "app/Http/Controllers/DataExportController.php",
+      "line": 12,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "user_id comes from the request and no ownership check; any caller can download another person's data"
+    }
+  ],
+  "decoys": []
+}

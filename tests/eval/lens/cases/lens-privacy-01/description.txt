@@ -1,0 +1,1 @@
+Adds the signup endpoint that creates an account from the registration form.

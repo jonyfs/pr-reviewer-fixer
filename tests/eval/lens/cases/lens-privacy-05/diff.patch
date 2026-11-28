@@ -1,0 +1,22 @@
+diff --git a/src/main/java/com/example/events/PageViewEvent.java b/src/main/java/com/example/events/PageViewEvent.java
+new file mode 100644
+--- /dev/null
++++ b/src/main/java/com/example/events/PageViewEvent.java
+@@ -0,0 +1,17 @@
++package com.example.events;
++
++import java.util.HashMap;
++import java.util.Map;
++
++public final class PageViewEvent {
++    public static Map<String, Object> build(String path, String sessionId, String ip, Geo geo) {
++        Map<String, Object> event = new HashMap<>();
++        event.put("type", "page_view");
++        event.put("path", path);
++        event.put("session", sessionId);
++        event.put("ip", ip);
++        return event;
++    }
++
++    public interface Geo { String region(String ip); }
++}
