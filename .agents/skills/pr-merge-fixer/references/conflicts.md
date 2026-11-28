@@ -53,7 +53,7 @@ file is allowed only for the classes that say so (generated, vendored).
 3. `bash -p scripts/push-guard.sh <pr> --allow <file>...` for every resolved file. Push only on exit 0
    with the `push-guard: ok.` line, after re-checking the remote head (`bash -p` keeps shell options in
    the environment from reaching the guard; `SHELLOPTS=noexec` alone gives exit 0 with no check run).
-4. `scripts/review-cycle.sh stale`, then the closure comment, plain text with one line per file
+4. `scripts/review-cycle.sh stale`, then the closure comment, an alert, a summary table and one table row per file
    ([SKILL.md](../SKILL.md)). The reviewer's next pass is owed: the head moved, and a merge can change
    behaviour even when each hunk looked mechanical. Its "Hunks for the reviewer's focus" line lists
    where the reviewer should look first.

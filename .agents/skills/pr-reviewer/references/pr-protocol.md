@@ -19,7 +19,7 @@ and check with `cmp`.
 | Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-[-] adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> [model=<id> tier=fast\|standard\|deep] [block_at=warning] -->`, then the report, ending with the fenced `findings` block | `scripts/pr-json.py <n>` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
 | Inline review comments | `pr-reviewer`, only in a run a person invoked | `pr-fixer` comment lane | Body starts with the finding id in brackets: `[C1] <claim>` | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed by a thread reply, then resolved. The automatic run posts none |
 | Fixer closure comment | `pr-fixer`, once per cycle, as its finish message, after `review-cycle.sh screen` passes it | `pr-reviewer` pass c+1 (Understand the change) | `<!-[-] pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `scripts/pr-json.py <n>` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
-| Merge closure comment | `pr-merge-fixer`, once per merge run, after `review-cycle.sh screen` passes it | `pr-reviewer` pass P+1 (focus hunks), people | `<!-[-] pr-merge-fixer-closure: head=<sha12> resolved=<n> escalated=<n> -->`, then the banner, the summary lines and one line per file | Filter F7 | One per merge run. Never edited after posting. A merge push always owes the next review pass |
+| Merge closure comment | `pr-merge-fixer`, once per merge run, after `review-cycle.sh screen` passes it | `pr-reviewer` pass P+1 (focus hunks), people | `<!-[-] pr-merge-fixer-closure: head=<sha12> resolved=<n> escalated=<n> -->`, then the banner, the alert, the summary table and one table row per file | Filter F7 | One per merge run. Never edited after posting. A merge push always owes the next review pass |
 | Debt block | `pr-fixer` (Declare debt), after `review-cycle.sh screen` passes the new body | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-[-] pr-debt:start -->` and `<!-[-] pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
 | Thread replies | `pr-fixer` comment lane | The comment's author, `pr-reviewer` pass 2+ | `Closed in <sha7> (C1)`, and the thread resolved only when the reviewer's login or a trusted bot opened it; or `Declined (C1): <reason>` or `Escalated (C1): <what the person must decide>` and the thread left open | `scripts/fetch-feedback.py <n>` (pr-fixer) | A loop-owned thread is resolved on reply. A person's thread, and a decline, stay open for its author |
 | Status comment | The skill run that is in progress | People watching the PR | `<!-[-] pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
@@ -42,8 +42,8 @@ the scripts read them. Between them every comment follows one order, so a reader
    and the time, separated by ` · `;
 3. the alert (one per comment, see the legend) and the summary table: `Verdict` or `Result`, `Counts`,
    `Head`, and `Next` last, one row each;
-4. the detail, one `###` heading per section, each with its emoji: finding and coverage tables, task
-   lists for acceptance conditions and fixer checkpoints, a table per merged file;
+4. the detail, one `###` heading per section, each with its emoji: tables for findings, coverage,
+   fixer checkpoints and merged files, and a task list for acceptance conditions and status steps;
 5. the last fenced block, when the comment has one.
 
 An agent comment may hold headings, tables, bold, bullet and task lists, inline code, absolute links,
@@ -75,15 +75,21 @@ without the `@`, so it notifies nobody.
 Lines the scripts read, so keep them exactly as written. `Review mode: separate agents.` or
 `Review mode: single session.` alone on a line, and the words `Declined to judge:` (`lint-report`).
 `C1 closed:`, `C1 refused:`, `C1 escalated:` and `C1 open:`, each at the left edge of its line and in
-plain text, one per finding in a fixer closure (`fix-ledger.sh` counts them). The marker and the last
-fenced block are the first and the last block of the comment.
+plain text, one per finding in a fixer closure (`fix-ledger.sh` counts them). The `findings` block is
+opened by a line that is exactly ```` ```findings ```` and closed by a line that is exactly ```` ``` ````,
+which is the last non-blank line of the comment, and no other line is exactly ```` ```findings ````
+(`findings-block` refuses the report otherwise). A fixer closure has exactly one ```` ```proofs ````
+block and its first line is the marker (`proof-check.sh`).
 
-Formatting that the scripts and the scanner reject, so never write it into an agent comment:
-`details` blocks, HTML comments other than the protocol's markers, invisible HTML, an emoji
-shortcode (`:x:`), an emoji outside the legend above, and an emoji with a variation selector (`⚠️`,
-`✔️`, `ℹ️`, `➡️`). `scan-hidden.py` flags the hidden ones as candidate findings. `tests/run-all.sh`
-fails when a comment template in the skills holds one of these, an alert count other than the one it
-should, a table whose rows have different numbers of cells, or an emoji outside the legend.
+Formatting that the tests, the scripts or the scanner reject, so never write it into an agent comment:
+`details` blocks, HTML comments other than the protocol's markers and invisible HTML (the scanner flags
+each as a candidate finding), an emoji shortcode (`:x:`), an emoji outside the legend above, and an emoji
+with a variation selector (`⚠️`, `✔️`, `ℹ️`, `➡️`). The scanner reports only a run of two or more
+selectors, so a single one passes it; `tests/run-all.sh` is what refuses it, and the legend holds only
+emoji that need none. The same test fails when a comment template in the skills holds an alert count other
+than the one it should, a table whose rows have different numbers of cells or no divider row, an emoji outside
+the legend, prose after the last fenced block, or a fixer section whose heading does not carry the
+checkpoint icon.
 
 Links in a comment or in a pull request body are absolute. GitHub resolves a relative path such as
 `docs/guide.md` against the pull request's own URL, so it lands on a compare page, not on the file. Write

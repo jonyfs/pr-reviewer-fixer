@@ -246,12 +246,13 @@ block keep their exact form. In this order (layout, template and rules:
    line and the `Review mode:` line;
 7. prior findings on re-review, one table row each: verified, open, refused-accepted, refused-rejected or
    not applicable;
-8. the Mermaid pass history from pass 2 on, and a `Summary:` line that names the one thing to fix
+8. the Mermaid pass history from pass 2 on, and a **Summary:** line that names the one thing to fix
    first;
 9. the fenced machine-readable `findings` block, last, for `pr-fixer` and `pr-merge-fixer`.
 
 Nothing is wrapped in `<detail[s]>`, and no comment carries an emoji with a variation selector or an
-emoji shortcode: the scanner reads the first as hidden text, and the tests refuse both.
+emoji shortcode: the scanner flags the first as hidden text, and `tests/run-all.sh` refuses a variation
+selector and a shortcode in a template.
 
 ## Key Checks Before Publishing
 

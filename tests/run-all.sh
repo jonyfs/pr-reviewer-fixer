@@ -401,9 +401,13 @@ for d, _, fs in os.walk(sys.argv[1]):
                 if t.lstrip().startswith("|"):
                     cells = len(re.findall(r"(?<!\\)\|", t.strip())) - 1
                     if tbl is None:
-                        tbl = (ln, cells)
-                    elif cells != tbl[1]:
-                        bad.append("%s:%d table row has %d cells, its header has %d" % (path, ln, cells, tbl[1]))
+                        tbl = [ln, cells, 0]
+                    else:
+                        tbl[2] += 1
+                        if cells != tbl[1]:
+                            bad.append("%s:%d table row has %d cells, its header has %d" % (path, ln, cells, tbl[1]))
+                        if tbl[2] == 1 and not re.match(r"^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$", t):
+                            bad.append("%s:%d the row under a table header is not a divider row" % (path, ln))
                 else:
                     tbl = None
             if kind in last_fence:
@@ -423,7 +427,14 @@ for d, _, fs in os.walk(sys.argv[1]):
                     bad.append("%s: no `Review mode:` line" % where)
                 if "Declined to judge:" not in text:
                     bad.append("%s: no `Declined to judge:` line" % where)
+            if kind in last_fence:
+                tail = [t for _, t in body if t.strip()]
+                if not re.match(r"^\s*`{3,}\s*$", tail[-1]):
+                    bad.append("%s: the last non-blank line is not the closing fence of the %s block" % (where, last_fence[kind]))
             if kind == "fixer":
+                for h in re.findall(r"^### (.*)$", text, re.M):
+                    if re.search(r"\b[CWN]\d+\b", h) and not h.startswith("\U0001F9FE "):
+                        bad.append("%s: a finding heading without the checkpoint icon: %s" % (where, h))
                 ids = re.findall(r"^### \U0001F9FE ([CWN]\d+) ", text, re.M)
                 if not ids:
                     bad.append("%s: no finding section (`### <icon> <id> · <outcome>`)" % where)

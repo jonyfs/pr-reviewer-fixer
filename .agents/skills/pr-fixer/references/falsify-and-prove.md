@@ -220,7 +220,8 @@ Rules for the closure comment:
   written without the `@`.
 - The `proofs` block comes last (see "Proof block" below). Avoid a `details` tag, HTML comments other
   than the marker, an emoji shortcode, an emoji outside the legend and an emoji with a variation
-  selector: the scanner and the tests flag each one (see [pr-protocol.md](pr-protocol.md)).
+  selector: the scanner flags the hidden ones and `tests/run-all.sh` refuses the rest (see
+  [pr-protocol.md](pr-protocol.md)).
 
 ## Proof block
 

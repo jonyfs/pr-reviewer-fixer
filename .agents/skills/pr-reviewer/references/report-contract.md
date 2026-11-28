@@ -159,7 +159,7 @@ none`. A WARNING it says to demote becomes a NOTE in the block, and each demoted
 moves to a last group, `Suppressed by history, shown for the record:`, after the notes. Nothing is
 dropped.
 
-The banner, the summary lines and the pass history are for people. The findings block is the only
+The banner, the alert, the summary table and the pass history are for people. The findings block is the only
 part the fixer parses for its work list, so prose and block must agree on every id and count.
 
 ## Summary standard
