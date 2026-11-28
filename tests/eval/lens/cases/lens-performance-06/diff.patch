@@ -1,0 +1,18 @@
+--- /dev/null
++++ b/app/services/order_listing.rb
+@@ -0,0 +1,15 @@
++class OrderListing
++  def initialize(scope = Order.all)
++    @scope = scope
++  end
++
++  def call
++    @scope.where(status: "open").map do |order|
++      {
++        id: order.id,
++        customer: order.customer.name,
++        total: order.total_cents / 100.0
++      }
++    end
++  end
++end

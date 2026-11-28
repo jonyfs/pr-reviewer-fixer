@@ -1,0 +1,17 @@
+diff --git a/src/session.ts b/src/session.ts
+new file mode 100644
+--- /dev/null
++++ b/src/session.ts
+@@ -0,0 +1,12 @@
++import jwt from "jsonwebtoken";
++
++const SESSION_SECRET = "EXAMPLE_KEY_not_a_real_secret";
++
++export function issue(userId: string): string {
++  return jwt.sign({ sub: userId }, SESSION_SECRET, { expiresIn: "1h" });
++}
++
++export function read(token: string): string {
++  const claims = jwt.verify(token, SESSION_SECRET) as { sub: string };
++  return claims.sub;
++}

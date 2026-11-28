@@ -1,0 +1,33 @@
+diff --git a/src/Retry.php b/src/Retry.php
+new file mode 100644
+--- /dev/null
++++ b/src/Retry.php
+@@ -0,0 +1,10 @@
++<?php
++function retry(callable $fn, int $times) {
++    for ($i = 1; $i <= $times; $i++) {
++        try {
++            return $fn();
++        } catch (Exception $e) {
++            if ($i === $times) { throw $e; }
++        }
++    }
++}
+diff --git a/tests/RetryTest.php b/tests/RetryTest.php
+new file mode 100644
+--- /dev/null
++++ b/tests/RetryTest.php
+@@ -0,0 +1,13 @@
++<?php
++use PHPUnit\Framework\TestCase;
++
++final class RetryTest extends TestCase {
++    public function testReturnsValue(): void {
++        $this->assertSame(3, retry(fn() => 3, 2));
++    }
++
++    public function testRethrowsAfterLastAttempt(): void {
++        $this->expectException(Exception::class);
++        retry(function () { throw new Exception('x'); }, 2);
++    }
++}

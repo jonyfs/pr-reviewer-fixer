@@ -1,0 +1,28 @@
+--- /dev/null
++++ b/src/Importer.cs
+@@ -0,0 +1,25 @@
++using System.Collections.Generic;
++using System.IO;
++
++public class Importer
++{
++    public List<string[]> Import(string path)
++    {
++        var rows = new List<string[]>();
++        var reader = new StreamReader(path);
++        string line;
++        while ((line = reader.ReadLine()) != null)
++        {
++            rows.Add(Parse(line));
++        }
++        reader.Dispose();
++        return rows;
++    }
++
++    private static string[] Parse(string line)
++    {
++        var cells = line.Split(',');
++        if (cells.Length < 2) throw new InvalidDataException("short row");
++        return cells;
++    }
++}

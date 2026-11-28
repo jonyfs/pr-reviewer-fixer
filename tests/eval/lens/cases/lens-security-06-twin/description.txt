@@ -1,0 +1,1 @@
+Adds the password reset token creation and mail.

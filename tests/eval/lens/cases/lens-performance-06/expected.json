@@ -1,0 +1,14 @@
+{
+  "description": "Association loaded per record without eager loading (N+1).",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "app/services/order_listing.rb",
+      "line": 10,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "order.customer fires one query per order; preload with includes(:customer)."
+    }
+  ],
+  "decoys": []
+}

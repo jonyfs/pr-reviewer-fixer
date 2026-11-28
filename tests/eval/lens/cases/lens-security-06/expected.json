@@ -1,0 +1,14 @@
+{
+  "description": "The password reset token is derived from the email address and the current time.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/reset.php",
+      "line": 3,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Predictable reset token: md5(email . time()) can be guessed, enabling account takeover"
+    }
+  ],
+  "decoys": []
+}

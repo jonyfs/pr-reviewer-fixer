@@ -1,0 +1,14 @@
+{
+  "description": "The async order handler starts a promise chain with no rejection handler, so a failed save never answers the request and becomes an unhandled rejection.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/routes/orders.js",
+      "line": 14,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "promise chain has no catch in an async handler; a rejected save leaves the request hanging and raises an unhandled rejection"
+    }
+  ],
+  "decoys": []
+}

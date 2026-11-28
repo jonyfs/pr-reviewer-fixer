@@ -1,0 +1,13 @@
+diff --git a/app/controllers/thumbnails_controller.rb b/app/controllers/thumbnails_controller.rb
+new file mode 100644
+--- /dev/null
++++ b/app/controllers/thumbnails_controller.rb
+@@ -0,0 +1,8 @@
++class ThumbnailsController < ApplicationController
++  def create
++    src = params[:file]
++    out = "/tmp/thumbs/#{File.basename(src)}.png"
++    system("convert", "--", src, "-resize", "128x128", out)
++    send_file out
++  end
++end

@@ -1,0 +1,5 @@
+{
+  "description": "Clean twin: Membership test against a list inside a loop over all rows (quadratic) is fixed.",
+  "defects": [],
+  "decoys": []
+}

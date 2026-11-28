@@ -1,0 +1,42 @@
+diff --git a/calc/calc.go b/calc/calc.go
+new file mode 100644
+--- /dev/null
++++ b/calc/calc.go
+@@ -0,0 +1,13 @@
++package calc
++
++import "errors"
++
++var ErrDivByZero = errors.New("division by zero")
++
++// Divide returns a/b or ErrDivByZero when b is 0.
++func Divide(a, b int) (int, error) {
++	if b == 0 {
++		return 0, ErrDivByZero
++	}
++	return a / b, nil
++}
+diff --git a/calc/calc_test.go b/calc/calc_test.go
+new file mode 100644
+--- /dev/null
++++ b/calc/calc_test.go
+@@ -0,0 +1,19 @@
++package calc
++
++import (
++	"errors"
++	"testing"
++)
++
++func TestDivide(t *testing.T) {
++	got, err := Divide(10, 2)
++	if err != nil || got != 5 {
++		t.Fatalf("Divide(10,2) = %d, %v", got, err)
++	}
++}
++
++func TestDivideByZero(t *testing.T) {
++	if _, err := Divide(1, 0); !errors.Is(err, ErrDivByZero) {
++		t.Fatalf("want ErrDivByZero, got %v", err)
++	}
++}

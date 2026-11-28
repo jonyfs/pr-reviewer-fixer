@@ -1,0 +1,24 @@
+--- /dev/null
++++ b/src/import/dedupe.py
+@@ -0,0 +1,21 @@
++import csv
++from dataclasses import dataclass
++
++
++@dataclass
++class Contact:
++    email: str
++    name: str
++
++
++def load_contacts(path):
++    seen = []
++    contacts = []
++    with open(path, newline="") as handle:
++        for row in csv.DictReader(handle):
++            email = row["email"].strip().lower()
++            if email in seen:
++                continue
++            seen.append(email)
++            contacts.append(Contact(email, row["name"]))
++    return contacts

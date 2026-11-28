@@ -1,0 +1,14 @@
+{
+  "description": "A regular expression is compiled on every call.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "internal/logs/parse.go",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "MustCompile on every call re-parses the pattern per log line; compile once at package level."
+    }
+  ],
+  "decoys": []
+}

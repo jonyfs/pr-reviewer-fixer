@@ -1,0 +1,26 @@
+--- /dev/null
++++ b/src/quantity.rs
+@@ -0,0 +1,23 @@
++const MAX_QTY: u32 = 1000;
++
++#[derive(Debug)]
++pub struct QtyError(pub String);
++
++pub fn parse_quantity(input: &str) -> Result<u32, QtyError> {
++    let trimmed = input.trim();
++    let qty: u32 = trimmed.parse().map_err(|e| QtyError(format!("bad quantity: {}", e)))?;
++    if qty > MAX_QTY {
++        return Err(QtyError(format!("quantity {} exceeds {}", qty, MAX_QTY)));
++    }
++    Ok(qty)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn accepts_small() {
++        assert_eq!(parse_quantity(" 7 ").unwrap(), 7);
++    }
++}

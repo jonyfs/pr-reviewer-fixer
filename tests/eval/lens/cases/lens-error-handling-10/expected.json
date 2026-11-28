@@ -1,0 +1,14 @@
+{
+  "description": "The catch block for the insert is empty, so a failed payment record write disappears without a trace.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/PaymentLog.php",
+      "line": 20,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "empty catch swallows the PDOException; a payment row that failed to insert is lost with no log and no signal to the caller"
+    }
+  ],
+  "decoys": []
+}

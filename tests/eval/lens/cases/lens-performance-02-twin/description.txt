@@ -1,0 +1,1 @@
+Adds a handler that renders the welcome page for a signed-in user.

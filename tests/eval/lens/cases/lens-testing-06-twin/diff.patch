@@ -1,0 +1,29 @@
+diff --git a/greeter.rb b/greeter.rb
+new file mode 100644
+--- /dev/null
++++ b/greeter.rb
+@@ -0,0 +1,10 @@
++class Greeter
++  def initialize(repo)
++    @repo = repo
++  end
++
++  def greet(id)
++    user = @repo.find(id)
++    "Hello, #{user[:name]}!"
++  end
++end
+diff --git a/greeter_spec.rb b/greeter_spec.rb
+new file mode 100644
+--- /dev/null
++++ b/greeter_spec.rb
+@@ -0,0 +1,9 @@
++require_relative 'greeter'
++
++RSpec.describe Greeter do
++  it 'greets the user' do
++    repo = double('repo')
++    allow(repo).to receive(:find).with(1).and_return({ name: 'Ana' })
++    expect(Greeter.new(repo).greet(1)).to eq('Hello, Ana!')
++  end
++end

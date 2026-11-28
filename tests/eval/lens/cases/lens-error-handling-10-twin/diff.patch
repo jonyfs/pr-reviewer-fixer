@@ -1,0 +1,25 @@
+--- /dev/null
++++ b/src/PaymentLog.php
+@@ -0,0 +1,22 @@
++<?php
++
++class PaymentLog
++{
++    private PDO $db;
++
++    public function __construct(PDO $db)
++    {
++        $this->db = $db;
++    }
++
++    public function record(string $paymentId, int $cents): void
++    {
++        if ($cents <= 0) {
++            throw new InvalidArgumentException('amount must be positive');
++        }
++        $stmt = $this->db->prepare('INSERT INTO payments (id, cents) VALUES (?, ?)');
++        try {
++            $stmt->execute([$paymentId, $cents]);
++        } catch (PDOException $e) { error_log($e->getMessage()); throw $e; }
++    }
++}

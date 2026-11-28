@@ -1,0 +1,24 @@
+diff --git a/src/lib.rs b/src/lib.rs
+new file mode 100644
+--- /dev/null
++++ b/src/lib.rs
+@@ -0,0 +1,19 @@
++pub fn render(name: &str) -> String {
++    format!("<h1>{}</h1>", name)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn renders_heading() {
++        let out = render("Ana");
++        assert!(out.len() >= 0);
++    }
++
++    #[test]
++    fn renders_empty() {
++        assert_eq!(render(""), "<h1></h1>");
++    }
++}

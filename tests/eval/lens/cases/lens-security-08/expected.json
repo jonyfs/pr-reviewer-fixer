@@ -1,0 +1,14 @@
+{
+  "description": "The shared HTTP client is configured for calls to the partner API.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/kotlin/example/Http.kt",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "TLS hostname verification disabled: the verifier accepts any host, enabling man-in-the-middle"
+    }
+  ],
+  "decoys": []
+}

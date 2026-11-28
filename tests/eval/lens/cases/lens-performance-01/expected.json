@@ -1,0 +1,14 @@
+{
+  "description": "Membership test against a list inside a loop over all rows (quadratic).",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/import/dedupe.py",
+      "line": 17,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "`in` on a list inside the loop is O(n) per row, so importing 500000 contacts is quadratic; use a set."
+    }
+  ],
+  "decoys": []
+}

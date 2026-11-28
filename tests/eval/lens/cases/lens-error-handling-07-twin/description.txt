@@ -1,0 +1,1 @@
+Adds an importer that reads a CSV file and returns its parsed rows.

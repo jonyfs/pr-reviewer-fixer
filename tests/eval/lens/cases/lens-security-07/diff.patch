@@ -1,0 +1,22 @@
+diff --git a/Controllers/UsersController.cs b/Controllers/UsersController.cs
+new file mode 100644
+--- /dev/null
++++ b/Controllers/UsersController.cs
+@@ -0,0 +1,17 @@
++public class User {
++    public int Id { get; set; }
++    public string Name { get; set; }
++    public string Email { get; set; }
++    public bool IsAdmin { get; set; }
++}
++
++public class UsersController : Controller {
++    private readonly AppDb _db;
++    public UsersController(AppDb db) { _db = db; }
++    [HttpPost("users/update")]
++    public async Task<IActionResult> Update([FromForm] User model) {
++        _db.Users.Update(model);
++        await _db.SaveChangesAsync();
++        return RedirectToAction("Profile");
++    }
++}

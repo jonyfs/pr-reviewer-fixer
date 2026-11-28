@@ -1,0 +1,1 @@
+Adds a settings loader that reads the JSON file and returns the parsed values, with an empty default.

@@ -1,0 +1,14 @@
+{
+  "description": "The retry loop rescues StandardError, so it retries the argument error raised for an invalid URL as well as transient timeouts.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "lib/feed_client.rb",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "retry loop rescues every StandardError including the ArgumentError for validation, retrying a request that can never succeed"
+    }
+  ],
+  "decoys": []
+}

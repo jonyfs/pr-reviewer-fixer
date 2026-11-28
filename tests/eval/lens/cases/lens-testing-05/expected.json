@@ -1,0 +1,14 @@
+{
+  "description": "Test waits a fixed Thread.sleep for the async job instead of waiting on a condition, making it slow and flaky.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/test/java/MailerTest.java",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "fixed Thread.sleep(2000) races the executor; should await the future or a latch"
+    }
+  ],
+  "decoys": []
+}

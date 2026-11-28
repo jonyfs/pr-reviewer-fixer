@@ -1,0 +1,14 @@
+{
+  "description": "Both tests share a static cart that is never reset, so the second test depends on the first having run.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "CartTests.cs",
+      "line": 4,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "static Cart shared across tests; test order changes the outcome"
+    }
+  ],
+  "decoys": []
+}

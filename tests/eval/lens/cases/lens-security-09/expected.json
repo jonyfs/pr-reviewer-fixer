@@ -1,0 +1,14 @@
+{
+  "description": "Entries of an uploaded archive are written under the destination using the stored entry name.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/archive.rs",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Zip slip: entry name with ../ is joined to dest, writing files outside the target directory"
+    }
+  ],
+  "decoys": []
+}

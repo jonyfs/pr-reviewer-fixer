@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/src/Ranking/Leaderboard.php
+@@ -0,0 +1,18 @@
++<?php
++
++function attachRanks(array $players): array
++{
++    $out = [];
++    foreach ($players as $player) {
++        usort($players, fn($a, $b) => $b['score'] <=> $a['score']);
++        $rank = 1;
++        foreach ($players as $other) {
++            if ($other['score'] > $player['score']) {
++                $rank++;
++            }
++        }
++        $player['rank'] = $rank;
++        $out[] = $player;
++    }
++    return $out;
++}

@@ -1,0 +1,1 @@
+Adds a helper that pulls the request id out of each access log line.

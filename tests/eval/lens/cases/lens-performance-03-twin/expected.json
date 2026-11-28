@@ -1,0 +1,5 @@
+{
+  "description": "Clean twin: One database query per order id inside a loop (N+1) is fixed.",
+  "defects": [],
+  "decoys": []
+}

@@ -1,0 +1,19 @@
+diff --git a/src/archive.rs b/src/archive.rs
+new file mode 100644
+--- /dev/null
++++ b/src/archive.rs
+@@ -0,0 +1,14 @@
++use std::fs;
++use std::io;
++use std::path::Path;
++
++pub fn extract(archive: &mut zip::ZipArchive<fs::File>, dest: &Path) -> io::Result<()> {
++    for i in 0..archive.len() {
++        let mut file = archive.by_index(i)?;
++        let out = dest.join(file.enclosed_name().ok_or(io::ErrorKind::InvalidData)?);
++        if file.is_dir() { fs::create_dir_all(&out)?; continue; }
++        if let Some(p) = out.parent() { fs::create_dir_all(p)?; }
++        io::copy(&mut file, &mut fs::File::create(&out)?)?;
++    }
++    Ok(())
++}

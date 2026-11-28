@@ -1,0 +1,14 @@
+{
+  "description": "The whole dataset is cloned on every iteration.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/score.rs",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "samples.clone() copies the full Vec for every id; borrow it instead."
+    }
+  ],
+  "decoys": []
+}

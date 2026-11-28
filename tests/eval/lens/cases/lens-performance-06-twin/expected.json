@@ -1,0 +1,5 @@
+{
+  "description": "Clean twin: Association loaded per record without eager loading (N+1) is fixed.",
+  "defects": [],
+  "decoys": []
+}
