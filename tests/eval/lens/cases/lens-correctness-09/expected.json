@@ -1,0 +1,1 @@
+{"description": "Floating point sum is compared for exact equality.", "defects": [{"id": "D1", "file": "src/Billing/Totals.cs", "line": 12, "tolerance": 2, "min_severity": "WARNING", "note": "double sum compared with == against an expected value fails due to rounding error."}], "decoys": []}

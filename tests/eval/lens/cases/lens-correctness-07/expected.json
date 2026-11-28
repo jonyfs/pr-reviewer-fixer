@@ -1,0 +1,1 @@
+{"description": "Upper date bound is inclusive, so orders from the first day of the next month are counted.", "defects": [{"id": "D1", "file": "reports/monthly_orders.sql", "line": 8, "tolerance": 2, "min_severity": "WARNING", "note": "Inclusive <= on the first instant of next month counts orders from the next month."}], "decoys": []}

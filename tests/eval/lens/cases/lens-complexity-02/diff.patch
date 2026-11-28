@@ -1,0 +1,23 @@
+--- /dev/null
++++ b/src/format.js
+@@ -0,0 +1,20 @@
++class FormatterRegistry {
++  constructor() {
++    this.formatters = new Map();
++  }
++  register(name, factory) {
++    this.formatters.set(name, factory);
++  }
++  create(name, options) {
++    const factory = this.formatters.get(name);
++    if (!factory) throw new Error(`unknown formatter ${name}`);
++    return factory(options);
++  }
++}
++
++const registry = new FormatterRegistry();
++registry.register("price", (opts) => (n) => `${opts.symbol}${n.toFixed(2)}`);
++
++export function formatPrice(n) {
++  return registry.create("price", { symbol: "$" })(n);
++}

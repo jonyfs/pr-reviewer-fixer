@@ -1,0 +1,33 @@
+diff --git a/src/orders/store.py b/src/orders/store.py
+new file mode 100644
+--- /dev/null
++++ b/src/orders/store.py
+@@ -0,0 +1,9 @@
++_rows = {}
++
++
++def save(order):
++    _rows[order["id"]] = order
++
++
++def find(order_id):
++    return _rows.get(order_id)
+diff --git a/src/billing/invoices.py b/src/billing/invoices.py
+new file mode 100644
+--- /dev/null
++++ b/src/billing/invoices.py
+@@ -0,0 +1,14 @@
++from orders import store
++
++TAX_RATE = 0.2
++
++
++def invoice_total(order_id):
++    order = store._rows[order_id]
++    subtotal = sum(i["price"] * i["qty"] for i in order["items"])
++    return round(subtotal * (1 + TAX_RATE), 2)
++
++
++def invoice_lines(order_id):
++    order = store.find(order_id)
++    return [(i["sku"], i["qty"]) for i in order["items"]]

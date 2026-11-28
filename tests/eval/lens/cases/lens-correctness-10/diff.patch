@@ -1,0 +1,17 @@
+diff --git a/src/main/kotlin/Users.kt b/src/main/kotlin/Users.kt
+new file mode 100644
+--- /dev/null
++++ b/src/main/kotlin/Users.kt
+@@ -0,0 +1,12 @@
++data class User(val id: Int, val email: String)
++
++fun uniqueUserCount(users: List<User>): Int {
++    val ids = users.map { it.id }
++    ids.distinct()
++    return ids.size
++}
++
++fun describe(users: List<User>): String {
++    val n = uniqueUserCount(users)
++    return if (n == 1) "1 user" else "$n users"
++}

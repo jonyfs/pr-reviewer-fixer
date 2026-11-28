@@ -1,0 +1,1 @@
+Adds a paginate helper for list endpoints. Pages are numbered from 1.

@@ -1,0 +1,25 @@
+diff --git a/app/pagination.py b/app/pagination.py
+new file mode 100644
+--- /dev/null
++++ b/app/pagination.py
+@@ -0,0 +1,20 @@
++from dataclasses import dataclass
++
++
++@dataclass
++class Page:
++    items: list
++    page: int
++    size: int
++
++
++def paginate(rows, page=1, size=20):
++    if page < 1 or size < 1:
++        raise ValueError("page and size must be positive")
++    start = (page * size)
++    end = start + size
++    return Page(rows[start:end], page, size)
++
++
++def total_pages(count, size=20):
++    return (count + size - 1) // size

@@ -1,0 +1,32 @@
+diff --git a/internal/audit/audit.go b/internal/audit/audit.go
+new file mode 100644
+--- /dev/null
++++ b/internal/audit/audit.go
+@@ -0,0 +1,27 @@
++package audit
++
++import (
++	"database/sql"
++	"time"
++)
++
++var DB *sql.DB
++
++type Clock interface{ Now() time.Time }
++
++type Recorder struct {
++	db    *sql.DB
++	clock Clock
++}
++
++func NewRecorder(db *sql.DB, c Clock) *Recorder {
++	return &Recorder{db: db, clock: c}
++}
++
++func (r *Recorder) Login(userID string) error {
++	_, err := r.db.Exec(
++		"INSERT INTO audit(user_id, kind, at) VALUES (?, 'login', ?)",
++		userID, r.clock.Now(),
++	)
++	return err
++}

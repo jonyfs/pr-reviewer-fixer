@@ -1,0 +1,14 @@
+{
+  "description": "Inconsistent naming in one method: user_name is snake_case next to camelCase locals.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/UserService.cs",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Local variable user_name breaks the camelCase convention used by its neighbours."
+    }
+  ],
+  "decoys": []
+}

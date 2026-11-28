@@ -1,0 +1,12 @@
+--- /dev/null
++++ b/lib/rates.ex
+@@ -0,0 +1,9 @@
++defmodule Rates do
++  def standard_rate, do: 20
++  def reduced_rate, do: 10
++  def zero_rate, do: 0
++
++  def all do
++    [standard_rate(), reduced_rate(), zero_rate()]
++  end
++end

@@ -1,0 +1,27 @@
+diff --git a/lib/pricing/checkout.rb b/lib/pricing/checkout.rb
+new file mode 100644
+--- /dev/null
++++ b/lib/pricing/checkout.rb
+@@ -0,0 +1,22 @@
++module Pricing
++  class Checkout
++    BULK_MIN = 10
++    BULK_RATE = 0.15
++
++    def total(items)
++      sum = items.sum { |i| i.price * i.qty }
++      bulk?(items) ? sum * (1 - BULK_RATE) : sum
++    end
++
++    def bulk?(items)
++      items.sum(&:qty) >= BULK_MIN
++    end
++  end
++
++  class CartPreview
++    def total(items)
++      checkout = Checkout.new
++      checkout.total(items)
++    end
++  end
++end

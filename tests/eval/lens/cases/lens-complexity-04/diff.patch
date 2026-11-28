@@ -1,0 +1,26 @@
+--- /dev/null
++++ b/user/service.go
+@@ -0,0 +1,23 @@
++package user
++
++type Repo interface {
++	Get(id string) (*User, error)
++	Put(u *User) error
++	Delete(id string) error
++}
++
++type Service struct {
++	repo Repo
++}
++
++func (s *Service) Get(id string) (*User, error) {
++	return s.repo.Get(id)
++}
++
++func (s *Service) Put(u *User) error {
++	return s.repo.Put(u)
++}
++
++func (s *Service) Delete(id string) error {
++	return s.repo.Delete(id)
++}

@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/src/Rounding.php
+@@ -0,0 +1,18 @@
++<?php
++
++const PLACES = 2;
++
++function roundValue(float $value): float
++{
++    return round($value, PLACES);
++}
++
++function roundTotal(float $total): float
++{
++    return roundValue($total);
++}
++
++function roundAll(array $totals): array
++{
++    return array_map('roundTotal', $totals);
++}

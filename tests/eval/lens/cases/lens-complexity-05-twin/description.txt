@@ -1,0 +1,1 @@
+Adds a lookup from country code to currency code.

@@ -1,0 +1,36 @@
+diff --git a/Sources/Tasks/TaskList.swift b/Sources/Tasks/TaskList.swift
+new file mode 100644
+--- /dev/null
++++ b/Sources/Tasks/TaskList.swift
+@@ -0,0 +1,31 @@
++import CoreData
++
++struct TaskItem {
++    let id: UUID
++    let title: String
++}
++
++final class TaskListViewModel {
++    private let context: NSManagedObjectContext
++
++    init(context: NSManagedObjectContext) {
++        self.context = context
++    }
++
++    func tasks() throws -> [NSManagedObject] {
++        let request = NSFetchRequest<NSManagedObject>(entityName: "TaskEntity")
++        return try context.fetch(request)
++    }
++}
++
++final class TaskListView {
++    let viewModel: TaskListViewModel
++
++    init(viewModel: TaskListViewModel) {
++        self.viewModel = viewModel
++    }
++
++    func rowTitles() throws -> [String] {
++        try viewModel.tasks().map { $0.value(forKey: "title") as? String ?? "" }
++    }
++}

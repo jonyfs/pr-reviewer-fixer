@@ -1,0 +1,20 @@
+diff --git a/src/Domain/ShippingQuote.php b/src/Domain/ShippingQuote.php
+new file mode 100644
+--- /dev/null
++++ b/src/Domain/ShippingQuote.php
+@@ -0,0 +1,15 @@
++<?php
++namespace App\Domain;
++
++final class ShippingQuote
++{
++    private const PER_KG = 4.5;
++
++    public function quote(array $parcel): float
++    {
++        $country = $_POST['country'] ?? 'US';
++        $weight = array_sum(array_column($parcel, 'kg'));
++        $base = $weight * self::PER_KG;
++        return $country === 'US' ? $base : $base * 1.8;
++    }
++}

@@ -1,0 +1,14 @@
+{
+  "description": "A visitor interface and accept methods are used for the only operation on a sealed type.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Shapes.scala",
+      "line": 18,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Visitor pattern for one operation; pattern matching on the sealed trait is shorter and exhaustive-checked."
+    }
+  ],
+  "decoys": []
+}

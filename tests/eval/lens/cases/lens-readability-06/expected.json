@@ -1,0 +1,14 @@
+{
+  "description": "Commented-out old float-based total calculation left in the file.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "lib/invoice.rb",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Three lines of superseded code are left commented out instead of deleted."
+    }
+  ],
+  "decoys": []
+}

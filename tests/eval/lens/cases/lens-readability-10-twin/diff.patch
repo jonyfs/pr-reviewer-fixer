@@ -1,0 +1,14 @@
+diff --git a/src/Pricing.kt b/src/Pricing.kt
+new file mode 100644
+--- /dev/null
++++ b/src/Pricing.kt
+@@ -0,0 +1,9 @@
++fun price(quantity: Int, unitPrice: Double, shipping: Double): Double {
++    val discount = if (quantity >= 10) 0.9 else 1.0
++    val subtotal = quantity * unitPrice * discount
++    return subtotal + shipping
++}
++
++fun label(q: Int): String {
++    return if (q == 1) "1 item" else "$q items"
++}

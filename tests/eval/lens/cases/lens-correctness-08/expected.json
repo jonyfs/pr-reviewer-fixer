@@ -1,0 +1,1 @@
+{"description": "Numeric threshold compared with the string operator, so 9 sorts above 10.", "defects": [{"id": "D1", "file": "scripts/check_disk.sh", "line": 9, "tolerance": 2, "min_severity": "WARNING", "note": "[[ > ]] compares strings lexicographically, so 9 > 85 is true and 100 > 85 is false."}], "decoys": []}

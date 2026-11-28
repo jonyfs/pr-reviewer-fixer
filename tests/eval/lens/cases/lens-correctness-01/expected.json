@@ -1,0 +1,1 @@
+{"description": "Page offset ignores that pages are 1-based, so page 1 skips the first page of results.", "defects": [{"id": "D1", "file": "app/pagination.py", "line": 14, "tolerance": 2, "min_severity": "WARNING", "note": "Offset uses page*size with 1-based pages, so the first page of rows is skipped and the last row is unreachable."}], "decoys": []}

@@ -1,0 +1,1 @@
+Add a label builder and an activity check to the user service.

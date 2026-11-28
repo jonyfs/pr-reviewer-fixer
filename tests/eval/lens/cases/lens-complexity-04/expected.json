@@ -1,0 +1,14 @@
+{
+  "description": "Service layer only forwards each call to the repository.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "user/service.go",
+      "line": 14,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Needless indirection: every Service method is a one-line pass-through with no logic of its own."
+    }
+  ],
+  "decoys": []
+}

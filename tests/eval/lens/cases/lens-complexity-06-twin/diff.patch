@@ -1,0 +1,17 @@
+--- /dev/null
++++ b/lib/account.rb
+@@ -0,0 +1,14 @@
++class Account
++  def initialize(user)
++    @user = user
++  end
++
++  def can_login?
++    u = @user
++    return false if u.deleted_at
++    return false if u.banned && !u.appeal_ok
++    return false unless u.email_verified
++    trial_active = u.trial_end.nil? || u.trial_end > Time.now
++    trial_active || u.paid
++  end
++end

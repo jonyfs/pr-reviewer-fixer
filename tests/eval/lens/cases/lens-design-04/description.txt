@@ -1,0 +1,1 @@
+Adds a profile endpoint returning the signed-in user.

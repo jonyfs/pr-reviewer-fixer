@@ -1,0 +1,15 @@
+--- /dev/null
++++ b/src/Shapes.scala
+@@ -0,0 +1,12 @@
++sealed trait Shape
++case class Circle(r: Double) extends Shape
++case class Square(side: Double) extends Shape
++
++object Area {
++  def of(shape: Shape): Double = shape match {
++    case Circle(r) => math.Pi * r * r
++    case Square(s) => s * s
++  }
++
++  def total(shapes: Seq[Shape]): Double = shapes.map(of).sum
++}

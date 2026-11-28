@@ -1,0 +1,16 @@
+diff --git a/reports/monthly_orders.sql b/reports/monthly_orders.sql
+new file mode 100644
+--- /dev/null
++++ b/reports/monthly_orders.sql
+@@ -0,0 +1,11 @@
++-- Orders placed in a given month, per customer
++SELECT
++    o.customer_id,
++    COUNT(*)        AS order_count,
++    SUM(o.total)    AS revenue
++FROM orders AS o
++WHERE o.created_at >= DATE '2026-03-01'
++  AND o.created_at <  DATE '2026-04-01'
++  AND o.status = 'paid'
++GROUP BY o.customer_id
++ORDER BY revenue DESC;

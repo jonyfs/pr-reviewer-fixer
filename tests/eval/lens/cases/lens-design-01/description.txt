@@ -1,0 +1,1 @@
+Adds invoice totals computed from stored orders.

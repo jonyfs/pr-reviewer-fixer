@@ -1,0 +1,1 @@
+{"description": "Average of an empty list divides by zero and returns NaN.", "defects": [{"id": "D1", "file": "src/stats.ts", "line": 11, "tolerance": 2, "min_severity": "WARNING", "note": "Mean of an empty array yields NaN because the length is not checked."}], "decoys": []}

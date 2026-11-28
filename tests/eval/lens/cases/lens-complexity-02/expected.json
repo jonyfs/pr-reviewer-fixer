@@ -1,0 +1,14 @@
+{
+  "description": "A registry and factory layer is built for the single price formatter.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/format.js",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Premature generic registry with one registered entry and one caller; a plain function does the job."
+    }
+  ],
+  "decoys": []
+}

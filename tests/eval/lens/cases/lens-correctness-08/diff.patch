@@ -1,0 +1,19 @@
+diff --git a/scripts/check_disk.sh b/scripts/check_disk.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/check_disk.sh
+@@ -0,0 +1,14 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++THRESHOLD=85
++mount_point="${1:-/}"
++
++usage=$(df -P "$mount_point" | awk 'NR==2 {gsub("%","",$5); print $5}')
++
++if [[ "$usage" > "$THRESHOLD" ]]; then
++  echo "WARN: $mount_point is ${usage}% full" >&2
++  exit 1
++fi
++
++echo "OK: $mount_point at ${usage}%"

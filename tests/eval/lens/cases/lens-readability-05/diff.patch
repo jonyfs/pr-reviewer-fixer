@@ -1,0 +1,20 @@
+diff --git a/src/Greeter.java b/src/Greeter.java
+new file mode 100644
+--- /dev/null
++++ b/src/Greeter.java
+@@ -0,0 +1,15 @@
++import java.util.Objects;
++
++public class Greeter {
++    public String greet(String name) {
++        name = Objects.requireNonNull(name);
++        if (name == null) {
++            return "";
++        }
++        return "Hello, " + name.trim() + "!";
++    }
++
++    public String shout(String name) {
++        return greet(name).toUpperCase();
++    }
++}
