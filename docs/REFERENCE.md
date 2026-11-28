@@ -102,7 +102,7 @@ sequenceDiagram
     Dev->>GH: Open pull request or push
     alt Branch conflicts with the base
         L->>MF: Dispatch, fresh context, tier per conflict unit
-        MF->>GH: Merge commit, plain-text closure comment, one line per file
+        MF->>GH: Merge commit, closure comment, one table row per file
         MF-->>L: Resolved, or escalated with the decision named
     end
     L->>GH: Label review:running

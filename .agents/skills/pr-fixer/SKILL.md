@@ -9,7 +9,7 @@ description: >
   test that fails first, works lanes safely and autonomously, declares the rest as debt with an
   owner, runs at most max_review_cycles (5) cycles, then asks a person and halts on no answer.
 metadata:
-  version: "0.25.2"
+  version: "0.26.0"
 ---
 
 # PR Fixer
@@ -212,10 +212,9 @@ never answers the question. A person opts out with `PR_SKILLS_NO_UPDATE_CHECK=1`
    `<!-[-] pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->` and the
    closure report ([references/falsify-and-prove.md](references/falsify-and-prove.md)): per finding
    id the reproduction, test, red, fix, green and suite counts; per refusal the evidence. It is the
-   finish message; there is no separate one. It is plain text (no headings, tables, bold, bullets,
-   checkboxes or emoji; Markdown belongs in the pull request description). It opens with the banner
-   `Written by pr-fixer` and carries one checkpoint line per step of each finding, written only with
-   the output or commit that shows it, so a reader sees that the fixer ran and what it proved. Run `scripts/review-cycle.sh screen --file closure.md`
+   finish message; there is no separate one. It is GitHub Markdown in the layout of the closure report: it opens with the banner
+   `🔧 **Written by pr-fixer**`, an alert with the outcome and a summary table, and carries one section
+   per finding with a table of checkpoint steps, written only with the output or commit that shows it, so a reader sees that the fixer ran and what it proved. Run `scripts/review-cycle.sh screen --file closure.md`
    first and post only on exit 0; on exit 1 replace the value it names the kind of with
    `[REDACTED]` and screen again. Screen any other comment you post (an overflow of a long closure
    report) the same way. Reply `Closed in <sha7> (C1)` on threads where

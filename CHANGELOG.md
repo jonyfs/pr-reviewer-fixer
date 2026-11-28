@@ -4,6 +4,35 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.26.0
+
+Agent comments are GitHub Markdown again, written to be scanned: the verdict in an alert, the numbers in a
+table, the findings in tables by severity, the conditions and the fixer's checkpoints as task lists, and
+one fixed emoji legend. The plain-text rule of 0.20.0 (commit 8f69d20) is replaced, at the person's
+request.
+
+- **Layout** (`pr-protocol.md`, all three copies): the marker alone on the first line; a banner with the
+  agent's emoji (`🤖` reviewer, `🔧` fixer, `🔀` merge fixer); one alert (`[!TIP]`, `[!CAUTION]` or
+  `[!WARNING]`) stating the outcome; a summary table that ends with `Next`; one `###` section per part,
+  each with its icon; the last fenced block (`findings` or `proofs`) last. A verdict adds a Mermaid pass
+  history from pass 2.
+- **Legend**: 🔴 CRITICAL, 🟡 WARNING, 🔵 NOTE; ✅ PASSED, met, verified, closed, resolved; ⛔ BLOCKED;
+  ⏳ open; ❌ refused-rejected; 🚫 refused; 🔶 escalated; ⚪ not applicable. The word always stays beside the
+  emoji. No emoji outside the legend, no shortcode, no variation selector.
+- **Kept for the scripts**: the marker and the last fenced block are the first and last blocks;
+  `Review mode:` stays alone on its line and `Declined to judge:` stays in the report (`lint-report`);
+  `<id> closed:`, `refused:`, `escalated:` and `open:` stay at the left edge in plain text, one per finding
+  in a fixer closure (`fix-ledger.sh` counts them). No script changed.
+- **Templates**: `report-contract.md` (verdict), `falsify-and-prove.md` (fixer closure), the merge fixer's
+  `SKILL.md` (merge closure) and `progress-and-notifications.md` (status comment as a task list).
+- **Checked on 2026-11-28**: GitHub's render API (`POST /markdown`, mode `gfm`) returns an alert, task-list
+  checkboxes, a table and a `mermaid` block for the layout. The documentation page names diagrams in issues
+  and pull requests and does not name comments for alerts, task lists or diagrams; the protocol says so.
+- **Tests**: `tests/run-all.sh` no longer fails on Markdown in a template. It checks each template instead:
+  a banner on the second line, the alert count of its kind, the last fenced block, no HTML tag, no shortcode,
+  no emoji outside the legend (which `pr-protocol.md` must name), no variation selector, tables whose rows
+  have the same number of cells, no emoji inside the Mermaid block, and the lines the scripts read.
+
 ## 0.25.2
 
 Model and effort are stated per dispatch and never inherited, fixers that write security-sensitive

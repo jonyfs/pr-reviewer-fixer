@@ -4,8 +4,11 @@ Status: design for release 0.20.0. Written before the change, kept as the record
 
 Later in the same release, agent comments became plain text: the banners lost their emoji, and
 the tables, checkboxes, headings and Mermaid charts this design puts in comments became labelled
-lines. `pr-protocol.md` and `report-contract.md` describe the current layout; the rows below are
-the original design.
+lines. Release 0.26.0 brings them back, with the changes the plain-text period taught: one fixed
+emoji legend with no variation selector and no shortcode, one alert per comment, tables whose cells
+hold one line, and the lines the scripts read (`Review mode:`, `<id> closed:`) kept in plain text.
+`pr-protocol.md` and `report-contract.md` describe the current layout; the rows below are the
+original design.
 
 ## Goal
 
