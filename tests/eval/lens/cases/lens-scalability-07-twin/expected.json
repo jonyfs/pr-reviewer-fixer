@@ -1,0 +1,5 @@
+{
+  "description": "Clean version: whole-file read of a daily log that grows with traffic is fixed.",
+  "defects": [],
+  "decoys": []
+}

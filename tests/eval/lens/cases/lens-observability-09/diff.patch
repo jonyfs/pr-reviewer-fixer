@@ -1,0 +1,13 @@
+--- /dev/null
++++ b/src/Profiles.kt
+@@ -0,0 +1,10 @@
++import io.opentelemetry.api.trace.Tracer
++
++class Profiles(private val repo: ProfileRepo, private val tracer: Tracer) {
++    fun fetchProfile(id: String): Profile {
++        val span = tracer.spanBuilder("fetchProfile").startSpan()
++        val profile = repo.load(id)
++        span.setAttribute("profile.id", id)
++        return profile
++    }
++}

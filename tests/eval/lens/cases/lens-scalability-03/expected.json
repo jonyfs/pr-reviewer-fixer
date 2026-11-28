@@ -1,0 +1,14 @@
+{
+  "description": "Process-wide cache keyed per user and conversation holds full histories and never evicts.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/history/cache.ts",
+      "line": 4,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "The Map has no size bound or TTL and each entry is a user's entire message history. Memory grows with the number of users times conversations and history length, so the process is eventually OOM-killed."
+    }
+  ],
+  "decoys": []
+}

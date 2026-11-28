@@ -1,0 +1,14 @@
+{
+  "description": "A single static lock wraps a database load and a remote FX call on the hot pricing path.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Pricing/PriceService.cs",
+      "line": 15,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Every pricing call in the process serializes on one global lock while doing I/O, so throughput is capped at 1/latency of a single call regardless of cores or traffic; concurrent requests queue and time out under load."
+    }
+  ],
+  "decoys": []
+}

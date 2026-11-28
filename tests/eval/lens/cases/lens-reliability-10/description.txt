@@ -1,0 +1,1 @@
+Adds an inventory cache process that serves quantities by SKU.

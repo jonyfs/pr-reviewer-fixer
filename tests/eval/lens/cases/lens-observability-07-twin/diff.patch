@@ -1,0 +1,12 @@
+--- /dev/null
++++ b/app/models/order.rb
+@@ -0,0 +1,9 @@
++class Order < ApplicationRecord
++  def ship!(carrier)
++    raise ArgumentError, "order not paid" unless status == "paid"
++
++    update!(status: "shipped", carrier: carrier)
++    Rails.logger.info("order=#{id} status paid->shipped carrier=#{carrier}"); notify_warehouse(carrier)
++    true
++  end
++end

@@ -1,0 +1,14 @@
+{
+ "description": "A failed send in the background drain loop is skipped with no log or counter, so lost notifications are invisible.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "worker/drain.go",
+   "line": 15,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "A failed send in the background drain loop is skipped with no log or counter, so lost notifications are invisible."
+  }
+ ],
+ "decoys": []
+}

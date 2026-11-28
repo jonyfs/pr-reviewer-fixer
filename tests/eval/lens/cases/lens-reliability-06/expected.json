@@ -1,0 +1,1 @@
+{"description": "The temp file is deleted only on the success path, so any failed write or upload leaves it on disk.", "defects": [{"id": "D1", "file": "Exports/ReportExporter.cs", "line": 21, "tolerance": 2, "min_severity": "WARNING", "note": "File.Delete sits at the end of the try block; an exception skips it and temp files accumulate"}], "decoys": []}

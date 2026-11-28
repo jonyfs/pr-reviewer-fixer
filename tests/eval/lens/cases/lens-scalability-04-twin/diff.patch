@@ -1,0 +1,25 @@
+--- /dev/null
++++ b/internal/rates/handler.go
+@@ -0,0 +1,22 @@
++package rates
++
++import (
++	"encoding/json"
++	"net/http"
++	"time"
++)
++
++var sharedClient = &http.Client{Timeout: 5 * time.Second}
++
++func Handler(w http.ResponseWriter, r *http.Request) {
++	client := sharedClient
++	resp, err := client.Get("https://rates.example.com/v1/latest")
++	if err != nil {
++		http.Error(w, "upstream unavailable", http.StatusBadGateway)
++		return
++	}
++	defer resp.Body.Close()
++	var body map[string]float64
++	_ = json.NewDecoder(resp.Body).Decode(&body)
++	_ = json.NewEncoder(w).Encode(body)
++}

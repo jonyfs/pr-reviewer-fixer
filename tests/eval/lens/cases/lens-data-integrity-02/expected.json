@@ -1,0 +1,14 @@
+{
+  "description": "Data integrity. Unique index added over existing data with no dedupe step.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "db/migrate/20261101120000_add_unique_email.rb",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "duplicates make the index build fail"
+    }
+  ],
+  "decoys": []
+}

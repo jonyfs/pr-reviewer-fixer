@@ -1,0 +1,48 @@
+diff --git a/src/config.rs b/src/config.rs
+new file mode 100644
+--- /dev/null
++++ b/src/config.rs
+@@ -0,0 +1,24 @@
++use std::sync::OnceLock;
++
++pub struct Config {
++    pub pricing_url: String,
++}
++
++static CONFIG: OnceLock<Config> = OnceLock::new();
++
++impl Config {
++    pub fn from_env() -> Result<Config, String> {
++        let pricing_url = std::env::var("PRICING_URL")
++            .map_err(|_| "PRICING_URL is not set".to_string())?;
++        Ok(Config { pricing_url })
++    }
++}
++
++pub fn init() -> Result<(), String> {
++    let _ = CONFIG.set(Config::from_env()?);
++    Ok(())
++}
++
++pub fn get() -> &'static Config {
++    CONFIG.get_or_init(|| Config::from_env().expect("PRICING_URL must be set"))
++}
+diff --git a/src/main.rs b/src/main.rs
+new file mode 100644
+--- /dev/null
++++ b/src/main.rs
+@@ -0,0 +1,14 @@
++mod config;
++mod routes;
++
++use std::error::Error;
++
++#[tokio::main]
++async fn main() -> Result<(), Box<dyn Error>> {
++    tracing_subscriber::fmt::init();
++
++    let app = routes::build();
++    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
++    axum::serve(listener, app).await?;
++    Ok(())
++}

@@ -1,0 +1,5 @@
+{
+ "description": "Clean version: A rejected login for a locked account is logged at DEBUG only is fixed.",
+ "defects": [],
+ "decoys": []
+}

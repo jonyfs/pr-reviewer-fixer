@@ -1,0 +1,14 @@
+{
+ "description": "The build duration metric is recorded only on the success path, so slow failing builds never appear in the timing data.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "src/ReportService.cs",
+   "line": 9,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "The build duration metric is recorded only on the success path, so slow failing builds never appear in the timing data."
+  }
+ ],
+ "decoys": []
+}

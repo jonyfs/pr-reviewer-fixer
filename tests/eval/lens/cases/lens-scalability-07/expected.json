@@ -1,0 +1,14 @@
+{
+  "description": "Whole-file read of a daily log that grows with traffic.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "lib/audit_report.rb",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "File.readlines loads the entire auth log into memory as an array of strings. The log grows with login traffic every day, so memory use scales with log size (multi-gigabyte on busy days) instead of staying constant with streaming."
+    }
+  ],
+  "decoys": []
+}

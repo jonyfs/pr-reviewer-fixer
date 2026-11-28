@@ -1,0 +1,14 @@
+{
+  "description": "Partition key starts with the current timestamp so all writes go to one partition.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Readings/Writer.php",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "A timestamp-prefixed partition key sends every write in the same second to the same hot partition. Write throughput is capped by one partition (about 1,000 writes/s) no matter how many sensors or how much capacity is provisioned."
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,1 @@
+Adds a paginated GET /events endpoint for the activity feed.

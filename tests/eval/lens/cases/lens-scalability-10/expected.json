@@ -1,0 +1,14 @@
+{
+  "description": "Fixed 100 ms polling loop with no backoff or jitter, run by every client.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/jobs.rs",
+      "line": 10,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Each waiting client polls every 100 ms for up to 10 minutes. With thousands of concurrent clients the jobs API sees tens of thousands of requests per second, in lockstep, and the load grows linearly with the number of waiting clients."
+    }
+  ],
+  "decoys": []
+}

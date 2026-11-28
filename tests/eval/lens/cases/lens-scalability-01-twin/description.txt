@@ -1,0 +1,1 @@
+Adds a GET /orders endpoint that returns the orders list as JSON.

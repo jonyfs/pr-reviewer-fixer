@@ -1,0 +1,15 @@
+--- /dev/null
++++ b/src/ImportController.php
+@@ -0,0 +1,12 @@
++<?php
++
++class ImportController
++{
++    public function handle(Request $request): Response
++    {
++        $this->logger->info('import request', ['bytes' => strlen($request->getContent())]);
++        $result = $this->importer->run($request->json()->all());
++
++        return new JsonResponse(['imported' => $result->count()]);
++    }
++}

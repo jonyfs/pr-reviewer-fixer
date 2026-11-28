@@ -1,0 +1,26 @@
+diff --git a/app/rates.py b/app/rates.py
+new file mode 100644
+--- /dev/null
++++ b/app/rates.py
+@@ -0,0 +1,21 @@
++import requests
++
++RATES_URL = "https://rates.example.com/v1/latest"
++
++
++class RateClient:
++    def __init__(self, session=None):
++        self.session = session or requests.Session()
++        self._cache = {}
++
++    def rate(self, currency):
++        if currency in self._cache:
++            return self._cache[currency]
++        resp = self.session.get(RATES_URL, params={"base": currency}, timeout=3)
++        resp.raise_for_status()
++        value = resp.json()["rate"]
++        self._cache[currency] = value
++        return value
++
++    def convert(self, amount, currency):
++        return round(amount * self.rate(currency), 2)

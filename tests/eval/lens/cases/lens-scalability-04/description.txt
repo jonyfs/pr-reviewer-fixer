@@ -1,0 +1,1 @@
+Adds an HTTP handler that proxies the latest exchange rates.

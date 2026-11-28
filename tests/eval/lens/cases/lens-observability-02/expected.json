@@ -1,0 +1,14 @@
+{
+ "description": "The catch block logs only err.message, dropping the error type and stack trace needed to diagnose sync failures.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "src/stock.js",
+   "line": 8,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "The catch block logs only err.message, dropping the error type and stack trace needed to diagnose sync failures."
+  }
+ ],
+ "decoys": []
+}

@@ -1,0 +1,17 @@
+diff --git a/db/migrate/20261101120000_add_unique_email.rb b/db/migrate/20261101120000_add_unique_email.rb
+new file mode 100644
+--- /dev/null
++++ b/db/migrate/20261101120000_add_unique_email.rb
+@@ -0,0 +1,12 @@
++class AddUniqueEmail < ActiveRecord::Migration[7.1]
++  disable_ddl_transaction!
++
++  def up
++    execute 'DELETE FROM users a USING users b WHERE a.id > b.id AND a.email = b.email'
++    add_index :users, :email, unique: true, algorithm: :concurrently
++  end
++
++  def down
++    remove_index :users, :email
++  end
++end

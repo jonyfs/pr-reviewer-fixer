@@ -1,0 +1,15 @@
+--- /dev/null
++++ b/lib/audit_report.rb
+@@ -0,0 +1,12 @@
++class AuditReport
++  LOG_DIR = "/var/log/app"
++
++  def initialize(day)
++    @path = File.join(LOG_DIR, "auth-#{day}.log")
++  end
++
++  def failed_logins
++    lines = File.readlines(@path)
++    lines.count { |l| l.include?("LOGIN_FAILED") }
++  end
++end

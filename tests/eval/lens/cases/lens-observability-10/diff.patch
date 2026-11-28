@@ -1,0 +1,11 @@
+--- /dev/null
++++ b/src/health.rs
+@@ -0,0 +1,8 @@
++use axum::{extract::State, http::StatusCode};
++
++use crate::Db;
++
++pub async fn healthz(State(db): State<Db>) -> StatusCode {
++    let _ = db.ping().await;
++    StatusCode::OK
++}

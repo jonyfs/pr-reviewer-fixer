@@ -1,0 +1,5 @@
+{
+  "description": "Clean version: process-wide cache keyed per user and conversation holds full histories and never evicts is fixed.",
+  "defects": [],
+  "decoys": []
+}

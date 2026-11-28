@@ -1,0 +1,5 @@
+{
+  "description": "Clean version: a single static lock wraps a database load and a remote fx call on the hot pricing path is fixed.",
+  "defects": [],
+  "decoys": []
+}

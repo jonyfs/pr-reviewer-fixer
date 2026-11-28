@@ -1,0 +1,14 @@
+diff --git a/db/changelog/0007-add-status.xml b/db/changelog/0007-add-status.xml
+new file mode 100644
+--- /dev/null
++++ b/db/changelog/0007-add-status.xml
+@@ -0,0 +1,9 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog">
++  <changeSet id="0007" author="team">
++    <addColumn tableName="shipments">
++      <column name="status" type="varchar(16)" defaultValue="pending"/>
++    </addColumn>
++    <sql>ALTER TABLE shipments ADD CONSTRAINT ck_shipments_status CHECK (status IN ('pending','shipped','delivered'));</sql>
++  </changeSet>
++</databaseChangeLog>

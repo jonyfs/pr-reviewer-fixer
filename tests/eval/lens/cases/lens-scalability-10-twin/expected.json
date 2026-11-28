@@ -1,0 +1,5 @@
+{
+  "description": "Clean version: fixed 100 ms polling loop with no backoff or jitter, run by every client is fixed.",
+  "defects": [],
+  "decoys": []
+}

@@ -1,0 +1,1 @@
+Caches conversation history per user and conversation to avoid repeated store reads.

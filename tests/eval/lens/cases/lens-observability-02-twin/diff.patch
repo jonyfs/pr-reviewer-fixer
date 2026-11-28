@@ -1,0 +1,16 @@
+--- /dev/null
++++ b/src/stock.js
+@@ -0,0 +1,13 @@
++const log = require('./log');
++
++async function syncInventory(client, sku) {
++  try {
++    const stock = await client.fetchStock(sku);
++    return stock.count;
++  } catch (err) {
++    log.error({ sku, err }, 'stock sync failed');
++    return null;
++  }
++}
++
++module.exports = { syncInventory };

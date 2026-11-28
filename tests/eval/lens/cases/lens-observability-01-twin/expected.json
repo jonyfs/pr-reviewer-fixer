@@ -1,0 +1,5 @@
+{
+ "description": "Clean version: A failed payment capture returns False with no log or metric is fixed.",
+ "defects": [],
+ "decoys": []
+}

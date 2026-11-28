@@ -1,0 +1,1 @@
+Adds a stock sync helper used by the catalog job.

@@ -1,0 +1,5 @@
+{
+  "description": "Clean version: offset pagination over an append-only events table is fixed.",
+  "defects": [],
+  "decoys": []
+}

@@ -1,0 +1,36 @@
+diff --git a/cmd/api/main.go b/cmd/api/main.go
+new file mode 100644
+--- /dev/null
++++ b/cmd/api/main.go
+@@ -0,0 +1,31 @@
++package main
++
++import (
++	"context"
++	"log"
++	"net/http"
++	"os"
++	"os/signal"
++	"syscall"
++	"time"
++)
++
++func main() {
++	srv := &http.Server{Addr: ":8080", Handler: routes()}
++
++	go func() {
++		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
++			log.Fatal(err)
++		}
++	}()
++
++	stop := make(chan os.Signal, 1)
++	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
++	<-stop
++
++	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
++	defer cancel()
++	log.Printf("shutting down, grace %v", 20*time.Second)
++	_ = srv.Shutdown(ctx)
++	_ = ctx
++}

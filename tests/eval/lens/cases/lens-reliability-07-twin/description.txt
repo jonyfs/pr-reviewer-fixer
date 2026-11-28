@@ -1,0 +1,1 @@
+Adds a background job that issues an invoice when an order is completed.

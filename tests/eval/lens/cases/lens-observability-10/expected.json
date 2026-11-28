@@ -1,0 +1,14 @@
+{
+ "description": "The health handler pings the database but ignores the result and always returns 200, so a dead database still looks healthy.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "src/health.rs",
+   "line": 6,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "The health handler pings the database but ignores the result and always returns 200, so a dead database still looks healthy."
+  }
+ ],
+ "decoys": []
+}

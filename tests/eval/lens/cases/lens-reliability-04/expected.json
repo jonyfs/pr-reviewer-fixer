@@ -1,0 +1,1 @@
+{"description": "On SIGTERM the server calls Close, which cuts off in-flight requests instead of draining them with Shutdown.", "defects": [{"id": "D1", "file": "cmd/api/main.go", "line": 29, "tolerance": 2, "min_severity": "WARNING", "note": "srv.Close() terminates active connections; in-flight requests are dropped on every deploy"}], "decoys": []}

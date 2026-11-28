@@ -1,0 +1,25 @@
+--- /dev/null
++++ b/src/ReportService.cs
+@@ -0,0 +1,22 @@
++public class ReportService
++{
++    public async Task<Report> BuildAsync(int id)
++    {
++        var sw = Stopwatch.StartNew();
++        try
++        {
++            var report = await _repo.LoadAsync(id);
++            _log.LogDebug("report {Id} loaded", id);
++            return report;
++        }
++        catch (TimeoutException)
++        {
++            _log.LogWarning("report {Id} timed out", id);
++            throw;
++        }
++        finally
++        {
++            _metrics.Record("report.build_ms", sw.ElapsedMilliseconds);
++        }
++    }
++}

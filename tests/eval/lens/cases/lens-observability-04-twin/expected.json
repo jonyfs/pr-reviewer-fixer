@@ -1,0 +1,5 @@
+{
+ "description": "Clean version: A failed send in the background drain loop is skipped with no log or counter is fixed.",
+ "defects": [],
+ "decoys": []
+}

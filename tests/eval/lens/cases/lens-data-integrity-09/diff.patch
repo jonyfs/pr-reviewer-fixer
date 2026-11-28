@@ -1,0 +1,23 @@
+diff --git a/Migrations/20261105_AddEventTime.cs b/Migrations/20261105_AddEventTime.cs
+new file mode 100644
+--- /dev/null
++++ b/Migrations/20261105_AddEventTime.cs
+@@ -0,0 +1,18 @@
++using Microsoft.EntityFrameworkCore.Migrations;
++
++public partial class AddEventTime : Migration
++{
++    protected override void Up(MigrationBuilder migrationBuilder)
++    {
++        migrationBuilder.AddColumn<DateTime>(
++            name: "OccurredAt",
++            table: "Bookings",
++            type: "timestamp without time zone",
++            nullable: true);
++    }
++
++    protected override void Down(MigrationBuilder migrationBuilder)
++    {
++        migrationBuilder.DropColumn(name: "OccurredAt", table: "Bookings");
++    }
++}
