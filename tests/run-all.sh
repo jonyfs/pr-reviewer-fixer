@@ -394,7 +394,7 @@ for d, _, fs in os.walk(sys.argv[1]):
                 if SHORTCODE.search(t):
                     bad.append("%s:%d emoji shortcode" % (path, ln))
                 for ch in t:
-                    if ch in "️︎‍​":
+                    if ord(ch) in (0xFE0F, 0xFE0E, 0x200D, 0x200B):
                         bad.append("%s:%d variation selector or joiner (U+%04X)" % (path, ln, ord(ch)))
                     elif EMOJI.search(ch) and ch not in LEGEND:
                         bad.append("%s:%d emoji outside the legend: %s" % (path, ln, ch))
