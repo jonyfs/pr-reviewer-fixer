@@ -1,0 +1,1 @@
+{"description": "Previously public method normalize is now private.", "defects": [{"id": "D1", "file": "src/main/java/com/example/text/Slugger.java", "line": 13, "tolerance": 2, "min_severity": "WARNING", "note": "normalize was part of the public API of Slugger and other modules call it; making it private breaks them at compile time."}], "decoys": []}

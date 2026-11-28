@@ -1,0 +1,14 @@
+{
+  "description": "Javadoc documents a ttlSeconds parameter that get no longer takes.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/java/example/Cache.java",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Javadoc documents @param ttlSeconds, a parameter the method does not have."
+    }
+  ],
+  "decoys": []
+}

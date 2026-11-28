@@ -1,0 +1,14 @@
+{
+  "description": "Argument parsing for the new command line tool.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "Package.swift",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Runtime dependency comes from a personal fork URL instead of the upstream swift-argument-parser repository; unreviewed supply chain. Rated CRITICAL."
+    }
+  ],
+  "decoys": []
+}

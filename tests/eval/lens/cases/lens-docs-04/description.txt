@@ -1,0 +1,1 @@
+Drop the legacy output mode and make JSON the default.

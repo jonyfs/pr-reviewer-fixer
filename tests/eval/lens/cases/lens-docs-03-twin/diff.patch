@@ -1,0 +1,26 @@
+--- /dev/null
++++ b/schema/server.schema.json
+@@ -0,0 +1,23 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "title": "Server config",
++  "type": "object",
++  "properties": {
++    "host": {
++      "type": "string",
++      "description": "Interface to bind.",
++      "default": "127.0.0.1"
++    },
++    "port": {
++      "type": "integer",
++      "description": "TCP port to listen on. Default 9090.",
++      "default": 9090
++    },
++    "tls": {
++      "type": "boolean",
++      "description": "Serve HTTPS.",
++      "default": false
++    }
++  },
++  "additionalProperties": false
++}

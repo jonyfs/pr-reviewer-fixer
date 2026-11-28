@@ -1,0 +1,14 @@
+{
+  "description": "Check-then-act on a module-level dict served by worker threads with no lock: two threads can both build a session for one user and one is silently lost.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/sessions/store.py",
+      "line": 10,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Check-then-act on shared dict without lock"
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,14 @@
+{
+  "description": "A GPL-licensed PDF library is added to a project that declares an MIT license.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "composer.json",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "mpdf/mpdf is GPL-2.0 licensed while the package declares MIT; license incompatibility for distribution."
+    }
+  ],
+  "decoys": []
+}

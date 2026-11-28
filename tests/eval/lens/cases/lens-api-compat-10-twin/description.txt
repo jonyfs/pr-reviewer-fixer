@@ -1,0 +1,1 @@
+Reworks load_names in the public names crate to avoid building a second list.

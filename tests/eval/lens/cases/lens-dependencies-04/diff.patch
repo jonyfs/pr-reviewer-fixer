@@ -1,0 +1,12 @@
+diff --git a/Gemfile b/Gemfile
+new file mode 100644
+--- /dev/null
++++ b/Gemfile
+@@ -0,0 +1,7 @@
++source "https://rubygems.org"
++
++gem "sinatra", "~> 4.0"
++gem "rubocop", "~> 1.64"
++gem "puma", "~> 6.4"
++gem "pg", "~> 1.5"
++gem "rspec", "~> 3.13", group: :test

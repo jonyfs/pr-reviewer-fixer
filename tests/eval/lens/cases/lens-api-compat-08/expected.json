@@ -1,0 +1,1 @@
+{"description": "New required request field phone on existing POST /signup.", "defects": [{"id": "D1", "file": "app/Http/Controllers/SignupController.php", "line": 13, "tolerance": 2, "min_severity": "WARNING", "note": "Existing clients that do not send phone now get 422 validation errors; the field should be optional."}], "decoys": []}

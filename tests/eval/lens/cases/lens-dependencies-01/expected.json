@@ -1,0 +1,14 @@
+{
+  "description": "Runtime dependency declared with the wildcard version '*', so installs are not reproducible.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "package.json",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "express uses '*' which accepts any version, including future breaking or compromised releases; pin or use a bounded range."
+    }
+  ],
+  "decoys": []
+}

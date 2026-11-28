@@ -1,0 +1,22 @@
+--- /dev/null
++++ b/src/Config/AppConfig.cs
+@@ -0,0 +1,19 @@
++namespace Example.Config;
++
++public sealed class AppConfig
++{
++    private static AppConfig? _instance;
++
++    private AppConfig() { }
++
++    public static AppConfig Instance
++    {
++        get
++        {
++            if (_instance == null) _instance = new AppConfig();
++            return _instance;
++        }
++    }
++
++    public string Region { get; set; } = "eu";
++}

@@ -1,0 +1,14 @@
+{
+  "description": "String helpers for the reports module.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "build.gradle",
+      "line": 10,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "commons-lang:commons-lang:2.6 is the old, superseded coordinate (relocated to org.apache.commons:commons-lang3); unmaintained."
+    }
+  ],
+  "decoys": []
+}

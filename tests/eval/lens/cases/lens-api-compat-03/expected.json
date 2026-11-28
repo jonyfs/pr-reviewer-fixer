@@ -1,0 +1,1 @@
+{"description": "Exported OrderStatus union no longer has the archived value.", "defects": [{"id": "D1", "file": "src/orders/status.ts", "line": 1, "tolerance": 2, "min_severity": "WARNING", "note": "Removing archived from the public union breaks callers and stored orders still carrying that value; the twin keeps it."}], "decoys": []}

@@ -1,0 +1,1 @@
+Collects a phone number on signup in the existing POST /signup endpoint.

@@ -1,0 +1,14 @@
+--- /dev/null
++++ b/app/services/deposit.rb
+@@ -0,0 +1,11 @@
++class Deposit
++  def self.call(account_id, amount)
++    account = Account.find(account_id)
++    Account.update_counters(account.id, balance: amount)
++    account.reload
++  end
++
++  def self.history(account_id)
++    Account.find(account_id).entries.order(:created_at).to_a
++  end
++end

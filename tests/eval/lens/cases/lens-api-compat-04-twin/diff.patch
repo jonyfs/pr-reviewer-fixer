@@ -1,0 +1,27 @@
+--- /dev/null
++++ b/api/handlers.go
+@@ -0,0 +1,24 @@
++package api
++
++import (
++	"encoding/json"
++	"net/http"
++)
++
++type widgetReq struct {
++	Name string `json:"name"`
++	Size int    `json:"size"`
++}
++
++func CreateWidget(w http.ResponseWriter, r *http.Request) {
++	var req widgetReq
++	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
++		http.Error(w, "invalid json", http.StatusBadRequest)
++		return
++	}
++	if req.Name == "" || req.Size <= 0 {
++		http.Error(w, "name and size required", http.StatusBadRequest)
++		return
++	}
++	w.WriteHeader(http.StatusCreated)
++}

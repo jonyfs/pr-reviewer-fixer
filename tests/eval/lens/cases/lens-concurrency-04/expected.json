@@ -1,0 +1,14 @@
+{
+  "description": "The goroutine closure captures the loop variable by reference, so under pre-1.22 semantics several goroutines process the last item.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "internal/jobs/run.go",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Goroutine captures loop variable by reference"
+    }
+  ],
+  "decoys": []
+}

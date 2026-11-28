@@ -1,0 +1,15 @@
+diff --git a/composer.json b/composer.json
+new file mode 100644
+--- /dev/null
++++ b/composer.json
+@@ -0,0 +1,10 @@
++{
++  "name": "acme/invoices",
++  "description": "Invoice generator",
++  "license": "MIT",
++  "require": {
++    "php": "^8.2",
++    "monolog/monolog": "^3.6",
++    "mpdf/mpdf": "^8.2"
++  }
++}

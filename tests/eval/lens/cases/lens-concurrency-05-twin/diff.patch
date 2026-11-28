@@ -1,0 +1,22 @@
+--- /dev/null
++++ b/src/main/java/com/example/Bank.java
+@@ -0,0 +1,19 @@
++package com.example;
++
++public class Bank {
++    public static class Account {
++        final long id;
++        long balance;
++        Account(long id, long balance) { this.id = id; this.balance = balance; }
++    }
++
++    public void transfer(Account from, Account to, long amount) {
++        Account first = from.id < to.id ? from : to, second = first == from ? to : from;
++        synchronized (first) {
++            synchronized (second) {
++                from.balance -= amount;
++                to.balance += amount;
++            }
++        }
++    }
++}

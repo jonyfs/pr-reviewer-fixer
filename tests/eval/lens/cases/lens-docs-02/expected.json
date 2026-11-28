@@ -1,0 +1,14 @@
+{
+  "description": "YAML comment says 3 attempts, value is 5.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "deploy/worker.yaml",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Comment says 3 attempts before dead-letter but max_attempts is 5."
+    }
+  ],
+  "decoys": []
+}

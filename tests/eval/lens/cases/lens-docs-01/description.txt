@@ -1,0 +1,1 @@
+Raise the default download timeout for slow mirrors and add a text helper.

@@ -1,0 +1,1 @@
+{"description": "JSON key created_at changed to camelCase createdAt.", "defects": [{"id": "D1", "file": "app/models/account.rb", "line": 6, "tolerance": 2, "min_severity": "WARNING", "note": "Every other key is snake_case and consumers read created_at; the changed casing silently drops the field for existing clients."}], "decoys": []}

@@ -1,0 +1,17 @@
+--- /dev/null
++++ b/deploy/worker.yaml
+@@ -0,0 +1,14 @@
++# Worker settings for the queue consumer.
++worker:
++  name: mail-consumer
++  queue: mail.outbound
++  # Delivery attempts before a message goes to the dead-letter queue: 5.
++  max_attempts: 5
++  backoff_seconds: 20
++  concurrency: 4
++  dead_letter: mail.dead
++  endpoint: https://queue.example.com/v2
++  log_level: info
++  metrics:
++    enabled: true
++    port: 9102

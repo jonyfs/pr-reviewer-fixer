@@ -1,0 +1,1 @@
+Add an AppConfig singleton with a lazily created shared instance.

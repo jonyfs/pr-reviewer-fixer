@@ -1,0 +1,14 @@
+{
+  "description": "An unsynchronised ArrayList is appended to from coroutines on a multi-threaded dispatcher, so adds can be lost or throw.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/kotlin/Collector.kt",
+      "line": 4,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Shared arraylist written from several threads"
+    }
+  ],
+  "decoys": []
+}
