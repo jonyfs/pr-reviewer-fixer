@@ -1,0 +1,1 @@
+Adds a function that returns the total of every order for the nightly summary email.

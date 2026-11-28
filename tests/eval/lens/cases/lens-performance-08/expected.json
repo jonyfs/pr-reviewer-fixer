@@ -1,0 +1,14 @@
+{
+  "description": "The whole list is re-sorted inside the loop for every player.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Ranking/Leaderboard.php",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "usort runs once per player, making rank computation O(n^2 log n); sort once before the loop."
+    }
+  ],
+  "decoys": []
+}

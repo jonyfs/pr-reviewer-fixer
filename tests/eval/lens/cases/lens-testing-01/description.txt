@@ -1,0 +1,1 @@
+Adds apply_discount with percent validation and tests.

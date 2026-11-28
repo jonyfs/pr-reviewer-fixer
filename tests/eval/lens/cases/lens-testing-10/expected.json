@@ -1,0 +1,14 @@
+{
+  "description": "Test only checks that the rendered string has a length of at least zero, which is true for any output.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/lib.rs",
+      "line": 12,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "len() >= 0 on usize is always true, so the render test accepts any output"
+    }
+  ],
+  "decoys": []
+}

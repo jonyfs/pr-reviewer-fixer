@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/app/settings.py
+@@ -0,0 +1,18 @@
++import json
++import logging
++
++log = logging.getLogger(__name__)
++
++DEFAULTS = {"theme": "light", "page_size": 25}
++
++
++def load_settings(path):
++    try:
++        with open(path) as fh:
++            data = json.load(fh)
++    except:
++        return dict(DEFAULTS)
++    merged = dict(DEFAULTS)
++    merged.update(data)
++    log.info("loaded %d settings from %s", len(merged), path)
++    return merged

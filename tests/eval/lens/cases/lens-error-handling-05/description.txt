@@ -1,0 +1,1 @@
+Adds a service that loads the configuration file and reports load failures as an unchecked exception.

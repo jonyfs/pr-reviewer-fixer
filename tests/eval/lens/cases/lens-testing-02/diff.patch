@@ -1,0 +1,25 @@
+diff --git a/slug.js b/slug.js
+new file mode 100644
+--- /dev/null
++++ b/slug.js
+@@ -0,0 +1,5 @@
++function slugify(text) {
++  return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
++}
++
++module.exports = { slugify };
+diff --git a/slug.test.js b/slug.test.js
+new file mode 100644
+--- /dev/null
++++ b/slug.test.js
+@@ -0,0 +1,10 @@
++const { slugify } = require('./slug');
++
++test('slugify turns a title into a slug', () => {
++  const out = slugify('  Hello, World!  ');
++  expect(out).toBeDefined();
++});
++
++test('slugify trims dashes at the edges', () => {
++  expect(slugify('--a--')).toBe('a');
++});

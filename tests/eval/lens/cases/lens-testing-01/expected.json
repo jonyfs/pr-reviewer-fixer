@@ -1,0 +1,14 @@
+{
+  "description": "Test calls apply_discount but never asserts on the result, so it passes whatever the function returns.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "test_pricing.py",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "test_total has no assertion; it cannot fail when the discount math breaks"
+    }
+  ],
+  "decoys": []
+}

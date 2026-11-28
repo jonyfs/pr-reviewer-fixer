@@ -1,0 +1,14 @@
+{
+  "description": "The sync loop discards the error returned by Save, so a failed write is counted as stored.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "store/sync.go",
+      "line": 22,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "returned error from Save is discarded; failed writes are counted as stored and records are silently lost"
+    }
+  ],
+  "decoys": []
+}

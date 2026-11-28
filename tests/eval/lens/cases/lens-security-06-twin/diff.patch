@@ -1,0 +1,15 @@
+diff --git a/src/reset.php b/src/reset.php
+new file mode 100644
+--- /dev/null
++++ b/src/reset.php
+@@ -0,0 +1,10 @@
++<?php
++function create_reset_token(PDO $db, string $email): string {
++    $token = bin2hex(random_bytes(32));
++    $stmt = $db->prepare("INSERT INTO resets (email, token, expires) VALUES (?, ?, ?)");
++    $stmt->execute([$email, $token, time() + 3600]);
++    return $token;
++}
++function send_reset_mail(string $email, string $token): void {
++    mail($email, "Reset your password", "https://app.example.com/reset?t=" . $token);
++}

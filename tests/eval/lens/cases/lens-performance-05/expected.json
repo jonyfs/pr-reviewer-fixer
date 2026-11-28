@@ -1,0 +1,14 @@
+{
+  "description": "String concatenation in a loop builds a new string every iteration.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/java/com/example/report/CsvReport.java",
+      "line": 11,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "`+=` on a String inside the loop copies the whole text each row (quadratic); use a StringBuilder."
+    }
+  ],
+  "decoys": []
+}

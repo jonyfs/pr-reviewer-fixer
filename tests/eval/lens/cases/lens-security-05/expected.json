@@ -1,0 +1,14 @@
+{
+  "description": "A request parameter is interpolated into a shell command line.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "app/controllers/thumbnails_controller.rb",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Command injection: params[:file] interpolated into a single shell string passed to system"
+    }
+  ],
+  "decoys": []
+}

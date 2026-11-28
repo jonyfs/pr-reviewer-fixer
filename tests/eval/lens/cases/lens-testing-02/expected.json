@@ -1,0 +1,14 @@
+{
+  "description": "expect(...).toBeDefined() on a value that is always defined, so the test passes for any slug output.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "slug.test.js",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "slugify always returns a string, so toBeDefined can never fail"
+    }
+  ],
+  "decoys": []
+}

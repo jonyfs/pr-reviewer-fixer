@@ -1,0 +1,1 @@
+Adds a download endpoint for files in the upload directory.

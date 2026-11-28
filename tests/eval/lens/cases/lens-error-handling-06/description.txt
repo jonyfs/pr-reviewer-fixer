@@ -1,0 +1,1 @@
+Adds a feed client that fetches a URL with up to three attempts.

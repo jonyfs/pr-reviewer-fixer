@@ -1,0 +1,18 @@
+--- /dev/null
++++ b/src/main/java/com/example/report/CsvReport.java
+@@ -0,0 +1,15 @@
++package com.example.report;
++
++import java.util.List;
++
++public class CsvReport {
++    public record Row(String account, long units) {}
++
++    public String render(List<Row> rows) {
++        String out = "account,units\n";
++        for (Row row : rows) {
++            out += row.account() + "," + row.units() + "\n";
++        }
++        return out;
++    }
++}

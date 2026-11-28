@@ -1,0 +1,14 @@
+{
+  "description": "Session tokens are signed and verified with a secret defined at the top of the module.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/session.ts",
+      "line": 3,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Hard-coded signing secret committed in source; anyone with the repo can forge session tokens"
+    }
+  ],
+  "decoys": []
+}

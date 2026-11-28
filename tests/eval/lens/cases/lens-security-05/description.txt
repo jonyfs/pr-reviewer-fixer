@@ -1,0 +1,1 @@
+Adds an endpoint that creates a 128px thumbnail of an uploaded file.

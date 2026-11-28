@@ -1,0 +1,1 @@
+Adds a user lookup endpoint with a catch block that reports failures as 500 responses.

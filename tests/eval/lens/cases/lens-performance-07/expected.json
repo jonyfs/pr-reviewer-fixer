@@ -1,0 +1,14 @@
+{
+  "description": "Whole table loaded into memory and filtered in the application.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Events/EventQuery.cs",
+      "line": 14,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "ToList() materializes every event row before filtering, with no limit; filter and Take in the database."
+    }
+  ],
+  "decoys": []
+}

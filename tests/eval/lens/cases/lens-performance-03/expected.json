@@ -1,0 +1,14 @@
+{
+  "description": "One database query per order id inside a loop (N+1).",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/orders/summary.ts",
+      "line": 11,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Awaits one query per id in a loop: N round trips for N orders; fetch all rows with a single `= ANY` query."
+    }
+  ],
+  "decoys": []
+}

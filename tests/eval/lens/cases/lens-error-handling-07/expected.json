@@ -1,0 +1,14 @@
+{
+  "description": "The reader is disposed by a plain call after Parse, so a parse exception leaves the file handle open.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Importer.cs",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "reader is not in a using block; if Parse throws, Dispose is never reached and the file handle leaks"
+    }
+  ],
+  "decoys": []
+}

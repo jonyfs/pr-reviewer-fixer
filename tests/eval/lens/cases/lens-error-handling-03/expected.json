@@ -1,0 +1,14 @@
+{
+  "description": "The error handler returns the raw stack trace of an unexpected failure to the HTTP client.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/api/users.ts",
+      "line": 19,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "error response body includes the internal stack trace, leaking file paths and internals to the client"
+    }
+  ],
+  "decoys": []
+}

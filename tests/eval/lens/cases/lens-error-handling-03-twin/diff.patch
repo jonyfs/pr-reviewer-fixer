@@ -1,0 +1,24 @@
+--- /dev/null
++++ b/src/api/users.ts
+@@ -0,0 +1,21 @@
++import { Request, Response } from "express";
++import { findUser } from "../db/users";
++
++export async function getUser(req: Request, res: Response): Promise<void> {
++  const id = Number(req.params.id);
++  if (!Number.isInteger(id)) {
++    res.status(400).json({ error: "invalid id" });
++    return;
++  }
++  try {
++    const user = await findUser(id);
++    if (!user) {
++      res.status(404).json({ error: "not found" });
++      return;
++    }
++    res.json(user);
++  } catch (err: any) {
++    console.error("getUser failed", err);
++    res.status(500).json({ error: "internal error" });
++  }
++}
