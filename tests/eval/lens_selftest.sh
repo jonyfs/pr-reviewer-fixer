@@ -68,6 +68,33 @@ check "a missing cases directory exits 2, not 1" eval 'python3 -I "$LS" --cases 
 check "--min-recall met exits 0" eval 'sc --reports "$W/perfect" --min-recall 0.9 >/dev/null 2>&1'
 check "--max-twin-fp exceeded exits 1" eval 'sc --reports "$W/noisy" --max-twin-fp 0.01 >/dev/null 2>&1; [ $? = 1 ]'
 
+# --line-slack: a finding 4 lines below the defect is a miss at slack 0 and a hit at slack 4.
+python3 -I - "$CASES" "$W/shifted" <<'PY'
+import json, os, sys
+cases, out = sys.argv[1:3]
+os.makedirs(out, exist_ok=True)
+for name in sorted(os.listdir(cases)):
+    p = os.path.join(cases, name, "expected.json")
+    if not os.path.isfile(p):
+        continue
+    exp = json.load(open(p)); rows = []
+    if not name.endswith("-twin"):
+        rows = [(d["file"], d["line"] + 4, d["min_severity"]) for d in exp["defects"]]
+    elif name.startswith("lens-design-"):
+        rows = [("x.py", 1, "CRITICAL")]
+    lines = ["## Review: " + name, "", "```findings", "version: 1", "findings:" if rows else "findings: []"]
+    for i, (f, l, s) in enumerate(rows, 1):
+        lines += ["  - id: F%d" % i, "    severity: %s" % s, "    file: %s" % f, "    line: %d" % l]
+    lines.append("```")
+    open(os.path.join(out, name + ".md"), "w").write("\n".join(lines) + "\n")
+PY
+check "a finding 4 lines off is a miss at slack 0" \
+  eval '[ "$(sc --reports "$W/shifted" --json | jq_ "d[\"overall\"][\"recall\"]")" = "0.0" ]'
+check "the same finding is a hit with --line-slack 4" \
+  eval '[ "$(sc --reports "$W/shifted" --line-slack 4 --json | jq_ "d[\"overall\"][\"recall\"]")" = "1.0" ]'
+check "a CRITICAL on a twin counts in the twin CRITICAL rate, a WARNING does not" \
+  eval '[ "$(sc --reports "$W/shifted" --json | jq_ "d[\"lenses\"][\"design\"][\"twin_crit\"], d[\"lenses\"][\"design\"][\"twin_fp\"]")" = "[10, 10]" ] && [ "$(sc --reports "$W/noisy" --json | jq_ "d[\"lenses\"][\"correctness\"][\"twin_crit\"], d[\"lenses\"][\"correctness\"][\"twin_fp\"]")" = "[0, 10]" ]'
+
 # A missing report exits 2 and is named.
 mkdir -p "$W/partial"; cp "$W/perfect/lens-docs-01.md" "$W/partial/"
 out="$(sc --reports "$W/partial" --lens docs 2>&1)"; r=$?
@@ -81,6 +108,28 @@ check "a report with no findings block exits 2" eval '[ "$r" = 2 ] && grep -q "n
 
 # An unknown lens matches nothing and exits 2.
 check "an unknown lens exits 2" eval 'sc --reports "$W/perfect" --lens nonsense >/dev/null 2>&1; [ $? = 2 ]'
+
+# lens_blind.py: the reviewer folders hide the lens and the twin marker, and collect maps reports back.
+LB="$T/lens_blind.py"
+python3 -I "$LB" prepare --out "$W/blind" >/dev/null 2>&1
+check "prepare makes 18 reviewer folders of 20 cases each" \
+  eval '[ "$(ls -d "$W"/blind/agent-*/case-* | wc -l | tr -d " ")" = 360 ] && [ "$(ls -d "$W"/blind/agent-* | wc -l | tr -d " ")" = 18 ]'
+check "no file or name a reviewer reads mentions a lens, a twin or expected.json" \
+  eval '! grep -rlE "lens-|-twin|expected[.]json" "$W"/blind/agent-* >/dev/null 2>&1 && [ -z "$(find "$W"/blind/agent-* -iname "*lens*" -o -iname "*twin*" -o -name expected.json)" ]'
+check "prepare refuses a folder that is not empty" eval 'python3 -I "$LB" prepare --out "$W/blind" >/dev/null 2>&1; [ $? = 2 ]'
+python3 -I - "$W/blind" "$W/perfect" <<'PY'
+import glob, json, os, shutil, sys
+blind, perfect = sys.argv[1:3]
+for alias, name in json.load(open(os.path.join(blind, "map.json"))).items():
+    agent = os.path.basename(os.path.dirname(glob.glob(os.path.join(blind, "agent-*", alias))[0]))
+    shutil.copy(os.path.join(perfect, name + ".md"), os.path.join(blind, "reports", agent, alias + ".md"))
+PY
+python3 -I "$LB" collect --dir "$W/blind" --out "$W/collected" >/dev/null 2>&1
+check "collect maps the reports back: a perfect run scores recall 1" \
+  eval '[ "$(sc --reports "$W/collected" --json | jq_ "d[\"overall\"][\"recall\"]")" = "1.0" ]'
+rm -f "$W"/blind/reports/agent-01/case-*.md
+python3 -I "$LB" collect --dir "$W/blind" --out "$W/collected2" >/dev/null 2>&1
+check "collect exits 2 when a report is missing" eval 'python3 -I "$LB" collect --dir "$W/blind" --out "$W/collected2" >/dev/null 2>&1; [ $? = 2 ]'
 
 printf '%s\n' "${ROWS[@]}"
 echo "TOTAL: $PASS passed, $FAIL failed"

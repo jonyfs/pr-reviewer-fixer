@@ -2,7 +2,7 @@
 """Scores pr-reviewer reports against the per-lens cases (catalog item 94). No network, no model.
 
 Usage:
-  lens_score.py --reports DIR [--cases DIR] [--lens NAME ...] [--min-recall R] [--max-twin-fp F] [--json]
+  lens_score.py --reports DIR [--cases DIR] [--lens NAME ...] [--line-slack N] [--min-recall R] [--max-twin-fp F] [--json]
 
 A report for a case is DIR/<case>.md and ends with the fenced `findings` block the skill defines,
 the same as for tests/eval/score.py, whose matching rule this script reuses: a finding is a hit
@@ -12,7 +12,13 @@ defect's min_severity.
 For each lens the script prints:
   recall      defects hit over defects seeded, across the lens's defect cases (a NOTE can hit a
               NOTE-level defect; score.py ignores notes);
-  twin FP     the share of clean twins on which the reviewer reported any CRITICAL or WARNING.
+  twin FP     the share of clean twins on which the reviewer reported any CRITICAL or WARNING;
+  twin CRIT   the share of clean twins on which it reported a CRITICAL (the catalog's item 94 asks
+              for none; a WARNING on a twin is often a real remark about the fixture's other code).
+
+--line-slack N widens every defect's line tolerance by N lines. Reviewers count lines a little
+differently, so a finding a few lines off is a miss at slack 0 and a hit at a larger slack: the
+two figures separate "found the defect" from "named its exact line".
 
 --lens limits scoring to the named lenses (running the reviewer on every case is a lot of work);
 an unknown lens exits 2. --min-recall and --max-twin-fp are checked for every scored lens.
@@ -40,7 +46,7 @@ def load_scorer():
     return mod
 
 
-def count_hits(sc, expected, findings):
+def count_hits(sc, expected, findings, slack=0):
     """Defects named by a finding of at least the defect's min_severity. A defect is hit once and a
     finding names one defect. Unlike score.py, a NOTE can hit a defect whose min_severity is NOTE
     (documentation and readability lenses never block, so their seeded defects are NOTEs)."""
@@ -50,7 +56,7 @@ def count_hits(sc, expected, findings):
         for i, f in enumerate(findings):
             if i in used:
                 continue
-            if sc.near(f, d) and sc.RANK.get(f.get("severity", "").upper(), 0) >= need:
+            if sc.near(f, dict(d, tolerance=d.get("tolerance", sc.DEFAULT_TOLERANCE) + slack)) and sc.RANK.get(f.get("severity", "").upper(), 0) >= need:
                 used.add(i)
                 hit += 1
                 break
@@ -64,6 +70,7 @@ def main(argv):
     ap.add_argument("--lens", action="append", default=[])
     ap.add_argument("--min-recall", type=float)
     ap.add_argument("--max-twin-fp", type=float)
+    ap.add_argument("--line-slack", type=int, default=0)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
@@ -103,15 +110,17 @@ def main(argv):
         if findings is None:
             print("lens_score: %s has no findings block" % name, file=sys.stderr)
             return 2
-        L = lenses.setdefault(lens, {"defects": 0, "hit": 0, "twins": 0, "twin_fp": 0})
+        L = lenses.setdefault(lens, {"defects": 0, "hit": 0, "twins": 0, "twin_fp": 0, "twin_crit": 0})
         if twin:
             L["twins"] += 1
             # A twin is clean: a CRITICAL or WARNING on it is a false positive. A NOTE is not.
             if any(f.get("severity", "").upper() in ("CRITICAL", "WARNING") for f in findings):
                 L["twin_fp"] += 1
+            if any(f.get("severity", "").upper() == "CRITICAL" for f in findings):
+                L["twin_crit"] += 1
         else:
             L["defects"] += len(expected.get("defects", []))
-            L["hit"] += count_hits(sc, expected, findings)
+            L["hit"] += count_hits(sc, expected, findings, args.line_slack)
 
     out = {}
     for lens, L in sorted(lenses.items()):
@@ -120,23 +129,27 @@ def main(argv):
             "recall": round(L["hit"] / L["defects"], 3) if L["defects"] else None,
             "twins": L["twins"], "twin_fp": L["twin_fp"],
             "twin_fp_rate": round(L["twin_fp"] / L["twins"], 3) if L["twins"] else None,
+            "twin_crit": L["twin_crit"],
+            "twin_crit_rate": round(L["twin_crit"] / L["twins"], 3) if L["twins"] else None,
         }
     tot_d = sum(v["defects"] for v in out.values())
     tot_h = sum(v["hit"] for v in out.values())
     tot_t = sum(v["twins"] for v in out.values())
     tot_f = sum(v["twin_fp"] for v in out.values())
+    tot_c = sum(v["twin_crit"] for v in out.values())
     summary = {
         "recall": round(tot_h / tot_d, 3) if tot_d else None,
         "twin_fp_rate": round(tot_f / tot_t, 3) if tot_t else None,
+        "twin_crit_rate": round(tot_c / tot_t, 3) if tot_t else None,
     }
 
     if args.json:
         print(json.dumps({"lenses": out, "overall": summary}, sort_keys=True))
     else:
-        print("%-16s %7s %6s  %8s %7s" % ("lens", "defects", "recall", "twin FP", "rate"))
+        print("%-16s %7s %6s  %8s %6s  %9s %6s" % ("lens", "defects", "recall", "twin FP", "rate", "twin CRIT", "rate"))
         for lens, v in out.items():
-            print("%-16s %3d/%-3d %6s  %3d/%-4d %7s" % (lens, v["hit"], v["defects"], v["recall"], v["twin_fp"], v["twins"], v["twin_fp_rate"]))
-        print("overall recall %s, twin false-positive rate %s" % (summary["recall"], summary["twin_fp_rate"]))
+            print("%-16s %3d/%-3d %6s  %3d/%-4d %6s  %4d/%-4d %6s" % (lens, v["hit"], v["defects"], v["recall"], v["twin_fp"], v["twins"], v["twin_fp_rate"], v["twin_crit"], v["twins"], v["twin_crit_rate"]))
+        print("overall recall %s, twin false-positive rate %s, twin CRITICAL rate %s" % (summary["recall"], summary["twin_fp_rate"], summary["twin_crit_rate"]))
 
     failed = False
     # Thresholds apply to every scored lens and to the overall figure: a lens with no recall must
