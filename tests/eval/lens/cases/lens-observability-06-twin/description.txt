@@ -1,0 +1,1 @@
+Adds report loading with a build-time metric.

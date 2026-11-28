@@ -1,0 +1,14 @@
+{
+  "description": "Data integrity. Event time stored without time zone for bookings across regions.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "Migrations/20261105_AddEventTime.cs",
+      "line": 10,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "offset is lost"
+    }
+  ],
+  "decoys": []
+}

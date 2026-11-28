@@ -1,0 +1,14 @@
+--- /dev/null
++++ b/src/metrics.ts
+@@ -0,0 +1,11 @@
++import { Counter } from 'prom-client';
++
++const searches = new Counter({
++  name: 'search_requests_total',
++  help: 'Search requests handled',
++  labelNames: ['route', 'user_id'],
++});
++
++export function recordSearch(route: string, userId: string, status: string): void {
++  searches.inc({ route, user_id: userId });
++}

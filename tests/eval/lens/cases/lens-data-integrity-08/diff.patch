@@ -1,0 +1,14 @@
+diff --git a/db/changelog/0007-add-status.xml b/db/changelog/0007-add-status.xml
+new file mode 100644
+--- /dev/null
++++ b/db/changelog/0007-add-status.xml
+@@ -0,0 +1,9 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog">
++  <changeSet id="0007" author="team">
++    <addColumn tableName="shipments">
++      <column name="status" type="varchar(16)" defaultValue="pending"/>
++    </addColumn>
++    <createIndex tableName="shipments" indexName="ix_shipments_status"><column name="status"/></createIndex>
++  </changeSet>
++</databaseChangeLog>

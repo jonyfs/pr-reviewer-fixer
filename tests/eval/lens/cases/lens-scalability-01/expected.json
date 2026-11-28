@@ -1,0 +1,14 @@
+{
+  "description": "List endpoint returns every row of a growing table with no limit.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "api/orders.py",
+      "line": 11,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "The orders query has no LIMIT and the endpoint takes no limit parameter. The table grows with every order, so response size, memory and query time grow linearly until the endpoint times out."
+    }
+  ],
+  "decoys": []
+}

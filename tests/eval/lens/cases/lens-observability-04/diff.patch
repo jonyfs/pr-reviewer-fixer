@@ -1,0 +1,23 @@
+--- /dev/null
++++ b/worker/drain.go
+@@ -0,0 +1,20 @@
++package worker
++
++import (
++	"context"
++	"log"
++)
++
++type Sender interface{ Send(ctx context.Context, id string) error }
++
++func Drain(ctx context.Context, s Sender, ids []string) int {
++	log.Printf("draining %d ids", len(ids))
++	sent := 0
++	for _, id := range ids {
++		if err := s.Send(ctx, id); err != nil {
++			continue
++		}
++		sent++
++	}
++	return sent
++}

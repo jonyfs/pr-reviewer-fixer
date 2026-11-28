@@ -1,0 +1,19 @@
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+new file mode 100644
+--- /dev/null
++++ b/prisma/schema.prisma
+@@ -0,0 +1,14 @@
++model Account {
++  id        Int      @id @default(autoincrement())
++  balance   Decimal  @db.Decimal(14, 2)
++  entries   LedgerEntry[]
++}
++
++model LedgerEntry {
++  id        Int      @id @default(autoincrement())
++  accountId Int
++  account   Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
++  amount    Decimal  @db.Decimal(14, 2)
++  createdAt DateTime @default(now())
++  @@index([accountId])
++}

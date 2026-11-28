@@ -1,0 +1,5 @@
+{
+  "description": "Clean version: one remote inventory call per sku in a loop is fixed.",
+  "defects": [],
+  "decoys": []
+}

@@ -1,0 +1,17 @@
+diff --git a/db/migrate/20261101120000_add_unique_email.rb b/db/migrate/20261101120000_add_unique_email.rb
+new file mode 100644
+--- /dev/null
++++ b/db/migrate/20261101120000_add_unique_email.rb
+@@ -0,0 +1,12 @@
++class AddUniqueEmail < ActiveRecord::Migration[7.1]
++  disable_ddl_transaction!
++
++  def up
++    # users is hot, keep this short
++    add_index :users, :email, unique: true, algorithm: :concurrently
++  end
++
++  def down
++    remove_index :users, :email
++  end
++end

@@ -1,0 +1,1 @@
+Adds TenantTotals to report the amount per event type for a tenant.

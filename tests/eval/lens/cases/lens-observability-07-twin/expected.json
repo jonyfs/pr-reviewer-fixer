@@ -1,0 +1,5 @@
+{
+ "description": "Clean version: Orders move from paid to shipped with no log line is fixed.",
+ "defects": [],
+ "decoys": []
+}

@@ -1,0 +1,5 @@
+{
+ "description": "Clean version: A tracing span is started on each lookup and never ended is fixed.",
+ "defects": [],
+ "decoys": []
+}

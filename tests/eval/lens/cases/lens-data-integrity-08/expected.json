@@ -1,0 +1,14 @@
+{
+  "description": "Data integrity. Free-text status column with no CHECK constraint though code assumes three values.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "db/changelog/0007-add-status.xml",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "invalid statuses can be stored"
+    }
+  ],
+  "decoys": []
+}

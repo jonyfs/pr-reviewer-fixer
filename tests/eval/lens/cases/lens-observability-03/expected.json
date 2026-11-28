@@ -1,0 +1,14 @@
+{
+ "description": "A Prometheus counter is labelled with the user id, creating one time series per user.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "src/metrics.ts",
+   "line": 6,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "A Prometheus counter is labelled with the user id, creating one time series per user."
+  }
+ ],
+ "decoys": []
+}

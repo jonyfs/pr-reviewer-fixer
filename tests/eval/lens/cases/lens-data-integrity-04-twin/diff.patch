@@ -1,0 +1,16 @@
+diff --git a/src/main/resources/db/migration/V12__backfill_status.sql b/src/main/resources/db/migration/V12__backfill_status.sql
+new file mode 100644
+--- /dev/null
++++ b/src/main/resources/db/migration/V12__backfill_status.sql
+@@ -0,0 +1,11 @@
++-- Normalise legacy order status values
++SET lock_timeout = '5s';
++
++BEGIN;
++
++UPDATE orders SET status = lower(trim(status)) WHERE id BETWEEN 1 AND 100000 AND status <> lower(trim(status));
++
++-- 40M rows in production
++COMMIT;
++
++ANALYZE orders;

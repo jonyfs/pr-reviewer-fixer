@@ -1,0 +1,31 @@
+diff --git a/lib/inventory/cache.ex b/lib/inventory/cache.ex
+new file mode 100644
+--- /dev/null
++++ b/lib/inventory/cache.ex
+@@ -0,0 +1,26 @@
++defmodule Inventory.Cache do
++  use GenServer
++
++  def start_link(_opts) do
++    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
++  end
++
++  def lookup(sku) do
++    GenServer.call(__MODULE__, {:lookup, sku}, 2_000)
++  end
++
++  @impl true
++  def init(state), do: {:ok, state}
++
++  @impl true
++  def handle_call({:lookup, sku}, _from, state) do
++    case Map.fetch(state, sku) do
++      {:ok, qty} ->
++        {:reply, qty, state}
++
++      :error ->
++        qty = Warehouse.fetch_quantity(sku)
++        {:reply, qty, Map.put(state, sku, qty)}
++    end
++  end
++end

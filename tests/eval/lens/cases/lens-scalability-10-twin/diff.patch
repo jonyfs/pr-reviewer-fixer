@@ -1,0 +1,19 @@
+--- /dev/null
++++ b/src/jobs.rs
+@@ -0,0 +1,16 @@
++use std::time::Duration;
++
++pub async fn wait_for_job(client: &Client, id: &str) -> Result<Job, Error> {
++    let mut delay = Duration::from_millis(100);
++    loop {
++        let job = client.get_job(id).await?;
++        if job.done {
++            return Ok(job);
++        }
++        tokio::time::sleep(delay).await;
++        delay = (delay * 2).min(Duration::from_secs(30));
++        if delay > Duration::from_secs(3600) {
++            return Err(Error::Timeout);
++        }
++    }
++}

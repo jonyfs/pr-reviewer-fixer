@@ -1,0 +1,14 @@
+{
+  "description": "One remote inventory call per SKU in a loop.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/java/com/example/stock/StockService.java",
+      "line": 17,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "The loop makes one network call to the inventory service per SKU, so latency and load on that service grow linearly with list size (a 1,000-SKU cart means 1,000 sequential round trips per request)."
+    }
+  ],
+  "decoys": []
+}

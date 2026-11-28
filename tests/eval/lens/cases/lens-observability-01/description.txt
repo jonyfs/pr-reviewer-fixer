@@ -1,0 +1,1 @@
+Charge capture helper for checkout orders.

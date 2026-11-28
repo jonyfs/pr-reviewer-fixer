@@ -1,0 +1,1 @@
+Adds a fetcher that retries server errors and connection failures when reading from the sync API.

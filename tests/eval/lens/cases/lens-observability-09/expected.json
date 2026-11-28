@@ -1,0 +1,14 @@
+{
+ "description": "A tracing span is started on each lookup and never ended, so spans leak and never get exported.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "src/Profiles.kt",
+   "line": 6,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "A tracing span is started on each lookup and never ended, so spans leak and never get exported."
+  }
+ ],
+ "decoys": []
+}

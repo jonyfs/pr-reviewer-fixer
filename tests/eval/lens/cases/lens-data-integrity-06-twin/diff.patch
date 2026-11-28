@@ -1,0 +1,18 @@
+diff --git a/app/migrations/0015_narrow_id.py b/app/migrations/0015_narrow_id.py
+new file mode 100644
+--- /dev/null
++++ b/app/migrations/0015_narrow_id.py
+@@ -0,0 +1,13 @@
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++    dependencies = [('app', '0014_event')]
++
++    operations = [
++        migrations.AlterField(
++            model_name='event',
++            name='external_id',
++            field=models.BigIntegerField(db_index=True),
++        ),
++    ]

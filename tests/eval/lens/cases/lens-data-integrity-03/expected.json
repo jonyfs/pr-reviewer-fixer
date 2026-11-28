@@ -1,0 +1,14 @@
+{
+  "description": "Data integrity. Foreign key added without index on referencing column.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "alembic/versions/3f2a_add_fk_payments.py",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "invoice deletes scan payments and lock"
+    }
+  ],
+  "decoys": []
+}

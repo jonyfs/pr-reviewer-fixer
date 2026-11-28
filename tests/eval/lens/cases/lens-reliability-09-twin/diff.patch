@@ -1,0 +1,23 @@
+diff --git a/src/main/kotlin/profile/ProfileService.kt b/src/main/kotlin/profile/ProfileService.kt
+new file mode 100644
+--- /dev/null
++++ b/src/main/kotlin/profile/ProfileService.kt
+@@ -0,0 +1,18 @@
++package profile
++
++import kotlinx.coroutines.async
++import kotlinx.coroutines.coroutineScope
++
++class ProfileService(
++    private val users: UserRepository,
++    private val recs: RecommendationsClient,
++) {
++    suspend fun page(userId: String): ProfilePage = coroutineScope {
++        val user = async { users.find(userId) }
++        val picks = async { kotlinx.coroutines.withTimeoutOrNull(300) { recs.fetch(userId) } ?: emptyList() }
++        ProfilePage(
++            user = user.await(),
++            picks = picks.await(),
++        )
++    }
++}

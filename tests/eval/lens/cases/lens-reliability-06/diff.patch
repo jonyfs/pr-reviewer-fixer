@@ -1,0 +1,33 @@
+diff --git a/Exports/ReportExporter.cs b/Exports/ReportExporter.cs
+new file mode 100644
+--- /dev/null
++++ b/Exports/ReportExporter.cs
+@@ -0,0 +1,28 @@
++using System;
++using System.IO;
++using System.Threading;
++using System.Threading.Tasks;
++
++public class ReportExporter
++{
++    private readonly SemaphoreSlim _slots = new(4);
++    private readonly IBlobStore _store;
++
++    public ReportExporter(IBlobStore store) => _store = store;
++
++    public async Task ExportAsync(Report report, CancellationToken ct)
++    {
++        await _slots.WaitAsync(ct);
++        var tmp = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.csv");
++        try
++        {
++            await File.WriteAllTextAsync(tmp, report.ToCsv(), ct);
++            await _store.UploadAsync(report.Name, tmp, ct);
++            File.Delete(tmp);
++        }
++        finally
++        {
++            _slots.Release();
++        }
++    }
++}

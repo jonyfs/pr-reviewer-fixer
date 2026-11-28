@@ -1,0 +1,5 @@
+{
+ "description": "Clean version: The catch block logs only err.message is fixed.",
+ "defects": [],
+ "decoys": []
+}

@@ -1,0 +1,1 @@
+Adds the health check route for the load balancer.

@@ -1,0 +1,5 @@
+{
+ "description": "Clean version: The handler logs the whole raw request body with no size limit is fixed.",
+ "defects": [],
+ "decoys": []
+}

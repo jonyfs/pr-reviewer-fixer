@@ -1,0 +1,26 @@
+diff --git a/src/worker.js b/src/worker.js
+new file mode 100644
+--- /dev/null
++++ b/src/worker.js
+@@ -0,0 +1,21 @@
++const { connect } = require("./queue");
++const { renderInvoice } = require("./invoice");
++
++async function start() {
++  const channel = await connect(process.env.QUEUE_URL);
++  await channel.assertQueue("invoices", { durable: true });
++  await channel.prefetch(5);
++
++  await channel.consume("invoices", async (msg) => {
++    if (msg === null) return;
++    const job = JSON.parse(msg.content.toString());
++    await renderInvoice(job.orderId);
++    channel.ack(msg);
++    console.log("rendered", job.orderId);
++  });
++}
++
++start().catch((err) => {
++  console.error(err);
++  process.exit(1);
++});

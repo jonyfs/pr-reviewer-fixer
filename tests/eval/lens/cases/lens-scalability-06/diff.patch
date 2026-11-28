@@ -1,0 +1,24 @@
+--- /dev/null
++++ b/src/Pricing/PriceService.cs
+@@ -0,0 +1,21 @@
++using System.Threading.Tasks;
++
++namespace Pricing;
++
++public class PriceService
++{
++    private static readonly object Gate = new();
++    private readonly IItemRepo _repo;
++    private readonly IFxRates _fx;
++
++    public PriceService(IItemRepo repo, IFxRates fx) { _repo = repo; _fx = fx; }
++
++    public decimal Price(string sku)
++    {
++        lock (Gate)
++        {
++            var item = _repo.Load(sku);
++            return item.Price * _fx.Rate(item.Currency);
++        }
++    }
++}

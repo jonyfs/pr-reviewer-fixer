@@ -1,0 +1,13 @@
+--- /dev/null
++++ b/src/main/kotlin/reports/TenantTotals.kt
+@@ -0,0 +1,10 @@
++package reports
++
++class TenantTotals(private val repo: EventRepo) {
++
++    fun totalsByType(tenantId: String): Map<String, Long> {
++        val events = repo.findAllByTenant(tenantId)
++        return events.groupBy { it.type }
++            .mapValues { (_, list) -> list.sumOf { it.amount } }
++    }
++}

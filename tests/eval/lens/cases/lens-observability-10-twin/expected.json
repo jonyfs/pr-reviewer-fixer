@@ -1,0 +1,5 @@
+{
+ "description": "Clean version: The health handler pings the database but ignores the result and always returns 200 is fixed.",
+ "defects": [],
+ "decoys": []
+}

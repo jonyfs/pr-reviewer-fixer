@@ -1,0 +1,1 @@
+Adds StockService to look up stock levels for a list of SKUs.

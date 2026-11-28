@@ -1,0 +1,1 @@
+Adds the invoices queue worker that renders an invoice for each order message.

@@ -1,0 +1,5 @@
+{
+  "description": "Clean version: all events for a tenant are loaded into memory and aggregated in the application is fixed.",
+  "defects": [],
+  "decoys": []
+}

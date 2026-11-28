@@ -1,0 +1,14 @@
+{
+  "description": "Data integrity. Whole-table UPDATE in one transaction on a very large table.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/resources/db/migration/V12__backfill_status.sql",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "single-transaction backfill of 40M rows"
+    }
+  ],
+  "decoys": []
+}
