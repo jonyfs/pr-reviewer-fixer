@@ -1,0 +1,14 @@
+{
+  "description": "A Gemfile for the web app with its linter and test tools.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "Gemfile",
+      "line": 4,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "rubocop is a dev-only linter listed as a runtime gem (no development group), so it ships to production."
+    }
+  ],
+  "decoys": []
+}

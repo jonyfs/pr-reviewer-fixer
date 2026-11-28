@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/retry/retry.go
+@@ -0,0 +1,18 @@
++package retry
++
++import "time"
++
++const maxAttempts = 5
++
++// Do runs fn and retries it up to 3 times with a fixed one second pause
++// between attempts. It returns the last error if every attempt fails.
++func Do(fn func() error) error {
++	var err error
++	for i := 0; i < maxAttempts; i++ {
++		if err = fn(); err == nil {
++			return nil
++		}
++		time.Sleep(time.Second)
++	}
++	return err
++}

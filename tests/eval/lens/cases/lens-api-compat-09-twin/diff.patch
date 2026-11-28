@@ -1,0 +1,15 @@
+--- /dev/null
++++ b/src/main/kotlin/settings/Prefs.kt
+@@ -0,0 +1,12 @@
++package settings
++
++import kotlinx.serialization.SerialName
++import kotlinx.serialization.Serializable
++import kotlinx.serialization.json.JsonNames
++
++@Serializable
++data class Prefs(
++    @SerialName("uid") @JsonNames("user_id") val id: String,
++    val theme: String = "light",
++    val notifications: Boolean = true,
++)

@@ -1,0 +1,14 @@
+{
+  "description": "Locks are taken in argument order, so transfer(a,b) and transfer(b,a) running together can deadlock.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/java/com/example/Bank.java",
+      "line": 11,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Lock ordering depends on argument order: deadlock"
+    }
+  ],
+  "decoys": []
+}

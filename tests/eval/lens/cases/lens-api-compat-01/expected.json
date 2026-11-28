@@ -1,0 +1,1 @@
+{"description": "Public function signature changes positional order.", "defects": [{"id": "D1", "file": "billing/invoices.py", "line": 6, "tolerance": 2, "min_severity": "WARNING", "note": "New parameter currency inserted before amount in the middle of the signature; existing positional callers send_invoice(id, 25.0) now fail or swap values."}], "decoys": []}

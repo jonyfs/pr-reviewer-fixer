@@ -1,0 +1,14 @@
+{
+  "description": "Usage text documents --out but the script parses --output.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "bin/export.sh",
+      "line": 4,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Usage message advertises --out; the parser only accepts --output."
+    }
+  ],
+  "decoys": []
+}

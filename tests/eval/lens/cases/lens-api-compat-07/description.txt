@@ -1,0 +1,1 @@
+Adds a few fields to Account serialization for the mobile client.

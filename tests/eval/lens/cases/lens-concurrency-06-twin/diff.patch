@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/src/Config/AppConfig.cs
+@@ -0,0 +1,18 @@
++namespace Example.Config;
++
++public sealed class AppConfig
++{
++    private static readonly Lazy<AppConfig> _lazy = new(() => new AppConfig());
++
++    private AppConfig() { }
++
++    public static AppConfig Instance
++    {
++        get
++        {
++            return _lazy.Value;
++        }
++    }
++
++    public string Region { get; set; } = "eu";
++}

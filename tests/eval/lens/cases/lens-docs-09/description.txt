@@ -1,0 +1,1 @@
+Make findUser fail loudly for unknown ids.

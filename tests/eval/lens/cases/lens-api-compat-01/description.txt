@@ -1,0 +1,1 @@
+Updates the existing send_invoice helper to support a notification toggle and an explicit currency.

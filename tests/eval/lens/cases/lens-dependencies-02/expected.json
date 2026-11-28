@@ -1,0 +1,14 @@
+{
+  "description": "requests is declared twice with two different versions.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "requirements.txt",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "requests pinned to 2.31.0 and again to 2.28.0; conflicting duplicate declaration, pip will fail or pick ambiguously."
+    }
+  ],
+  "decoys": []
+}

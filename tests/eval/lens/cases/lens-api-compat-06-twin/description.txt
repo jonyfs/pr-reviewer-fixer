@@ -1,0 +1,1 @@
+Updates the Paginate extension used by catalog listings.

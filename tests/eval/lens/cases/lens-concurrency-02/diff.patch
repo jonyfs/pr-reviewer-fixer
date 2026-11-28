@@ -1,0 +1,22 @@
+--- /dev/null
++++ b/src/wallet.js
+@@ -0,0 +1,19 @@
++let balance = 100;
++
++async function fetchFee(amount) {
++  const res = await fetch(`https://example.com/fee?amount=${amount}`);
++  return (await res.json()).fee;
++}
++
++async function charge(amount) {
++  const current = balance;
++  const fee = await fetchFee(amount);
++  balance = current - amount - fee;
++  return balance;
++}
++
++function getBalance() {
++  return balance;
++}
++
++module.exports = { charge, getBalance };

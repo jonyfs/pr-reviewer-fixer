@@ -1,0 +1,1 @@
+Add a Poller that syncs every 30 seconds and stops on SIGTERM.

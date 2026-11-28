@@ -1,0 +1,14 @@
+diff --git a/Cargo.toml b/Cargo.toml
+new file mode 100644
+--- /dev/null
++++ b/Cargo.toml
+@@ -0,0 +1,9 @@
++[package]
++name = "ingest"
++version = "0.3.0"
++edition = "2021"
++
++[dependencies]
++serde = { version = "1.0", features = ["derive"] }
++reqwest = { version = "0.12", features = ["json"] }
++tokio = { version = "1.38", features = ["rt-multi-thread", "macros"] }

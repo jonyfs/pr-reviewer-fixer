@@ -1,0 +1,14 @@
+{
+  "description": "concurrentPerform runs iterations in parallel and they all mutate one captured var with no synchronisation.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "Sources/Totals.swift",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Unsynchronised mutation of captured var in concurrentperform"
+    }
+  ],
+  "decoys": []
+}

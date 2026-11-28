@@ -1,0 +1,13 @@
+--- /dev/null
++++ b/src/names.rs
+@@ -0,0 +1,10 @@
++use std::fs;
++
++/// Returns the names listed in the file at `path`.
++pub fn load_names(path: &str) -> Vec<String> {
++    let text = fs::read_to_string(path).unwrap_or_default();
++    text.lines()
++        .map(|l| l.trim().to_string())
++        .filter(|l| !l.is_empty())
++        .collect::<Vec<_>>()
++}

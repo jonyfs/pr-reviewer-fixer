@@ -1,0 +1,19 @@
+--- /dev/null
++++ b/src/Catalog/Paginator.cs
+@@ -0,0 +1,16 @@
++using System.Collections.Generic;
++using System.Linq;
++
++namespace Catalog
++{
++    public static class Paginator
++    {
++        public const int DefaultPageSize = 50;
++
++        public static List<T> Paginate<T>(IEnumerable<T> items, int page, int pageSize = 10)
++        {
++            if (page < 1) page = 1;
++            return items.Skip((page - 1) * pageSize).Take(pageSize).ToList();
++        }
++    }
++}

@@ -1,0 +1,1 @@
+{"description": "Stored key user_id renamed to uid with no alias for old data.", "defects": [{"id": "D1", "file": "src/main/kotlin/settings/Prefs.kt", "line": 8, "tolerance": 2, "min_severity": "CRITICAL", "note": "Previously persisted prefs files use user_id; decoding them now fails with a missing field, breaking every stored record."}], "decoys": []}

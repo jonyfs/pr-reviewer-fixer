@@ -1,0 +1,22 @@
+--- /dev/null
++++ b/src/fetcher.py
+@@ -0,0 +1,19 @@
++import urllib.request
++
++
++def fetch(url, timeout=30):
++    """Download url and return the body as bytes.
++
++    Args:
++        url: address to download.
++        timeout: seconds to wait for the server. Defaults to 30.
++
++    Returns:
++        The response body.
++    """
++    with urllib.request.urlopen(url, timeout=timeout) as resp:
++        return resp.read()
++
++
++def fetch_text(url, timeout=30):
++    return fetch(url, timeout).decode("utf-8")

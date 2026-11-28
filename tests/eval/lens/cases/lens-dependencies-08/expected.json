@@ -1,0 +1,14 @@
+{
+  "description": "Dependency added unconditionally for a feature the standard library already provides on the supported Python.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "pyproject.toml",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "requires-python is >=3.11, where tomllib is in the standard library; tomli is an unnecessary dependency."
+    }
+  ],
+  "decoys": []
+}

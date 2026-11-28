@@ -1,0 +1,1 @@
+Add an HTTP client to the ingest crate.

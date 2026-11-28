@@ -1,0 +1,24 @@
+--- /dev/null
++++ b/src/sessions/store.py
+@@ -0,0 +1,21 @@
++import threading
++
++_sessions = {}
++_lock = threading.Lock()
++
++
++def get_session(user_id, factory):
++    with _lock:
++        if user_id not in _sessions:
++            _sessions[user_id] = factory(user_id)
++        return _sessions[user_id]
++
++
++def drop_session(user_id):
++    with _lock:
++        _sessions.pop(user_id, None)
++
++
++def active_users():
++    with _lock:
++        return list(_sessions.keys())

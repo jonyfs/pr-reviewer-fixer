@@ -1,0 +1,1 @@
+Tightens input handling in the existing CreateWidget endpoint.

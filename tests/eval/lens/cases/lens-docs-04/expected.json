@@ -1,0 +1,14 @@
+{
+  "description": "The `--legacy` flag was removed from the CLI but the changelog does not mention it.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "CHANGELOG.md",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Removed user-facing flag --legacy has no changelog entry (breaking change)."
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,14 @@
+{
+  "description": "OpenAPI description advertises a DELETE endpoint that the code does not implement.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "api/openapi.yaml",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "API description lists DELETE /v1/sessions/{sid}, which does not exist."
+    }
+  ],
+  "decoys": []
+}

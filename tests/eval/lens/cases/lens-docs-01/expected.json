@@ -1,0 +1,14 @@
+{
+  "description": "Docstring states the old default (10) while the signature default is 30.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/fetcher.py",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Docstring says timeout defaults to 10 but the code default is 30."
+    }
+  ],
+  "decoys": []
+}

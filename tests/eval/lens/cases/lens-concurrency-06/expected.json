@@ -1,0 +1,14 @@
+{
+  "description": "Lazy singleton initialised without a guard: two threads can each see null and create separate instances.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Config/AppConfig.cs",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Thread-unsafe lazy singleton"
+    }
+  ],
+  "decoys": []
+}

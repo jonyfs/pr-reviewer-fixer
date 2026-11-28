@@ -1,0 +1,1 @@
+Count events across a pool of worker threads.

@@ -1,0 +1,12 @@
+--- /dev/null
++++ b/Sources/Totals.swift
+@@ -0,0 +1,9 @@
++import Foundation
++
++func sum(_ values: [Int]) -> Int {
++    var total = 0
++    DispatchQueue.concurrentPerform(iterations: values.count) { i in
++        total += values[i]
++    }
++    return total
++}

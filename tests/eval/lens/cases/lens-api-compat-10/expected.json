@@ -1,0 +1,1 @@
+{"description": "Public return type changed from Vec<String> to impl Iterator.", "defects": [{"id": "D1", "file": "src/names.rs", "line": 4, "tolerance": 2, "min_severity": "WARNING", "note": "Callers using .len(), indexing or iterating twice no longer compile."}], "decoys": []}

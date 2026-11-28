@@ -1,0 +1,14 @@
+{
+  "description": "JSDoc says null is returned but the function throws.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/lookup.ts",
+      "line": 11,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "JSDoc promises null on a miss; code throws an Error."
+    }
+  ],
+  "decoys": []
+}
