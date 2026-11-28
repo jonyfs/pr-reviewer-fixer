@@ -60,6 +60,7 @@ check "a NOTE where a WARNING is required is not a hit" \
   eval '[ "$(sc --reports "$W/weak" --json | jq_ "d[\"lenses\"][\"performance\"][\"hit\"]")" = "0" ]'
 check "--lens scores only the named lenses" \
   eval '[ "$(sc --reports "$W/perfect" --lens docs --lens privacy --json | jq_ "sorted(d[\"lenses\"])")" = "[\"docs\", \"privacy\"]" ]'
+check "a negative --line-slack exits 2" eval 'sc --reports "$W/perfect" --line-slack -1 >/dev/null 2>&1; [ $? = 2 ]'
 check "--min-recall above the recall exits 1" eval 'sc --reports "$W/empty" --min-recall 0.5 >/dev/null 2>&1; [ $? = 1 ]'
 check "--min-recall is checked per lens: one lens with no recall fails a run that is otherwise perfect" \
   eval 'sc --reports "$W/dropped" --min-recall 0.5 >/dev/null 2>&1; [ $? = 1 ]'
@@ -116,11 +117,21 @@ check "prepare makes 18 reviewer folders of 20 cases each" \
   eval '[ "$(ls -d "$W"/blind/agent-*/case-* | wc -l | tr -d " ")" = 360 ] && [ "$(ls -d "$W"/blind/agent-* | wc -l | tr -d " ")" = 18 ]'
 check "no file or name a reviewer reads mentions a lens, a twin or expected.json" \
   eval '! grep -rlE "lens-|-twin|expected[.]json" "$W"/blind/agent-* >/dev/null 2>&1 && [ -z "$(find "$W"/blind/agent-* -iname "*lens*" -o -iname "*twin*" -o -name expected.json)" ]'
+check "the map is beside the reviewer folders, not inside them" \
+  eval '[ -f "$W/blind.map.json" ] && [ ! -e "$W/blind/map.json" ]'
+check "a case and its twin never share a reviewer folder" eval 'python3 -I - "$W/blind" <<PY
+import json, os, sys
+blind = sys.argv[1]; m = json.load(open(blind + ".map.json"))
+for agent in sorted(d for d in os.listdir(blind) if d.startswith("agent-")):
+    names = {m[a] for a in os.listdir(os.path.join(blind, agent))}
+    if any(n + "-twin" in names for n in names):
+        sys.exit(1)
+PY'
 check "prepare refuses a folder that is not empty" eval 'python3 -I "$LB" prepare --out "$W/blind" >/dev/null 2>&1; [ $? = 2 ]'
 python3 -I - "$W/blind" "$W/perfect" <<'PY'
 import glob, json, os, shutil, sys
 blind, perfect = sys.argv[1:3]
-for alias, name in json.load(open(os.path.join(blind, "map.json"))).items():
+for alias, name in json.load(open(blind + ".map.json")).items():
     agent = os.path.basename(os.path.dirname(glob.glob(os.path.join(blind, "agent-*", alias))[0]))
     shutil.copy(os.path.join(perfect, name + ".md"), os.path.join(blind, "reports", agent, alias + ".md"))
 PY
@@ -128,7 +139,6 @@ python3 -I "$LB" collect --dir "$W/blind" --out "$W/collected" >/dev/null 2>&1
 check "collect maps the reports back: a perfect run scores recall 1" \
   eval '[ "$(sc --reports "$W/collected" --json | jq_ "d[\"overall\"][\"recall\"]")" = "1.0" ]'
 rm -f "$W"/blind/reports/agent-01/case-*.md
-python3 -I "$LB" collect --dir "$W/blind" --out "$W/collected2" >/dev/null 2>&1
 check "collect exits 2 when a report is missing" eval 'python3 -I "$LB" collect --dir "$W/blind" --out "$W/collected2" >/dev/null 2>&1; [ $? = 2 ]'
 
 printf '%s\n' "${ROWS[@]}"

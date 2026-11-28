@@ -1,67 +1,78 @@
 # Baseline: a blinded run of the per-lens cases (2026-11-28)
 
-One run of a plain reviewer over the 360 cases, scored with `lens_score.py`. It is a baseline to compare
+Runs of a plain reviewer over the 360 cases, scored with `lens_score.py`. They are a baseline to compare
 later runs against, not a measure of `pr-reviewer`.
 
 ## Method
 
 - `lens_blind.py prepare` shuffled the 360 cases (seed 94) into 18 folders of 20, each case renamed
-  `case-NNN`. A reviewer saw only `diff.patch` and `description.txt`: not the lens, not whether a case
-  is a twin, not `expected.json`.
+  `case-NNN`, with a case and its twin always in different folders. The map from `case-NNN` to the real
+  name was kept outside the reviewers' folders. A reviewer saw only `diff.patch` and `description.txt`:
+  not the lens, not whether a case is a twin, not `expected.json`.
 - 18 sub-agents (the `sonnet` alias, at the time Sonnet 5.5), one per folder, each reviewed its 20
   diffs on every dimension and wrote one `findings` block per case. The brief gave the severity scale
   (CRITICAL, WARNING, NOTE) and the report format, and said to report only a defect it could point to on
   an added line.
 - `lens_blind.py collect` mapped the reports back; `lens_score.py` scored them.
+- The table is the second run. A first run used a round-robin split that put 5 case and twin pairs in the same
+  folder (their descriptions are identical, so a reviewer could tell the clean one) and left the map
+  beside the folders; `lens_blind.py` was fixed and the run repeated. The first run is kept below as a
+  variance check only.
 
-## Result
+## Result (run 2)
 
 | lens | defects hit (exact line, tolerance 2) | defects hit (line slack 6) | twins with CRITICAL or WARNING | twins with CRITICAL |
 |---|---|---|---|---|
-| api-compat | 2/10 | 7/10 | 2/10 | 0/10 |
-| complexity | 0/10 | 1/10 | 2/10 | 0/10 |
-| concurrency | 6/10 | 9/10 | 4/10 | 0/10 |
-| correctness | 7/10 | 10/10 | 3/10 | 0/10 |
-| data-integrity | 2/10 | 5/10 | 6/10 | 3/10 |
-| dependencies | 3/10 | 5/10 | 1/10 | 0/10 |
-| design | 5/10 | 6/10 | 4/10 | 1/10 |
-| docs | 5/10 | 8/10 | 1/10 | 0/10 |
-| error-handling | 5/10 | 10/10 | 1/10 | 0/10 |
-| observability | 5/10 | 7/10 | 2/10 | 0/10 |
-| operability | 4/10 | 7/10 | 3/10 | 0/10 |
-| performance | 5/10 | 10/10 | 4/10 | 0/10 |
-| privacy | 3/10 | 8/10 | 5/10 | 0/10 |
-| readability | 8/10 | 10/10 | 2/10 | 0/10 |
-| reliability | 2/10 | 6/10 | 6/10 | 0/10 |
-| scalability | 4/10 | 6/10 | 6/10 | 1/10 |
-| security | 7/10 | 9/10 | 3/10 | 2/10 |
-| testing | 4/10 | 5/10 | 3/10 | 0/10 |
-| **overall** | **0.428** | **0.717** | **0.322** | **0.039** |
+| api-compat | 3/10 | 5/10 | 4/10 | 0/10 |
+| complexity | 0/10 | 2/10 | 4/10 | 0/10 |
+| concurrency | 7/10 | 9/10 | 3/10 | 0/10 |
+| correctness | 4/10 | 10/10 | 2/10 | 0/10 |
+| data-integrity | 4/10 | 5/10 | 7/10 | 2/10 |
+| dependencies | 4/10 | 6/10 | 0/10 | 0/10 |
+| design | 4/10 | 5/10 | 5/10 | 0/10 |
+| docs | 7/10 | 9/10 | 1/10 | 0/10 |
+| error-handling | 6/10 | 10/10 | 1/10 | 0/10 |
+| observability | 7/10 | 8/10 | 3/10 | 0/10 |
+| operability | 4/10 | 7/10 | 2/10 | 0/10 |
+| performance | 6/10 | 10/10 | 6/10 | 0/10 |
+| privacy | 7/10 | 7/10 | 3/10 | 0/10 |
+| readability | 4/10 | 9/10 | 2/10 | 1/10 |
+| reliability | 6/10 | 8/10 | 6/10 | 0/10 |
+| scalability | 2/10 | 7/10 | 6/10 | 1/10 |
+| security | 6/10 | 10/10 | 5/10 | 2/10 |
+| testing | 5/10 | 5/10 | 1/10 | 0/10 |
+| **overall** | **0.478** | **0.733** | **0.339** | **0.033** |
+
+Run 1, same cases, same brief: recall 0.428 at the exact line and 0.717 with slack 6, twins
+with a CRITICAL or WARNING 0.322, with a CRITICAL 0.039. The overall figures move by a few
+points between runs; a single lens (10 defects) moved by up to 4 between them, so read one lens's row
+as a pointer, not a measurement.
 
 Read the columns this way:
 
-- Exact line is what the scorer's tolerance asks for. Of the 103 defects missed that way, 65 had a
-  finding in the right file within 8 lines of the defect, and 9 had one on the right line at too low a
-  severity: reviewers count lines a little differently. The slack-6 column separates "found the defect"
-  from "named its exact line".
-- Twins: item 94 asks for no CRITICAL on a clean twin, and 3.9 percent of twins got one. A WARNING on a
-  twin is often a real remark about the fixture's other code (a new phone field without a stated purpose, a
-  transfer that does not check the balance), not a failure to see that the seeded defect is gone, so the
-  CRITICAL column is the one to hold a run to.
+- Exact line is what the scorer's tolerance asks for. Of the 94 defects missed that way in run 2,
+  52 had a finding in the right file within 8 lines of the defect and 14 had one on
+  the right line at too low a severity (23 had no finding at all, 0 only in another file,
+  5 in the right file but farther than 8 lines): reviewers count lines a little differently. The
+  slack-6 column separates "found the defect" from "named its exact line".
+- Twins: item 94 asks for no CRITICAL on a clean twin, and 3.3 percent of twins got one in run 2.
+  A WARNING on a twin is often a real remark about the fixture's other code, not a failure to see that the
+  seeded defect is gone, so the CRITICAL column is the one to hold a run to.
 
 ## What this does not show
 
 - It is one reviewer per case with a short brief, not the `pr-reviewer` pipeline (three stances,
   dimension agents, verification). A run of the real skill is the measure that matters; this baseline is
   the cheap check to repeat on each prompt or model change.
-- One run, so no variance. The cases were generated by sub-agents and have not been read by a person;
-  a case with a weak defect or an unclean twin lowers the figures.
-- Lowest lenses (complexity, data integrity, reliability, testing) are where to look first: either the
-  reviewer under-reports there or the cases are weak. Reading those cases would tell which.
+- Two runs, so a rough idea of the variance, not a confidence interval. The cases were generated by
+  sub-agents and have not been read by a person; a case with a weak defect or an unclean twin lowers the
+  figures.
+- Complexity stays near zero in both runs: either the reviewer does not report complexity as a WARNING or
+  the cases ask for more than a reviewer would call a defect. Reading those cases would tell which.
 
 ## Repeat it
 
-    python3 -I tests/eval/lens_blind.py prepare --out DIR
+    python3 -I tests/eval/lens_blind.py prepare --out DIR --map MAPFILE
     # have a reviewer write DIR/reports/agent-NN/case-NNN.md for each case in DIR/agent-NN/
-    python3 -I tests/eval/lens_blind.py collect --dir DIR --out REPORTS
+    python3 -I tests/eval/lens_blind.py collect --dir DIR --map MAPFILE --out REPORTS
     python3 -I tests/eval/lens_score.py --reports REPORTS [--line-slack 6]

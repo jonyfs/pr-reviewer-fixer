@@ -73,6 +73,9 @@ def main(argv):
     ap.add_argument("--line-slack", type=int, default=0)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+    if args.line_slack < 0:
+        print("lens_score: --line-slack must be 0 or more", file=sys.stderr)
+        return 2
 
     sc = load_scorer()
     sc.CASES = args.cases
