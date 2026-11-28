@@ -1,0 +1,14 @@
+{
+  "description": "An interface, an abstract base and one implementation wrap a single call to round().",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Rounding.php",
+      "line": 17,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Premature strategy hierarchy with exactly one strategy and no second use planned."
+    }
+  ],
+  "decoys": []
+}

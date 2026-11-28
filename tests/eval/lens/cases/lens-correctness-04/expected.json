@@ -1,0 +1,1 @@
+{"description": "Total in cents is computed in int and overflows for large orders.", "defects": [{"id": "D1", "file": "src/main/java/shop/Invoice.java", "line": 13, "tolerance": 2, "min_severity": "WARNING", "note": "int multiplication qty * unitCents overflows before widening to long."}], "decoys": []}

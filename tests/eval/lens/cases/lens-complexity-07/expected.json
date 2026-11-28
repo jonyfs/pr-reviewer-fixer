@@ -1,0 +1,14 @@
+{
+  "description": "A seven-way chain of nested ternaries mixing size tests and a pinned flag.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Labels.cs",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Unreadable ternary chain; the pinned check sits in the middle of the size ladder, easy to misread."
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,14 @@
+{
+  "description": "Cryptic single-letter names (q, u, c, d, t) hide what price() computes.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Pricing.kt",
+      "line": 1,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Single-letter parameters and locals make the price formula hard to follow."
+    }
+  ],
+  "decoys": []
+}

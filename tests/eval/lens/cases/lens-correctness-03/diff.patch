@@ -1,0 +1,24 @@
+diff --git a/internal/window/window.go b/internal/window/window.go
+new file mode 100644
+--- /dev/null
++++ b/internal/window/window.go
+@@ -0,0 +1,19 @@
++package window
++
++// MovingMax returns the maximum of each window of size n.
++func MovingMax(xs []int, n int) []int {
++	if n <= 0 || n > len(xs) {
++		return nil
++	}
++	out := make([]int, 0, len(xs)-n+1)
++	for i := 0; i <= len(xs); i++ {
++		m := xs[i]
++		for j := i; j < i+n; j++ {
++			if xs[j] > m {
++				m = xs[j]
++			}
++		}
++		out = append(out, m)
++	}
++	return out
++}

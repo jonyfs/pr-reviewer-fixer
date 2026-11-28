@@ -1,0 +1,14 @@
+{
+  "description": "The view model hands Core Data managed objects to the view, which reads them by string keys.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "Sources/Tasks/TaskList.swift",
+      "line": 15,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "View model leaks NSManagedObject to the UI layer."
+    }
+  ],
+  "decoys": []
+}

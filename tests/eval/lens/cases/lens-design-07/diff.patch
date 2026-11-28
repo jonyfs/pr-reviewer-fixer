@@ -1,0 +1,26 @@
+diff --git a/src/main/kotlin/shop/cart/Cart.kt b/src/main/kotlin/shop/cart/Cart.kt
+new file mode 100644
+--- /dev/null
++++ b/src/main/kotlin/shop/cart/Cart.kt
+@@ -0,0 +1,9 @@
++package shop.cart
++
++import shop.model.Item
++import shop.pricing.PricingService
++
++class Cart(val items: MutableList<Item> = mutableListOf()) {
++    private val pricing = PricingService(this)
++    fun total(): Long = pricing.total()
++}
+diff --git a/src/main/kotlin/shop/pricing/PricingService.kt b/src/main/kotlin/shop/pricing/PricingService.kt
+new file mode 100644
+--- /dev/null
++++ b/src/main/kotlin/shop/pricing/PricingService.kt
+@@ -0,0 +1,7 @@
++package shop.pricing
++
++import shop.cart.Cart
++
++class PricingService(private val cart: Cart) {
++    fun total(): Long = cart.items.sumOf { it.cents * it.qty }
++}

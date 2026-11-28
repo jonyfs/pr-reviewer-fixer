@@ -1,0 +1,14 @@
+{
+  "description": "A domain service reads the HTTP request superglobal, coupling the domain to the web layer.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Domain/ShippingQuote.php",
+      "line": 10,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Domain class reads $_POST directly instead of receiving the country."
+    }
+  ],
+  "decoys": []
+}

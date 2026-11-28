@@ -1,0 +1,14 @@
+{
+  "description": "A boolean parameter makes one function either publish or archive, two unrelated behaviours.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/documents.ts",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Flag argument switches unrelated behaviours; callers write saveDocument(d, true) unreadably. Split into two functions."
+    }
+  ],
+  "decoys": []
+}

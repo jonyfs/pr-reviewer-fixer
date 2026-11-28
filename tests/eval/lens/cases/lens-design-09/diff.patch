@@ -1,0 +1,27 @@
+diff --git a/src/reminders.rs b/src/reminders.rs
+new file mode 100644
+--- /dev/null
++++ b/src/reminders.rs
+@@ -0,0 +1,22 @@
++pub trait Mailer {
++    fn send(&self, to: &str, body: &str) -> Result<(), String>;
++}
++
++pub struct SmtpMailer {
++    pub host: String,
++}
++
++impl Mailer for SmtpMailer {
++    fn send(&self, to: &str, body: &str) -> Result<(), String> {
++        println!("smtp://{} -> {}: {}", self.host, to, body);
++        Ok(())
++    }
++}
++
++pub fn notify_overdue(mailer: &SmtpMailer, to: &str) -> Result<(), String> {
++    mailer.send(to, "Your invoice is overdue")
++}
++
++pub fn default_mailer() -> SmtpMailer {
++    SmtpMailer { host: "smtp.example.com".to_string() }
++}

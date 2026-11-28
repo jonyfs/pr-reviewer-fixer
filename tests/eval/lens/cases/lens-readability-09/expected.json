@@ -1,0 +1,14 @@
+{
+  "description": "Doc comment says seconds but the function returns milliseconds.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/clock.rs",
+      "line": 3,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "The comment contradicts the code (as_millis), so callers will misread the unit."
+    }
+  ],
+  "decoys": []
+}

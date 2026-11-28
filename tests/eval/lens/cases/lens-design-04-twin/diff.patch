@@ -1,0 +1,31 @@
+diff --git a/src/main/java/com/example/web/ProfileController.java b/src/main/java/com/example/web/ProfileController.java
+new file mode 100644
+--- /dev/null
++++ b/src/main/java/com/example/web/ProfileController.java
+@@ -0,0 +1,26 @@
++package com.example.web;
++
++import com.example.domain.UserEntity;
++import com.example.domain.UserRepository;
++import com.example.web.dto.UserDto;
++import org.springframework.web.bind.annotation.*;
++
++@RestController
++public class ProfileController {
++    private final UserRepository users;
++
++    public ProfileController(UserRepository users) {
++        this.users = users;
++    }
++
++    @GetMapping("/profile/{id}")
++    public UserDto profile(@PathVariable long id) {
++        return summary(id);
++    }
++
++    @GetMapping("/profile/{id}/summary")
++    public UserDto summary(@PathVariable long id) {
++        UserEntity u = users.findById(id).orElseThrow();
++        return new UserDto(u.getId(), u.getDisplayName());
++    }
++}

@@ -1,0 +1,1 @@
+Add a summary function for report rows.

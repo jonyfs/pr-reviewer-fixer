@@ -1,0 +1,27 @@
+--- /dev/null
++++ b/src/Rounding.php
+@@ -0,0 +1,24 @@
++<?php
++
++interface RoundingStrategy
++{
++    public function round(float $value): float;
++}
++
++abstract class BaseRounding implements RoundingStrategy
++{
++    protected int $places = 2;
++}
++
++final class HalfUpRounding extends BaseRounding
++{
++    public function round(float $value): float
++    {
++        return round($value, $this->places);
++    }
++}
++
++function roundTotal(float $total): float
++{
++    return (new HalfUpRounding())->round($total);
++}

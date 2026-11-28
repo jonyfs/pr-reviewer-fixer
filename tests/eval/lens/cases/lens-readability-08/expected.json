@@ -1,0 +1,14 @@
+{
+  "description": "Unused variable $startedAt is assigned and never read.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Report.php",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "$startedAt is computed but never used."
+    }
+  ],
+  "decoys": []
+}

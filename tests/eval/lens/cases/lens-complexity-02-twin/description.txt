@@ -1,0 +1,1 @@
+Adds a helper that renders a price as a display string.

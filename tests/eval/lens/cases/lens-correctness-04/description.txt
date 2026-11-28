@@ -1,0 +1,1 @@
+Adds the Invoice value object used by the bulk order export.

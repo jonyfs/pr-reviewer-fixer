@@ -1,0 +1,16 @@
+--- /dev/null
++++ b/src/Labels.cs
+@@ -0,0 +1,13 @@
++public static class Labels
++{
++    public static string SizeLabel(long bytes, bool pinned)
++    {
++        if (bytes < 0) return "invalid";
++        if (bytes == 0) return "empty";
++        if (pinned) return "pinned";
++        if (bytes < 1024) return "tiny";
++        if (bytes < 1048576) return "small";
++        if (bytes < 1073741824) return "large";
++        return "huge";
++    }
++}

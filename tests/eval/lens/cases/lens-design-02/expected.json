@@ -1,0 +1,14 @@
+{
+  "description": "An HTTP handler runs raw SQL on the pool, bypassing the repository layer.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/routes/orders.ts",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Route handler issues SQL directly although a repository layer exists and the sibling route uses it."
+    }
+  ],
+  "decoys": []
+}

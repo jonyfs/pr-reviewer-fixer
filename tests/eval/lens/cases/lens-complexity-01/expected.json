@@ -1,0 +1,14 @@
+{
+  "description": "Six levels of nested conditionals bury the main path and the error cases at the bottom.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/shipping.py",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Nesting depth of six with the error branches far from their checks; guard clauses would flatten it."
+    }
+  ],
+  "decoys": []
+}

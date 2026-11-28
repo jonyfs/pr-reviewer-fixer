@@ -1,0 +1,1 @@
+Add an invoice class that totals its items in cents.

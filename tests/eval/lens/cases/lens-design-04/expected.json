@@ -1,0 +1,14 @@
+{
+  "description": "Controller returns the persistence entity directly, leaking storage fields to API clients.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/java/com/example/web/ProfileController.java",
+      "line": 17,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Endpoint returns the JPA entity instead of a DTO."
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,18 @@
+--- /dev/null
++++ b/src/main/java/Currencies.java
+@@ -0,0 +1,15 @@
++import java.util.Map;
++
++public class Currencies {
++    private static final Map<String, String> BY_COUNTRY = Map.of(
++        "US", "USD", "CA", "CAD", "MX", "MXN", "BR", "BRL",
++        "JP", "JPY", "GB", "GBP", "CH", "CHF");
++
++    public static String forCountry(String code) {
++        return BY_COUNTRY.getOrDefault(code, "EUR");
++    }
++
++    public static boolean isKnown(String code) {
++        return BY_COUNTRY.containsKey(code);
++    }
++}

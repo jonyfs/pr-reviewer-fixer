@@ -1,0 +1,1 @@
+Adds MovingMax for the sensor smoothing job.

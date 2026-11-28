@@ -1,0 +1,24 @@
+--- /dev/null
++++ b/src/Shapes.scala
+@@ -0,0 +1,21 @@
++trait ShapeVisitor[R] {
++  def visitCircle(c: Circle): R
++  def visitSquare(s: Square): R
++}
++
++sealed trait Shape {
++  def accept[R](v: ShapeVisitor[R]): R
++}
++
++case class Circle(r: Double) extends Shape {
++  def accept[R](v: ShapeVisitor[R]): R = v.visitCircle(this)
++}
++
++case class Square(side: Double) extends Shape {
++  def accept[R](v: ShapeVisitor[R]): R = v.visitSquare(this)
++}
++
++object Area extends ShapeVisitor[Double] {
++  def visitCircle(c: Circle): Double = math.Pi * c.r * c.r
++  def visitSquare(s: Square): Double = s.side * s.side
++}

@@ -1,0 +1,23 @@
+diff --git a/src/retry.js b/src/retry.js
+new file mode 100644
+--- /dev/null
++++ b/src/retry.js
+@@ -0,0 +1,18 @@
++"use strict";
++
++async function fetchWithRetry(url, attempts) {
++  let tries = 0;
++  while (tries < attempts) {
++    try {
++      const res = await fetch(url);
++      if (res.ok) return res;
++    } catch (err) {
++      // network errors are retried; the host sometimes resets idle sockets
++    }
++    // count failed responses too, so a server that keeps returning 500 still ends
++    tries += 1;
++  }
++  throw new Error(`gave up on ${url}`);
++}
++
++module.exports = { fetchWithRetry };

@@ -1,0 +1,14 @@
+--- /dev/null
++++ b/lib/rates.ex
+@@ -0,0 +1,11 @@
++defmodule Rates do
++  @rates [standard: 20, reduced: 10, zero: 0]
++
++  for {name, value} <- @rates do
++    def unquote(:"#{name}_rate")(), do: unquote(value)
++  end
++
++  def all do
++    Enum.map(@rates, fn {name, _} -> apply(__MODULE__, :"#{name}_rate", []) end)
++  end
++end

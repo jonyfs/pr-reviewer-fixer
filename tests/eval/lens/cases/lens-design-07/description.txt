@@ -1,0 +1,1 @@
+Adds cart totals backed by a pricing service.

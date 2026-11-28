@@ -1,0 +1,15 @@
+diff --git a/src/clock.rs b/src/clock.rs
+new file mode 100644
+--- /dev/null
++++ b/src/clock.rs
+@@ -0,0 +1,10 @@
++use std::time::{Duration, Instant};
++
++/// Returns how many milliseconds have passed since `start`.
++pub fn elapsed_since(start: Instant) -> u128 {
++    start.elapsed().as_millis()
++}
++
++pub fn expired(start: Instant, limit: Duration) -> bool {
++    start.elapsed() > limit
++}

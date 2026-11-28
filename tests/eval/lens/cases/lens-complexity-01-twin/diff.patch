@@ -1,0 +1,16 @@
+--- /dev/null
++++ b/src/shipping.py
+@@ -0,0 +1,13 @@
++def shipping_cost(order, rates):
++    if order is None:
++        raise ValueError("no order")
++    if not order.items:
++        return 0
++    if order.destination not in rates:
++        raise KeyError(order.destination)
++    base = rates[order.destination]
++    if not order.express:
++        return base
++    if order.weight > 20:
++        return base * 3
++    return base * 2

@@ -1,0 +1,1 @@
+Adds the tax-rate constants used by checkout.

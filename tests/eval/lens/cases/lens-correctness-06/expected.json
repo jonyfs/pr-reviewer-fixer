@@ -1,0 +1,1 @@
+{"description": "Arguments to percent are swapped so it reports whole divided by part.", "defects": [{"id": "D1", "file": "src/ratio.rs", "line": 15, "tolerance": 2, "min_severity": "WARNING", "note": "percent(part, total) is called with swapped arguments, inverting the ratio."}], "decoys": []}

@@ -1,0 +1,14 @@
+{
+  "description": "Dead branch: name == null can never be true after requireNonNull.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Greeter.java",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "requireNonNull throws on null, so the null check and its return are unreachable."
+    }
+  ],
+  "decoys": []
+}
