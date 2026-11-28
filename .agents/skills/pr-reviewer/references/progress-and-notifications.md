@@ -17,7 +17,7 @@ they already look, that a review is running, what it is doing, and when it is do
 | Finish | `pr-reviewer: finished PR #N pass P: <PASSED\|BLOCKED> critical=C warning=W note=N. Next: <pr-fixer \| ready for human review \| nothing>.` | Session output, the banner and alert at the top of the verdict comment, the status comment (edited to `state=finished`), push notification if available |
 | Nothing to do | `pr-reviewer: PR #N at <sha7> already reviewed (pass P, <verdict>). No action.` | Session output |
 | Stopped early | `pr-reviewer: stopped on PR #N: <reason>. Next action: <one action>.` | Session output, the status comment (edited in place), push notification |
-| Halted | `pr-skill: halted on PR #N. <reason sentence>` | The answer comment (marker first), session output, push notification, always |
+| Halted | `pr-skill: halted on PR #N. <reason sentence>` | Session output, push notification, always; the answer comment (marker first, then a `[!CAUTION]` alert naming the pull request and the label a person reads) carries the reason |
 
 Orchestrator below standard: when the session model is below the `standard` tier, the start line
 ends with `Orchestrator below standard: <model>; merge and verify run in a standard sub-agent.`

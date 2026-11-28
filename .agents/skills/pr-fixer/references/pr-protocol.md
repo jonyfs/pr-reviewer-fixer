@@ -23,7 +23,7 @@ and check with `cmp`.
 | Debt block | `pr-fixer` (Declare debt), after `review-cycle.sh screen` passes the new body | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-[-] pr-debt:start -->` and `<!-[-] pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
 | Thread replies | `pr-fixer` comment lane | The comment's author, `pr-reviewer` pass 2+ | `Closed in <sha7> (C1)`, and the thread resolved only when the reviewer's login or a trusted bot opened it; or `Declined (C1): <reason>` or `Escalated (C1): <what the person must decide>` and the thread left open | `scripts/fetch-feedback.py <n>` (pr-fixer) | A loop-owned thread is resolved on reply. A person's thread, and a decline, stay open for its author |
 | Status comment | The skill run that is in progress | People watching the PR | `<!-[-] pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
-| Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-[-] pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-[-] pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then one human-readable line | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling, and `extend` removes `review:needs-human`. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
+| Extension answer | `review-cycle.sh extend` or `review-cycle.sh halt --reason R`, run by the review loop agent after a person answered in the session | `review-cycle.sh budget`, people | `<!-[-] pr-skill-extension: state=granted cycle=<c> n=<N> -->`, or `<!-[-] pr-skill-extension: state=halted reason=<stop\|no-answer\|ceiling> -->`, then a `[!NOTE]` or `[!CAUTION]` alert | Filter F6 | Granted raises the allowed cycles to `c + N`, never past the hard ceiling, and `extend` removes `review:needs-human`. Halted leaves the pull request `review:blocked` with `review:needs-human`. A later run asks again, except after `reason=ceiling` |
 
 > Written here with a bracket inside the opener, a form that a regex reads as the plain opener, so the scanner does not take the examples for
 > live comments. A marker an agent writes uses the plain form, the opener without the brackets, never the bracket form.
@@ -56,15 +56,16 @@ meaning survives a client that does not draw the emoji.
 |---|---|
 | Who wrote the comment | 🤖 pr-reviewer, 🔧 pr-fixer, 🔀 pr-merge-fixer |
 | Severity | 🔴 CRITICAL, 🟡 WARNING, 🔵 NOTE |
-| Verdict | ✅ PASSED, ⛔ BLOCKED |
-| Done or confirmed | ✅ met, ✅ verified, ✅ refused-accepted, ✅ closed, ✅ resolved, ✅ run |
+| Verdict | ✅ PASSED, ⛔ BLOCKED, ⛔ halted |
+| Done or confirmed | ✅ met, ✅ verified, ✅ refused-accepted, ✅ closed, ✅ resolved, ✅ run, ✅ granted |
 | Not done or contested | ⏳ open, ❌ refused-rejected, 🚫 refused, 🔶 escalated |
 | Does not apply | ⚪ not applicable |
 | Section icons | 📖 reading guide, 🎯 conditions, 🧭 coverage, 🔁 prior findings, 📈 history, 🧾 checkpoints, 📁 files |
 
 Alert: `[!TIP]` over a PASSED verdict, a closure with nothing refused or escalated, or a merge with
 nothing escalated; `[!CAUTION]` over a BLOCKED verdict; `[!WARNING]` over a closure or a merge that
-refused or escalated something. The status comment has none.
+refused or escalated something. The status comment has none. The two comments `review-cycle.sh` writes
+itself carry one too: `[!NOTE]` over an extension it granted and `[!CAUTION]` over a halt.
 
 Words, not emoji: CRITICAL, WARNING and NOTE for severity; closed, refused, escalated and open for a
 fixer outcome; verified, refused-accepted, refused-rejected and not applicable for a reviewer's

@@ -19,7 +19,7 @@ run says when it starts, what it is working, and when it is done or why it stopp
 | Nothing to do | `pr-fixer: PR #N has no work at <sha7> (marker <verdict>).` | Session output |
 | Stopped or escalated | `pr-fixer: stopped on PR #N: <reason>. Open: <list>. Next action: <one action>.` | Session output, the closure comment if one is due, the status comment (edited in place), and a push notification |
 | Extension granted | `pr-skill: extension granted on PR #N: <n> more cycles (cycle <c+1> to <c+n>, hard ceiling <h>). The loop continues.` | Session output, the answer comment |
-| Halted | `pr-skill: halted on PR #N. <reason sentence>` | The answer comment (marker first), session output, push notification, always |
+| Halted | `pr-skill: halted on PR #N. <reason sentence>` | Session output, push notification, always; the answer comment (marker first, then a `[!CAUTION]` alert naming the pull request and the label a person reads) carries the reason |
 
 Rules:
 

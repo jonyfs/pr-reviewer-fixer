@@ -985,7 +985,7 @@ cmd_halt() {
     # parse() read the newest trusted extension marker, the reading `budget` makes.
     [ "${MARKER_EXT_STATE:-}" = halted ] && [ "${MARKER_EXT_REASON:-}" = "$reason" ] && have=yes
     if [ "$have" != "yes" ]; then
-      printf '<!-- pr-skill-extension: state=halted reason=%s -->\npr-skill: halted on #%s (reason: %s). The pull request stays review:blocked and a person decides.\n' \
+      printf '<!-- pr-skill-extension: state=halted reason=%s -->\n> [!CAUTION]\n> ⛔ **pr-skill halted on #%s** (reason: %s)\n\nThe pull request stays `review:blocked` with `review:needs-human`, and a person decides.\n' \
         "$reason" "$NUMBER" "$reason" | gh pr comment "$NUMBER" --body-file - >/dev/null \
         || die "review-cycle: the halted marker could not be posted on #$NUMBER; run it again"
       posted="yes"
@@ -1173,7 +1173,7 @@ cmd_extend() {
   eval "$b"
   [ "$B_NEXT" = "ask" ] || die "review-cycle: #$NUMBER is not waiting for an extension (budget says: $B_NEXT)"
   [ "$n" -ge 1 ] && [ "$n" -le "$B_REMAINING" ] || die "review-cycle: --n must be between 1 and $B_REMAINING (the hard ceiling is $B_HARD, $B_DONE cycles are done)"
-  printf '<!-- pr-skill-extension: state=granted cycle=%s n=%s -->\npr-skill: %s more review-fix cycles granted on #%s after cycle %s.\n' \
+  printf '<!-- pr-skill-extension: state=granted cycle=%s n=%s -->\n> [!NOTE]\n> ✅ **pr-skill granted %s more review-fix cycles on #%s** after cycle %s\n' \
     "$B_DONE" "$n" "$n" "$NUMBER" "$B_DONE" | gh pr comment "$NUMBER" --body-file - >/dev/null \
     || die "review-cycle: could not post the granted marker on #$NUMBER"
   # The grant ends a halt: the fixer and triage refuse a pull request labelled review:needs-human, so

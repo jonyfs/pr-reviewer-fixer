@@ -4,6 +4,17 @@ All notable changes to `pr-reviewer` and `pr-fixer`. Both skills ship together u
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## 0.26.1
+
+The two comments `review-cycle.sh` writes itself use the alert style of 0.26.0 (they carry no banner and no
+table): the halt comment is a `[!CAUTION]` alert (`⛔ pr-skill halted on #N`, with the reason) and a sentence
+that names `review:blocked` and `review:needs-human`, and the grant comment is a `[!NOTE]` alert (`✅ pr-skill
+granted N more review-fix cycles on #N after cycle C`). The marker stays alone on the first line, so `budget`
+and the gate read both as before (the readers match the start of the body only). The three `review-cycle.sh`
+copies stay identical. Two rows in `tests/budget/t.py` read the body that was posted; the template check in
+`tests/run-all.sh` now covers the two example comments in `report-contract.md`. The legend gains `⛔ halted`
+and `✅ granted`.
+
 ## 0.26.0
 
 Agent comments are GitHub Markdown again, written to be scanned: the verdict in an alert, the numbers in a
