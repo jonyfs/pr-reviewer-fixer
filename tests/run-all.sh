@@ -206,6 +206,7 @@ start "fetch-feedback.py"                        env TEST_TAG="${P}run" python3 
 start "behaviour-diff.sh"                        env TEST_TAG="${P}run" bash "$HERE/behaviour-diff/run.sh" "$ROOT/.agents/skills/pr-fixer/scripts"
 start "review eval scorer"                       env TEST_TAG="${P}run" bash "$HERE/eval/selftest.sh"
 start "lens eval cases well formed"              python3 -I "$HERE/eval/lens_check.py" "$HERE/eval/lens/cases"
+start "lens eval scorer"                          bash "$HERE/eval/lens_selftest.sh"
 start "fixer eval scorer"                        env TEST_TAG="${P}run" bash "$HERE/fixer-eval/selftest.sh"
 start "golden set scorer"                        env TEST_TAG="${P}run" bash "$HERE/golden/selftest.sh"
 start "install.sh"                                env TEST_TAG="${P}run" bash "$HERE/install/run.sh" "$ROOT/install.sh"
