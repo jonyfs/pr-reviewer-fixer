@@ -1,0 +1,14 @@
+{
+  "description": "The new free-shipping branch in shippingFee has no test that reaches it; tests only use totals under the threshold.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "Shipping.kt",
+      "line": 2,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "the total >= 100 branch is never exercised by ShippingTest"
+    }
+  ],
+  "decoys": []
+}

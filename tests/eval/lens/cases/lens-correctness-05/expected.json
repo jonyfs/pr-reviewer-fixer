@@ -1,0 +1,1 @@
+{"description": "Default tag list is a shared constant that gets mutated across calls.", "defects": [{"id": "D1", "file": "lib/tagger.rb", "line": 7, "tolerance": 2, "min_severity": "WARNING", "note": "The default argument is a shared constant mutated with <<, so tags leak between calls."}], "decoys": []}

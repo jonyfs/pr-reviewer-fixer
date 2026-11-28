@@ -1,0 +1,34 @@
+diff --git a/src/main/java/com/example/sync/Fetcher.java b/src/main/java/com/example/sync/Fetcher.java
+new file mode 100644
+--- /dev/null
++++ b/src/main/java/com/example/sync/Fetcher.java
+@@ -0,0 +1,29 @@
++package com.example.sync;
++
++import java.io.IOException;
++import java.net.URI;
++import java.net.http.HttpClient;
++import java.net.http.HttpRequest;
++import java.net.http.HttpResponse;
++
++public class Fetcher {
++    private final HttpClient client = HttpClient.newHttpClient();
++    private static final int MAX_ATTEMPTS = 8;
++
++    public String fetch(String path) throws Exception {
++        HttpRequest req = HttpRequest.newBuilder(URI.create("https://api.example.com" + path)).build();
++        for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
++            long delayMs = (200L << attempt) + (long) (Math.random() * 100);
++            try {
++                HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
++                if (res.statusCode() < 500) {
++                    return res.body();
++                }
++            } catch (IOException e) {
++                // fall through to the next attempt
++            }
++            Thread.sleep(delayMs);
++        }
++        throw new IOException("upstream unavailable");
++    }
++}

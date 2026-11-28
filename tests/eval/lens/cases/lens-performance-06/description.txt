@@ -1,0 +1,1 @@
+Adds a service that lists recent orders with the customer name for the dashboard.

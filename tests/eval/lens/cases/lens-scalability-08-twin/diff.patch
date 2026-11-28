@@ -1,0 +1,25 @@
+--- /dev/null
++++ b/src/Readings/Writer.php
+@@ -0,0 +1,22 @@
++<?php
++
++namespace App\Readings;
++
++use Aws\DynamoDb\DynamoDbClient;
++
++class Writer
++{
++    public function __construct(private DynamoDbClient $db) {}
++
++    public function save(string $sensorId, float $value): void
++    {
++        $pk = substr(md5($sensorId), 0, 4) . '#' . gmdate('Y-m-d\TH:i:s');
++        $this->db->putItem([
++            'TableName' => 'readings',
++            'Item' => [
++                'pk' => ['S' => $pk],
++                'value' => ['N' => (string) $value],
++            ],
++        ]);
++    }
++}

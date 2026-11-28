@@ -1,0 +1,14 @@
+{
+  "description": "Schema description states default 8080 but default is 9090.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "schema/server.schema.json",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Description of port says default 8080 while the schema default is 9090."
+    }
+  ],
+  "decoys": []
+}

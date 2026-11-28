@@ -1,0 +1,14 @@
+{
+  "description": "A bare except around the settings load also catches KeyboardInterrupt and every parse error, silently returning empty settings.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "app/settings.py",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "bare except swallows all errors including KeyboardInterrupt and corrupt JSON; callers get empty settings with no signal"
+    }
+  ],
+  "decoys": []
+}

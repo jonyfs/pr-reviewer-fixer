@@ -1,0 +1,14 @@
+{
+  "description": "Session state is read from the request body with Java native deserialization and no class filter.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/java/example/SessionLoader.java",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Insecure deserialization: ObjectInputStream on request bytes without a class filter allows gadget-chain code execution"
+    }
+  ],
+  "decoys": []
+}

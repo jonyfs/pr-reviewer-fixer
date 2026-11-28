@@ -1,0 +1,14 @@
+{
+  "description": "The server fetches a URL given by the caller, so internal addresses can be reached (SSRF).",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/preview.js",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "SSRF: fetch of a caller-supplied URL with no allowlist, reaches internal hosts and metadata endpoints"
+    }
+  ],
+  "decoys": []
+}

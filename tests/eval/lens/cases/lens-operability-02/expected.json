@@ -1,0 +1,14 @@
+{
+ "description": "K8s Recreate strategy: Recreate strategy stops every pod before starting new ones, so each deploy is an outage for the orders API.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "k8s/orders/deployment.yaml",
+   "line": 9,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "Recreate strategy stops every pod before starting new ones, so each deploy is an outage for the orders API."
+  }
+ ],
+ "decoys": []
+}

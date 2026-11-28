@@ -1,0 +1,14 @@
+{
+ "description": "A failed payment capture returns False with no log or metric, so declined or timed-out charges leave no trace.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "src/payments.py",
+   "line": 10,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "A failed payment capture returns False with no log or metric, so declined or timed-out charges leave no trace."
+  }
+ ],
+ "decoys": []
+}

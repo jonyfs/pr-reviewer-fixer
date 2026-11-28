@@ -1,0 +1,1 @@
+Adds rounding of invoice totals to two decimals.

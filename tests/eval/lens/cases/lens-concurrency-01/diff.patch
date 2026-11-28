@@ -1,0 +1,23 @@
+--- /dev/null
++++ b/src/sessions/store.py
+@@ -0,0 +1,20 @@
++import threading
++
++_sessions = {}
++_hits = 0
++
++
++def get_session(user_id, factory):
++    global _hits
++    if user_id not in _sessions:
++        _sessions[user_id] = factory(user_id)
++    _hits += 1
++    return _sessions[user_id]
++
++
++def drop_session(user_id):
++    _sessions.pop(user_id, None)
++
++
++def active_users():
++    return list(_sessions.keys())

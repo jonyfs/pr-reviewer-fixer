@@ -1,0 +1,1 @@
+Add an in-memory session store keyed by user id for the worker pool.

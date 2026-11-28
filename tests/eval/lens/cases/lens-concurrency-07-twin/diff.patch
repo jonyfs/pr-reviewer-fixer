@@ -1,0 +1,23 @@
+--- /dev/null
++++ b/src/counter.rs
+@@ -0,0 +1,20 @@
++use std::sync::atomic::{AtomicUsize, Ordering};
++use std::thread;
++
++static COUNT: AtomicUsize = AtomicUsize::new(0);
++
++pub fn count_all(workers: usize, per_worker: usize) -> usize {
++    let handles: Vec<_> = (0..workers)
++        .map(|_| {
++            thread::spawn(move || {
++                for _ in 0..per_worker {
++                    COUNT.fetch_add(1, Ordering::SeqCst);
++                }
++            })
++        })
++        .collect();
++    for h in handles {
++        h.join().unwrap();
++    }
++    COUNT.load(Ordering::SeqCst)
++}

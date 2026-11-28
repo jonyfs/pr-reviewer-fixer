@@ -1,0 +1,23 @@
+--- /dev/null
++++ b/ansible/deploy-app.yml
+@@ -0,0 +1,20 @@
++- name: Deploy app to web fleet
++  hosts: web
++  become: true
++  serial: 1
++  max_fail_percentage: 0
++  tasks:
++    - name: Install release
++      ansible.builtin.unarchive:
++        src: "{{ release_url }}"
++        dest: /opt/app/current
++        remote_src: true
++    - name: Restart service
++      ansible.builtin.systemd:
++        name: app
++        state: restarted
++    - name: Wait for health
++      ansible.builtin.uri:
++        url: http://127.0.0.1:8080/healthz
++      retries: 10
++      delay: 3

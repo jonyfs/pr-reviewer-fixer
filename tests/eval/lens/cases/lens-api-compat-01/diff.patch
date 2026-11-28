@@ -1,0 +1,17 @@
+--- /dev/null
++++ b/billing/invoices.py
+@@ -0,0 +1,14 @@
++import logging
++
++log = logging.getLogger(__name__)
++
++
++def send_invoice(customer_id, currency, amount, notify=True):
++    """Create an invoice for a customer and optionally email it."""
++    if amount <= 0:
++        raise ValueError("amount must be positive")
++    invoice = {"customer": customer_id, "amount": amount, "currency": currency}
++    log.info("invoice created for %s", customer_id)
++    if notify:
++        invoice["emailed"] = True
++    return invoice

@@ -1,0 +1,24 @@
+--- /dev/null
++++ b/src/poller.ts
+@@ -0,0 +1,21 @@
++export class Poller {
++  private timer?: ReturnType<typeof setInterval>;
++
++  constructor(private readonly sync: () => Promise<void>) {}
++
++  start(): void {
++    setInterval(() => {
++      this.sync().catch(() => undefined);
++    }, 30_000);
++  }
++
++  stop(): void {
++    this.timer = undefined;
++  }
++}
++
++export function runApp(sync: () => Promise<void>) {
++  const poller = new Poller(sync);
++  poller.start();
++  process.on("SIGTERM", () => poller.stop());
++}

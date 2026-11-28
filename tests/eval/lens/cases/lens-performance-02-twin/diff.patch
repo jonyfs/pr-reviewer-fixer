@@ -1,0 +1,24 @@
+--- /dev/null
++++ b/src/web/templates.js
+@@ -0,0 +1,21 @@
++const fs = require("fs");
++const path = require("path");
++
++const file = path.join(__dirname, "welcome.html");
++const template = fs.readFileSync(file, "utf8");
++
++function renderWelcome(user) {
++  const html = template;
++  return template.replace("{{name}}", escapeHtml(user.name));
++}
++
++function escapeHtml(text) {
++  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
++}
++
++function welcomeHandler(req, res) {
++  res.setHeader("Content-Type", "text/html");
++  res.end(renderWelcome(req.user));
++}
++
++module.exports = { welcomeHandler };

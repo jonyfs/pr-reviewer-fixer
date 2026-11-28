@@ -1,0 +1,25 @@
+diff --git a/src/main/java/shop/Invoice.java b/src/main/java/shop/Invoice.java
+new file mode 100644
+--- /dev/null
++++ b/src/main/java/shop/Invoice.java
+@@ -0,0 +1,20 @@
++package shop;
++
++public final class Invoice {
++    private final int quantity;
++    private final int unitCents;
++
++    public Invoice(int quantity, int unitCents) {
++        this.quantity = quantity;
++        this.unitCents = unitCents;
++    }
++
++    public long totalCents() {
++        return quantity * unitCents;
++    }
++
++    public String display() {
++        long t = totalCents();
++        return String.format("%d.%02d", t / 100, t % 100);
++    }
++}

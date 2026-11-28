@@ -1,0 +1,16 @@
+--- /dev/null
++++ b/api/orders.py
+@@ -0,0 +1,13 @@
++from flask import Flask, jsonify, request
++from db import get_conn
++
++app = Flask(__name__)
++
++
++@app.get("/orders")
++def list_orders():
++    conn = get_conn()
++    rows = conn.execute(
++        "SELECT id, user_id, total FROM orders ORDER BY id DESC"
++    ).fetchall()
++    return jsonify([dict(r) for r in rows])

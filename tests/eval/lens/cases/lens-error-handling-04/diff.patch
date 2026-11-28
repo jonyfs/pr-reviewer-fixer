@@ -1,0 +1,29 @@
+--- /dev/null
++++ b/store/sync.go
+@@ -0,0 +1,26 @@
++package store
++
++type Record struct {
++	ID   string
++	Body []byte
++}
++
++type Saver interface {
++	Save(r Record) error
++}
++
++type Syncer struct {
++	s Saver
++}
++
++func (y *Syncer) Sync(batch []Record) (int, error) {
++	stored := 0
++	for _, r := range batch {
++		if r.ID == "" {
++			continue
++		}
++		_ = y.s.Save(r)
++		stored++
++	}
++	return stored, nil
++}

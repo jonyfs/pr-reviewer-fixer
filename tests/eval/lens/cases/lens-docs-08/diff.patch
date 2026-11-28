@@ -1,0 +1,26 @@
+--- /dev/null
++++ b/src/main/java/example/Cache.java
+@@ -0,0 +1,23 @@
++package example;
++
++import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
++
++public class Cache {
++    private final Map<String, String> store = new ConcurrentHashMap<>();
++
++    /**
++     * Returns the cached value for a key.
++     *
++     * @param key the lookup key
++     * @param ttlSeconds how long an entry stays valid
++     * @return the value, or null when absent
++     */
++    public String get(String key) {
++        return store.get(key);
++    }
++
++    public void put(String key, String value) {
++        store.put(key, value);
++    }
++}

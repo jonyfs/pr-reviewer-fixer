@@ -1,0 +1,35 @@
+diff --git a/src/health.ts b/src/health.ts
+new file mode 100644
+--- /dev/null
++++ b/src/health.ts
+@@ -0,0 +1,30 @@
++import { Router } from "express";
++import { pool } from "./db";
++
++const PAYMENTS_STATUS_URL = "https://payments.example.com/status";
++
++async function checkPayments(): Promise<void> {
++  const res = await fetch(PAYMENTS_STATUS_URL);
++  if (!res.ok) throw new Error("payments unavailable");
++}
++
++export const health = Router();
++
++health.get("/healthz", async (_req, res) => {
++  try {
++    await pool.query("SELECT 1");
++    await checkPayments();
++    return res.json({ status: "ok" });
++  } catch (err) {
++    return res.status(503).json({ status: "error" });
++  }
++});
++
++health.get("/readyz", async (_req, res) => {
++  try {
++    await checkPayments();
++    return res.json({ status: "ready" });
++  } catch (err) {
++    return res.status(503).json({ status: "not ready" });
++  }
++});

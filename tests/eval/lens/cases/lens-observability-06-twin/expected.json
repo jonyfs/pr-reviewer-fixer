@@ -1,0 +1,5 @@
+{
+ "description": "Clean version: The build duration metric is recorded only on the success path is fixed.",
+ "defects": [],
+ "decoys": []
+}

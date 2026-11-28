@@ -1,0 +1,1 @@
+Refactors the Slugger utility used by the CMS module.

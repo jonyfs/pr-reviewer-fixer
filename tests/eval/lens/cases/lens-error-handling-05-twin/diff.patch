@@ -1,0 +1,24 @@
+--- /dev/null
++++ b/src/main/java/com/example/ConfigService.java
+@@ -0,0 +1,21 @@
++package com.example;
++
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++
++public class ConfigService {
++    private final Path file;
++
++    public ConfigService(Path file) {
++        this.file = file;
++    }
++
++    public String load() {
++        try {
++            return Files.readString(file);
++        } catch (IOException e) {
++            throw new IllegalStateException("cannot load config " + file, e);
++        }
++    }
++}

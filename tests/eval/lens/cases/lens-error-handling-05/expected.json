@@ -1,0 +1,14 @@
+{
+  "description": "The wrapped exception is created without the original exception as its cause, so the underlying failure is lost.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/java/com/example/ConfigService.java",
+      "line": 18,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "new exception drops the caught IOException as cause, losing the original stack and message"
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/src/main/kotlin/com/example/events/Decoder.kt
+@@ -0,0 +1,18 @@
++package com.example.events
++
++import com.fasterxml.jackson.databind.ObjectMapper
++
++data class Event(val id: String = "", val kind: String = "")
++
++private val mapper = ObjectMapper()
++
++class Decoder {
++    fun decode(payloads: List<String>): List<Event> {
++        val events = mutableListOf<Event>()
++        for (payload in payloads) {
++            // one shared mapper
++            events.add(mapper.readValue(payload, Event::class.java))
++        }
++        return events
++    }
++}

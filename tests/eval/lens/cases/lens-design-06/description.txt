@@ -1,0 +1,1 @@
+Adds a price formatter that rounds amounts to two decimals.

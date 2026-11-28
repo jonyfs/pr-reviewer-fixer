@@ -1,0 +1,1 @@
+Adds a decoder that turns queued JSON payloads into event objects.

@@ -1,0 +1,16 @@
+diff --git a/src/main/kotlin/mail/CampaignSender.kt b/src/main/kotlin/mail/CampaignSender.kt
+new file mode 100644
+--- /dev/null
++++ b/src/main/kotlin/mail/CampaignSender.kt
+@@ -0,0 +1,11 @@
++package mail
++
++data class Recipient(val email: String, val marketingConsent: Boolean)
++
++class CampaignSender(private val mailer: Mailer) {
++    interface Mailer { fun send(to: String, subject: String, body: String) }
++
++    fun sendMonthly(users: List<Recipient>, body: String) {
++        users.forEach { mailer.send(it.email, "Monthly offers", body) }
++    }
++}

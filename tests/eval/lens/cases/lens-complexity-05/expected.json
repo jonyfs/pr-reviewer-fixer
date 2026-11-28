@@ -1,0 +1,14 @@
+{
+  "description": "A long if/else ladder of string comparisons does what a map lookup does.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/java/Currencies.java",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Seven-branch ladder mapping keys to values; a lookup table is shorter and data-driven."
+    }
+  ],
+  "decoys": []
+}

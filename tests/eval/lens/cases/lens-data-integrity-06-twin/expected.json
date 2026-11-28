@@ -1,0 +1,5 @@
+{
+  "description": "Clean twin: Retypes external_id on events. The integrity defect is fixed.",
+  "defects": [],
+  "decoys": []
+}

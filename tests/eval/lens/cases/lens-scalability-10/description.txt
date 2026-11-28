@@ -1,0 +1,1 @@
+Adds wait_for_job, which polls the jobs API until a job completes.

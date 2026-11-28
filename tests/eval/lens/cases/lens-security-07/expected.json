@@ -1,0 +1,14 @@
+{
+  "description": "The profile form posts straight into the User entity, which includes the IsAdmin flag.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "Controllers/UsersController.cs",
+      "line": 12,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Mass assignment: whole User entity bound from the form, so a client can set IsAdmin"
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,14 @@
+{
+  "description": "One compressed boolean line hides six distinct rules and their precedence.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "lib/account.rb",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Dense one-liner of mixed && || ! with negated groups; the individual login rules are not readable or testable."
+    }
+  ],
+  "decoys": []
+}

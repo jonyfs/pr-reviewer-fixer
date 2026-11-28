@@ -1,0 +1,13 @@
+diff --git a/db/migrations/000023_normalize_phone.up.sql b/db/migrations/000023_normalize_phone.up.sql
+new file mode 100644
+--- /dev/null
++++ b/db/migrations/000023_normalize_phone.up.sql
+@@ -0,0 +1,8 @@
++-- Store phone numbers in digits only
++BEGIN;
++
++-- customers is small enough for one pass
++UPDATE customers
++SET phone = regexp_replace(phone, '[^0-9]', '', 'g');
++
++COMMIT;

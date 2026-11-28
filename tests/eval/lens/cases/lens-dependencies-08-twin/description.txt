@@ -1,0 +1,1 @@
+Read the tool config from a TOML file.

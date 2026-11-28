@@ -1,0 +1,14 @@
+{
+  "description": "Read-modify-write on shared state across an await in an async handler: concurrent charges read the same balance and overwrite each other.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/wallet.js",
+      "line": 11,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Stale read of shared balance across await loses concurrent updates"
+    }
+  ],
+  "decoys": []
+}

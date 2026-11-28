@@ -1,0 +1,14 @@
+{
+ "description": "Orders move from paid to shipped with no log line, metric or event, so shipping state changes cannot be traced.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "app/models/order.rb",
+   "line": 6,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "Orders move from paid to shipped with no log line, metric or event, so shipping state changes cannot be traced."
+  }
+ ],
+ "decoys": []
+}

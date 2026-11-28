@@ -1,0 +1,23 @@
+--- /dev/null
++++ b/src/main/kotlin/CheckoutService.kt
+@@ -0,0 +1,20 @@
++import org.slf4j.LoggerFactory
++
++data class Order(val id: String, val total: Long)
++data class Receipt(val orderId: String, val status: String)
++
++interface OrderRepo {
++    fun save(order: Order)
++}
++
++class CheckoutService(private val repo: OrderRepo) {
++    private val log = LoggerFactory.getLogger(CheckoutService::class.java)
++
++    fun checkout(order: Order): Receipt {
++        require(order.total > 0) { "total must be positive" }
++        try {
++            repo.save(order)
++        } catch (e: Exception) { log.error("save failed for ${order.id}", e) }
++        return Receipt(order.id, "saved")
++    }
++}

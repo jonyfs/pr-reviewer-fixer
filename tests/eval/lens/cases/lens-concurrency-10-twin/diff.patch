@@ -1,0 +1,13 @@
+--- /dev/null
++++ b/Sources/Totals.swift
+@@ -0,0 +1,10 @@
++import Foundation
++
++func sum(_ values: [Int]) -> Int {
++    var total = 0
++    let lock = NSLock()
++    DispatchQueue.concurrentPerform(iterations: values.count) { i in
++        lock.withLock { total += values[i] }
++    }
++    return total
++}

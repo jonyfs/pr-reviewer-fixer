@@ -1,0 +1,22 @@
+diff --git a/lib/tagger.rb b/lib/tagger.rb
+new file mode 100644
+--- /dev/null
++++ b/lib/tagger.rb
+@@ -0,0 +1,17 @@
++module Tagger
++  DEFAULT_TAGS = ["new"]
++
++  class Item
++    attr_reader :name, :tags
++
++    def initialize(name, tags = DEFAULT_TAGS)
++      @name = name
++      @tags = tags
++    end
++
++    def add_tag(tag)
++      @tags << tag unless @tags.include?(tag)
++      self
++    end
++  end
++end

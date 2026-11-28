@@ -1,0 +1,14 @@
+{
+  "description": "A name-keyed rounder registry is added although BankersRounder is the only implementation.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Pricing/PriceFormatter.cs",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Speculative plugin registry with a single implementation and one caller."
+    }
+  ],
+  "decoys": []
+}

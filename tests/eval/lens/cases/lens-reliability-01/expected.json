@@ -1,0 +1,1 @@
+{"description": "Outbound HTTP call to the rates service has no timeout, so a hung peer blocks the calling thread forever.", "defects": [{"id": "D1", "file": "app/rates.py", "line": 14, "tolerance": 2, "min_severity": "WARNING", "note": "session.get without a timeout waits indefinitely on a stalled dependency"}], "decoys": []}

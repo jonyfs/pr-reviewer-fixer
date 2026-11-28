@@ -1,0 +1,14 @@
+{
+  "description": "Go doc comment says 3 attempts but maxAttempts is 5.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "retry/retry.go",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "Doc comment says up to 3 attempts, code uses maxAttempts = 5."
+    }
+  ],
+  "decoys": []
+}

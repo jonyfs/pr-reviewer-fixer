@@ -1,0 +1,19 @@
+--- /dev/null
++++ b/src/main/java/com/example/text/Slugger.java
+@@ -0,0 +1,16 @@
++package com.example.text;
++
++import java.util.Locale;
++
++public class Slugger {
++    private static final int MAX = 80;
++
++    public String slugify(String title) {
++        String s = normalize(title);
++        return s.length() > MAX ? s.substring(0, MAX) : s;
++    }
++
++    public String normalize(String input) {
++        return input.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-");
++    }
++}

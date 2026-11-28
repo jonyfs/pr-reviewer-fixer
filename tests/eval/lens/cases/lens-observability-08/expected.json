@@ -1,0 +1,14 @@
+{
+ "description": "The handler logs the whole raw request body with no size limit, so large imports flood the log pipeline.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "src/ImportController.php",
+   "line": 7,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "The handler logs the whole raw request body with no size limit, so large imports flood the log pipeline."
+  }
+ ],
+ "decoys": []
+}

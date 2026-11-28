@@ -1,0 +1,18 @@
+--- /dev/null
++++ b/docker-compose.yml
+@@ -0,0 +1,15 @@
++services:
++  uploader:
++    image: registry.example.com/tools/uploader:3.2.1
++    restart: unless-stopped
++    environment:
++      QUEUE_URL: ${QUEUE_URL:?QUEUE_URL must be set}
++      LOG_LEVEL: info
++    user: "0:0"
++    read_only: true
++    tmpfs:
++      - /tmp
++    healthcheck:
++      test: ["CMD", "uploader", "ping"]
++      interval: 30s
++      retries: 3

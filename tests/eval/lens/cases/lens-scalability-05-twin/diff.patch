@@ -1,0 +1,24 @@
+--- /dev/null
++++ b/src/main/java/com/example/stock/StockService.java
+@@ -0,0 +1,21 @@
++package com.example.stock;
++
++import com.google.common.collect.Lists;
++import java.util.ArrayList;
++import java.util.List;
++
++public class StockService {
++    private final InventoryClient inventoryClient;
++
++    public StockService(InventoryClient inventoryClient) {
++        this.inventoryClient = inventoryClient;
++    }
++
++    public List<Stock> stockFor(List<String> skus) {
++        List<Stock> out = new ArrayList<>();
++        for (List<String> chunk : Lists.partition(skus, 100)) {
++            out.addAll(inventoryClient.getStockBatch(chunk));
++        }
++        return out;
++    }
++}

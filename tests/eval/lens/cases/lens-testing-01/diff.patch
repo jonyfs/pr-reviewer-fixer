@@ -1,0 +1,26 @@
+diff --git a/pricing.py b/pricing.py
+new file mode 100644
+--- /dev/null
++++ b/pricing.py
+@@ -0,0 +1,4 @@
++def apply_discount(total, pct):
++    if pct < 0 or pct > 100:
++        raise ValueError("pct out of range")
++    return round(total * (100 - pct) / 100, 2)
+diff --git a/test_pricing.py b/test_pricing.py
+new file mode 100644
+--- /dev/null
++++ b/test_pricing.py
+@@ -0,0 +1,12 @@
++import pytest
++from pricing import apply_discount
++
++
++def test_total():
++    result = apply_discount(200.0, 15)
++    print(result)
++
++
++def test_rejects_bad_pct():
++    with pytest.raises(ValueError):
++        apply_discount(10.0, 150)

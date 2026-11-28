@@ -1,0 +1,16 @@
+diff --git a/db/migrations/0101_add_currency.sql b/db/migrations/0101_add_currency.sql
+new file mode 100644
+--- /dev/null
++++ b/db/migrations/0101_add_currency.sql
+@@ -0,0 +1,11 @@
++-- Add currency to orders
++BEGIN;
++
++SET LOCAL lock_timeout = '5s';
++ALTER TABLE orders ADD COLUMN currency text NOT NULL DEFAULT 'USD';
++CREATE INDEX idx_orders_currency ON orders (currency);
++
++COMMIT;
++
++-- orders feeds the billing export
++SELECT count(*) FROM orders;

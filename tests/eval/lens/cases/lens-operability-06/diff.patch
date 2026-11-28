@@ -1,0 +1,19 @@
+--- /dev/null
++++ b/.github/workflows/deploy.yml
+@@ -0,0 +1,16 @@
++name: deploy
++on:
++  push:
++    tags: ['v*']
++jobs:
++  deploy:
++    runs-on: ubuntu-latest
++    environment: production
++    steps:
++      - uses: actions/checkout@v4
++      - name: Configure cluster access
++        run: ./scripts/kube-login.sh
++      - name: Migrate and roll out
++        run: ./scripts/migrate.sh & ./scripts/rollout.sh & wait
++      - name: Smoke test
++        run: curl -fsS https://app.example.com/healthz

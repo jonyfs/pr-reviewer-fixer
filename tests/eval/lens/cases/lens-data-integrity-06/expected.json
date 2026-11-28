@@ -1,0 +1,14 @@
+{
+  "description": "Data integrity. external_id narrowed from bigint to int; large values overflow.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "app/migrations/0015_narrow_id.py",
+      "line": 11,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "narrowing bigint to int"
+    }
+  ],
+  "decoys": []
+}

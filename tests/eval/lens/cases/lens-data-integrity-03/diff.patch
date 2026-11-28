@@ -1,0 +1,19 @@
+diff --git a/alembic/versions/3f2a_add_fk_payments.py b/alembic/versions/3f2a_add_fk_payments.py
+new file mode 100644
+--- /dev/null
++++ b/alembic/versions/3f2a_add_fk_payments.py
+@@ -0,0 +1,14 @@
++from alembic import op
++import sqlalchemy as sa
++
++revision = '3f2a'
++down_revision = '2b1c'
++
++def upgrade():
++    op.add_column('payments', sa.Column('invoice_id', sa.BigInteger(), nullable=True))
++    op.create_foreign_key('fk_payments_invoice', 'payments', 'invoices', ['invoice_id'], ['id'])
++    op.create_index('ix_payments_created', 'payments', ['created_at'])
++
++def downgrade():
++    op.drop_constraint('fk_payments_invoice', 'payments', type_='foreignkey')
++    op.drop_column('payments', 'invoice_id')

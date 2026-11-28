@@ -1,0 +1,36 @@
+--- /dev/null
++++ b/api/routes.py
+@@ -0,0 +1,13 @@
++from flask import Blueprint, jsonify
++
++bp = Blueprint("sessions", __name__, url_prefix="/v1")
++
++
++@bp.get("/sessions/<sid>")
++def get_session(sid):
++    return jsonify({"id": sid})
++
++
++@bp.get("/sessions")
++def list_sessions():
++    return jsonify([])
+--- /dev/null
++++ b/api/openapi.yaml
+@@ -0,0 +1,17 @@
++openapi: 3.0.3
++info:
++  title: Sessions API
++  version: "1.2.0"
++  description: >
++    Read access to sessions. Fetch one with GET /v1/sessions/{sid}.
++paths:
++  /v1/sessions:
++    get:
++      summary: List sessions
++      responses:
++        "200": {description: OK}
++  /v1/sessions/{sid}:
++    get:
++      summary: Fetch one session
++      responses:
++        "200": {description: OK}

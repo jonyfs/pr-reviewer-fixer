@@ -1,0 +1,14 @@
+--- /dev/null
++++ b/app/models/account.rb
+@@ -0,0 +1,11 @@
++class Account < ApplicationRecord
++  def as_json(_opts = {})
++    {
++      id: id,
++      display_name: display_name,
++      created_at: created_at.iso8601,
++      plan_code: plan_code,
++      is_active: active?
++    }
++  end
++end

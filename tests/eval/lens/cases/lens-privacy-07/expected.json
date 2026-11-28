@@ -1,0 +1,14 @@
+{
+  "description": "The fixture is a real-looking personal record taken from production instead of invented data.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "spec/fixtures/customers.rb",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "fixture holds what looks like a real production customer (name, phone, tax id); fixtures must be synthetic"
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,1 @@
+{"description": "Loop bound uses <= len, reading past the end of the slice and panicking.", "defects": [{"id": "D1", "file": "internal/window/window.go", "line": 9, "tolerance": 2, "min_severity": "WARNING", "note": "Loop condition i <= len(xs) indexes one past the end and panics."}], "decoys": []}

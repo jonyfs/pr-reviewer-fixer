@@ -1,0 +1,1 @@
+Adds a render helper with inline tests.

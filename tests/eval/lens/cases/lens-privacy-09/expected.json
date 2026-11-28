@@ -1,0 +1,14 @@
+{
+  "description": "The marketing sender mails every user and ignores the marketingConsent flag.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/kotlin/mail/CampaignSender.kt",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "consent flag is not checked: users who declined marketing still receive the campaign"
+    }
+  ],
+  "decoys": []
+}

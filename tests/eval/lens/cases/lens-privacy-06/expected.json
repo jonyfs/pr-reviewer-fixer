@@ -1,0 +1,14 @@
+{
+  "description": "Full profiles, with personal data, are cached in a long-lived cache with no expiry.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/Profiles/ProfileCache.cs",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "profile with email, phone and address cached with no TTL, so it outlives any deletion request"
+    }
+  ],
+  "decoys": []
+}

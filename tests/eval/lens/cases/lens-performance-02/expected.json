@@ -1,0 +1,14 @@
+{
+  "description": "Synchronous file read on every request.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/web/templates.js",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "readFileSync runs on the event loop for every request, blocking all other requests; load the template once at startup."
+    }
+  ],
+  "decoys": []
+}

@@ -1,0 +1,1 @@
+Adds a Greeter that reads users from a repository.

@@ -1,0 +1,28 @@
+--- /dev/null
++++ b/src/config.py
+@@ -0,0 +1,10 @@
++import tomllib
++
++
++def load_config(path):
++    with open(path, "rb") as fh:
++        return tomllib.load(fh)
++
++
++def get_port(cfg):
++    return int(cfg.get("port", 8080))
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,12 @@
++# example-app
++
++## Configuration
++
++Load settings from a TOML file:
++
++```python
++from config import load_config
++
++cfg = load_config("app.toml", strict=True)
++print(cfg["port"])
++```

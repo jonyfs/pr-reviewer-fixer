@@ -1,0 +1,18 @@
+diff --git a/build.gradle b/build.gradle
+new file mode 100644
+--- /dev/null
++++ b/build.gradle
+@@ -0,0 +1,13 @@
++plugins {
++    id 'java'
++}
++
++repositories {
++    mavenCentral()
++}
++
++dependencies {
++    implementation 'commons-lang:commons-lang:2.6'
++    implementation 'com.google.guava:guava:33.2.1-jre'
++    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
++}

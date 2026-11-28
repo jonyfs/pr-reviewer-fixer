@@ -1,0 +1,19 @@
+--- /dev/null
++++ b/src/orders/status.ts
+@@ -0,0 +1,16 @@
++export type OrderStatus = "pending" | "paid" | "shipped";
++
++export function statusLabel(s: OrderStatus): string {
++  switch (s) {
++    case "pending":
++      return "Awaiting payment";
++    case "paid":
++      return "Paid";
++    case "shipped":
++      return "On the way";
++  }
++}
++
++export function isOpen(s: OrderStatus): boolean {
++  return s === "pending" || s === "paid";
++}

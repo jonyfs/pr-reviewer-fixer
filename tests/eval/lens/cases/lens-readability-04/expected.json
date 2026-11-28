@@ -1,0 +1,14 @@
+{
+  "description": "Magic number: the retry delay 1500ms is an unnamed literal while the other limit is a named constant.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "batch/batch.go",
+      "line": 16,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "The delay is an inline literal with no name or unit rationale, unlike maxItems next to it."
+    }
+  ],
+  "decoys": []
+}

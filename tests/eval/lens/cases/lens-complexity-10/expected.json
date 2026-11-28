@@ -1,0 +1,14 @@
+{
+  "description": "Three constant functions are generated with compile-time metaprogramming and then called through apply.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "lib/rates.ex",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Needless metaprogramming for three constants; names are not greppable and the apply-by-string indirection hides the call graph."
+    }
+  ],
+  "decoys": []
+}

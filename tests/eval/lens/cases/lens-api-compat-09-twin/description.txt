@@ -1,0 +1,1 @@
+Renames the stored id field of Prefs to its short wire name.

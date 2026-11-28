@@ -1,0 +1,1 @@
+{"description": "Default page size changed from DefaultPageSize (50) to 10.", "defects": [{"id": "D1", "file": "src/Catalog/Paginator.cs", "line": 10, "tolerance": 2, "min_severity": "WARNING", "note": "Callers omitting pageSize silently get 10 items per page instead of 50, so listings and totals change without any compile error."}], "decoys": []}

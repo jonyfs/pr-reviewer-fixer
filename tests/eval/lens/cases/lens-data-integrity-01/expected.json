@@ -1,0 +1,14 @@
+{
+  "description": "Data integrity. NOT NULL column without default added to populated orders table.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "db/migrations/0101_add_currency.sql",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "migration fails on existing rows"
+    }
+  ],
+  "decoys": []
+}

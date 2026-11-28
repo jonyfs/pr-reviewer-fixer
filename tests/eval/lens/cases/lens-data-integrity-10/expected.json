@@ -1,0 +1,14 @@
+{
+  "description": "Data integrity. In-place rewrite with no backup column or reversible step.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "db/migrations/000023_normalize_phone.up.sql",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "original phone values are lost"
+    }
+  ],
+  "decoys": []
+}

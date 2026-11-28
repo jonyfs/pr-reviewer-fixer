@@ -1,0 +1,14 @@
+{
+  "description": "An ObjectMapper is built for every message.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/kotlin/com/example/events/Decoder.kt",
+      "line": 13,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Constructing an ObjectMapper per payload rebuilds its serializer caches each time; share one instance."
+    }
+  ],
+  "decoys": []
+}

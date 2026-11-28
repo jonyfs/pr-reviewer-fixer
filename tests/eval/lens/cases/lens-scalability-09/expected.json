@@ -1,0 +1,14 @@
+{
+  "description": "All events for a tenant are loaded into memory and aggregated in the application.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/kotlin/reports/TenantTotals.kt",
+      "line": 6,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "findAllByTenant loads every event of the tenant into the heap to group and sum. Event count grows without bound per tenant, so memory and latency grow linearly (millions of rows for a large tenant) when the database could aggregate in one query."
+    }
+  ],
+  "decoys": []
+}

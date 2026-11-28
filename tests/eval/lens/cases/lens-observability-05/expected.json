@@ -1,0 +1,14 @@
+{
+ "description": "A rejected login for a locked account is logged at DEBUG only, so production log levels never record the security event.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "src/main/java/example/LoginService.java",
+   "line": 11,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "A rejected login for a locked account is logged at DEBUG only, so production log levels never record the security event."
+  }
+ ],
+ "decoys": []
+}

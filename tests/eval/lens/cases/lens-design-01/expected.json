@@ -1,0 +1,14 @@
+{
+  "description": "Billing reads the orders module's private _rows dict directly.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/billing/invoices.py",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "invoice_total reaches into the orders module's private storage instead of using its public find()."
+    }
+  ],
+  "decoys": []
+}

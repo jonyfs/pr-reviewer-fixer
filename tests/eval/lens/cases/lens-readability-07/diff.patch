@@ -1,0 +1,20 @@
+diff --git a/src/UserService.cs b/src/UserService.cs
+new file mode 100644
+--- /dev/null
++++ b/src/UserService.cs
+@@ -0,0 +1,15 @@
++public class UserService
++{
++    public string BuildLabel(User user)
++    {
++        var user_name = user.Name.Trim();
++        var userEmail = user.Email.ToLowerInvariant();
++        var displayId = user.Id.ToString("D8");
++        return $"{displayId} {user_name} <{userEmail}>";
++    }
++
++    public bool IsActive(User user)
++    {
++        return user.DisabledAt == null;
++    }
++}

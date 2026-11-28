@@ -1,0 +1,23 @@
+diff --git a/src/ratio.rs b/src/ratio.rs
+new file mode 100644
+--- /dev/null
++++ b/src/ratio.rs
+@@ -0,0 +1,18 @@
++pub fn percent(part: u32, total: u32) -> f64 {
++    if total == 0 {
++        return 0.0;
++    }
++    part as f64 * 100.0 / total as f64
++}
++
++pub struct Progress {
++    pub done: u32,
++    pub planned: u32,
++}
++
++impl Progress {
++    pub fn label(&self) -> String {
++        let p = percent(self.done, self.planned);
++        format!("{:.0}% complete", p)
++    }
++}

@@ -1,0 +1,5 @@
+{
+  "description": "Clean twin: String concatenation in a loop builds a new string every iteration is fixed.",
+  "defects": [],
+  "decoys": []
+}

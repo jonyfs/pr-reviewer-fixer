@@ -1,0 +1,1 @@
+Adds a sync routine that persists a batch of records and reports how many were stored.

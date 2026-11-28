@@ -1,0 +1,1 @@
+Strips non-digits from stored phone numbers.

@@ -1,0 +1,20 @@
+--- /dev/null
++++ b/internal/jobs/run.go
+@@ -0,0 +1,17 @@
++package jobs
++
++import "sync"
++
++func Process(item string) {}
++
++func RunAll(items []string) {
++	var wg sync.WaitGroup
++	for _, item := range items {
++		wg.Add(1)
++		go func(item string) {
++			defer wg.Done()
++			Process(item)
++		}(item)
++	}
++	wg.Wait()
++}

@@ -1,0 +1,1 @@
+Adds an exporter that writes a report to a temporary CSV and uploads it to blob storage.

@@ -1,0 +1,36 @@
+diff --git a/Cart.cs b/Cart.cs
+new file mode 100644
+--- /dev/null
++++ b/Cart.cs
+@@ -0,0 +1,8 @@
++using System.Collections.Generic;
++using System.Linq;
++
++public class Cart {
++    private readonly List<decimal> prices = new();
++    public void Add(decimal p) => prices.Add(p);
++    public decimal Total() => prices.Sum();
++}
+diff --git a/CartTests.cs b/CartTests.cs
+new file mode 100644
+--- /dev/null
++++ b/CartTests.cs
+@@ -0,0 +1,18 @@
++using Xunit;
++
++public class CartTests {
++    [Fact]
++    public void AddsOne() {
++        var cart = new Cart();
++        cart.Add(5m);
++        Assert.Equal(5m, cart.Total());
++    }
++
++    [Fact]
++    public void AddsTwo() {
++        var cart = new Cart();
++        cart.Add(5m);
++        cart.Add(7m);
++        Assert.Equal(12m, cart.Total());
++    }
++}

@@ -1,0 +1,14 @@
+{
+  "description": "Router dependency taken from a personal fork module path rather than the upstream module.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "go.mod",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Runtime router comes from an individual's fork (github.com/jdoe-fork/mux) instead of github.com/gorilla/mux; unreviewed code in the supply chain. Rated CRITICAL."
+    }
+  ],
+  "decoys": []
+}

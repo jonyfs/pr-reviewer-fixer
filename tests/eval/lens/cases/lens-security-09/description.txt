@@ -1,0 +1,1 @@
+Adds extraction of uploaded zip archives into a work directory.

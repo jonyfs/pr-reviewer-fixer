@@ -1,0 +1,1 @@
+{"description": "Existing response field userName is renamed to username with no alias.", "defects": [{"id": "D1", "file": "src/routes/users.js", "line": 10, "tolerance": 2, "min_severity": "WARNING", "note": "The response field userName is renamed to username and the old name is not kept, so every client reading userName gets undefined."}], "decoys": []}

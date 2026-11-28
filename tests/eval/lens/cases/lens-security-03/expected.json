@@ -1,0 +1,14 @@
+{
+  "description": "After login the user is redirected to whatever next parameter the request carries.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "web/login.go",
+      "line": 10,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Open redirect: next is used unvalidated as the redirect target, enabling phishing via an external URL"
+    }
+  ],
+  "decoys": []
+}

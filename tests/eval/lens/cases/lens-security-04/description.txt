@@ -1,0 +1,1 @@
+Restores the session object sent back by the client.

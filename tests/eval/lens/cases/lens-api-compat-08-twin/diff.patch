@@ -1,0 +1,22 @@
+--- /dev/null
++++ b/app/Http/Controllers/SignupController.php
+@@ -0,0 +1,19 @@
++<?php
++
++namespace App\Http\Controllers;
++
++use Illuminate\Http\Request;
++
++class SignupController extends Controller
++{
++    public function store(Request $request)
++    {
++        $data = $request->validate([
++            'email' => 'required|email',
++            'phone' => 'nullable|string|max:20',
++            'name' => 'required|string',
++        ]);
++        $user = $this->users->create($data);
++        return response()->json(['id' => $user->id], 201);
++    }
++}

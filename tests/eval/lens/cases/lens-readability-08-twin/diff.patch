@@ -1,0 +1,19 @@
+diff --git a/src/Report.php b/src/Report.php
+new file mode 100644
+--- /dev/null
++++ b/src/Report.php
+@@ -0,0 +1,14 @@
++<?php
++
++function summarize(array $rows): array
++{
++    $total = 0;
++    $count = 0;
++    foreach ($rows as $row) {
++        $total += $row['amount'];
++    }
++    return [
++        'count' => count($rows),
++        'total' => $total,
++    ];
++}

@@ -1,0 +1,17 @@
+diff --git a/src/services/transfer.js b/src/services/transfer.js
+new file mode 100644
+--- /dev/null
++++ b/src/services/transfer.js
+@@ -0,0 +1,12 @@
++const db = require('../db');
++
++async function transfer(fromId, toId, amount) {
++  const from = await db('accounts').where({ id: fromId }).first();
++  const to = await db('accounts').where({ id: toId }).first();
++  if (from.balance < amount) throw new Error('insufficient funds');
++
++  await db('accounts').where({ id: fromId }).update({ balance: from.balance - amount });
++  await db('accounts').where({ id: toId }).update({ balance: to.balance + amount });
++}
++
++module.exports = { transfer };

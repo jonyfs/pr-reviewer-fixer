@@ -1,0 +1,14 @@
+{
+  "description": "README example passes strict=True, which load_config does not accept; copying it raises TypeError.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "README.md",
+      "line": 10,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "README example calls load_config with a strict parameter that does not exist."
+    }
+  ],
+  "decoys": []
+}

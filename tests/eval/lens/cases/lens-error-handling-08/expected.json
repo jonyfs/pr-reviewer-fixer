@@ -1,0 +1,14 @@
+{
+  "description": "The quantity parser unwraps the parse result of user supplied text, so malformed input panics the process.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/quantity.rs",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "unwrap on user input panics on any non numeric value instead of returning an error"
+    }
+  ],
+  "decoys": []
+}

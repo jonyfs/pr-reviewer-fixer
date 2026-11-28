@@ -1,0 +1,1 @@
+Adds checkout pricing and a cart preview total.

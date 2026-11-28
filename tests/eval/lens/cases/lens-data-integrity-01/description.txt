@@ -1,0 +1,1 @@
+Adds a currency column to orders and indexes it.

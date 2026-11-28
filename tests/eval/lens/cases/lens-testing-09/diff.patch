@@ -1,0 +1,26 @@
+diff --git a/Shipping.kt b/Shipping.kt
+new file mode 100644
+--- /dev/null
++++ b/Shipping.kt
+@@ -0,0 +1,6 @@
++fun shippingFee(total: Int, express: Boolean): Int {
++    if (total >= 100) {
++        return 0
++    }
++    return if (express) 20 else 5
++}
+diff --git a/ShippingTest.kt b/ShippingTest.kt
+new file mode 100644
+--- /dev/null
++++ b/ShippingTest.kt
+@@ -0,0 +1,10 @@
++import kotlin.test.Test
++import kotlin.test.assertEquals
++
++class ShippingTest {
++    @Test
++    fun standardFee() = assertEquals(5, shippingFee(50, false))
++
++    @Test
++    fun expressFee() = assertEquals(20, shippingFee(50, true))
++}

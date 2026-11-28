@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/src/Events/EventQuery.cs
+@@ -0,0 +1,18 @@
++using System.Collections.Generic;
++using System.Linq;
++
++namespace Example.Events;
++
++public class EventQuery
++{
++    private readonly EventContext _db;
++
++    public EventQuery(EventContext db) => _db = db;
++
++    public List<Event> Recent(string tenantId)
++    {
++        return _db.Events.Where(e => e.TenantId == tenantId)
++            .OrderByDescending(e => e.CreatedAt)
++            .Take(100).ToList();
++    }
++}

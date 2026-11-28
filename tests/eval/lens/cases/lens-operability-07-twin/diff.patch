@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/deploy/ledger.service
+@@ -0,0 +1,18 @@
++[Unit]
++Description=Ledger daemon
++After=network-online.target
++Wants=network-online.target
++
++[Service]
++Type=simple
++User=ledger
++Group=ledger
++ExecStart=/usr/local/bin/ledgerd --config /etc/ledger/ledger.toml
++EnvironmentFile=/etc/ledger/secrets.env
++Restart=on-failure
++RestartSec=5
++NoNewPrivileges=true
++ProtectSystem=strict
++
++[Install]
++WantedBy=multi-user.target

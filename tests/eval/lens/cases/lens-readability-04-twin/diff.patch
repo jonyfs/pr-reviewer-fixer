@@ -1,0 +1,25 @@
+diff --git a/batch/batch.go b/batch/batch.go
+new file mode 100644
+--- /dev/null
++++ b/batch/batch.go
+@@ -0,0 +1,20 @@
++package batch
++
++import "time"
++
++const (
++	retryDelay = 1500 * time.Millisecond
++	maxItems = 500
++)
++
++func Send(items []string, post func([]string) error) error {
++	if len(items) > maxItems {
++		items = items[:maxItems]
++	}
++	err := post(items)
++	if err != nil {
++		time.Sleep(retryDelay)
++		err = post(items)
++	}
++	return err
++}

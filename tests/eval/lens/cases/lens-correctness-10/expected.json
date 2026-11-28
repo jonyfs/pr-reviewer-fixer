@@ -1,0 +1,1 @@
+{"description": "Result of distinct() is discarded, so duplicates are still counted.", "defects": [{"id": "D1", "file": "src/main/kotlin/Users.kt", "line": 5, "tolerance": 2, "min_severity": "WARNING", "note": "distinct() returns a new list; its result is discarded so the count includes duplicates."}], "decoys": []}

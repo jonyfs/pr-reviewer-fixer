@@ -1,0 +1,1 @@
+Adds a function that stores a document for the editor.

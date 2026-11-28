@@ -1,0 +1,16 @@
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,13 @@
++# Report service image
++ARG APP_DIR=/srv/report
++FROM node:20.11.1-alpine3.19
++WORKDIR ${APP_DIR}
++COPY package.json package-lock.json ./
++RUN npm ci --omit=dev
++COPY src ./src
++ENV NODE_ENV=production
++ENV PORT=8080
++EXPOSE 8080
++USER node
++HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
++CMD ["node", "src/server.js"]

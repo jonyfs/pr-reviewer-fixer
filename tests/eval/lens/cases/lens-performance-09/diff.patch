@@ -1,0 +1,20 @@
+--- /dev/null
++++ b/src/score.rs
+@@ -0,0 +1,17 @@
++pub struct Sample {
++    pub id: u64,
++    pub value: f64,
++}
++
++fn score(id: u64, samples: &[Sample]) -> f64 {
++    samples.iter().filter(|s| s.id == id).map(|s| s.value).sum()
++}
++
++pub fn score_all(ids: &[u64], samples: &Vec<Sample>) -> Vec<f64> {
++    let mut out = Vec::with_capacity(ids.len());
++    for id in ids {
++        let snapshot = samples.clone();
++        out.push(score(*id, &snapshot));
++    }
++    out
++}

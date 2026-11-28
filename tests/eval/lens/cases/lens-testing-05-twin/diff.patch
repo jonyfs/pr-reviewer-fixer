@@ -1,0 +1,31 @@
+diff --git a/src/main/java/Mailer.java b/src/main/java/Mailer.java
+new file mode 100644
+--- /dev/null
++++ b/src/main/java/Mailer.java
+@@ -0,0 +1,10 @@
++import java.util.concurrent.*;
++
++public class Mailer {
++    private final ExecutorService pool = Executors.newSingleThreadExecutor();
++    public volatile int sent = 0;
++
++    public Future<?> sendAsync(String to) {
++        return pool.submit(() -> { sent++; });
++    }
++}
+diff --git a/src/test/java/MailerTest.java b/src/test/java/MailerTest.java
+new file mode 100644
+--- /dev/null
++++ b/src/test/java/MailerTest.java
+@@ -0,0 +1,11 @@
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++
++class MailerTest {
++    @Test
++    void sendsMail() throws Exception {
++        Mailer m = new Mailer();
++        m.sendAsync("a@example.com").get(5, java.util.concurrent.TimeUnit.SECONDS);
++        assertEquals(1, m.sent);
++    }
++}

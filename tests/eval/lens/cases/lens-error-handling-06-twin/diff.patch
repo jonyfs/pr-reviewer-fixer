@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/lib/feed_client.rb
+@@ -0,0 +1,18 @@
++require "net/http"
++
++class FeedClient
++  MAX_TRIES = 3
++
++  def fetch(url)
++    raise ArgumentError, "url must be https" unless url.start_with?("https://")
++
++    tries = 0
++    begin
++      tries += 1
++      Net::HTTP.get(URI(url))
++    rescue Net::ReadTimeout, Net::OpenTimeout
++      retry if tries < MAX_TRIES
++      raise
++    end
++  end
++end

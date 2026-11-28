@@ -1,0 +1,14 @@
+{
+  "description": "Comment restates the code (increment tries by one) instead of explaining why.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/retry.js",
+      "line": 12,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "The comment only repeats what the next line does and gives no reason."
+    }
+  ],
+  "decoys": []
+}

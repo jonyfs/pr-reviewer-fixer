@@ -1,0 +1,19 @@
+--- /dev/null
++++ b/src/main/kotlin/Collector.kt
+@@ -0,0 +1,16 @@
++import kotlinx.coroutines.*
++import java.util.Collections
++
++class Collector {
++    private val results = Collections.synchronizedList(ArrayList<String>())
++
++    suspend fun collect(ids: List<Int>, fetch: suspend (Int) -> String): List<String> =
++        coroutineScope {
++            ids.map { id ->
++                launch(Dispatchers.Default) {
++                    results.add(fetch(id))
++                }
++            }.joinAll()
++            results.toList()
++        }
++}

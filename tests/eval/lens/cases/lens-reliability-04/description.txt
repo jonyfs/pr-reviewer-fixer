@@ -1,0 +1,1 @@
+Adds the API entrypoint with signal handling for container stops.

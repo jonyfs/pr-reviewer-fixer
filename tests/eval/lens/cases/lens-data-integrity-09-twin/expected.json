@@ -1,0 +1,5 @@
+{
+  "description": "Clean twin: Records when a booking occurred. The integrity defect is fixed.",
+  "defects": [],
+  "decoys": []
+}

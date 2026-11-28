@@ -1,0 +1,14 @@
+{
+  "description": "Test stubs the repository's find and then asserts on the stub's own return value, never exercising the real code.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "greeter_spec.rb",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "asserts the double returns what it was told to return; Greeter is never called"
+    }
+  ],
+  "decoys": []
+}

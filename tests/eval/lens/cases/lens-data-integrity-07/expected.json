@@ -1,0 +1,14 @@
+{
+  "description": "Data integrity. Balance read-modify-write with no transaction; concurrent transfers lose money.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/services/transfer.js",
+      "line": 8,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "lost updates and partial transfer"
+    }
+  ],
+  "decoys": []
+}

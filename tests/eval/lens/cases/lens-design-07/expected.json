@@ -1,0 +1,14 @@
+{
+  "description": "Cart and PricingService depend on each other, creating a package cycle cart <-> pricing.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/kotlin/shop/cart/Cart.kt",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Cart builds PricingService(this) while PricingService imports Cart."
+    }
+  ],
+  "decoys": []
+}

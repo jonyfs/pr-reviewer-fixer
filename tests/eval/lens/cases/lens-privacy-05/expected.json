@@ -1,0 +1,14 @@
+{
+  "description": "The page view event carries the raw IP address with no stated purpose.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/java/com/example/events/PageViewEvent.java",
+      "line": 12,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "raw client IP added to every analytics event; no purpose needs it, a coarse region would do"
+    }
+  ],
+  "decoys": []
+}

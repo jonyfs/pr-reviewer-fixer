@@ -1,0 +1,28 @@
+--- /dev/null
++++ b/cli/main.py
+@@ -0,0 +1,14 @@
++import argparse
++
++
++def build_parser():
++    p = argparse.ArgumentParser(prog="tool")
++    p.add_argument("input")
++    p.add_argument("--format", choices=["json", "csv"], default="json")
++    p.add_argument("--verbose", action="store_true")
++    return p
++
++
++def main(argv=None):
++    args = build_parser().parse_args(argv)
++    return args
+--- /dev/null
++++ b/CHANGELOG.md
+@@ -0,0 +1,8 @@
++# Changelog
++
++## [2.0.0] - 2026-11-20
++
++### Changed
++- Output is now JSON by default.
++- Improved error messages for missing input.
++- Internal refactor of the argument parser.

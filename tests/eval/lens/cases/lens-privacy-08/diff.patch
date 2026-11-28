@@ -1,0 +1,23 @@
+diff --git a/app/Http/Controllers/DataExportController.php b/app/Http/Controllers/DataExportController.php
+new file mode 100644
+--- /dev/null
++++ b/app/Http/Controllers/DataExportController.php
+@@ -0,0 +1,18 @@
++<?php
++
++namespace App\Http\Controllers;
++
++use App\Models\User;
++use Illuminate\Http\Request;
++
++class DataExportController extends Controller
++{
++    public function show(Request $request)
++    {
++        $user = User::findOrFail($request->input('user_id'));
++        return response()->json([
++            'profile' => $user->only(['name', 'email', 'phone']),
++            'orders' => $user->orders()->get(),
++        ]);
++    }
++}

@@ -1,0 +1,1 @@
+Adds a shared HTTP client with timeouts for the partner API.

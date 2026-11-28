@@ -1,0 +1,27 @@
+--- /dev/null
++++ b/internal/logs/parse.go
+@@ -0,0 +1,24 @@
++package logs
++
++import "regexp"
++
++
++
++func ExtractRequestID(line string) (string, bool) {
++	re := regexp.MustCompile(`request_id=([a-f0-9]{16})`)
++	m := re.FindStringSubmatch(line)
++	if m == nil {
++		return "", false
++	}
++	return m[1], true
++}
++
++func ExtractAll(lines []string) []string {
++	var ids []string
++	for _, l := range lines {
++		if id, ok := ExtractRequestID(l); ok {
++			ids = append(ids, id)
++		}
++	}
++	return ids
++}

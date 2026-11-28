@@ -1,0 +1,14 @@
+{
+  "description": "A new http.Client and Transport (own connection pool) is built inside every request handler.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "internal/rates/handler.go",
+      "line": 12,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "Each request creates its own Transport, so no TCP/TLS connections are reused and idle connections leak per request. At a few hundred requests per second this exhausts sockets and file descriptors and adds a handshake to every call."
+    }
+  ],
+  "decoys": []
+}

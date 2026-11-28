@@ -1,0 +1,1 @@
+Send batches with one retry after a short pause.

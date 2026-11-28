@@ -1,0 +1,1 @@
+Add session cleanup and a session counter for the user store.

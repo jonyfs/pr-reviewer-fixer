@@ -1,0 +1,1 @@
+Adds a helper that attaches each player's rank to the season export.

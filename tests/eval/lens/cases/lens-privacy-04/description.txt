@@ -1,0 +1,1 @@
+Adds a nightly export of the newsletter list for the reporting team.

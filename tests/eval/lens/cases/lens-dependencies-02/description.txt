@@ -1,0 +1,1 @@
+Add the HTTP client and the env loader to the service requirements.

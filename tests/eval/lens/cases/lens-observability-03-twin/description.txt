@@ -1,0 +1,1 @@
+Adds a request counter for the search endpoint.

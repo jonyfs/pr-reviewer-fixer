@@ -1,0 +1,14 @@
+{
+  "description": "The save failure is logged and then the method returns a saved receipt, so the order is reported as stored when it was not.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/main/kotlin/CheckoutService.kt",
+      "line": 17,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "error is only logged and execution continues to return a saved receipt, so a failed order write is reported as success and the order is lost"
+    }
+  ],
+  "decoys": []
+}

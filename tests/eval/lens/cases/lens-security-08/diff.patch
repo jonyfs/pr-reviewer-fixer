@@ -1,0 +1,15 @@
+diff --git a/src/main/kotlin/example/Http.kt b/src/main/kotlin/example/Http.kt
+new file mode 100644
+--- /dev/null
++++ b/src/main/kotlin/example/Http.kt
+@@ -0,0 +1,10 @@
++package example
++
++import okhttp3.OkHttpClient
++import java.util.concurrent.TimeUnit
++
++fun apiClient(): OkHttpClient =
++    OkHttpClient.Builder()
++        .callTimeout(30, TimeUnit.SECONDS)
++        .hostnameVerifier { _, _ -> true }
++        .build()

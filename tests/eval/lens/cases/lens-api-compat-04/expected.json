@@ -1,0 +1,1 @@
+{"description": "Malformed JSON now returns 500 instead of 400.", "defects": [{"id": "D1", "file": "api/handlers.go", "line": 16, "tolerance": 2, "min_severity": "WARNING", "note": "The same malformed input previously answered 400; clients and retry logic treat 500 as a server fault and retry or alert."}], "decoys": []}

@@ -1,0 +1,14 @@
+{
+  "description": "Unused import left in: readFileSync is never used.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/paths.ts",
+      "line": 2,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "readFileSync is imported but never referenced in the file."
+    }
+  ],
+  "decoys": []
+}

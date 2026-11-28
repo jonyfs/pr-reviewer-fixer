@@ -1,0 +1,14 @@
+{
+  "description": "Misleading name: get_user_sessions deletes expired rows and returns a count.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/sessions.py",
+      "line": 4,
+      "tolerance": 2,
+      "min_severity": "NOTE",
+      "note": "The name promises a read but the function deletes rows and commits; callers will not expect a destructive call."
+    }
+  ],
+  "decoys": []
+}

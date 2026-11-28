@@ -1,0 +1,26 @@
+diff --git a/port.ts b/port.ts
+new file mode 100644
+--- /dev/null
++++ b/port.ts
+@@ -0,0 +1,7 @@
++export function parsePort(raw: string): number {
++  const n = Number(raw);
++  if (!Number.isInteger(n) || n < 1 || n > 65535) {
++    throw new RangeError(`invalid port: ${raw}`);
++  }
++  return n;
++}
+diff --git a/port.test.ts b/port.test.ts
+new file mode 100644
+--- /dev/null
++++ b/port.test.ts
+@@ -0,0 +1,9 @@
++import { parsePort } from './port';
++
++it('parses a valid port', () => {
++  expect(parsePort('8080')).toBe(8080);
++});
++
++it('rejects an out-of-range port', () => {
++  expect(() => parsePort('70000')).toThrow(RangeError);
++});

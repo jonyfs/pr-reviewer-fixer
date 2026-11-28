@@ -1,0 +1,1 @@
+Adds a preview endpoint that shows the first part of a documentation page.

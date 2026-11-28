@@ -1,0 +1,14 @@
+{
+  "description": "A static mut counter is incremented from several threads with no atomics: a data race with lost updates.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/counter.rs",
+      "line": 10,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Non-atomic counter increment across threads"
+    }
+  ],
+  "decoys": []
+}

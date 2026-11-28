@@ -1,0 +1,1 @@
+Adds a config module for the pricing URL and wires up the service entrypoint.

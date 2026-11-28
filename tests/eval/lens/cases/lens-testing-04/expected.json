@@ -1,0 +1,14 @@
+{
+  "description": "Only the happy path of Divide is tested; the documented zero-divisor error branch is never exercised.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "calc/calc_test.go",
+      "line": 5,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "TestDivide covers only a non-zero divisor, the ErrDivByZero branch has no test"
+    }
+  ],
+  "decoys": []
+}

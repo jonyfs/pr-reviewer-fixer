@@ -1,0 +1,5 @@
+{
+  "description": "Clean twin: Synchronous file read on every request is fixed.",
+  "defects": [],
+  "decoys": []
+}

@@ -1,0 +1,25 @@
+diff --git a/src/routes/orders.ts b/src/routes/orders.ts
+new file mode 100644
+--- /dev/null
++++ b/src/routes/orders.ts
+@@ -0,0 +1,20 @@
++import { Router } from "express";
++import { pool } from "../db";
++import { orderRepo } from "../repos/orderRepo";
++
++export const router = Router();
++
++router.get("/customers/:id/orders", async (req, res) => {
++  const limit = Number(req.query.limit ?? 20);
++  const rows = await orderRepo.recentFor(
++    req.params.id,
++    limit
++  );
++  res.json(rows);
++});
++
++router.get("/orders/:id", async (req, res) => {
++  const order = await orderRepo.findById(req.params.id);
++  if (!order) return res.sendStatus(404);
++  res.json(order);
++});

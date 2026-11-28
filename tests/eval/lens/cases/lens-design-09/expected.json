@@ -1,0 +1,14 @@
+{
+  "description": "The business function takes the concrete SMTP type although a Mailer trait exists, so callers and tests cannot substitute it.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/reminders.rs",
+      "line": 16,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "notify_overdue depends on the concrete SmtpMailer instead of the Mailer abstraction."
+    }
+  ],
+  "decoys": []
+}

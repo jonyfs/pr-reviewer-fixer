@@ -1,0 +1,22 @@
+diff --git a/Package.swift b/Package.swift
+new file mode 100644
+--- /dev/null
++++ b/Package.swift
+@@ -0,0 +1,17 @@
++// swift-tools-version:5.9
++import PackageDescription
++
++let package = Package(
++    name: "Cli",
++    dependencies: [
++        .package(url: "https://git.example.com/jdoe/swift-argument-parser-fork.git", from: "1.3.0"),
++    ],
++    targets: [
++        .executableTarget(
++            name: "Cli",
++            dependencies: [
++                .product(name: "ArgumentParser", package: "swift-argument-parser"),
++            ]
++        ),
++    ]
++)

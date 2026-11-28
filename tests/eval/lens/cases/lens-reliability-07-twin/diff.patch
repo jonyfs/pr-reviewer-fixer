@@ -1,0 +1,21 @@
+diff --git a/app/jobs/issue_invoice_job.rb b/app/jobs/issue_invoice_job.rb
+new file mode 100644
+--- /dev/null
++++ b/app/jobs/issue_invoice_job.rb
+@@ -0,0 +1,16 @@
++class IssueInvoiceJob
++  include Sidekiq::Job
++  sidekiq_options retry: 10
++
++  def perform(order_id)
++    order = Order.find(order_id)
++
++    invoice = Invoice.find_or_create_by!(
++      order_id: order.id,
++      total_cents: order.total_cents,
++      issued_at: order.completed_at
++    )
++
++    InvoiceMailer.issued(invoice.id).deliver_later
++  end
++end

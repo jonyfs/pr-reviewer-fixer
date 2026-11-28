@@ -1,0 +1,16 @@
+--- /dev/null
++++ b/src/format.js
+@@ -0,0 +1,13 @@
++const SYMBOL = "$";
++
++function toFixedPrice(n) {
++  return n.toFixed(2);
++}
++
++export function formatPrice(n) {
++  return `${SYMBOL}${toFixedPrice(n)}`;
++}
++
++export function formatPriceList(values) {
++  return values.map(formatPrice).join(", ");
++}

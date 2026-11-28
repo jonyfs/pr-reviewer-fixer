@@ -1,0 +1,19 @@
+diff --git a/src/Pricing/PriceFormatter.cs b/src/Pricing/PriceFormatter.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Pricing/PriceFormatter.cs
+@@ -0,0 +1,14 @@
++namespace Shop.Pricing;
++
++public class BankersRounder
++{
++    public decimal Round(decimal v) => Math.Round(v, 2, MidpointRounding.ToEven);
++}
++
++public class PriceFormatter
++{
++    private readonly BankersRounder _rounder = new();
++
++    public string Format(decimal v) =>
++        _rounder.Round(v).ToString("F2");
++}

@@ -1,0 +1,1 @@
+{"description": "The consumer acknowledges the message before rendering the invoice, so a crash mid-render loses the job.", "defects": [{"id": "D1", "file": "src/worker.js", "line": 12, "tolerance": 2, "min_severity": "CRITICAL", "note": "ack before processing: a crash or exception after the ack drops the message permanently"}], "decoys": []}

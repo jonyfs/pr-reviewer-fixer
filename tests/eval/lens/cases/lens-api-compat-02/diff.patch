@@ -1,0 +1,19 @@
+--- /dev/null
++++ b/src/routes/users.js
+@@ -0,0 +1,16 @@
++const express = require("express");
++const router = express.Router();
++const db = require("../db");
++
++router.get("/users/:id", async (req, res) => {
++  const u = await db.users.find(req.params.id);
++  if (!u) return res.status(404).json({ error: "not found" });
++  res.json({
++    id: u.id,
++    username: u.name,
++    email: u.email,
++    createdAt: u.createdAt,
++  });
++});
++
++module.exports = router;

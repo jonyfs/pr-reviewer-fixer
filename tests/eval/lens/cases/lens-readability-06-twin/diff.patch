@@ -1,0 +1,21 @@
+diff --git a/lib/invoice.rb b/lib/invoice.rb
+new file mode 100644
+--- /dev/null
++++ b/lib/invoice.rb
+@@ -0,0 +1,16 @@
++class Invoice
++  def initialize(items)
++    @items = items
++  end
++
++  # Prices are integer cents so sums stay exact.
++  # Quantity is always a whole number.
++  # Tax is applied by the caller, not here.
++  def total_cents
++    @items.sum { |i| i[:price_cents] * i[:qty] }
++  end
++
++  def empty?
++    @items.empty?
++  end
++end

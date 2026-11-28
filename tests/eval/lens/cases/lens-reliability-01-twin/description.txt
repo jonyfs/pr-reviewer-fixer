@@ -1,0 +1,1 @@
+Adds a small client that converts amounts using the rates service and caches each currency rate.

@@ -1,0 +1,1 @@
+Adds a small class that records each captured payment in the payments table.

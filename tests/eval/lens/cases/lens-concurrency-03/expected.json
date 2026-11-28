@@ -1,0 +1,14 @@
+{
+  "description": "The interval handle is never kept, so stop() cannot cancel it and the background task keeps firing after shutdown.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/poller.ts",
+      "line": 7,
+      "tolerance": 2,
+      "min_severity": "WARNING",
+      "note": "Background interval never cancelled on shutdown"
+    }
+  ],
+  "decoys": []
+}

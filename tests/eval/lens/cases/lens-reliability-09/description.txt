@@ -1,0 +1,1 @@
+Adds a service that assembles the profile page from the user record and recommendations.
