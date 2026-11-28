@@ -16,7 +16,8 @@ check() { local name="$1"; shift; if "$@"; then row "$name" ok; else row "$name"
 #   perfect  each defect case names its defect at its own line and severity; each twin is empty
 #   empty    every report has no finding
 #   noisy    perfect, plus a WARNING on every correctness twin
-#   weak     each defect is named at one severity step below its minimum (a NOTE for a WARNING)
+#   weak     every defect is named as a NOTE (a hit only for the NOTE-level lenses, docs and readability)
+#   dropped  perfect, except the performance lens has no finding at all
 mk() {
   python3 -I - "$CASES" "$W/$1" "$2" <<'PY'
 import json, os, sys
@@ -29,7 +30,7 @@ for name in sorted(os.listdir(cases)):
     exp = json.load(open(p))
     twin = name.endswith("-twin")
     rows = []
-    if not twin and mode in ("perfect", "noisy", "weak"):
+    if not twin and mode in ("perfect", "noisy", "weak", "dropped") and not (mode == "dropped" and name.startswith("lens-performance-")):
         for d in exp["defects"]:
             sev = d["min_severity"]
             if mode == "weak":
@@ -47,7 +48,7 @@ PY
 sc() { python3 -I "$LS" --cases "$CASES" "$@"; }
 jq_() { python3 -I -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(eval(sys.argv[1])))' "$1"; }
 
-mk perfect perfect; mk empty empty; mk noisy noisy; mk weak weak
+mk perfect perfect; mk empty empty; mk noisy noisy; mk weak weak; mk dropped dropped
 
 check "a perfect run: recall 1 and no twin false positive, in every lens" \
   eval '[ "$(sc --reports "$W/perfect" --json | jq_ "d[\"overall\"][\"recall\"], d[\"overall\"][\"twin_fp_rate\"], len(d[\"lenses\"])")" = "[1.0, 0.0, 18]" ]'
@@ -60,6 +61,10 @@ check "a NOTE where a WARNING is required is not a hit" \
 check "--lens scores only the named lenses" \
   eval '[ "$(sc --reports "$W/perfect" --lens docs --lens privacy --json | jq_ "sorted(d[\"lenses\"])")" = "[\"docs\", \"privacy\"]" ]'
 check "--min-recall above the recall exits 1" eval 'sc --reports "$W/empty" --min-recall 0.5 >/dev/null 2>&1; [ $? = 1 ]'
+check "--min-recall is checked per lens: one lens with no recall fails a run that is otherwise perfect" \
+  eval 'sc --reports "$W/dropped" --min-recall 0.5 >/dev/null 2>&1; [ $? = 1 ]'
+check "an unknown lens beside a known one exits 2" eval 'sc --reports "$W/perfect" --lens docs --lens nonsens >/dev/null 2>&1; [ $? = 2 ]'
+check "a missing cases directory exits 2, not 1" eval 'python3 -I "$LS" --cases "$W/none" --reports "$W/perfect" >/dev/null 2>&1; [ $? = 2 ]'
 check "--min-recall met exits 0" eval 'sc --reports "$W/perfect" --min-recall 0.9 >/dev/null 2>&1'
 check "--max-twin-fp exceeded exits 1" eval 'sc --reports "$W/noisy" --max-twin-fp 0.01 >/dev/null 2>&1; [ $? = 1 ]'
 

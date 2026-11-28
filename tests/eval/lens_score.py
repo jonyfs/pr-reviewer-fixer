@@ -14,7 +14,8 @@ For each lens the script prints:
               NOTE-level defect; score.py ignores notes);
   twin FP     the share of clean twins on which the reviewer reported any CRITICAL or WARNING.
 
---lens limits scoring to the named lenses (running the reviewer on every case is a lot of work).
+--lens limits scoring to the named lenses (running the reviewer on every case is a lot of work);
+an unknown lens exits 2. --min-recall and --max-twin-fp are checked for every scored lens.
 Every case of a scored lens needs a report; a missing report exits 2 and is named.
 
 Exit 0 = scored (and thresholds met, when given) · 1 = a threshold was missed ·
@@ -68,13 +69,22 @@ def main(argv):
 
     sc = load_scorer()
     sc.CASES = args.cases
+    try:
+        all_names = sc.case_names()
+    except OSError as e:
+        print("lens_score: cannot read the cases directory (%s)" % e, file=sys.stderr)
+        return 2
     names = []
-    for n in sc.case_names():
+    for n in all_names:
         m = NAME.match(n)
         if m and (not args.lens or m.group(1) in args.lens):
             names.append((n, m.group(1), bool(m.group(3))))
     if not names:
         print("lens_score: no case matches", file=sys.stderr)
+        return 2
+    unknown = [x for x in args.lens if not any(x == lens for _, lens, _ in names)]
+    if unknown:
+        print("lens_score: no case for lens %s" % ", ".join(unknown), file=sys.stderr)
         return 2
 
     missing = [n for n, _, _ in names if not os.path.isfile(os.path.join(args.reports, n + ".md"))]
@@ -129,12 +139,18 @@ def main(argv):
         print("overall recall %s, twin false-positive rate %s" % (summary["recall"], summary["twin_fp_rate"]))
 
     failed = False
-    if args.min_recall is not None and (summary["recall"] is None or summary["recall"] < args.min_recall):
-        print("lens_score: recall %s is below %s" % (summary["recall"], args.min_recall), file=sys.stderr)
-        failed = True
-    if args.max_twin_fp is not None and summary["twin_fp_rate"] is not None and summary["twin_fp_rate"] > args.max_twin_fp:
-        print("lens_score: twin false-positive rate %s is above %s" % (summary["twin_fp_rate"], args.max_twin_fp), file=sys.stderr)
-        failed = True
+    # Thresholds apply to every scored lens and to the overall figure: a lens with no recall must
+    # not hide behind the others.
+    if args.min_recall is not None:
+        for lens, v in out.items():
+            if v["recall"] is None or v["recall"] < args.min_recall:
+                print("lens_score: %s recall %s is below %s" % (lens, v["recall"], args.min_recall), file=sys.stderr)
+                failed = True
+    if args.max_twin_fp is not None:
+        for lens, v in out.items():
+            if v["twin_fp_rate"] is not None and v["twin_fp_rate"] > args.max_twin_fp:
+                print("lens_score: %s twin false-positive rate %s is above %s" % (lens, v["twin_fp_rate"], args.max_twin_fp), file=sys.stderr)
+                failed = True
     return 1 if failed else 0
 
 

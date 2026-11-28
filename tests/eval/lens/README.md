@@ -35,5 +35,5 @@ Produce one report per case in a directory (`<case>.md`, ending with the fenced 
 
 For each lens it prints the recall (defects hit over defects seeded) and the share of clean twins on
 which the reviewer reported a CRITICAL or WARNING. A NOTE can hit a NOTE-level defect (the
-documentation and readability lenses seed NOTEs). `--lens` scores a subset, since running the
+documentation and readability lenses seed NOTEs). The thresholds are checked for every scored lens, so one lens with no recall cannot hide behind the others. `--lens` scores a subset, since running the
 reviewer on all 360 cases is a lot of work. `lens_selftest.sh` tests the scorer on canned reports.
