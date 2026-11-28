@@ -37,3 +37,10 @@ For each lens it prints the recall (defects hit over defects seeded) and the sha
 which the reviewer reported a CRITICAL or WARNING. A NOTE can hit a NOTE-level defect (the
 documentation and readability lenses seed NOTEs). The thresholds are checked for every scored lens, so one lens with no recall cannot hide behind the others. `--lens` scores a subset, since running the
 reviewer on all 360 cases is a lot of work. `lens_selftest.sh` tests the scorer on canned reports.
+
+## Blind runs and the baseline
+
+`lens_blind.py prepare` shuffles the cases into reviewer folders under neutral names, so a reviewer sees
+neither the lens nor which cases are twins; `lens_blind.py collect` maps the reports back for the
+scorer. `--line-slack N` on `lens_score.py` separates finding a defect from naming its exact line.
+`BASELINE.md` holds the first blinded run (a plain reviewer, one pass, 360 cases) and its limits.
