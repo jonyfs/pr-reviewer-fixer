@@ -1,0 +1,21 @@
+diff --git a/export/newsletter.go b/export/newsletter.go
+new file mode 100644
+--- /dev/null
++++ b/export/newsletter.go
+@@ -0,0 +1,16 @@
++package export
++
++import (
++	"bytes"
++	"encoding/csv"
++)
++
++func Upload(put func(key string, body []byte, acl string) error, emails []string) error {
++	var buf bytes.Buffer
++	w := csv.NewWriter(&buf)
++	for _, e := range emails {
++		_ = w.Write([]string{e})
++	}
++	w.Flush()
++	return put("exports/newsletter.csv", buf.Bytes(), "private")
++}

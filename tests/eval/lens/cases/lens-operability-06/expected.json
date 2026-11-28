@@ -1,0 +1,14 @@
+{
+ "description": "Actions migrate parallel with rollout: The migration and the rollout are launched concurrently with no ordering guard, so new code can serve before the schema exists.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": ".github/workflows/deploy.yml",
+   "line": 14,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "The migration and the rollout are launched concurrently with no ordering guard, so new code can serve before the schema exists."
+  }
+ ],
+ "decoys": []
+}

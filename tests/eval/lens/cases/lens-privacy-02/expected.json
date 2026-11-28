@@ -1,0 +1,14 @@
+{
+  "description": "The whole customer record, with name, email and address, is sent to the third-party analytics SDK.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "src/checkout/track.js",
+      "line": 9,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "full customer object (name, email, address, phone) is passed to a third-party SDK; only an opaque id and step are needed"
+    }
+  ],
+  "decoys": []
+}

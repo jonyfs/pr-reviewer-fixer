@@ -1,0 +1,14 @@
+{
+  "description": "The CSV of subscriber emails is uploaded with a public-read ACL to a shared public bucket.",
+  "defects": [
+    {
+      "id": "D1",
+      "file": "export/newsletter.go",
+      "line": 15,
+      "tolerance": 2,
+      "min_severity": "CRITICAL",
+      "note": "CSV of subscriber emails uploaded public-read: anyone can download the list"
+    }
+  ],
+  "decoys": []
+}

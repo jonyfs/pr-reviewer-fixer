@@ -1,0 +1,19 @@
+diff --git a/spec/fixtures/customers.rb b/spec/fixtures/customers.rb
+new file mode 100644
+--- /dev/null
++++ b/spec/fixtures/customers.rb
+@@ -0,0 +1,14 @@
++module Fixtures
++  CUSTOMER = {
++    id: "prod_user_88231",
++    source: "prod_export_2026_10",
++    name: "Mariana Fernandes Albuquerque",
++    email: "mariana.albuquerque@mailbox.example.com",
++    phone: "+55 11 98765-4321",
++    tax_id: "123.456.789-09"
++  }.freeze
++
++  def self.customer(overrides = {})
++    CUSTOMER.merge(overrides)
++  end
++end

@@ -1,0 +1,1 @@
+Implements account deletion requested from the settings page.

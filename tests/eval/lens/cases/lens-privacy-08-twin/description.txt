@@ -1,0 +1,1 @@
+Adds the endpoint that lets a user download their data.

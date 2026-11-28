@@ -1,0 +1,14 @@
+{
+ "description": "Procfile migrate on every web start: Every web process runs the schema migration at startup, so concurrent dynos race on migrations and a slow migration blocks boot.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "Procfile",
+   "line": 2,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "Every web process runs the schema migration at startup, so concurrent dynos race on migrations and a slow migration blocks boot."
+  }
+ ],
+ "decoys": []
+}

@@ -1,0 +1,14 @@
+{
+ "description": "Compose container as root: The worker container is explicitly run as root (0:0), widening the blast radius of any compromise.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "docker-compose.yml",
+   "line": 8,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "The worker container is explicitly run as root (0:0), widening the blast radius of any compromise."
+  }
+ ],
+ "decoys": []
+}

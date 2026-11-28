@@ -1,0 +1,29 @@
+--- /dev/null
++++ b/k8s/orders/deployment.yaml
+@@ -0,0 +1,26 @@
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  name: orders-api
++  namespace: shop
++spec:
++  replicas: 3
++  strategy:
++    type: RollingUpdate
++  selector:
++    matchLabels:
++      app: orders-api
++  template:
++    metadata:
++      labels:
++        app: orders-api
++    spec:
++      containers:
++        - name: orders-api
++          image: registry.example.com/shop/orders-api:1.8.0
++          ports:
++            - containerPort: 8080
++          readinessProbe:
++            httpGet:
++              path: /ready
++              port: 8080

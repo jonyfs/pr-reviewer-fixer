@@ -1,0 +1,14 @@
+{
+ "description": "Helm flag default on in prod: The new checkout flag is enabled by default in production with no kill switch or gradual rollout.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "charts/web/values-production.yaml",
+   "line": 17,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "The new checkout flag is enabled by default in production with no kill switch or gradual rollout."
+  }
+ ],
+ "decoys": []
+}

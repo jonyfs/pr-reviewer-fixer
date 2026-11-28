@@ -1,0 +1,11 @@
+--- /dev/null
++++ b/Procfile
+@@ -0,0 +1,8 @@
++# processes for the api app
++web: gunicorn api.wsgi --workers 3
++worker: celery -A api worker --concurrency 4
++release: python manage.py migrate --noinput
++scheduler: celery -A api beat --loglevel info
++console: python manage.py shell
++flower: celery -A api flower --port 5555
++metrics: python manage.py export_metrics

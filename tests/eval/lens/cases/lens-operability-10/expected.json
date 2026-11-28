@@ -1,0 +1,14 @@
+{
+ "description": "Makefile deploy with no rollout check: The deploy target applies the image and returns without waiting for the rollout or undoing a failed one, so a broken release is reported as success.",
+ "defects": [
+  {
+   "id": "D1",
+   "file": "Makefile",
+   "line": 11,
+   "tolerance": 2,
+   "min_severity": "WARNING",
+   "note": "The deploy target applies the image and returns without waiting for the rollout or undoing a failed one, so a broken release is reported as success."
+  }
+ ],
+ "decoys": []
+}

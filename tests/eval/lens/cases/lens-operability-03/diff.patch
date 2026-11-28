@@ -1,0 +1,23 @@
+--- /dev/null
++++ b/charts/web/values-production.yaml
+@@ -0,0 +1,20 @@
++replicaCount: 4
++image:
++  repository: registry.example.com/shop/web
++  tag: 2.14.0
++  pullPolicy: IfNotPresent
++service:
++  type: ClusterIP
++  port: 80
++resources:
++  requests:
++    cpu: 250m
++    memory: 256Mi
++  limits:
++    memory: 512Mi
++features:
++  newCheckout:
++    enabled: true
++    rolloutPercent: 0
++    runtimeToggle: true
++    owner: payments-team
