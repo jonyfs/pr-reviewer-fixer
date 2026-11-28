@@ -8,7 +8,7 @@ description: >
   (PASSED or BLOCKED) bound to the head commit, with a machine-readable report the pr-fixer skill
   consumes.
 metadata:
-  version: "0.25.2"
+  version: "0.26.0"
 ---
 
 # PR Reviewer
@@ -228,29 +228,31 @@ honesty, not by volume.
 ## Output
 
 The report is written for the person who reads the pull request after the agent, so it leads with
-the answer. It is one comment, in plain text: no headings, tables, bold, bullet lists, checkboxes,
-Mermaid or emoji, since Markdown belongs in the pull request description only. The marker line and
-the fenced `findings` block are the only exceptions. In this order (layout and the rules behind it:
+the answer. It is one comment in GitHub Markdown: an alert for the verdict, tables for the numbers
+and the findings, task lists for the conditions, and emoji from one fixed legend, each beside its word
+([references/pr-protocol.md](references/pr-protocol.md)). The marker line and the fenced `findings`
+block keep their exact form. In this order (layout, template and rules:
 [references/report-contract.md](references/report-contract.md)):
 
-1. the marker, then the banner `Written by pr-reviewer, pass N, head <sha7>`, which says who wrote
-   the report and that it ran;
-2. the title line and the summary lines: `Verdict:`, `Counts:` (critical, warning, note), `Head:`
-   and `Next:`;
-3. how to read the review, three labelled lines: what changed, what blocks, what to check first;
-4. acceptance conditions, one `A<n> met:` or `A<n> open:` line each, never rewritten after pass 1;
-5. one line per finding, grouped by severity: CRITICAL findings (they always block), WARNINGS and
-   NOTES as declared debt, each with a proposed owner;
-6. the coverage lines: each review unit, its effort, and whether it ran; plus the `Declined to judge:`
-   line;
-7. prior findings on re-review, one line each: verified, open, refused-accepted, refused-rejected or
+1. the marker, then the banner `🤖 **Written by pr-reviewer** · pass N · head <sha7>`, which says who
+   wrote the report and that it ran;
+2. the alert (`[!TIP]` PASSED, `[!CAUTION]` BLOCKED) and the summary table: `Verdict`, `Counts`
+   (critical, warning, note), `Scope`, `Head` and `Next`;
+3. how to read the review, three bullets: what changed, what blocks, what to check first;
+4. acceptance conditions as a task list, `- [x]` met and `- [ ]` open, never rewritten after pass 1;
+5. one table per severity: CRITICAL findings (they always block), WARNINGS and NOTES as declared debt,
+   each row with a proposed owner;
+6. the coverage table: each review unit, its effort, and whether it ran; plus the `Declined to judge:`
+   line and the `Review mode:` line;
+7. prior findings on re-review, one table row each: verified, open, refused-accepted, refused-rejected or
    not applicable;
-8. the `Pass history:` line from pass 2 on, and a `Summary:` line that names the one thing to fix
+8. the Mermaid pass history from pass 2 on, and a **Summary:** line that names the one thing to fix
    first;
 9. the fenced machine-readable `findings` block, last, for `pr-fixer` and `pr-merge-fixer`.
 
-Nothing is wrapped in `<detail[s]>`, and no comment carries an emoji with a variation selector: the
-scanner reads both as hidden text.
+Nothing is wrapped in `<detail[s]>`, and no comment carries an emoji with a variation selector or an
+emoji shortcode: the scanner flags the first as hidden text, and `tests/run-all.sh` refuses a variation
+selector and a shortcode in a template.
 
 ## Key Checks Before Publishing
 

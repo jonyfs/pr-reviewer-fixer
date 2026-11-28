@@ -8,7 +8,7 @@ description: >
   the tier its complexity needs, verifies, pushes without force, and escalates the conflicts it
   cannot decide. A push always triggers a fresh review.
 metadata:
-  version: "0.25.2"
+  version: "0.26.0"
 ---
 
 # PR Merge Fixer
@@ -45,13 +45,13 @@ versions and the source. Yes: `scripts/update.sh --yes --version <version>`. No:
 
 ## Written by this skill
 
-Every comment this skill posts is plain text (no Markdown, no emoji; see
-[references/pr-protocol.md](references/pr-protocol.md)) and opens with its banner, so a reader knows
+Every comment this skill posts is GitHub Markdown in the layout of
+[references/pr-protocol.md](references/pr-protocol.md), and opens with its banner, so a reader knows
 who wrote it and that it ran:
 
 ```text
 <!-[-] pr-merge-fixer-closure: head=<sha12> resolved=<r> escalated=<e> -->
-Written by pr-merge-fixer, ran at <UTC time>, base <base> merged into the head.
+🔀 **Written by pr-merge-fixer** · ran at <UTC time> · base `<base>` merged into the head
 ```
 
 ## Execution Profile
@@ -176,34 +176,41 @@ flowchart TD
 
 ## Closure comment
 
-Same summary shape as the other two skills, in plain text: a title line with the result in six
-words or fewer, labelled lines (resolved, escalated, verification, and `Next:` last), then one
-labelled line per file. The reader gets the outcome first and the file-by-file detail below it. No
-heading, table, bold, bullet, emoji or fenced block: Markdown belongs in the pull request
-description only.
+Same summary shape as the other two skills: an alert with the result in six words or fewer, a table
+(resolved, escalated, verification, hidden-content scan, and `Next` last), then one table row per
+file. The reader gets the outcome first and the file-by-file detail below it. The alert is `[!TIP]`
+when nothing was escalated and `[!WARNING]` when something was.
 
-```text
+````markdown
 <!-[-] pr-merge-fixer-closure: head=<sha12> resolved=<r> escalated=<e> -->
-Written by pr-merge-fixer, ran at <UTC time>, base <base> merged into the head.
+🔀 **Written by pr-merge-fixer** · ran at <UTC time> · base `main` merged into the head
 
-Resolved 3 files, review owed
+> [!TIP]
+> ✅ **Resolved 3 files**: the review is owed on the new head
 
-Resolved: 3 files
-Escalated: 0
-Verification: npm test 214 passed, 0 failed; build passed
-Hidden-content scan: no hits
-Next: reviewer pass 4 on <sha7>
+| | |
+|---|---|
+| **Resolved** | ✅ 3 files |
+| **Escalated** | 0 |
+| **Verification** | `npm test` 214 passed, 0 failed; build passed |
+| **Hidden-content scan** | no hits |
+| **Next** | reviewer pass 4 on `<sha7>` |
 
-File package-lock.json: lockfile, no tier, regenerated with npm install. Evidence: npm ci passed.
-File src/api/orders.ts: textual, fast, kept both new cases. Evidence: hunks 1 and 2 are disjoint.
-File src/pricing/tax.ts: semantic, deep, base default 0.2 kept, head's branch kept. Evidence: base commit a1b2c3d changed the default on purpose.
+### 📁 Files
 
-Hunks for the reviewer's focus: src/pricing/tax.ts:40-58. The reviewer reads the whole diff; these
+| File | Class | Tier | Resolution | Evidence |
+|---|---|---|---|---|
+| `package-lock.json` | lockfile | none | ✅ resolved: regenerated with `npm install` | `npm ci` passed |
+| `src/api/orders.ts` | textual | fast | ✅ resolved: kept both new cases | hunks 1 and 2 are disjoint |
+| `src/pricing/tax.ts` | semantic | deep | ✅ resolved: base default 0.2 kept, head's branch kept | base commit `a1b2c3d` changed the default on purpose |
+
+**Hunks for the reviewer's focus:** `src/pricing/tax.ts:40-58`. The reviewer reads the whole diff; these
 hunks are where it should look first.
-```
+````
 
-Escalation uses the same lines, with `escalated` in place of the resolution on each file it names
-and one `Decision for a person:` line that says what a person must decide.
+Escalation uses the same layout with `[!WARNING]`, `🔶 escalated` in the Resolution cell of each file it
+names, and one **Decision for a person:** line that says what a person must decide. A table cell holds
+one line and no `|`.
 
 ## Escalation
 
@@ -229,7 +236,7 @@ closure comment with `escalated` rows.
 - [ ] No whole-merge `-X ours` or `-X theirs`
 - [ ] Build and the narrowest tests pass before the push
 - [ ] `bash -p scripts/push-guard.sh` exits 0 with its `push-guard: ok.` line, with `--allow` for every resolved file
-- [ ] The closure comment is plain text and carries the banner, one line per file and the reviewer's focus hunks
+- [ ] The closure comment carries the banner, the alert, one table row per file and the reviewer's focus hunks
 - [ ] The next pass is stated as owed, never as done
 - [ ] After a merge push, the review loop starts again: by the loop agent when it dispatched this run, or by this session from step 1 of the loop when a person invoked the skill directly, also when the run stopped after the push
 

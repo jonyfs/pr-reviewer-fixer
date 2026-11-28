@@ -14,7 +14,7 @@ they already look, that a review is running, what it is doing, and when it is do
 |---|---|---|
 | Start | `pr-reviewer: started on PR #N (head <sha7>, pass P, <lines> lines changed). Plan: <k> agents (<deep>/<standard>/<fast>). I will report when done.` | Session output, the status comment (created now), the label, CI job summary |
 | Phase change (only these: dispatching, verifying, publishing) | `pr-reviewer: PR #N <phase>.` | Session output |
-| Finish | `pr-reviewer: finished PR #N pass P: <PASSED\|BLOCKED> critical=C warning=W note=N. Next: <pr-fixer \| ready for human review \| nothing>.` | Session output, first visible line of the verdict comment, the status comment (edited to `state=finished`), push notification if available |
+| Finish | `pr-reviewer: finished PR #N pass P: <PASSED\|BLOCKED> critical=C warning=W note=N. Next: <pr-fixer \| ready for human review \| nothing>.` | Session output, the banner and alert at the top of the verdict comment, the status comment (edited to `state=finished`), push notification if available |
 | Nothing to do | `pr-reviewer: PR #N at <sha7> already reviewed (pass P, <verdict>). No action.` | Session output |
 | Stopped early | `pr-reviewer: stopped on PR #N: <reason>. Next action: <one action>.` | Session output, the status comment (edited in place), push notification |
 | Halted | `pr-skill: halted on PR #N. <reason sentence>` | The answer comment (marker first), session output, push notification, always |
@@ -42,21 +42,21 @@ Rules:
    finish or stop (`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id>`). Marker:
    `<!-[-] pr-skill-status: skill=pr-reviewer run=P head=<sha12> state=started|finished -->`. This is
    not the verdict marker and must never be confused with it: the verdict is published only by
-   `scripts/review-cycle.sh publish`. Never edit another author's comment. The body is plain text,
-   one labelled line per step, that a reader can scan in one glance (no table, bold or emoji; see
-   [pr-protocol.md](pr-protocol.md)):
+   `scripts/review-cycle.sh publish`. Never edit another author's comment. The body is a short task
+   list a reader can scan in one glance, one item per step, with the banner and the state on the first
+   line (no alert, no table; see [pr-protocol.md](pr-protocol.md)):
 
-   ```text
+   ```markdown
    <!-[-] pr-skill-status: skill=pr-reviewer run=2 head=9f2c1ab4e0d3 state=started -->
-   Written by pr-reviewer, pass 2, head 9f2c1ab, running.
+   🤖 **Written by pr-reviewer** · pass 2 · head `9f2c1ab4e0d3` · ⏳ running
 
-   Secret screen and hidden-text scan: done
-   Review units: 6 running (2 deep, 3 standard, 1 fast)
-   Verification and verdict: waiting
+   - [x] Secret screen and hidden-text scan: done
+   - [ ] Review units: 6 running (2 deep, 3 standard, 1 fast)
+   - [ ] Verification and verdict: waiting
    ```
 
    Finish replaces the step lines with the verdict in one line and a link to the verdict comment.
-3. **Verdict comment**: carries the finish line as its first visible line, then the report and the
+3. **Verdict comment**: its banner and alert state the finish, then the report and the
    `findings` block. There is no separate finish comment.
 4. **Push notification**: on finish or stop of a run longer than about two minutes, when the
    harness offers one (Claude Code `PushNotification`). One per run, plus one for each extension

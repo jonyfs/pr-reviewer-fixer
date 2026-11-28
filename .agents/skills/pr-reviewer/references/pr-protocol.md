@@ -19,7 +19,7 @@ and check with `cmp`.
 | Verdict comment | `pr-reviewer`, through `review-cycle.sh publish` | `pr-fixer` (Ingest), `pr-reviewer` pass 2+ (Understand the change), the escalation step | `<!-[-] adversarial-review: sha=<40hex> verdict=PASSED\|BLOCKED pass=<p> critical=<n> warning=<n> note=<n> [model=<id> tier=fast\|standard\|deep] [block_at=warning] -->`, then the report, ending with the fenced `findings` block | `scripts/pr-json.py <n>` piped to filter F1 | Valid while `sha=` equals the head. A push makes it history. Never edited after publish |
 | Inline review comments | `pr-reviewer`, only in a run a person invoked | `pr-fixer` comment lane | Body starts with the finding id in brackets: `[C1] <claim>` | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Closed by a thread reply, then resolved. The automatic run posts none |
 | Fixer closure comment | `pr-fixer`, once per cycle, as its finish message, after `review-cycle.sh screen` passes it | `pr-reviewer` pass c+1 (Understand the change) | `<!-[-] pr-fixer-closure: cycle=<c> head=<sha12> closed=<n> refused=<n> debt=<n> -->`, then the closure report | `scripts/pr-json.py <n>` piped to filter F3 | One per cycle. The reviewer judges it on the next pass. Never edited after posting |
-| Merge closure comment | `pr-merge-fixer`, once per merge run, after `review-cycle.sh screen` passes it | `pr-reviewer` pass P+1 (focus hunks), people | `<!-[-] pr-merge-fixer-closure: head=<sha12> resolved=<n> escalated=<n> -->`, then the banner, the summary lines and one line per file | Filter F7 | One per merge run. Never edited after posting. A merge push always owes the next review pass |
+| Merge closure comment | `pr-merge-fixer`, once per merge run, after `review-cycle.sh screen` passes it | `pr-reviewer` pass P+1 (focus hunks), people | `<!-[-] pr-merge-fixer-closure: head=<sha12> resolved=<n> escalated=<n> -->`, then the banner, the alert, the summary table and one table row per file | Filter F7 | One per merge run. Never edited after posting. A merge push always owes the next review pass |
 | Debt block | `pr-fixer` (Declare debt), after `review-cycle.sh screen` passes the new body | People, `pr-reviewer` pass 2+, the next fixer cycle | Lines between `<!-[-] pr-debt:start -->` and `<!-[-] pr-debt:end -->` in the PR body, one line per WARNING or NOTE with a named owner | `gh pr view <n> --json body --jq .body` piped to filter F4 | Replaced in place on every fixer run. The author's own text around it is never touched |
 | Thread replies | `pr-fixer` comment lane | The comment's author, `pr-reviewer` pass 2+ | `Closed in <sha7> (C1)`, and the thread resolved only when the reviewer's login or a trusted bot opened it; or `Declined (C1): <reason>` or `Escalated (C1): <what the person must decide>` and the thread left open | `scripts/fetch-feedback.py <n>` (pr-fixer) | A loop-owned thread is resolved on reply. A person's thread, and a decline, stay open for its author |
 | Status comment | The skill run that is in progress | People watching the PR | `<!-[-] pr-skill-status: skill=<name> run=<pass, cycle or proactive> head=<sha12> state=started\|finished -->`, then one line | `scripts/pr-json.py <n>` piped to filter F5 | Created at start, edited in place at finish. At most one per skill run |
@@ -31,34 +31,65 @@ and check with `cmp`.
 
 ## Comment layout and legend (all three skills)
 
-Every comment an agent posts is plain text. Markdown is for the pull request description only. A
-comment has no headings, no tables, no bold or italics, no bullet or numbered lists, no checkboxes,
-no quotes, no fenced block other than the `findings` block of a verdict or the `proofs` block of a
-fixer closure (no Mermaid), and no emoji. The marker line and those two blocks are the only
-exceptions. Every comment follows one order, so a reader learns where to look and a parser finds
-the marker on the first line:
+Every comment an agent posts is GitHub Markdown written to be scanned: the verdict in an alert, the
+numbers in a table, the detail under headings with an emoji. The marker stays alone on the first line
+and the last fenced block (`findings` in a verdict, `proofs` in a fixer closure) stays last, because
+the scripts read them. Between them every comment follows one order, so a reader learns where to look:
 
 1. the marker, alone on the first line (`<!-[-] ... -->`);
-2. the banner, one line: `Written by pr-reviewer`, `Written by pr-fixer` or `Written by
-   pr-merge-fixer`, with the pass, cycle or run and the time;
-3. the summary: the title line, then labelled lines (`Verdict:`, `Counts:`, `Head:`, and `Next:`
-   last), one value each;
-4. the detail: one labelled line per item, starting with its id or its label (`C1 closed:`,
-   `Coverage:`, `File src/a.ts:`), with the evidence on that line or the next labelled one;
-5. the fenced `findings` block (a verdict) or `proofs` block (a fixer closure, see
-   `falsify-and-prove.md` in pr-fixer, "Proof block") last, when the comment has one.
+2. the banner, one line with the agent's emoji: `🤖 **Written by pr-reviewer**`,
+   `🔧 **Written by pr-fixer**` or `🔀 **Written by pr-merge-fixer**`, then the pass, cycle or run
+   and the time, separated by ` · `;
+3. the alert (one per comment, see the legend) and the summary table: `Verdict` or `Result`, `Counts`,
+   `Head`, and `Next` last, one row each;
+4. the detail, one `###` heading per section, each with its emoji: tables for findings, coverage,
+   fixer checkpoints and merged files, and a task list for acceptance conditions and status steps;
+5. the last fenced block, when the comment has one.
 
-Legend, used the same way everywhere, in words: CRITICAL, WARNING and NOTE for severity; closed,
-refused, escalated and open for a fixer outcome; verified, refused-accepted, refused-rejected and not
-applicable for a reviewer's judgement; met and open for an acceptance condition; resolved and
-escalated for a merged file; lockfile, rename, textual, semantic, vendored and sensitive for a
-conflict class. A login is written without the `@`, so it notifies nobody.
+An agent comment may hold headings, tables, bold, bullet and task lists, inline code, absolute links,
+one alert, one Mermaid block (the verdict's pass history), and the last fenced block. Nothing else.
 
-Formatting that the scripts and the scanner reject, so never write it into an agent comment:
-`details` blocks, HTML comments other than the protocol's markers, invisible HTML, and emoji with a
-variation selector (`⚠️`, `✔️`, `ℹ️`, `➡️`). `scan-hidden.py` flags each one as a candidate finding.
-`tests/run-all.sh` fails when a comment template in the skills holds a table row, a heading, bold,
-a bullet or a fenced block other than `findings` or `proofs`.
+Legend, used the same way everywhere. The emoji never stands alone: the word is always beside it, so the
+meaning survives a client that does not draw the emoji.
+
+| Meaning | Written as |
+|---|---|
+| Who wrote the comment | 🤖 pr-reviewer, 🔧 pr-fixer, 🔀 pr-merge-fixer |
+| Severity | 🔴 CRITICAL, 🟡 WARNING, 🔵 NOTE |
+| Verdict | ✅ PASSED, ⛔ BLOCKED |
+| Done or confirmed | ✅ met, ✅ verified, ✅ refused-accepted, ✅ closed, ✅ resolved, ✅ run |
+| Not done or contested | ⏳ open, ❌ refused-rejected, 🚫 refused, 🔶 escalated |
+| Does not apply | ⚪ not applicable |
+| Section icons | 📖 reading guide, 🎯 conditions, 🧭 coverage, 🔁 prior findings, 📈 history, 🧾 checkpoints, 📁 files |
+
+Alert: `[!TIP]` over a PASSED verdict, a closure with nothing refused or escalated, or a merge with
+nothing escalated; `[!CAUTION]` over a BLOCKED verdict; `[!WARNING]` over a closure or a merge that
+refused or escalated something. The status comment has none.
+
+Words, not emoji: CRITICAL, WARNING and NOTE for severity; closed, refused, escalated and open for a
+fixer outcome; verified, refused-accepted, refused-rejected and not applicable for a reviewer's
+judgement; met and open for an acceptance condition; resolved and escalated for a merged file;
+lockfile, rename, textual, semantic, vendored and sensitive for a conflict class. A login is written
+without the `@`, so it notifies nobody.
+
+Lines the scripts read, so keep them exactly as written. `Review mode: separate agents.` or
+`Review mode: single session.` alone on a line, and the words `Declined to judge:` (`lint-report`).
+`C1 closed:`, `C1 refused:`, `C1 escalated:` and `C1 open:`, each at the left edge of its line and in
+plain text, one per finding in a fixer closure (`fix-ledger.sh` counts them). The `findings` block is
+opened by a line that is exactly ```` ```findings ```` and closed by a line that is exactly ```` ``` ````,
+which is the last non-blank line of the comment, and no other line is exactly ```` ```findings ````
+(`findings-block` refuses the report otherwise). A fixer closure has exactly one ```` ```proofs ````
+block and its first line is the marker (`proof-check.sh`).
+
+Formatting that the tests, the scripts or the scanner reject, so never write it into an agent comment:
+`details` blocks, HTML comments other than the protocol's markers and invisible HTML (the scanner flags
+each as a candidate finding), an emoji shortcode (`:x:`), an emoji outside the legend above, and an emoji
+with a variation selector (`⚠️`, `✔️`, `ℹ️`, `➡️`). The scanner reports only a run of two or more
+selectors, so a single one passes it; `tests/run-all.sh` is what refuses it, and the legend holds only
+emoji that need none. The same test fails when a comment template in the skills holds an alert count other
+than the one it should, a table whose rows have different numbers of cells or no divider row, an emoji outside
+the legend, prose after the last fenced block, or a fixer section whose heading does not carry the
+checkpoint icon.
 
 Links in a comment or in a pull request body are absolute. GitHub resolves a relative path such as
 `docs/guide.md` against the pull request's own URL, so it lands on a compare page, not on the file. Write
@@ -72,14 +103,26 @@ protocol takes from it. The protocol blocks above stay exact; none of these chan
 
 - Alerts (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` on a quoted line). GitHub:
   use one only when it is crucial, one or two per page, never two in a row, and never nested in
-  another element. Adopted for the pull request description only: at most one alert, outside the
-  debt block, never inside a `<detail[s]>` block or any other element, and never in place of the
-  label or the verdict. Not in comments: an alert is a quote, which the comment rules forbid.
+  another element. Adopted: one alert per agent comment, the one that states its outcome (see the
+  legend), outside any table, list or other element, and one in the pull request description, outside
+  the debt block. Checked on 2026-11-28 with GitHub's render API (`POST /markdown`, mode `gfm`): an
+  alert comes back as a `markdown-alert` element. The page does not say which surfaces render it.
   Source: https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax
-- Status emoji. GitHub renders a `:shortcode:` between colons as an emoji (same page). Adopted as a
-  rule: an agent comment carries no emoji shortcode either (`:warning:`, `:x:`,
-  `:white_check_mark:`); the state is written with the legend's words.
+- Emoji. GitHub renders a `:shortcode:` between colons as an emoji and documents no other route (same
+  page). Adopted: an agent comment writes the emoji itself, from the legend, with no variation
+  selector, and never a shortcode: a shortcode that GitHub does not know prints as text, and the
+  legend stays one fixed set the tests can check.
   Source: https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax
+- Task lists and tables. GitHub documents the syntax (`- [ ]`, `- [x]`, pipes and a divider row). Adopted
+  for acceptance conditions, fixer checkpoints and finding tables; a table cell holds one line and no
+  pipe. The 2026-11-28 render check returned task-list checkboxes and a table.
+  Source: https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax
+- Diagrams. GitHub: a fenced block tagged `mermaid` renders as a diagram in issues, discussions, pull
+  requests, wikis and Markdown files; the page names no limit except a third-party Mermaid plugin.
+  Adopted: one `flowchart LR` per verdict, the pass history from pass 2, with words in the labels and no
+  emoji. The render check returned the block as `mermaid`; the diagram is drawn by the page in the
+  browser, which an agent cannot see, so the text of the block stays readable on its own.
+  Source: https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams
 - Hiding (minimizing) outdated comments. GitHub: anyone with write access may hide a pull request
   comment that is outdated, resolved or off-topic, and anyone with read access can still expand it.
   Adopted: hiding is a person's moderation act, so an agent never hides a comment. A verdict, a
@@ -101,8 +144,8 @@ protocol takes from it. The protocol blocks above stay exact; none of these chan
   Sources: https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api
   and https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
 
-Summary shape, the same in all three skills: a title line with the outcome in six words or fewer,
-then labelled lines whose last is `Next:`, then the detail. The reviewer's template is in its
+Summary shape, the same in all three skills: an alert with the outcome in six words or fewer, then a
+table whose last row is `Next`, then the detail. The reviewer's template is in its
 `report-contract.md` ("Summary standard"); the fixer's and the merge fixer's are in their closure
 sections.
 

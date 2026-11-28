@@ -84,11 +84,12 @@ sequenceDiagram
 
 ## 5. Read the result
 
-Open the pull request. The newest comment from the reviewer starts with `Written by pr-reviewer`. It is plain text:
+Open the pull request. The newest comment from the reviewer starts with `🤖 Written by pr-reviewer`. It is GitHub Markdown, built to be scanned:
 
-- The **summary lines** (`Verdict:`, `Counts:`, `Next:`) say whether it passed and how many findings there are.
-- The **Check first** line names the one thing to look at first.
-- Each **critical finding** is a line with its id, a file and a line. Those block the merge.
+- The **alert** at the top says the verdict: a green box for `PASSED`, a red one for `BLOCKED`.
+- The **summary table** (`Verdict`, `Counts`, `Head`, `Next`) says how many findings there are and who acts next.
+- The **How to read this review** list names the one thing to look at first.
+- Each **critical finding** (🔴) is a table row with its id, file and line. Those block the merge.
 - **Warnings and notes** are debt, each with a proposed owner.
 
 ## 6. Merge, or let the loop continue

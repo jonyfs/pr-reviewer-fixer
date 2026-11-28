@@ -164,7 +164,7 @@ def err(p):
 
 # ---- the contract's own example --------------------------------------------------------------
 contract = open(os.path.join(SCRIPTS, "..", "references", "report-contract.md"), encoding="utf-8").read()
-example = re.search(r"````text\n(.*?)````", contract, re.S).group(1).replace("<!-[-]", "<!-" + "-")
+example = re.search(r"````(?:text|markdown)\n(.*?)````", contract, re.S).group(1).replace("<!-[-]", "<!-" + "-")
 p, doc = export(example)
 check("the contract's example -> exit 0, SARIF 2.1.0 structure holds", p.returncode == 0 and doc and not structure(doc),
       err(p) + str(doc and structure(doc)))

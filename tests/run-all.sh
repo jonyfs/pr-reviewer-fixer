@@ -303,13 +303,13 @@ done
 # Every skill states the summary shape, so the three reports read the same way to a person: the
 # reviewer's template, the fixer's closure rule, the merge fixer's closure rule and the shared protocol.
 # The phrase is a presence check. Where the file holds a template, one structural line of that
-# template must also be there (the plain `Next:` line that ends the summary lines), so a template
+# template must also be there (the `Next` row that ends the summary table), so a template
 # that drops its summary fails even when the sentence describing it stays. The protocol holds no
 # template.
 for spec in \
-  "pr-reviewer/references/report-contract.md|## Summary standard|^Next: pr-fixer" \
-  "pr-fixer/references/falsify-and-prove.md|Summary first, same shape|^Next: reviewer pass" \
-  "pr-merge-fixer/SKILL.md|Same summary shape as the other two skills|^Next: reviewer pass" \
+  "pr-reviewer/references/report-contract.md|## Summary standard|^\| \*\*Next\*\* \| pr-fixer" \
+  "pr-fixer/references/falsify-and-prove.md|Summary first, same shape|^\| \*\*Next\*\* \| reviewer pass" \
+  "pr-merge-fixer/SKILL.md|Same summary shape as the other two skills|^\| \*\*Next\*\* \| reviewer pass" \
   "pr-reviewer/references/pr-protocol.md|Summary shape, the same in all three skills|" \
   "pr-reviewer/references/pr-protocol.md|Links in a comment or in a pull request body are absolute|"; do
   rel="${spec%%|*}"; rest="${spec#*|}"; phrase="${rest%%|*}"; shape="${rest#*|}"
@@ -320,23 +320,31 @@ for spec in \
     echo "== summary standard MISSING from $rel (sentence or template Next: line)"; fail=1
   fi
 done
-# Agent comments are plain text: Markdown belongs in the pull request description only. A comment
-# template is a fenced block in a skill's Markdown whose first line is a protocol marker. Outside its
-# own fence, a template may hold no table row, heading, bold, bullet, checkbox, quote or other fenced
-# block (Mermaid included). The fence is tied to the marker: `findings` in a verdict
-# (adversarial-review) only, `proofs` in a fixer closure (pr-fixer-closure) only, none in the others.
-# A floor on the templates found, and on the proofs fences found, keeps a wrong path or a template
-# that lost its proofs block from passing with nothing read (PR 85 N2).
-if ! plain_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
+# Agent comments are GitHub Markdown in one fixed layout (pr-protocol.md). A comment template is a fenced block in a
+# skill's Markdown whose first line is a protocol marker. Each template must keep the first line (the marker), a banner
+# on the second line (`<emoji> **Written by ...`), and the alert count its kind needs (a verdict, a fixer closure and a
+# merge closure have one; the status comment has none). The last fenced block is `findings` in a verdict and `proofs`
+# in a fixer closure, and no other; a verdict may also hold one `mermaid` block, with no emoji in it. It may not hold a
+# `details` or any HTML tag, an emoji shortcode, an emoji outside the legend (the set below, which pr-protocol.md must
+# also name), or an emoji with a variation selector or a joiner. Every table has the same number of cells in every row.
+# The lines the scripts read stay: `Review mode:` and `Declined to judge:` in the verdict, and a `<id> closed|refused|
+# escalated|open:` line at the left edge in the fixer closure (fix-ledger.sh). A floor on the templates found, and on
+# the proofs fences found, keeps a wrong path or a template that lost a part from passing with nothing read.
+if ! rich_out="$(python3 -I - "$ROOT/.agents/skills" <<'PY'
 import os, re, sys
+LEGEND = set("🤖🔧🔀🔴🟡🔵✅⛔❌⏳🚫🔶⚪📖🎯🧭🔁📈🧾📁")
 markers = ("<!-[-] adversarial-review:", "<!-[-] pr-fixer-closure:", "<!-[-] pr-merge-fixer-closure:",
            "<!-[-] pr-skill-status:")
-own = {"<!-[-] adversarial-review:": "findings", "<!-[-] pr-fixer-closure:": "proofs"}
-proofs_seen = 0
-rules = [(re.compile(r"^\s*\|"), "table row"), (re.compile(r"^\s*#{1,6}\s"), "heading"),
-         (re.compile(r"\*\*|__\S"), "bold"), (re.compile(r"^\s*([-*+]|\d+[.)])\s"), "list item"),
-         (re.compile(r"^\s*>"), "quote")]
-found, bad = 0, []
+kind_of = {"<!-[-] adversarial-review:": "verdict", "<!-[-] pr-fixer-closure:": "fixer",
+           "<!-[-] pr-merge-fixer-closure:": "merge", "<!-[-] pr-skill-status:": "status"}
+alerts_need = {"verdict": 1, "fixer": 1, "merge": 1, "status": 0}
+last_fence = {"verdict": "findings", "fixer": "proofs"}
+EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿⬀-⯿⏩-⏺←-⇿⌀-⏿■-◿]")
+HTML = re.compile(r"</?(details|summary|div|span|p|br|img|a|script|style|table|thead|tbody|tr|td|th|input|font|sub|sup|kbd|b|i|u|s|center|hr|blockquote|iframe|svg|picture|video|abbr|ins|del|mark|dl|dt|dd|ul|ol|li|h[1-6])\b", re.I)
+SHORTCODE = re.compile(r"(?<![\w/:.-]):[a-z][a-z0-9_+-]*:(?![\w/:])")
+legend_doc = open(os.path.join(sys.argv[1], "pr-reviewer/references/pr-protocol.md"), encoding="utf-8").read()
+bad = ["pr-protocol.md does not name the legend emoji %s" % c for c in sorted(LEGEND) if c not in legend_doc]
+found, proofs_seen, seen_kinds = 0, 0, set()
 for d, _, fs in os.walk(sys.argv[1]):
     for name in sorted(fs):
         if not name.endswith(".md"):
@@ -348,45 +356,106 @@ for d, _, fs in os.walk(sys.argv[1]):
             m = re.match(r"^(\s*)(`{3,})", lines[i])
             if not m:
                 i += 1; continue
-            n, start = len(m.group(2)), i
-            close = re.compile(r"^\s*`{%d,}\s*$" % n)
+            n = len(m.group(2)); close = re.compile(r"^\s*`{%d,}\s*$" % n)
             i += 1; body = []
             while i < len(lines) and not close.match(lines[i]):
                 body.append((i + 1, lines[i])); i += 1
             i += 1
-            first = next((t.strip() for _, t in body if t.strip()), "")
-            if not first.startswith(markers):
+            nonblank = [(ln, t) for ln, t in body if t.strip()]
+            if not nonblank or not nonblank[0][1].strip().startswith(markers):
                 continue
-            found += 1
-            allowed = next((v for k, v in own.items() if first.startswith(k)), None)
-            inner = None
+            first = nonblank[0][1].strip()
+            if len(nonblank) < 4:
+                continue  # a marker or banner shown on its own is a definition, not a whole comment
+            kind = kind_of[next(k for k in markers if first.startswith(k))]
+            found += 1; seen_kinds.add(kind)
+            where = "%s:%d (%s)" % (path, nonblank[0][0], kind)
+            if not re.match(r"^[^\s*]+ \*\*Written by pr-[a-z-]+\*\*", nonblank[1][1].strip()):
+                bad.append("%s: the second line is not the banner `<emoji> **Written by pr-...**`" % where)
+            fences, inner, alert_n, tables, fence_lang = [], None, 0, [], None
+            tbl = None
             for ln, t in body:
                 f = re.match(r"^\s*(`{3,})\s*(\S*)", t)
                 if inner is not None:
                     if f and len(f.group(1)) >= len(inner) and not f.group(2):
                         inner = None
+                    elif fence_lang == "mermaid" and EMOJI.search(t):
+                        bad.append("%s:%d emoji inside the mermaid block" % (path, ln))
                     continue
                 if f:
-                    if allowed is None or f.group(2) != allowed:
-                        bad.append("%s:%d fenced block %s under %s" % (path, ln, f.group(2) or "(untagged)", first.split()[1]))
-                    elif allowed == "proofs":
+                    fence_lang = f.group(2); fences.append(fence_lang); inner = f.group(1)
+                    if fence_lang == "proofs":
                         proofs_seen += 1
-                    inner = f.group(1); continue
-                for rx, what in rules:
-                    if rx.search(t):
-                        bad.append("%s:%d %s" % (path, ln, what))
+                    continue
+                if re.match(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", t):
+                    alert_n += 1
+                if HTML.search(t) and not t.lstrip().startswith("<!-"):
+                    bad.append("%s:%d HTML tag in a comment template" % (path, ln))
+                if SHORTCODE.search(t):
+                    bad.append("%s:%d emoji shortcode" % (path, ln))
+                for ch in t:
+                    if ord(ch) in (0xFE0F, 0xFE0E, 0x200D, 0x200B):
+                        bad.append("%s:%d variation selector or joiner (U+%04X)" % (path, ln, ord(ch)))
+                    elif EMOJI.search(ch) and ch not in LEGEND:
+                        bad.append("%s:%d emoji outside the legend: %s" % (path, ln, ch))
+                if t.lstrip().startswith("|"):
+                    cells = len(re.findall(r"(?<!\\)\|", t.strip())) - 1
+                    if tbl is None:
+                        tbl = [ln, cells, 0]
+                    else:
+                        tbl[2] += 1
+                        if cells != tbl[1]:
+                            bad.append("%s:%d table row has %d cells, its header has %d" % (path, ln, cells, tbl[1]))
+                        if tbl[2] == 1 and not re.match(r"^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$", t):
+                            bad.append("%s:%d the row under a table header is not a divider row" % (path, ln))
+                else:
+                    tbl = None
+            if kind in last_fence:
+                if not fences or fences[-1] != last_fence[kind]:
+                    bad.append("%s: the last fenced block must be %s, found %s" % (where, last_fence[kind], fences[-1:] or "none"))
+                allowed = {last_fence[kind]} | ({"mermaid"} if kind == "verdict" else set())
+            else:
+                allowed = set()
+            for fl in fences:
+                if fl not in allowed:
+                    bad.append("%s: fenced block %s not allowed here" % (where, fl or "(untagged)"))
+            if alert_n != alerts_need[kind]:
+                bad.append("%s: %d alert(s), expected %d" % (where, alert_n, alerts_need[kind]))
+            text = "\n".join(t for _, t in body)
+            if kind == "verdict":
+                if not re.search(r"^Review mode: (separate agents|single session)\.\s*$", text, re.M):
+                    bad.append("%s: no `Review mode:` line" % where)
+                if "Declined to judge:" not in text:
+                    bad.append("%s: no `Declined to judge:` line" % where)
+            if kind in last_fence:
+                tail = [t for _, t in body if t.strip()]
+                if not re.match(r"^\s*`{3,}\s*$", tail[-1]):
+                    bad.append("%s: the last non-blank line is not the closing fence of the %s block" % (where, last_fence[kind]))
+            if kind == "fixer":
+                for h in re.findall(r"^### (.*)$", text, re.M):
+                    if re.search(r"\b[CWN]\d+\b", h) and not h.startswith("\U0001F9FE "):
+                        bad.append("%s: a finding heading without the checkpoint icon: %s" % (where, h))
+                ids = re.findall(r"^### \U0001F9FE ([CWN]\d+) ", text, re.M)
+                if not ids:
+                    bad.append("%s: no finding section (`### <icon> <id> · <outcome>`)" % where)
+                for fid in ids:
+                    if not re.search(r"^%s (closed|refused|escalated|open):" % fid, text, re.M):
+                        bad.append("%s: %s has no `%s closed|refused|escalated|open:` line at the left edge" % (where, fid, fid))
 print(found)
+for k in ("verdict", "fixer", "merge", "status"):
+    if k not in seen_kinds:
+        bad.append("no %s template found" % k)
 if proofs_seen < 1:
     bad.append("no pr-fixer-closure template shows its proofs fence (falsify-and-prove.md)")
 for b in bad:
     print(b)
-sys.exit(1 if bad or found < 5 else 0)
+sys.exit(1 if bad or found < 4 else 0)
 PY
 )"; then
-  echo "== a comment template holds Markdown (templates found, then each offending line):"
-  printf '%s\n' "$plain_out" | sed "s|$ROOT/||"; fail=1
+  echo "== a comment template breaks the Markdown rules (templates found, then each offending line):"
+  printf '%s\n' "$rich_out" | sed "s|$ROOT/||"; fail=1
 else
-  echo "== agent comment templates are plain text ($(printf '%s\n' "$plain_out" | head -n 1) templates)"
+  echo "== agent comment templates follow the Markdown layout ($(printf '%s\n' "$rich_out" | head -n 1) templates)"
 fi
 # 0.20.1 wording rules: each must stay in its file, or the defect it closes returns.
 for check in \
@@ -413,7 +482,7 @@ for check in \
   "pr-reviewer/references/harness-loop.md|A moved head alone is not a|a concurrent push during an escalation is not a pushed merge (PR 85 N3)" \
   "pr-reviewer/references/harness-loop.md|the push, stops the loop even when the head moved|an escalation stops the loop even when the head moved (PR 85 N3)" \
   "pr-reviewer/references/harness-loop.md|go no further on this pull request until the person answers|step 0 waits for the person after a stop (PR 83 N11)" \
-  "pr-fixer/references/pr-protocol.md|a fenced block other than \`findings\` or \`proofs\`|the comment rules allow the proofs block (PR 82 N1)" \
+  "pr-fixer/references/pr-protocol.md|the last fenced block (\`findings\` in a verdict, \`proofs\` in a fixer closure)|the comment rules allow the proofs block (PR 82 N1)" \
   "pr-fixer/SKILL.md|Record each red, green, suite and mutation run|the Finding step names the runs recorded as proof (PR 82 N8)" \
   "pr-fixer/SKILL.md|Leave the behaviour-diff run out of the block|the behaviour-diff run is not a proof entry (PR 82 N8)" \
   "pr-reviewer/references/harness-loop.md|the \`pr-merge-fixer\` skill finishes a merge push|a merge push triggers the loop"; do

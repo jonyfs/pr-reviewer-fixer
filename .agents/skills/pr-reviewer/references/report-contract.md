@@ -12,54 +12,90 @@ statuses must match.
 
 ## Layout
 
-The verdict comment is plain text, in order: the marker, the banner, the summary, the detail, and
-the findings block last. `review-cycle.sh publish` writes the marker and posts the report as it is.
-The template below is the whole comment; everything outside the `findings` fence is plain text.
+The verdict comment is GitHub Markdown, in this order: the marker, the banner, the verdict alert and
+the summary table, the reading guide, the acceptance conditions, the findings by severity, the
+coverage, the prior findings and the pass history on a re-review, the summary line, and the findings
+block last. `review-cycle.sh publish` writes the marker and posts the report as it is. The template
+below is the whole comment. Its emoji and words are the legend in [pr-protocol.md](pr-protocol.md).
 
-````text
+The scripts read four things from the report and nothing else: the marker on the first line, the
+fenced `findings` block last, a line that is exactly `Review mode: separate agents.` or
+`Review mode: single session.`, and the words `Declined to judge:` (`lint-report`). The rest is for
+people, so write it to be scanned: the alert says the verdict, the table says the numbers, the tables
+below say where.
+
+````markdown
 <!-[-] adversarial-review: sha=<40hex> verdict=BLOCKED pass=2 critical=1 warning=1 note=1 -->
-Written by pr-reviewer, pass 2, head 9f2c1ab4e0d3, 2026-11-19 14:02 UTC.
+🤖 **Written by pr-reviewer** · pass 2 · head `9f2c1ab4e0d3` · 2026-11-19 14:02 UTC
 
-BLOCKED: 1 critical finding stops the merge
+> [!CAUTION]
+> ⛔ **BLOCKED**: 1 critical finding stops the merge
 
-Verdict: BLOCKED
-Counts: critical 1, warning 1, note 1
-Scope: 6 files, 214 lines, change type: feature
-Head: 9f2c1ab4e0d3
-Next: pr-fixer cycle 2 closes C1 first
+| | |
+|---|---|
+| **Verdict** | ⛔ BLOCKED |
+| **Counts** | 🔴 1 critical · 🟡 1 warning · 🔵 1 note |
+| **Scope** | 6 files, 214 lines, feature |
+| **Head** | `9f2c1ab4e0d3` |
+| **Next** | pr-fixer cycle 2 closes C1 first |
 
-What changed: session expiry now trusts a client clock header (see C1).
-What blocks: only C1. Warnings and notes are declared debt with an owner.
-Check first: src/auth/session.ts:47, then the test list for the refresh path.
+### 📖 How to read this review
 
-Acceptance conditions, written at pass 1:
-A1 met: Expired tokens are rejected on every route.
-A2 open: Refresh tokens are revoked on logout.
+- **What changed:** session expiry now trusts a client clock header (see C1).
+- **What blocks:** only C1. Warnings and notes are declared debt with an owner.
+- **Check first:** [`src/auth/session.ts:47`](https://github.com/OWNER/REPO/blob/9f2c1ab4e0d3/src/auth/session.ts#L47), then the test list for the refresh path.
 
-Critical findings, which always block:
-C1 at src/auth/session.ts:47 (security): Expired token accepted when the clock-skew header is present.
-C1 failure scenario: a request with a Date header two hours ahead and an expired token returns 200.
-C1 suggested fix: compare against server time and ignore the client header.
+### 🎯 Acceptance conditions (written at pass 1)
 
-Warnings, declared debt:
-W1 at src/auth/session.ts:80: No test for the refresh path. Proposed owner: the author.
+- [x] **A1** ✅ met: Expired tokens are rejected on every route.
+- [ ] **A2** ⏳ open: Refresh tokens are revoked on logout.
 
-Notes, declared debt:
-N1 at README.md:12: Setup line refers to the old flag. Proposed owner: the author.
+### 🔴 Critical findings (always block)
 
-Coverage:
-security, effort max: run.
-dependencies, effort standard: run.
-privacy: not applicable, no privacy path in the diff.
+| ID | Where | Dimension | Claim |
+|---|---|---|---|
+| **C1** | `src/auth/session.ts:47` | security | Expired token accepted when the clock-skew header is present. |
+
+**C1 failure scenario:** a request with a Date header two hours ahead and an expired token returns 200.
+**C1 suggested fix:** compare against server time and ignore the client header.
+
+### 🟡 Warnings (declared debt)
+
+| ID | Where | Dimension | Claim | Proposed owner |
+|---|---|---|---|---|
+| **W1** | `src/auth/session.ts:80` | testing | No test for the refresh path. | the author |
+
+### 🔵 Notes (declared debt)
+
+| ID | Where | Dimension | Claim | Proposed owner |
+|---|---|---|---|---|
+| **N1** | `README.md:12` | documentation | Setup line refers to the old flag. | the author |
+
+### 🧭 Coverage
+
+| Unit | Effort | Status |
+|---|---|---|
+| security | max | ✅ run |
+| dependencies | standard | ✅ run |
+| privacy | none | ⚪ not applicable: no privacy path in the diff |
+
 Declined to judge: none.
-Review mode: separate agents | single session.
+Review mode: separate agents.
 
-Prior findings (pass 2 and later, one line per earlier blocking finding):
-C0 verified: the closure's test fails on the old head and passes on this one.
+### 🔁 Prior findings (pass 2 and later, one row per earlier blocking finding)
 
-Pass history: pass 1 BLOCKED (1 critical), fixer cycle 1 closed 1, pass 2 BLOCKED (1 critical).
+| ID | Outcome | Evidence |
+|---|---|---|
+| C0 | ✅ verified | the closure's test fails on the old head and passes on this one |
 
-Summary: the session change reopens expired tokens through a client header. Fix C1 first; the rest
+### 📈 Pass history (pass 2 and later)
+
+```mermaid
+flowchart LR
+  P1["pass 1: BLOCKED, 1 critical"] --> F1["fixer cycle 1: closed 1"] --> P2["pass 2: BLOCKED, 1 critical"]
+```
+
+**Summary:** the session change reopens expired tokens through a client header. Fix C1 first; the rest
 can follow in a later pass as declared debt.
 
 ```findings
@@ -123,54 +159,59 @@ none`. A WARNING it says to demote becomes a NOTE in the block, and each demoted
 moves to a last group, `Suppressed by history, shown for the record:`, after the notes. Nothing is
 dropped.
 
-The banner, the summary lines and the pass history are for people. The findings block is the only
+The banner, the alert, the summary table and the pass history are for people. The findings block is the only
 part the fixer parses for its work list, so prose and block must agree on every id and count.
 
 ## Summary standard
 
-The summary is what a person reads first, so it follows one template, in this order, as plain
-lines:
+The summary is what a person reads first, so it follows one template, in this order:
 
-1. Title line: the verdict and the reason in six words or fewer, no emoji.
-2. Labelled lines: `Verdict:`, `Counts:`, `Head:` and, last, `Next:`, which starts with the actor
+1. The alert: `[!TIP]` over a PASSED verdict, `[!CAUTION]` over a BLOCKED one, with the verdict and the
+   reason in six words or fewer. It is the only alert in the comment.
+2. The table: `Verdict`, `Counts`, `Scope`, `Head` and, last, `Next`, which starts with the actor
    (`pr-fixer`, `A person`). There is no separate next-step line.
-3. Reading guide: at most three labelled lines: what changed, what blocks, what to check first.
+3. The reading guide: three bullets at most: what changed, what blocks, what to check first.
 
-```text
-BLOCKED: one critical finding stops the merge
+```markdown
+> [!CAUTION]
+> ⛔ **BLOCKED**: one critical finding stops the merge
 
-Verdict: BLOCKED
-Counts: critical 1, warning 6, note 11
-Head: c3d204a
-Next: pr-fixer, cycle 1
-
-Changed: the merge fixer's conflict step (see C1).
-Blocks: C1 only. Warnings and notes are debt with an owner.
-Check first: SKILL.md:102.
+| | |
+|---|---|
+| **Verdict** | ⛔ BLOCKED |
+| **Counts** | 🔴 1 critical · 🟡 6 warnings · 🔵 11 notes |
+| **Head** | `c3d204a` |
+| **Next** | pr-fixer, cycle 1 |
 ```
 
 Rules that keep the summary short without losing detail:
 
-- Details move down into the per-finding lines, never into the summary.
+- Details move down into the finding tables, never into the summary.
 - Every number in the summary equals the number in the marker and in the findings block.
-- Use the words from the legend in [pr-protocol.md](pr-protocol.md) and nothing else.
+- Use the emoji and words from the legend in [pr-protocol.md](pr-protocol.md) and nothing else.
 
 ## Rules for the person-facing part
 
-- The comment is plain text. No Markdown outside the `findings` fence: no headings, no tables, no
-  bold or italics, no bullet or numbered lists, no checkboxes, no quotes, no other fenced block
-  (Mermaid included), and no emoji. The marker line and the `findings` block are the only
-  exceptions. Markdown belongs in the pull request description only.
-- Each detail line starts with its label or its id (`C1 at path:line`, `Coverage:`, `A2 open:`),
-  so a reader scans the left edge. One finding per line, plus its scenario and fix lines.
-- The labelled summary states the verdict, the counts, the head and the next action in one place.
+- The comment is GitHub Markdown with the elements the layout names: headings, tables, bold, bullet
+  and task lists, one alert, one Mermaid block, inline code and links. The marker line and the
+  `findings` block keep their exact form. Nothing else: no `details` block, no HTML comment other than
+  the marker, no invisible HTML, no emoji shortcode (`:x:`), and no emoji outside the legend. The
+  scanner flags each of those (see [pr-protocol.md](pr-protocol.md)).
+- Findings are one table row per finding, grouped by severity, with the severity emoji in the heading.
+  A scenario or a suggested fix goes on its own bold-labelled line under the table, never inside a cell.
+- A table cell holds one line and no `|`. Rephrase a claim that needs a pipe, or put it in a code span
+  on the line under the table.
+- Each detail starts with its id (`C1`, `A2`), so a reader scans the left edge; the id is bold in a
+  table, and the line text keeps the id at the start.
+- The summary table states the verdict, the counts, the head and the next action in one place.
 - Counts in the summary equal the counts in the marker and in the findings block.
-- Severity and outcome are words from the legend in [pr-protocol.md](pr-protocol.md): CRITICAL,
-  WARNING, NOTE; met, open, verified, refused-accepted, refused-rejected, not applicable.
-- An acceptance condition is a line `A<n> met:` or `A<n> open:` with the condition. It states a
-  condition, not a task.
-- The pass history is one `Pass history:` line from pass 2 on.
-- Three lines, at most, in the reading guide.
+- Severity and outcome are the legend's: 🔴 CRITICAL, 🟡 WARNING, 🔵 NOTE; ✅ met, ⏳ open, ✅ verified,
+  ✅ refused-accepted, ❌ refused-rejected, ⚪ not applicable. The word always stays next to the emoji,
+  so the meaning survives a client that does not draw it.
+- An acceptance condition is a task-list line: `- [x]` when met, `- [ ]` when open, with the condition.
+  It states a condition, not a task. It is never rewritten after pass 1.
+- The pass history is a Mermaid `flowchart LR` from pass 2 on, with words in the labels and no emoji.
+- Links are absolute permalinks at the head commit (see [pr-protocol.md](pr-protocol.md)).
 - Write a login without the `@` (jonyfs, not @jonyfs): `publish` does not rewrite the report, and a
   bare @login notifies that person.
 
